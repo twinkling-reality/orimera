@@ -1,0 +1,73 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["httpx>=0.27"]
+# ///
+"""Verify the Tavily credential with one real runtime call, and archive it.
+
+Doubles as the first exercise of Orimera's past-to-present boundary: the query
+carries ONLY public-entity context. No private media, no person, no private
+location, no transcript. That constraint is the point of the test, not an
+incidental detail.
+"""
+import json, pathlib, sys, time
+import httpx
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+OUT = ROOT / ".orimera" / "experiments" / "web-lookup"
+
+# A public landmark that appears in the demo corpus. Nothing private is sent.
+PUBLIC_ENTITY_QUERY = "Seljalandsfoss waterfall Iceland visitor access and conditions"
+
+
+def main():
+    key = ""
+    env = ROOT / ".env"
+    if env.exists():
+        for line in env.read_text().splitlines():
+            if line.startswith("TAVILY_API_KEY="):
+                key = line.split("=", 1)[1].strip()
+    if not key:
+        print("TAVILY_API_KEY not set in .env")
+        return 2
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "query": PUBLIC_ENTITY_QUERY,
+        "max_results": 3,
+        "search_depth": "basic",
+        "include_answer": True,
+    }
+    t0 = time.time()
+    r = httpx.post("https://api.tavily.com/search", timeout=60,
+                   headers={"Authorization": f"Bearer {key}",
+                            "Content-Type": "application/json"},
+                   json=payload)
+    dt = time.time() - t0
+    ok = r.status_code == 200
+    body = r.json() if ok else r.text
+
+    # Archive request and response. The request is retained deliberately: it is
+    # the evidence that no private payload was sent.
+    (OUT / "tavily_runtime_call.json").write_text(json.dumps({
+        "request": payload, "status": r.status_code,
+        "latency_s": round(dt, 3), "response": body,
+    }, indent=2))
+
+    if ok:
+        results = body.get("results", [])
+        print(f"[PASS] Tavily HTTP 200 in {dt:.2f}s, {len(results)} results")
+        for x in results:
+            print(f"       {x.get('title','')[:70]}")
+            print(f"         {x.get('url','')}")
+        ans = (body.get("answer") or "")[:180]
+        if ans:
+            print(f"       answer: {ans}")
+        print(f"\n       Archived to {OUT / 'tavily_runtime_call.json'}")
+        print("       Payload contained public-entity text only. No private data sent.")
+    else:
+        print(f"[FAIL] HTTP {r.status_code}: {str(body)[:300]}")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
