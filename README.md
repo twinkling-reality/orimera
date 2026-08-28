@@ -12,6 +12,38 @@ exactly as reliably as a photoreal one, because neither of them is what the answ
 
 Built for the Nebius x NVIDIA Global AI Hackathon, Best Apps and Agents track.
 
+## Project status
+
+Checked on 2026-08-28 by running the commands in [Setup and running](#setup-and-running).
+
+**Working, and verified by execution.** The evidence spine, the content-addressed store, the
+photograph ingest pipeline and the Nebius Token Factory model client are implemented and covered by
+430 backend tests, all passing. Nineteen of those apply the schema migration to a live PostgreSQL
+server, the only executable proof that a model cannot write a person's name into canonical state.
+Ingest runs end to end over a directory of photographs and is idempotent: a second pass recomputes
+nothing and issues no model calls. The browser packages pass `pnpm check`: a typecheck of every
+package, an import-boundary contract over 148 modules, and 225 tests. The renderer was chosen on
+measurement, against the earlier lean (PlayCanvas Engine 2.21.4,
+[docs/adr/0003-renderer-selection.md](docs/adr/0003-renderer-selection.md)). Real calls to NVIDIA
+Nemotron and to Tavily were made and archived on 2026-08-27.
+
+**Specified, not yet running as a product.** The Atlas scene graph, the Companion dialogue runtime
+and the World Index exist as tested libraries, but they run on fixture data: the graph client's
+transport is still a stub, so no browser surface reads real state. Query planning and answer
+composition are specified in
+[docs/adr/0005-unified-selection-model.md](docs/adr/0005-unified-selection-model.md) and not built.
+MoGe is the chosen reconstruction method and is not integrated. There is no HTTP service joining the
+two halves.
+
+**Deliberately not claimed.** No personal photograph library has been ingested, so nothing about
+reconstruction quality, identity or retrieval has been measured on real material. No accuracy or
+recall figure for cross-capture identity exists, and none will appear until one is measured. Nothing
+is deployed. The migration has run only against PostgreSQL 14, with two declared substitutions for
+the PostgreSQL 18 features it targets, so its SQL-level guarantees are that much short of proven.
+
+The settled product-level limitations are in section 11 of
+[docs/product-specification.md](docs/product-specification.md).
+
 ## The defining loop
 
 1. A capture becomes a navigable memory region. Originals are retained under an append-only policy.
@@ -216,12 +248,9 @@ Fixtures are gitignored. Regenerate them rather than committing them.
 
 ### What runs today
 
-The evidence spine, the ingest pipeline, the model client and the renderer bake-off are
-implemented, tested and runnable by the commands above. **There is no HTTP server and no assembled
-Atlas application yet**, so there is currently no single command that starts Orimera end to end.
-The renderer has been chosen on measurement (PlayCanvas Engine 2.21.4, see
-[docs/adr/0003-renderer-selection.md](docs/adr/0003-renderer-selection.md)) and the front-end
-packages exist as libraries with their own tests, but they are not yet wired into a running product.
+Every command above runs now. **There is no HTTP server and no assembled Atlas application yet**,
+so there is currently no single command that starts Orimera end to end.
+[Project status](#project-status) has the rest of the picture.
 
 ## Repository layout
 
@@ -269,6 +298,6 @@ Apache-2.0. See [LICENSE](LICENSE).
 
 The per-component ship and do-not-ship verdicts, the NVIDIA license distinction, and the NOTICE-file
 obligations that third-party components impose are recorded in
-[docs/license-matrix.md](docs/license-matrix.md). The consolidated `THIRD_PARTY_NOTICES.md` that
-section 7 of that document specifies has not been written yet; until it exists, the license matrix
-is the authoritative record.
+[docs/license-matrix.md](docs/license-matrix.md). The consolidated notices that section 7 of that
+document specifies are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), read from the packages
+themselves on 2026-08-28.

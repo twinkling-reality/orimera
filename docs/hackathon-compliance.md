@@ -17,7 +17,7 @@ Primary sources:
 | Judging period | 2026-12-01 to 2026-12-15 |
 | Winners announced | 2027-01-11 |
 
-Today is 2026-08-27. Runway to deadline: approximately 64 days.
+Today is 2026-08-27. Runway to deadline: approximately 63 days.
 
 This is the single most important correction to the working assumptions. The handoff brief reads as
 though this were a short sprint. It is not. A 9 week window makes deliberate recapture, remote GPU
