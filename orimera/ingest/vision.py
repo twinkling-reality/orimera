@@ -13,11 +13,15 @@ Three properties are structural rather than documented:
 *   **No identity is proposed.** The schema has no field for a person's name, so there is no
     value the model could return that would become one. The system never proposes a real-world
     identity: names come only from the account holder's own annotation.
-*   **People are not promoted to occurrences here.** Any person-denoting label is recorded in
-    the observation artifact and deliberately not turned into an occurrence, because "when a
-    biometric embedding may exist at all" is an open question (``docs/product-specification.md``
-    section 10, item P-1) and the domain model states that identity work must not begin before
-    it is answered.
+*   **A person becomes a scene-local occurrence and nothing more.** A located person is an
+    occurrence with an evidence address, exactly as a located object is. It is never an entity,
+    it never carries a name, and no embedding of any kind is derived from it. The line is drawn
+    at the embedding deliberately: open item P-1 in ``docs/product-specification.md`` section 10
+    asks when a biometric template may exist at all, and all three candidate rules in
+    ``docs/privacy-consent-threat-model.md`` section 10 are rules about persisting a template.
+    A bounding box saying "somebody is here" is not one, and BIPA's definition turns on a scan
+    of face geometry rather than on the photograph. So detection proceeds and derivation does
+    not, and the recurrence thesis gets a data path without anyone deciding P-1 by accident.
 
 The prompt carries a per-request nonce. That is a mitigation and it is described as one: OWASP
 LLM01:2025 states plainly that its mitigations are mitigations rather than a complete fix,
@@ -58,7 +62,8 @@ SCHEMA_VERSION: Final = 1
 PROMPT_VERSION: Final = 1
 OBSERVATION_SCHEMA_NAME: Final = "orimera_photo_observation_v1"
 
-#: Labels that denote a human being. Recorded in the artifact, never promoted to an occurrence.
+#: Labels that denote a human being. A located one becomes a person occurrence; none of them
+#: ever becomes an entity, a name, or an embedding.
 _PERSON_LABELS: Final = frozenset(
     {
         "person",
@@ -266,6 +271,17 @@ class VisionObservation(BaseModel):
     @property
     def person_labels(self) -> list[str]:
         return [o.label for o in self.objects if o.label.strip().lower() in _PERSON_LABELS]
+
+    @property
+    def person_objects(self) -> list[DetectedObject]:
+        """The detections that denote a human being, with their boxes.
+
+        Separate from :attr:`person_labels`, which is the flat list recorded in the observation
+        artifact. This one keeps the box, because an occurrence without a region has no
+        distinguishing evidence address and every person in one photograph would collapse to a
+        single identity key.
+        """
+        return [o for o in self.objects if o.label.strip().lower() in _PERSON_LABELS]
 
     @property
     def non_person_objects(self) -> list[DetectedObject]:

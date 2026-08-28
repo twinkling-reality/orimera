@@ -41,14 +41,15 @@ from typing import Any, Final
 from PIL import Image, UnidentifiedImageError
 
 from orimera.canonical import canonical_json, sha256_digest
+from orimera.errors import TombstonedError
 from orimera.evidence import PHOTOGRAPH_INTERVAL, EvidenceAddress
 from orimera.evidence.blob import BlobId
 from orimera.evidence.region import DisplayGeometry, Rect, Region
+from orimera.identity.keys import occurrence_identity_key
 from orimera.ingest.derivatives import render
 from orimera.ingest.exif import ExifFacts, extract_exif_facts
-from orimera.ingest.identity import occurrence_identity_key
 from orimera.ingest.ledger import Ledger, StageRecorder
-from orimera.ingest.repository import IngestRepository, TombstonedError
+from orimera.ingest.repository import IngestRepository
 from orimera.ingest.stages import (
     STAGES,
     StageSpec,
@@ -498,7 +499,11 @@ class PhotoIngestPipeline:
                     "epistemic_class": "inference",
                 },
                 "observation": result.payload,
-                "person_labels_not_promoted": result.observation.person_labels,
+                # Recorded so the artifact says what the detector called the people it saw.
+                # None of these strings is a name and none of them can become one: `occurrence`
+                # has no column for a name, and `entity.display_name` is refused by trigger
+                # unless an active kind='user' assertion says so.
+                "person_labels": result.observation.person_labels,
             }
             with self._committed_writes() as pending:
                 self._persist_artifact(
@@ -564,6 +569,42 @@ class PhotoIngestPipeline:
             object_value=observation.scene_description,
             support_span_ids=[image_span_id],
         )
+
+        # People first, so their emit-key ordinals are stable as the object list changes.
+        for index, person in enumerate(observation.person_objects):
+            span_id, address = self._region_span(blob_id, person.box, display, image_span_id)
+            emit(
+                predicate_key="person_present",
+                subject_ref={"type": "capture", "id": str(capture_id)},
+                support_span_ids=[span_id],
+            )
+            if address is None:
+                # A person with no usable box has no distinguishing evidence address, so every
+                # unlocated person in this photograph would share one identity key. Rejection
+                # memory is keyed on that, so they would suppress each other's proposals. The
+                # claim that somebody is present still stands: it is the assertion above.
+                continue
+            repository.insert_occurrence(
+                capture_id=capture_id,
+                occurrence_class="person",
+                primary_span_id=span_id,
+                span_ids=[span_id],
+                presence=[(PHOTOGRAPH_INTERVAL.start_ns, PHOTOGRAPH_INTERVAL.end_ns)],
+                produced_by_run=ledger.run_id,
+                detector_version=_DETECTOR_VERSION,
+                identity_key=occurrence_identity_key(address, "person"),
+                emit_key=f"{key}:p:{index}",
+                quality={
+                    "confidence_band": person.confidence,
+                    "salience": person.salience,
+                    # The detector's own word for what it saw, kept because it is evidence
+                    # about the detection. It is NOT a name and there is no column for one:
+                    # `occurrence` has no display_name, and `entity.display_name` is enforced
+                    # by trigger to require an active user assertion.
+                    "label": person.label,
+                    "trust_tier": "T2",
+                },
+            )
 
         for index, detected in enumerate(observation.non_person_objects):
             span_id, address = self._region_span(blob_id, detected.box, display, image_span_id)

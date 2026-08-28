@@ -10,38 +10,80 @@ gets wrong:
 *   The ledger records what actually happened, in enough detail that the Assembly Replay does
     not have to read the source code.
 *   A tombstoned address refuses the write, terminally.
+
+These run against the real spine, which changes what several of them are able to prove. The
+epistemic and tombstone guards used to be application code, because the SQLite mirror the
+ingest path ran on could not express a trigger; the assertions against ``IngestRepository``
+were therefore the whole guarantee. They are now the *error message*, and the guarantee is a
+BEFORE trigger that refuses the same write on routes that never touch this class. So each of
+those tests now makes the offending write twice: once through the repository, which must fail
+with a sentence naming the rule, and once as raw SQL through the same connection, which must
+fail with an SQLSTATE. Neither check subsumes the other, and the second is the one an
+application bug cannot remove.
 """
 
 from __future__ import annotations
 
 import ast
+import copy
 import dataclasses
+import datetime as dt
 import json
 import pathlib
 import uuid
 
+import psycopg
 import pytest
+from orimera.errors import EpistemicViolation, TombstonedError
 from orimera.evidence import Modality
 from orimera.ingest import pipeline as pipeline_module
 from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.repository import EpistemicViolation, IngestRepository, TombstonedError
-from orimera.ingest.resolve import (
-    address_from_span_row,
-    resolve_original_bytes,
-    resolve_region_image,
-)
+from orimera.ingest.resolve import resolve_region_image
 from orimera.store.base import PurgeAuthorization, privileged_purger
 from orimera.store.local import LocalContentAddressedStore
+from orimera.store.resolve import address_from_span_row, resolve_original_bytes
+from psycopg.types.json import Jsonb
 
-from conftest import CountingVisionModel, write_photo
+from conftest import DEFAULT_PAYLOAD, CountingVisionModel, write_photo
+
+# No module-level postgres marker. tests/conftest.py marks each test by the fixtures it
+# actually requests, so the handful here that need no server stay runnable without one.
+
+#: SQLSTATE 23000. Both guards raise ``integrity_constraint_violation``, so this is what a
+#: refusal from the database looks like from Python, and it is deliberately narrower than
+#: ``psycopg.Error``: a typo in the statement would raise a syntax error and pass a check that
+#: only asked for "some database exception".
+REFUSED = psycopg.errors.IntegrityConstraintViolation
 
 
 @pytest.fixture
-def ingested(tmp_path, photo_dir, workspace_id):
+def ingested(tmp_path, photo_dir, repository):
+    """One photograph through the whole pipeline, with the default observation.
+
+    The default payload's person carries no box, which is deliberate rather than incidental:
+    the boxless case is the one where a person is asserted and no occurrence is written, and it
+    is the shape most of these tests want.
+    """
     path = write_photo(photo_dir, "a.jpg", gps=(64.3271, -20.1199))
-    repository = IngestRepository.open(tmp_path / "ingest.db", workspace_id)
     store = LocalContentAddressedStore(tmp_path / "blobs")
     vision = CountingVisionModel()
+    pipeline = PhotoIngestPipeline(repository, store, vision=vision)
+    outcome = pipeline.ingest_file(path)
+    assert outcome.error is None
+    return repository, store, pipeline, path, outcome
+
+
+@pytest.fixture
+def ingested_with_a_person(tmp_path, photo_dir, repository):
+    """The same, with the person located, so a person occurrence is actually produced."""
+    payload = copy.deepcopy(DEFAULT_PAYLOAD)
+    located = [entry for entry in payload["objects"] if entry["label"] == "person"]
+    assert len(located) == 1, payload["objects"]
+    located[0]["box"] = {"x": 0.55, "y": 0.1, "w": 0.2, "h": 0.6}
+
+    path = write_photo(photo_dir, "a.jpg", gps=(64.3271, -20.1199))
+    store = LocalContentAddressedStore(tmp_path / "blobs")
+    vision = CountingVisionModel(payload=payload)
     pipeline = PhotoIngestPipeline(repository, store, vision=vision)
     outcome = pipeline.ingest_file(path)
     assert outcome.error is None
@@ -55,6 +97,11 @@ def _assertions(repository):
         "join predicate p on p.predicate_id = a.predicate_id"
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def _one_span_id(repository):
+    row = repository.connection.execute("select span_id from evidence_span limit 1").fetchone()
+    return row["span_id"]
 
 
 # -- epistemic status -------------------------------------------------------------------
@@ -73,7 +120,8 @@ def test_exif_facts_are_capture_and_model_output_is_inference(ingested):
 def test_every_assertion_cites_evidence_and_every_inference_names_its_run(ingested):
     repository, *_ = ingested
     for row in _assertions(repository):
-        assert json.loads(row["support_span_ids"]), f"{row['key']} cites nothing"
+        # support_span_ids is a uuid[], so it arrives as a list and there is nothing to decode.
+        assert row["support_span_ids"], f"{row['key']} cites nothing"
         if row["kind"] == "inference":
             assert row["produced_by_run"] is not None, row["key"]
 
@@ -86,36 +134,50 @@ def test_a_model_score_is_never_invented_from_a_confidence_band(ingested):
     quality = repository.connection.execute(
         "select quality from occurrence where class = 'object'"
     ).fetchone()
-    assert json.loads(quality["quality"])["confidence_band"] in {"low", "medium", "high"}
+    assert quality["quality"]["confidence_band"] in {"low", "medium", "high"}
 
 
 def test_a_caption_cannot_be_filed_as_a_capture_supported_fact(ingested):
     """The data layer refuses it. This is the collapse that lets a guess render as a fact."""
     repository, *_ = ingested
-    span_id = uuid.UUID(
-        repository.connection.execute("select span_id from evidence_span limit 1").fetchone()[
-            "span_id"
-        ]
-    )
+    span_id = _one_span_id(repository)
+    subject = {"type": "capture", "id": str(uuid.uuid4())}
     with pytest.raises(EpistemicViolation, match="does not accept a 'capture'"):
         repository.insert_assertion(
             kind="capture",
             predicate_key="caption_is",
-            subject_ref={"type": "capture", "id": str(uuid.uuid4())},
+            subject_ref=subject,
             object_value="a waterfall",
             emit_key="test:1",
             support_span_ids=[span_id],
         )
 
+    # And by the database, on a route that never passes through IngestRepository at all. The
+    # mirror could not express this, so the sentence above was the entire guarantee; it is now
+    # the explanation, and tg_assertion_kind_is_allowed() is the guarantee.
+    with (
+        pytest.raises(REFUSED, match="does not accept a capture assertion"),
+        repository.connection.transaction(),
+    ):
+        repository.connection.execute(
+            "insert into assertion (workspace_id, kind, predicate_id, subject_ref, "
+            "object_value, support_span_ids, emit_key) "
+            "values (%s, 'capture', %s, %s, %s, %s::uuid[], 'test:raw:caption')",
+            (
+                repository.workspace_id,
+                repository.predicate_id("caption_is"),
+                Jsonb(subject),
+                Jsonb("a waterfall"),
+                [span_id],
+            ),
+        )
+
 
 def test_no_model_can_write_a_name(ingested):
     """``name_is`` allows only ``user``. There is no code path in which a model writes a name."""
-    repository, *_ = ingested
-    span_id = uuid.UUID(
-        repository.connection.execute("select span_id from evidence_span limit 1").fetchone()[
-            "span_id"
-        ]
-    )
+    repository, _store, _pipeline, _path, outcome = ingested
+    span_id = _one_span_id(repository)
+    name_is = repository.predicate_id("name_is")
     for kind in ("inference", "capture", "external"):
         with pytest.raises(EpistemicViolation):
             repository.insert_assertion(
@@ -127,42 +189,131 @@ def test_no_model_can_write_a_name(ingested):
                 support_span_ids=[span_id],
                 produced_by_run=uuid.uuid4(),
             )
+        # The same row, written as raw SQL, and it names a real run and cites a real span so
+        # that the epistemic class is the only thing wrong with it.
+        with (
+            pytest.raises(REFUSED, match=f"does not accept a {kind} assertion"),
+            repository.connection.transaction(),
+        ):
+            repository.connection.execute(
+                "insert into assertion (workspace_id, kind, predicate_id, subject_ref, "
+                "object_value, support_span_ids, produced_by_run, emit_key) "
+                "values (%s, %s, %s, %s, %s, %s::uuid[], %s, %s)",
+                (
+                    repository.workspace_id,
+                    kind,
+                    name_is,
+                    Jsonb({"type": "entity", "id": str(uuid.uuid4())}),
+                    Jsonb("Anna"),
+                    [span_id],
+                    outcome.run_id,
+                    f"test:name:raw:{kind}",
+                ),
+            )
 
 
-def test_people_are_recorded_but_never_promoted_to_an_occurrence(ingested):
-    """Q-H6, when a biometric embedding may exist at all, is OPEN. Identity work waits for it.
+def test_a_located_person_becomes_an_occurrence_and_never_anything_more(ingested_with_a_person):
+    """Invariant 3, at the exact point it is easiest to get wrong.
 
-    The model reported a person. That is kept in the observation artifact so nothing is
-    silently dropped, and it does not become an occurrence, an entity or an embedding.
+    A detected person IS a scene-local occurrence: it has an evidence address, so the same
+    person photographed twice gives the recurrence thesis two things to connect. What it is not
+    is an entity, a link, a name or an embedding, and those are four separate failures rather
+    than one. The occurrence table has no column that could hold a name, which is the structural
+    half; the behavioural half is that the ingest path writes none of the identity tables at
+    all, which the test below this one pins.
+
+    Q-H6, when a biometric embedding may exist at all, is still OPEN, and this does not touch
+    it: no template of any kind is derived here. The distinction is the whole reason detection
+    can proceed while derivation waits.
     """
-    repository, store, *_ = ingested
-    classes = {
-        row["class"]
-        for row in repository.connection.execute("select class from occurrence").fetchall()
+    repository, store, *_ = ingested_with_a_person
+    people = repository.connection.execute(
+        "select primary_span_id, identity_key, quality from occurrence where class = 'person'"
+    ).fetchall()
+    assert len(people) == 1, people
+
+    person = people[0]
+    assert len(bytes(person["identity_key"])) == 32
+    assert person["quality"]["label"] == "person"
+    assert person["quality"]["trust_tier"] == "T2"
+
+    # The occurrence points at a REGION of the photograph, not at the whole frame. Without that
+    # every unlocated person in one capture shares an identity key, and rejection memory is
+    # keyed on exactly that, so they would suppress each other's proposals forever.
+    span = repository.connection.execute(
+        "select modality, region from evidence_span where span_id = %s",
+        (person["primary_span_id"],),
+    ).fetchone()
+    assert span["modality"] == "frame_region"
+    assert span["region"] is not None
+
+    columns = {
+        row["column_name"]
+        for row in repository.connection.execute(
+            "select column_name from information_schema.columns "
+            "where table_schema = current_schema() and table_name = 'occurrence'"
+        ).fetchall()
     }
-    assert "person" not in classes
+    assert "display_name" not in columns
+    assert not any("name" in column for column in columns), sorted(columns)
 
     row = repository.connection.execute(
         "select content_sha256 from artifact where stage_key = 'vision'"
     ).fetchone()
     from orimera.evidence.blob import BlobId
 
-    document = json.loads(store.get(BlobId(row["content_sha256"])))
-    assert document["person_labels_not_promoted"] == ["person"]
+    document = json.loads(store.get(BlobId(bytes(row["content_sha256"]))))
+    assert document["person_labels"] == ["person"]
     assert document["header"]["trust_tier"] == "T2"
     assert document["header"]["epistemic_class"] == "inference"
 
 
-def test_the_ingest_schema_has_no_entity_table_at_all(ingested):
-    """Invariant 3, enforced by absence rather than by discipline."""
+def test_an_unlocated_person_is_asserted_but_gets_no_occurrence(ingested):
+    """A detection with no box has no distinguishing address, so it cannot be an occurrence.
+
+    The claim that somebody is present is still written, as an inference citing the whole
+    image. What is not written is a row that would collide with every other boxless person in
+    the same photograph under one identity key.
+    """
     repository, *_ = ingested
-    tables = {
-        row["name"]
-        for row in repository.connection.execute(
-            "select name from sqlite_master where type = 'table'"
-        ).fetchall()
-    }
-    assert "entity" not in tables and "entity_link" not in tables
+    assert repository.count("occurrence") > 0, "the fixture produced no occurrences at all"
+    people = repository.connection.execute(
+        "select count(*) as n from occurrence where class = 'person'"
+    ).fetchone()
+    assert people["n"] == 0
+
+    present = repository.connection.execute(
+        "select a.object_value, a.support_span_ids from assertion a "
+        "join predicate p on p.predicate_id = a.predicate_id "
+        "where p.key = 'person_present' and a.kind = 'inference'"
+    ).fetchall()
+    assert len(present) == 1
+    assert present[0]["object_value"] is None, "person_present carries no object; it is a fact"
+    assert len(present[0]["support_span_ids"]) == 1
+
+
+def test_the_ingest_path_never_writes_an_entity_a_link_or_a_match_proposal(ingested):
+    """Invariant 3, which used to be enforced by absence and now has to be enforced by conduct.
+
+    The SQLite mirror carried only the fourteen tables the photograph path needed, so it simply
+    had no ``entity`` table and the invariant was structural: there was nowhere for a model's
+    guess about who someone is to land. The spine is the whole schema, identity work included,
+    so absence is no longer available and the guarantee has to be stated as what it always
+    meant. A model's output stops at an occurrence, which is scene-local and carries no name.
+    Promotion to an entity, a link or a ranked match proposal is a separate, user-driven act,
+    and nothing on this path performs it.
+    """
+    repository, *_ = ingested
+    # Without this the three counts below would be zero on an empty database and the test would
+    # pass while proving nothing about the ingest.
+    assert repository.count("occurrence") > 0
+    assert repository.count("assertion") > 0
+
+    for table in ("entity", "entity_link", "match_proposal"):
+        # A fixed literal from the tuple above, never user input.
+        written = repository.connection.execute(f"select count(*) as n from {table}").fetchone()
+        written = written["n"]
+        assert written == 0, f"the ingest wrote {written} {table} row(s)"
 
 
 # -- addresses resolve ------------------------------------------------------------------
@@ -218,12 +369,11 @@ def test_wall_clock_lives_in_a_clock_anchor_with_its_uncertainty(ingested):
 
 
 def test_an_exif_timestamp_with_no_zone_carries_the_size_of_that_unknown(
-    tmp_path, photo_dir, workspace_id
+    tmp_path, photo_dir, repository
 ):
     from orimera.ingest.exif import UNKNOWN_OFFSET_UNCERTAINTY_MS
 
     path = write_photo(photo_dir, "nozone.jpg", offset=None)
-    repository = IngestRepository.open(tmp_path / "ingest.db", workspace_id)
     store = LocalContentAddressedStore(tmp_path / "blobs")
     PhotoIngestPipeline(repository, store).ingest_file(path)
     anchor = repository.connection.execute("select * from clock_anchor").fetchone()
@@ -237,7 +387,7 @@ def _events(repository, run_id):
     return [
         dict(row)
         for row in repository.connection.execute(
-            "select * from pipeline_event where run_id = ? order by seq", (str(run_id),)
+            "select * from pipeline_event where run_id = %s order by seq", (run_id,)
         ).fetchall()
     ]
 
@@ -249,10 +399,12 @@ def test_the_ledger_records_every_stage_with_timing_and_its_inputs(ingested):
 
     started = {e["stage_key"]: e for e in events if e["type"] == "stage_started"}
     assert set(started) == {"intake", "rendition", "vision"}
-    # input_artifact_ids is recorded, not implied by the shape of the code.
-    assert json.loads(started["rendition"]["input_artifact_ids"])
-    assert json.loads(started["vision"]["input_artifact_ids"])
-    assert json.loads(started["intake"]["input_artifact_ids"]) == []
+    # input_artifact_ids is recorded, not implied by the shape of the code. It is a uuid[], so
+    # an empty list is the value in the column and not a JSON string that happens to render as
+    # one.
+    assert started["rendition"]["input_artifact_ids"]
+    assert started["vision"]["input_artifact_ids"]
+    assert started["intake"]["input_artifact_ids"] == []
 
     for event in (e for e in events if e["type"] == "stage_succeeded"):
         assert event["duration_ms"] is not None
@@ -267,9 +419,9 @@ def test_the_ledger_records_the_model_and_its_token_usage(ingested):
         for e in _events(repository, outcome.run_id)
         if e["type"] == "stage_succeeded" and e["stage_key"] == "vision"
     )
-    cost = json.loads(vision["cost"])
+    cost = vision["cost"]
     assert cost["input_tokens"] == 772 and cost["output_tokens"] == 210
-    assert json.loads(vision["model_ref"])["model_id"] == "MiniMaxAI/MiniMax-M3"
+    assert vision["model_ref"]["model_id"] == "MiniMaxAI/MiniMax-M3"
 
 
 def test_the_ledger_records_the_prompt_and_schema_version_in_the_artifact_it_points_at(
@@ -283,14 +435,14 @@ def test_the_ledger_records_the_prompt_and_schema_version_in_the_artifact_it_poi
     row = repository.connection.execute(
         "select content_sha256 from artifact where stage_key = 'vision'"
     ).fetchone()
-    header = json.loads(store.get(BlobId(row["content_sha256"])))["header"]
+    header = json.loads(store.get(BlobId(bytes(row["content_sha256"]))))["header"]
     assert header["prompt_version"] == PROMPT_VERSION
     assert header["schema_version"] == SCHEMA_VERSION
     assert header["prompt_sha256"] == prompt_digest()
 
 
 def test_a_failed_stage_is_recorded_as_failed_with_its_error_class(
-    tmp_path, photo_dir, workspace_id
+    tmp_path, photo_dir, repository
 ):
     class Exploding:
         model_id = "MiniMaxAI/MiniMax-M3"
@@ -299,7 +451,6 @@ def test_a_failed_stage_is_recorded_as_failed_with_its_error_class(
             raise RuntimeError("the endpoint said no")
 
     path = write_photo(photo_dir, "a.jpg")
-    repository = IngestRepository.open(tmp_path / "ingest.db", workspace_id)
     store = LocalContentAddressedStore(tmp_path / "blobs")
     outcome = PhotoIngestPipeline(repository, store, vision=Exploding()).ingest_file(path)
 
@@ -320,12 +471,11 @@ def test_a_failed_stage_is_recorded_as_failed_with_its_error_class(
 
 def _delete_capture(repository, **tombstone_kwargs):
     """Soft-delete the one capture and commit a tombstone. Returns both ids."""
-    capture_id = uuid.UUID(
-        repository.connection.execute("select capture_id from capture").fetchone()["capture_id"]
-    )
+    capture = repository.connection.execute("select capture_id from capture").fetchone()
+    capture_id = capture["capture_id"]
     repository.connection.execute(
-        "update capture set deleted_at = ? where capture_id = ?",
-        ("2026-08-27T12:00:00+00:00", str(capture_id)),
+        "update capture set deleted_at = %s where capture_id = %s",
+        (dt.datetime(2026, 8, 27, 12, 0, tzinfo=dt.UTC), capture_id),
     )
     tombstone_id = repository.insert_tombstone(
         scope="capture", capture_id=capture_id, requested_by=uuid.uuid4(), **tombstone_kwargs
@@ -438,44 +588,102 @@ def test_the_ingest_package_writes_to_the_object_store_in_exactly_one_place():
     )
 
 
-def test_a_tombstone_committed_mid_transaction_still_leaves_the_store_untouched(
-    tmp_path, photo_dir, workspace_id, monkeypatch
-):
-    """The race the admission check cannot close, and the reason bytes are written last.
+def _commit_a_workspace_tombstone_from_another_connection(ingest_spine) -> None:
+    """Commit a tombstone from a second connection, mid-run, exactly as another actor would.
 
-    The admission check runs before anything is written. A tombstone committed by another
-    actor in the window between that check and ``upsert_span`` is caught by the guard inside
-    the writing transaction instead, and the database rolls back. That rollback is only worth
-    something if nothing has been written to the store yet, which is why every payload is
-    queued during the transaction and flushed only after it commits.
+    Workspace scope rather than capture scope, because the capture this run is creating has not
+    committed yet and a second connection cannot name a row it cannot see. Workspace scope needs
+    no capture_id and fires the same guards, which is what is being tested.
     """
+    _repository, open_another = ingest_spine
+    other = open_another()
+    other.insert_tombstone(scope="workspace", requested_by=uuid.uuid4(), reason="mid-run")
+
+
+def _race_a_tombstone(ingest_spine, tmp_path, photo_dir, monkeypatch, *, intercept: str):
+    """Run one ingest with a real tombstone committed just before ``intercept`` writes.
+
+    Nothing here simulates the guard. The interception commits a real tombstone on a real second
+    connection and then calls the real method, so the refusal comes from ``tg_tombstone_guard_*``
+    and arrives as an SQLSTATE. That distinction is the point: a trigger can only raise an
+    SQLSTATE, an SQLSTATE reaches ``ingest_file`` through its generic handler, and the generic
+    handler records the run as **failed**, which is the state a worker retries.
+    """
+    repository, _open_another = ingest_spine
     path = write_photo(photo_dir, "a.jpg")
-    repository = IngestRepository.open(tmp_path / "ingest.db", workspace_id)
     store = LocalContentAddressedStore(tmp_path / "blobs")
     pipeline = PhotoIngestPipeline(repository, store, vision=CountingVisionModel())
 
-    def refuse(_address):
-        raise TombstonedError("another actor committed a tombstone while this run was writing")
+    real = getattr(repository, intercept)
+    fired = []
 
-    monkeypatch.setattr(repository, "upsert_span", refuse)
+    def interception(*args, **kwargs):
+        if not fired:
+            fired.append(True)
+            _commit_a_workspace_tombstone_from_another_connection(ingest_spine)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(repository, intercept, interception)
     outcome = pipeline.ingest_file(path)
 
-    assert outcome.error is not None and "tombstoned" in outcome.error
+    assert fired, f"the interception on {intercept} never ran, so nothing was raced"
+    assert outcome.error is not None and "tombstoned" in outcome.error, outcome.error
+    assert [e["type"] for e in _events(repository, outcome.run_id)][-1] == "run_cancelled", (
+        "a tombstone is terminal. A run recorded as failed is one a worker retries, which is an "
+        "unbounded loop against a photograph the user deleted."
+    )
+    return repository, store
+
+
+def test_a_tombstone_racing_the_intake_transaction_leaves_the_store_untouched(
+    tmp_path, photo_dir, ingest_spine, monkeypatch
+):
+    """The race the admission check cannot close, and the reason bytes are written last.
+
+    The admission check runs before anything is written. A tombstone committed by another actor
+    in the window between that check and the ``evidence_span`` insert is caught by the trigger
+    inside the writing transaction instead, and the database rolls back. That rollback is only
+    worth something if nothing has been written to the store yet, which is why every payload is
+    queued during the transaction and flushed only after it commits.
+    """
+    repository, store = _race_a_tombstone(
+        ingest_spine, tmp_path, photo_dir, monkeypatch, intercept="upsert_span"
+    )
     assert repository.count("capture") == 0
     assert repository.count("blob") == 0
     assert list(store.iter_blob_ids()) == [], "the rolled-back transaction left bytes behind"
 
 
+def test_a_tombstone_racing_the_vision_stage_cancels_the_run_and_writes_no_occurrence(
+    tmp_path, photo_dir, ingest_spine, monkeypatch
+):
+    """The path a real ingest actually takes, and the one the span guard alone does not cover.
+
+    By the time the vision stage runs, intake has committed and its bytes are legitimately in
+    the store: they were written before the tombstone existed. What must not happen is the
+    vision stage completing, and what must not happen more is the run being recorded as failed,
+    because a failed run is retried and the retry would race the same tombstone forever.
+
+    The capture row surviving is honest rather than ideal. A workspace tombstone means delete
+    everything, and sweeping what was already committed is the job of the purge worker, which
+    does not exist yet: ``purge_job`` is a table with no implementation.
+    """
+    repository, _store = _race_a_tombstone(
+        ingest_spine, tmp_path, photo_dir, monkeypatch, intercept="insert_occurrence"
+    )
+    assert repository.count("occurrence") == 0
+    assert repository.count("capture") == 1, "intake committed before the tombstone existed"
+
+
 def test_an_interval_tombstone_covers_the_degenerate_photograph_interval(ingested):
     """Redacting a whole photograph is the degenerate interval redaction [0, 1)."""
     repository, *_ = ingested
-    capture_id = uuid.UUID(
-        repository.connection.execute("select capture_id from capture").fetchone()["capture_id"]
-    )
+    capture = repository.connection.execute("select capture_id from capture").fetchone()
+    capture_id = capture["capture_id"]
     blob_row = repository.connection.execute("select blob_sha256 from blob").fetchone()
     from orimera.evidence.blob import BlobId
 
-    blob_id = BlobId(blob_row["blob_sha256"])
+    blob_id = BlobId(bytes(blob_row["blob_sha256"]))
     assert not repository.tombstone_blocks(blob_id, "img", 0, 1)
     repository.insert_tombstone(
         scope="interval",
@@ -491,9 +699,24 @@ def test_an_interval_tombstone_covers_the_degenerate_photograph_interval(ingeste
     with pytest.raises(TombstonedError):
         repository.upsert_span(EvidenceAddress.photograph(blob_id))
 
+    # The same write as raw SQL, refused by tg_tombstone_guard_span inside the transaction that
+    # attempts it. The check above runs before any bytes reach the object store, which is the
+    # one thing a trigger cannot do; this one holds on every route into the table, which is the
+    # one thing the application check cannot do. The mirror had only the first.
+    with (
+        pytest.raises(REFUSED, match="tombstoned: write refused for evidence_span"),
+        repository.connection.transaction(),
+    ):
+        repository.connection.execute(
+            "insert into evidence_span (workspace_id, blob_sha256, track_key, t_start_ns, "
+            "t_end_ns, modality, span_digest) "
+            "values (%s, %s, 'img', 0, 1, 'still_image', %s)",
+            (repository.workspace_id, blob_id.digest, bytes(range(32))),
+        )
+
 
 def test_a_deterministic_stage_that_changes_its_bytes_emits_an_event_and_keeps_the_old_artifact(
-    tmp_path, photo_dir, workspace_id, monkeypatch
+    tmp_path, photo_dir, repository, monkeypatch
 ):
     """The two hashes exist to make exactly this visible rather than silent.
 
@@ -505,13 +728,13 @@ def test_a_deterministic_stage_that_changes_its_bytes_emits_an_event_and_keeps_t
     from orimera.ingest import pipeline as pipeline_module
 
     path = write_photo(photo_dir, "a.jpg")
-    repository = IngestRepository.open(tmp_path / "ingest.db", workspace_id)
     store = LocalContentAddressedStore(tmp_path / "blobs")
     pipeline = PhotoIngestPipeline(repository, store)
     first = pipeline.ingest_file(path)
     original = repository.connection.execute(
         "select artifact_id, content_sha256 from artifact where stage_key = 'rendition'"
     ).fetchone()
+    original_hash = bytes(original["content_sha256"])
 
     real_render = pipeline_module.render
 
@@ -527,7 +750,7 @@ def test_a_deterministic_stage_that_changes_its_bytes_emits_an_event_and_keeps_t
     purger = privileged_purger(
         store, PurgeAuthorization(tombstone_id="t", actor="test", reason="force a recompute")
     )
-    purger.purge(BlobId(original["content_sha256"]))
+    purger.purge(BlobId(original_hash))
 
     second = pipeline.ingest_file(path)
     assert second.error is None
@@ -535,15 +758,16 @@ def test_a_deterministic_stage_that_changes_its_bytes_emits_an_event_and_keeps_t
     events = _events(repository, second.run_id)
     detected = [e for e in events if e["type"] == "nondeterminism_detected"]
     assert detected, "a deterministic stage produced different bytes and nobody said anything"
-    assert original["content_sha256"].hex() in detected[0]["error_message"]
+    assert original_hash.hex() in detected[0]["error_message"]
 
     kept = repository.connection.execute(
         "select artifact_id, content_sha256, needs_repair from artifact "
         "where stage_key = 'rendition'"
     ).fetchall()
     assert len(kept) == 1
-    assert bytes(kept[0]["content_sha256"]) == bytes(original["content_sha256"])
+    assert bytes(kept[0]["content_sha256"]) == original_hash
     # The bytes are gone and this run could not reproduce them, so the row is flagged rather
-    # than repointed at bytes the identity key does not name.
-    assert kept[0]["needs_repair"] == 1
+    # than repointed at bytes the identity key does not name. needs_repair is a real boolean
+    # now, not the integer SQLite stored one in.
+    assert kept[0]["needs_repair"] is True
     assert first.run_id != second.run_id

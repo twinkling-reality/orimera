@@ -1,4 +1,19 @@
-"""The occurrence identity key: derived from the evidence, never from a pipeline row.
+"""The keys identity decisions are recorded under, all derived from evidence.
+
+Two keys live here, and neither is allowed to be a row id.
+
+*   The **occurrence identity key** says WHICH thing in WHICH photograph a decision was about.
+*   The **basis digest** says WHAT SIGNALS were shown when the decision was made.
+
+Rejection memory is keyed on the pair, and that is what makes "never re-propose this" mean the
+right thing. Keyed on the occurrence key alone, a genuinely better signal set could never
+re-ask. Keyed on the row id, every detector re-run resurrects every rejection.
+
+This module sits in ``orimera.identity`` rather than in ``orimera.ingest`` because the key is an
+identity concept that ingest happens to need. Ingest creates occurrences and therefore computes
+their keys; nothing about the definition belongs to the pipeline.
+
+The occurrence identity key: derived from the evidence, never from a pipeline row.
 
 This is the part that is normally got wrong, and getting it wrong has a specific symptom. If a
 rejection is keyed by ``occurrence_id``, the next detector run mints a new ``occurrence_id`` for
@@ -17,12 +32,21 @@ region bucket, and it is stable across detector versions by construction.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping, Sequence
 from typing import Final
 
+from orimera.canonical import sha256_of_canonical
 from orimera.evidence import EvidenceAddress
 from orimera.evidence.region import PPM, Rect
 
-__all__ = ["REGION_GRID", "TIME_BUCKET_NS", "occurrence_identity_key", "region_bucket"]
+__all__ = [
+    "REGION_GRID",
+    "TIME_BUCKET_NS",
+    "USER_STATEMENT_BASIS",
+    "basis_digest",
+    "occurrence_identity_key",
+    "region_bucket",
+]
 
 #: 250 ms, per the domain model. Constant for a photograph corpus; present so the video path
 #: needs no second implementation.
@@ -66,3 +90,33 @@ def occurrence_identity_key(address: EvidenceAddress, occurrence_class: str) -> 
         hasher.update(len(part).to_bytes(4, "big"))
         hasher.update(part.encode("utf-8"))
     return hasher.digest()
+
+
+def basis_digest(
+    modalities: Sequence[str], extractor_versions: Mapping[str, str] | None = None
+) -> bytes:
+    """Which signals a decision was shown, as 32 bytes. Never which decision was made.
+
+    ``entity_link.basis_digest`` and ``identity_rejection.basis_digest`` both hold this, and the
+    reason they hold the same thing is the rule about re-proposing. A rejection says "not on
+    this evidence"; if the system later has a genuinely different basis, a fresh proposal is
+    honest rather than nagging, and the digest is what tells the two apart. So an extractor
+    version belongs in here and a score does not: the score is the output of the signals, and
+    keying on it would make every reranking a licence to re-ask.
+
+    Modalities are sorted, so the digest does not depend on the order a caller listed them.
+    """
+    if not modalities:
+        raise ValueError("a decision has a basis or it is not a decision; modalities was empty")
+    return sha256_of_canonical(
+        {
+            "modalities": sorted(modalities),
+            "extractor_versions": dict(sorted((extractor_versions or {}).items())),
+        }
+    )
+
+
+#: The basis of a decision the account holder made by looking at their own photograph. There is
+#: no extractor and there is no model: the signal is a person saying so, which is the only signal
+#: this system treats as knowledge rather than as a guess.
+USER_STATEMENT_BASIS: Final = basis_digest(["user_statement"])

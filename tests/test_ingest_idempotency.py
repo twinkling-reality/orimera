@@ -4,17 +4,28 @@ Every derivative is keyed by ``(source blob, stage, stage version, params, input
 consequence these tests pin down: **a second run over the same directory makes zero model
 calls.** Without that, re-running the pipeline after any change means paying for every vision
 call again, every time, and the bill arrives as one number at the end of the month.
+
+These run against a real PostgreSQL server, because there is nothing else left to run them
+against. That is more than a change of address. The re-run that actually costs money is a new
+process, so it is a new connection, and only rows that were committed are visible to it: the
+``ingest_spine`` fixture's ``open_another()`` is that second process, and one test below uses
+it. And
+the deduplication the repository writes as ``insert ... on conflict do nothing`` is backed by
+unique constraints the database enforces on every route into the table, so one test reaches
+those constraints with raw SQL instead of trusting the repository to have been careful.
+
+The whole file skips when ``ORIMERA_TEST_DATABASE_URL`` is unset; see ``tests/pg_harness.py``.
 """
 
 from __future__ import annotations
 
 import dataclasses
 
+import psycopg
 import pytest
 from orimera.evidence.blob import BlobId
 from orimera.ingest import vision as vision_module
 from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.repository import IngestRepository
 from orimera.ingest.stages import (
     STAGES,
     StageSpec,
@@ -29,12 +40,14 @@ from orimera.store.local import LocalContentAddressedStore
 
 from conftest import CountingVisionModel, write_photo
 
+# No module-level postgres marker. tests/conftest.py marks each test by the fixtures it
+# actually requests, so the handful here that need no server stay runnable without one.
+
 
 @pytest.fixture
-def bench(tmp_path, photo_dir, workspace_id):
+def bench(tmp_path, photo_dir, repository):
     write_photo(photo_dir, "a.jpg", when="2026:08:27 10:00:00")
     write_photo(photo_dir, "b.jpg", when="2026:08:27 10:02:00", size=(120, 90))
-    repository = IngestRepository.open(tmp_path / "ingest.db", workspace_id)
     store = LocalContentAddressedStore(tmp_path / "blobs")
     vision = CountingVisionModel()
     return repository, store, vision, photo_dir
@@ -56,6 +69,26 @@ def test_a_second_run_makes_zero_model_calls(bench):
     assert len(second.ingested) == 0
 
 
+def test_a_second_run_on_a_new_connection_makes_zero_model_calls(bench, ingest_spine):
+    """The re-run that costs money is a new process, and a new process is a new connection.
+
+    Everything the first run resolved its stages from was written by the session that is still
+    open. A repository on a genuinely new connection can see only what was committed, which is
+    the difference between "this pipeline object remembers" and "the database recorded it".
+    """
+    repository, store, vision, photos = bench
+    _, open_another = ingest_spine
+    PhotoIngestPipeline(repository, store, vision=vision).ingest_directory(photos)
+    assert vision.calls == 2
+
+    reopened = CountingVisionModel()
+    report = PhotoIngestPipeline(open_another(), store, vision=reopened).ingest_directory(photos)
+
+    assert reopened.calls == 0, "the reopened database re-billed the whole corpus"
+    assert report.model_calls == 0
+    assert len(report.unchanged) == 2
+
+
 def test_a_second_run_writes_no_new_rows(bench):
     """Re-running must not duplicate spans, assertions, occurrences or artifacts."""
     repository, store, vision, photos = bench
@@ -70,8 +103,40 @@ def test_a_second_run_writes_no_new_rows(bench):
     assert after == before
 
 
+def test_the_database_refuses_a_duplicate_key_even_when_the_repository_is_bypassed(bench):
+    """The deduplication is a constraint, not a convention.
+
+    Everything above goes through ``insert ... on conflict do nothing``, which a careful
+    repository could provide on its own and a careless rewrite could quietly drop. The
+    guarantee is ``artifact (workspace_id, idempotency_key)`` and
+    ``assertion (workspace_id, emit_key)``, and these reach them with raw SQL that copies a row
+    the pipeline already wrote back over itself. Each attempt is contained in its own
+    transaction, because the failure aborts the one it happens in.
+    """
+    repository, store, vision, photos = bench
+    PhotoIngestPipeline(repository, store, vision=vision).ingest_directory(photos)
+
+    with pytest.raises(psycopg.errors.UniqueViolation), repository.connection.transaction():
+        repository.connection.execute(
+            "insert into artifact (artifact_id, workspace_id, kind, source_blob_sha256, "
+            "stage_key, stage_version, params_digest, input_digest, idempotency_key, "
+            "content_sha256, storage_key, byte_size) "
+            "select gen_random_uuid(), workspace_id, kind, source_blob_sha256, stage_key, "
+            "stage_version, params_digest, input_digest, idempotency_key, content_sha256, "
+            "storage_key, byte_size from artifact limit 1"
+        )
+
+    with pytest.raises(psycopg.errors.UniqueViolation), repository.connection.transaction():
+        repository.connection.execute(
+            "insert into assertion (workspace_id, kind, predicate_id, subject_ref, "
+            "support_span_ids, produced_by_run, emit_key) "
+            "select workspace_id, kind, predicate_id, subject_ref, support_span_ids, "
+            "produced_by_run, emit_key from assertion limit 1"
+        )
+
+
 def test_two_files_with_identical_bytes_share_one_capture_and_one_set_of_derivatives(
-    tmp_path, photo_dir, workspace_id
+    tmp_path, photo_dir, repository
 ):
     """Duplicate photographs are normal in a personal library. They cost one ingest, not two."""
     data = (photo_dir / "one.jpg", photo_dir / "copy.jpg")
@@ -83,7 +148,6 @@ def test_two_files_with_identical_bytes_share_one_capture_and_one_set_of_derivat
         else:
             path.write_bytes(payload)
 
-    repository = IngestRepository.open(tmp_path / "ingest.db", workspace_id)
     store = LocalContentAddressedStore(tmp_path / "blobs")
     vision = CountingVisionModel()
     PhotoIngestPipeline(repository, store, vision=vision).ingest_directory(photo_dir)
@@ -106,7 +170,11 @@ def test_bumping_a_stage_version_regenerates_only_that_stage(bench, monkeypatch)
     assert vision.calls == 2
     artifacts_before = repository.count("artifact")
 
-    monkeypatch.setitem(STAGES, "vision", dataclasses.replace(STAGES["vision"], version=2))
+    # Relative to whatever the registry currently declares. Hardcoding a number here made this
+    # test silently vacuous the day the vision stage was bumped to that same number: the "bump"
+    # became a no-op and the assertion below turned into "nothing was reprocessed".
+    bumped = STAGES["vision"].version + 1
+    monkeypatch.setitem(STAGES, "vision", dataclasses.replace(STAGES["vision"], version=bumped))
     third = pipeline.ingest_directory(photos)
 
     assert vision.calls == 4, "a version bump must reprocess"
@@ -141,11 +209,10 @@ def test_changing_a_stage_parameter_changes_the_key_without_a_version_bump(bench
 
 
 def test_a_rendition_change_that_does_change_the_pixels_does_rebill_vision(
-    tmp_path, photo_dir, workspace_id, monkeypatch
+    tmp_path, photo_dir, repository, monkeypatch
 ):
     """The other half of the same rule: different input bytes mean a genuinely new inference."""
     write_photo(photo_dir, "large.jpg", size=(1200, 800))
-    repository = IngestRepository.open(tmp_path / "ingest.db", workspace_id)
     store = LocalContentAddressedStore(tmp_path / "blobs")
     vision = CountingVisionModel()
     pipeline = PhotoIngestPipeline(repository, store, vision=vision)
@@ -203,11 +270,10 @@ def test_a_crashed_run_is_healed_rather_than_duplicated(bench, monkeypatch):
 
 
 def test_ingest_without_a_vision_model_records_capture_facts_and_says_vision_did_not_run(
-    tmp_path, photo_dir, workspace_id
+    tmp_path, photo_dir, repository
 ):
     """No model configured is not the same as no observation. It is reported, never faked."""
     write_photo(photo_dir, "a.jpg")
-    repository = IngestRepository.open(tmp_path / "ingest.db", workspace_id)
     store = LocalContentAddressedStore(tmp_path / "blobs")
     report = PhotoIngestPipeline(repository, store, vision=None).ingest_directory(photo_dir)
 

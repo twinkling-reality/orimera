@@ -148,7 +148,12 @@ STAGES: Final[dict[str, StageSpec]] = {
     ),
     "vision": StageSpec(
         key="vision",
-        version=1,
+        # Version 2: a located person now becomes a scene-local occurrence. Version 1 recorded
+        # the person labels in the artifact and wrote no occurrence for them, so a corpus
+        # ingested at version 1 has people in its observations and none in its occurrence table.
+        # That is a change in what the stage produces, which is exactly what this number is for:
+        # the bump regenerates rather than leaving two incompatible corpora sharing one key.
+        version=2,
         output_kind="vision_observation",
         deterministic=False,
         model_role="vision",
