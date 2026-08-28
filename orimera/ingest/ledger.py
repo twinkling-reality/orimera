@@ -12,6 +12,7 @@ counter that actually drove the loop. There is no field here holding a plausible
 
 from __future__ import annotations
 
+import datetime as dt
 import platform
 import time
 import uuid
@@ -20,11 +21,18 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
+from psycopg.types.json import Jsonb
+
 from orimera.evidence.blob import BlobId
-from orimera.ingest.repository import IngestRepository, json_text, utc_now_text
+from orimera.ingest.repository import IngestRepository
 from orimera.ingest.stages import StageSpec
 
 __all__ = ["Ledger", "StageRecorder"]
+
+
+def _now() -> dt.datetime:
+    """The one clock this module reads. Connections are pinned to UTC, so is this."""
+    return dt.datetime.now(dt.UTC)
 
 
 @dataclass
@@ -33,7 +41,7 @@ class StageRecorder:
 
     ledger: Ledger
     spec: StageSpec
-    started_at: str
+    started_at: dt.datetime
     started_monotonic: float
     input_artifact_ids: list[uuid.UUID]
     input_blob: BlobId | None
@@ -113,18 +121,13 @@ class Ledger:
         capture_id: uuid.UUID | None = None,
         pipeline_digest: str | None = None,
     ) -> Ledger:
-        run_id = uuid.uuid4()
-        repository.connection.execute(
-            'insert into pipeline_run (run_id, workspace_id, capture_id, "trigger", '
-            "started_at, status) values (?, ?, ?, ?, ?, 'running')",
-            (
-                str(run_id),
-                str(repository.workspace_id),
-                str(capture_id) if capture_id else None,
-                trigger,
-                utc_now_text(),
-            ),
-        )
+        row = repository.connection.execute(
+            'insert into pipeline_run (workspace_id, capture_id, "trigger", status) '
+            "values (%s, %s, %s, 'running') returning run_id",
+            (repository.workspace_id, capture_id, trigger),
+        ).fetchone()
+        assert row is not None
+        run_id = row["run_id"]
         ledger = cls(repository, run_id)
         # The pipeline digest goes in params_digest, which is the column for "the parameters
         # this was executed under". At run level that is exactly what it is.
@@ -143,15 +146,16 @@ class Ledger:
         that table is used: the append-only surface is ``pipeline_event``, not this row.
         """
         self._db.execute(
-            "update pipeline_run set capture_id = ? where run_id = ?",
-            (str(capture_id), str(self.run_id)),
+            "update pipeline_run set capture_id = %s where run_id = %s",
+            (capture_id, self.run_id),
         )
 
     def _next_seq(self) -> int:
         row = self._db.execute(
-            "select coalesce(max(seq), 0) as top from pipeline_event where run_id = ?",
-            (str(self.run_id),),
+            "select coalesce(max(seq), 0) as top from pipeline_event where run_id = %s",
+            (self.run_id,),
         ).fetchone()
+        assert row is not None
         return int(row["top"]) + 1
 
     def event(
@@ -170,32 +174,31 @@ class Ledger:
         max_attempts: int | None = None,
         error_class: str | None = None,
         error_message: str | None = None,
-        started_at: str | None = None,
-        ended_at: str | None = None,
+        started_at: dt.datetime | None = None,
+        ended_at: dt.datetime | None = None,
         duration_ms: int | None = None,
     ) -> uuid.UUID:
         """Append one event. ``seq`` is gapless per run."""
-        event_id = uuid.uuid4()
-        self._db.execute(
-            "insert into pipeline_event (event_id, run_id, seq, parent_event_id, type, "
+        row = self._db.execute(
+            "insert into pipeline_event (run_id, seq, parent_event_id, type, "
             "stage_key, stage_version, model_ref, params_digest, input_artifact_ids, "
             "output_artifact_ids, input_blob_sha256, attempt, max_attempts, error_class, "
-            "error_message, started_at, ended_at, duration_ms, cost, host, occurred_at) "
-            "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "error_message, started_at, ended_at, duration_ms, cost, host) "
+            "values (%s, %s, %s, %s, %s, %s, %s, %s, %s::uuid[], %s::uuid[], %s, %s, %s, %s, "
+            "%s, %s, %s, %s, %s, %s) returning event_id",
             (
-                str(event_id),
-                str(self.run_id),
+                self.run_id,
                 self._next_seq(),
-                str(parent_event_id) if parent_event_id else None,
+                parent_event_id,
                 event_type,
                 stage.key if stage else None,
                 stage.version if stage else None,
-                json_text(model_ref) if model_ref else None,
+                Jsonb(model_ref) if model_ref else None,
                 params_digest
                 if params_digest is not None
                 else (stage.params_digest if stage else None),
-                json_text([str(a) for a in input_artifact_ids]),
-                json_text([str(a) for a in output_artifact_ids]),
+                list(input_artifact_ids),
+                list(output_artifact_ids),
                 input_blob.digest if input_blob else None,
                 attempt,
                 max_attempts,
@@ -204,12 +207,12 @@ class Ledger:
                 started_at,
                 ended_at,
                 duration_ms,
-                json_text(cost) if cost else None,
+                Jsonb(cost) if cost else None,
                 self._host,
-                utc_now_text(),
             ),
-        )
-        return event_id
+        ).fetchone()
+        assert row is not None
+        return row["event_id"]
 
     @contextmanager
     def stage(
@@ -225,7 +228,7 @@ class Ledger:
         written, including as an empty list for a source stage. An empty list is a fact; an
         absent field is an unanswerable question.
         """
-        started_at = utc_now_text()
+        started_at = _now()
         started_monotonic = time.monotonic()
         stage_started = self.event(
             "stage_started",
@@ -259,7 +262,7 @@ class Ledger:
                 error_class=type(exc).__name__,
                 error_message=str(exc),
                 started_at=started_at,
-                ended_at=utc_now_text(),
+                ended_at=_now(),
                 duration_ms=int((time.monotonic() - started_monotonic) * 1000),
             )
             raise
@@ -274,7 +277,7 @@ class Ledger:
             cost=recorder.cost,
             attempt=recorder.attempt,
             started_at=started_at,
-            ended_at=utc_now_text(),
+            ended_at=_now(),
             duration_ms=int((time.monotonic() - started_monotonic) * 1000),
         )
 
@@ -296,8 +299,8 @@ class Ledger:
     def finish(self, status: str) -> None:
         self.event(f"run_{status}")
         self._db.execute(
-            "update pipeline_run set status = ?, ended_at = ? where run_id = ?",
-            (status, utc_now_text(), str(self.run_id)),
+            "update pipeline_run set status = %s, ended_at = now() where run_id = %s",
+            (status, self.run_id),
         )
 
     # -- replay -------------------------------------------------------------------------
@@ -305,6 +308,6 @@ class Ledger:
     def replay(self) -> list[dict[str, Any]]:
         """The Assembly Replay for this run: the event stream in order, as plain dicts."""
         rows = self._db.execute(
-            "select * from pipeline_event where run_id = ? order by seq", (str(self.run_id),)
+            "select * from pipeline_event where run_id = %s order by seq", (self.run_id,)
         ).fetchall()
         return [dict(row) for row in rows]

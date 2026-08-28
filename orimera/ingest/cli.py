@@ -16,9 +16,12 @@ import argparse
 import json
 import sys
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from orimera.db import Database, apply_pending, provision_workspace
 from orimera.ingest.pipeline import IngestReport, PhotoIngestPipeline
 from orimera.ingest.repository import IngestRepository
 from orimera.ingest.scenes import run_scene_grouping
@@ -28,6 +31,26 @@ from orimera.store.local import LocalContentAddressedStore
 __all__ = ["main"]
 
 _DEFAULT_DATA_DIR = Path(".orimera/local")
+
+
+@contextmanager
+def _repository(args: argparse.Namespace, stream: Any) -> Iterator[IngestRepository]:
+    """A repository over the spine, with the schema up to date and the workspace provisioned.
+
+    Migrating here rather than in a separate command is a decision about this being a
+    development CLI: the previous data layer created its schema on open, and losing that would
+    make the first run of a checkout fail on a missing table. What it does NOT do is migrate
+    silently, because a schema change that nobody noticed is how two deployments end up
+    claiming the same version with different tables.
+    """
+    database = Database.from_env()
+    report = apply_pending(database)
+    if report.applied:
+        print(f"schema: applied migration {', '.join(report.applied)}", file=stream)
+    workspace_id = _workspace_id(Path(args.data_dir), args.workspace)
+    with database.session(workspace_id) as connection:
+        provision_workspace(connection, workspace_id)
+        yield IngestRepository(connection, workspace_id)
 
 
 def _workspace_id(data_dir: Path, explicit: str | None) -> uuid.UUID:
@@ -130,75 +153,71 @@ def _print_report(report: IngestReport, stream: Any) -> None:
 
 def _cmd_ingest(args: argparse.Namespace, stream: Any) -> int:
     data_dir = Path(args.data_dir)
-    workspace_id = _workspace_id(data_dir, args.workspace)
-    repository = IngestRepository.open(data_dir / "ingest.db", workspace_id)
     store = LocalContentAddressedStore(data_dir / "blobs")
     vision = _build_vision(args, stream)
-    pipeline = PhotoIngestPipeline(repository, store, vision=vision)
+    with _repository(args, stream) as repository:
+        pipeline = PhotoIngestPipeline(repository, store, vision=vision)
 
-    target = Path(args.path)
-    print(f"workspace {workspace_id}", file=stream)
-    if target.is_dir():
-        report = pipeline.ingest_directory(
-            target, recursive=not args.no_recursive, limit=args.limit
-        )
-    else:
-        report = IngestReport(pipeline_digest=pipeline.pipeline_digest)
-        report.outcomes.append(pipeline.ingest_file(target))
-
-    for outcome in report.outcomes:
-        if outcome.error:
-            state = "failed"
+        target = Path(args.path)
+        print(f"workspace {repository.workspace_id}", file=stream)
+        if target.is_dir():
+            report = pipeline.ingest_directory(
+                target, recursive=not args.no_recursive, limit=args.limit
+            )
         else:
-            state = "+".join(outcome.stages_run) if outcome.stages_run else "unchanged"
-            if outcome.stages_skipped:
-                state += f" (not run: {'+'.join(outcome.stages_skipped)})"
-        print(f"  {outcome.path.name:40s} {state}", file=stream)
+            report = IngestReport(pipeline_digest=pipeline.pipeline_digest)
+            report.outcomes.append(pipeline.ingest_file(target))
 
-    scenes = run_scene_grouping(repository)
-    _print_report(report, stream)
-    print(
-        f"  scenes      {len(scenes.groups)} groups, {len(scenes.proposals)} place proposals "
-        f"awaiting confirmation, {scenes.ungrouped} captures with no timestamp left ungrouped",
-        file=stream,
-    )
-    if args.json:
-        json.dump(
-            {
-                "workspace_id": str(workspace_id),
-                "pipeline_digest": report.pipeline_digest,
-                "ingested": len(report.ingested),
-                "unchanged": len(report.unchanged),
-                "failed": len(report.failed),
-                "model_calls": report.model_calls,
-                "scene_groups": len(scenes.groups),
-                "place_proposals": len(scenes.proposals),
-            },
-            stream,
-            indent=2,
+        for outcome in report.outcomes:
+            if outcome.error:
+                state = "failed"
+            else:
+                state = "+".join(outcome.stages_run) if outcome.stages_run else "unchanged"
+                if outcome.stages_skipped:
+                    state += f" (not run: {'+'.join(outcome.stages_skipped)})"
+            print(f"  {outcome.path.name:40s} {state}", file=stream)
+
+        scenes = run_scene_grouping(repository)
+        _print_report(report, stream)
+        print(
+            f"  scenes      {len(scenes.groups)} groups, {len(scenes.proposals)} place "
+            f"proposals awaiting confirmation, {scenes.ungrouped} captures with no timestamp "
+            "left ungrouped",
+            file=stream,
         )
-        print(file=stream)
-    repository.close()
+        if args.json:
+            json.dump(
+                {
+                    "workspace_id": str(repository.workspace_id),
+                    "pipeline_digest": report.pipeline_digest,
+                    "ingested": len(report.ingested),
+                    "unchanged": len(report.unchanged),
+                    "failed": len(report.failed),
+                    "model_calls": report.model_calls,
+                    "scene_groups": len(scenes.groups),
+                    "place_proposals": len(scenes.proposals),
+                },
+                stream,
+                indent=2,
+            )
+            print(file=stream)
     return 1 if report.failed else 0
 
 
 def _cmd_replay(args: argparse.Namespace, stream: Any) -> int:
-    data_dir = Path(args.data_dir)
-    workspace_id = _workspace_id(data_dir, args.workspace)
-    repository = IngestRepository.open(data_dir / "ingest.db", workspace_id)
     from orimera.ingest.ledger import Ledger
 
-    ledger = Ledger(repository, uuid.UUID(args.run_id))
-    for event in ledger.replay():
-        detail = event["stage_key"] or ""
-        if event["duration_ms"] is not None:
-            detail += f" {event['duration_ms']}ms"
-        if event["cost"]:
-            detail += f" {event['cost']}"
-        if event["error_class"]:
-            detail += f" {event['error_class']}: {event['error_message']}"
-        print(f"  {event['seq']:>3}  {event['type']:<24} {detail}", file=stream)
-    repository.close()
+    with _repository(args, stream) as repository:
+        ledger = Ledger(repository, uuid.UUID(args.run_id))
+        for event in ledger.replay():
+            detail = event["stage_key"] or ""
+            if event["duration_ms"] is not None:
+                detail += f" {event['duration_ms']}ms"
+            if event["cost"]:
+                detail += f" {event['cost']}"
+            if event["error_class"]:
+                detail += f" {event['error_class']}: {event['error_message']}"
+            print(f"  {event['seq']:>3}  {event['type']:<24} {detail}", file=stream)
     return 0
 
 

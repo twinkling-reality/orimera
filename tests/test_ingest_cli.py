@@ -2,16 +2,28 @@
 
 The second run must say what it skipped and why. A tool that silently does nothing looks
 identical to a tool that silently did everything again and billed for it.
+
+Unlike every other test of the ingest path, nothing here is handed a repository. The CLI
+resolves its own database from ``ORIMERA_DATABASE_URL`` and opens its own connections, and that
+resolution is part of what is being tested, so the ``cli_database`` fixture points that variable
+at the throwaway schema instead of substituting a connection. The five model-wiring tests at the
+bottom touch no database at all and ask for nothing.
 """
 
 from __future__ import annotations
 
 import io
 import re
+import uuid
+from pathlib import Path
 
+from orimera.db import Database
 from orimera.ingest.cli import main
 
 from conftest import write_photo
+
+# No module-level postgres marker. tests/conftest.py marks each test by the fixtures it
+# actually requests, so the handful here that need no server stay runnable without one.
 
 
 def _run(argv: list[str]) -> tuple[int, str]:
@@ -20,7 +32,27 @@ def _run(argv: list[str]) -> tuple[int, str]:
     return code, stream.getvalue()
 
 
-def test_ingesting_a_directory_twice_reports_the_second_run_as_unchanged(tmp_path, photo_dir):
+def _first_capture_run_id(data_dir: Path) -> uuid.UUID:
+    """The run id the CLI would print, read back the way anything else would have to read it.
+
+    ``pipeline_run`` is under FORCE row-level security, so a connection that has not declared a
+    workspace sees an empty table rather than an error. The workspace is the one the CLI wrote
+    under ``--data-dir``, which is the only place it is recorded. ``run_id`` defaults to
+    ``uuidv7()``, which is time ordered, so ordering by it is an insertion ordering rather than
+    an arbitrary one and "the first run that reached a capture" means what it says.
+    """
+    workspace_id = uuid.UUID((data_dir / "workspace.txt").read_text(encoding="utf-8").strip())
+    with Database.from_env().session(workspace_id) as connection:
+        row = connection.execute(
+            "select run_id from pipeline_run where capture_id is not null order by run_id limit 1"
+        ).fetchone()
+    assert row is not None
+    return row["run_id"]
+
+
+def test_ingesting_a_directory_twice_reports_the_second_run_as_unchanged(
+    tmp_path, photo_dir, cli_database
+):
     write_photo(photo_dir, "a.jpg", when="2026:08:27 10:00:00", gps=(64.3271, -20.1199))
     write_photo(photo_dir, "b.jpg", when="2026:08:27 10:04:00", gps=(64.3271, -20.1199))
     data_dir = str(tmp_path / "state")
@@ -39,7 +71,7 @@ def test_ingesting_a_directory_twice_reports_the_second_run_as_unchanged(tmp_pat
     assert "incomplete 2" in second
 
 
-def test_the_workspace_id_survives_between_runs(tmp_path, photo_dir):
+def test_the_workspace_id_survives_between_runs(tmp_path, photo_dir, cli_database):
     """A regenerated workspace looks exactly like an ingest that quietly did nothing."""
     write_photo(photo_dir, "a.jpg")
     data_dir = str(tmp_path / "state")
@@ -49,7 +81,7 @@ def test_the_workspace_id_survives_between_runs(tmp_path, photo_dir):
     assert pattern.search(first).group(1) == pattern.search(second).group(1)
 
 
-def test_the_summary_says_when_the_vision_stage_did_not_run(tmp_path, photo_dir):
+def test_the_summary_says_when_the_vision_stage_did_not_run(tmp_path, photo_dir, cli_database):
     write_photo(photo_dir, "a.jpg")
     _, output = _run(["--data-dir", str(tmp_path / "state"), "ingest", str(photo_dir), "--offline"])
     assert "vision: disabled" in output
@@ -57,7 +89,9 @@ def test_the_summary_says_when_the_vision_stage_did_not_run(tmp_path, photo_dir)
     assert "not run: vision" in output
 
 
-def test_an_unreadable_file_fails_alone_and_the_run_still_reports(tmp_path, photo_dir):
+def test_an_unreadable_file_fails_alone_and_the_run_still_reports(
+    tmp_path, photo_dir, cli_database
+):
     write_photo(photo_dir, "good.jpg")
     (photo_dir / "broken.jpg").write_bytes(b"not an image at all")
     code, output = _run(
@@ -68,7 +102,7 @@ def test_an_unreadable_file_fails_alone_and_the_run_still_reports(tmp_path, phot
     assert "ingested   1" in output
 
 
-def test_scene_grouping_runs_and_is_reported(tmp_path, photo_dir):
+def test_scene_grouping_runs_and_is_reported(tmp_path, photo_dir, cli_database):
     write_photo(photo_dir, "a.jpg", when="2026:08:27 10:00:00", gps=(64.3271, -20.1199))
     write_photo(photo_dir, "b.jpg", when="2026:08:27 18:00:00", gps=(64.1466, -21.9426))
     _, output = _run(["--data-dir", str(tmp_path / "state"), "ingest", str(photo_dir), "--offline"])
@@ -76,20 +110,14 @@ def test_scene_grouping_runs_and_is_reported(tmp_path, photo_dir):
     assert "awaiting confirmation" in output
 
 
-def test_replay_prints_the_ledger_for_a_run(tmp_path, photo_dir):
+def test_replay_prints_the_ledger_for_a_run(tmp_path, photo_dir, cli_database):
     write_photo(photo_dir, "a.jpg")
     data_dir = str(tmp_path / "state")
     _run(["--data-dir", data_dir, "ingest", str(photo_dir), "--offline"])
 
-    import sqlite3
+    run_id = _first_capture_run_id(Path(data_dir))
 
-    connection = sqlite3.connect(f"{data_dir}/ingest.db")
-    run_id = connection.execute(
-        "select run_id from pipeline_run where capture_id is not null order by rowid limit 1"
-    ).fetchone()[0]
-    connection.close()
-
-    code, output = _run(["--data-dir", data_dir, "replay", run_id])
+    code, output = _run(["--data-dir", data_dir, "replay", str(run_id)])
     assert code == 0
     assert "run_started" in output
     assert "stage_succeeded" in output
@@ -101,6 +129,8 @@ def test_replay_prints_the_ledger_for_a_run(tmp_path, photo_dir):
 # Every test above runs --offline, so none of them touch the model client. These four cover the
 # two places the CLI reaches into orimera.models. None of them issues a request: constructing a
 # client opens no connection, and the preflight is given a catalog rather than fetching one.
+#
+# None of them opens a database either, so none of them asks for cli_database.
 
 
 def _catalog_snapshot(*, drop: str | None = None) -> list[dict]:

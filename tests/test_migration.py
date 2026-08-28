@@ -1,15 +1,20 @@
-"""Checks over the migration file itself.
+"""Checks over the migration files themselves.
 
-No PostgreSQL server runs in this environment, and the schema is deeply PostgreSQL specific
-(int8multirange, halfvec, uuidv7, GiST, row-level security), so it is not portable to SQLite
-and no fake database is invented for it. What is checked here is everything that can be
-checked without a server: that the file is well formed, that the constraints the invariants
-depend on are actually present, and that the checksum machinery works.
+Most of what is here is a text check, and a text check is deliberately the weaker half. It
+cannot tell a rule the database enforces from a rule the file merely describes, and that
+difference is the whole of defect 1: ``predicate.allows_kind`` was declared, documented as the
+reason a model could not write a name, and enforced by nothing. So the behavioural half lives in
+``test_epistemic_guard_postgres.py``, ``test_row_level_security.py`` and
+``test_ingest_persistence.py``, all of which write the offending row and require a refusal.
 
-The tests that need a real server are marked ``postgres`` and skip unless
-ORIMERA_TEST_DATABASE_URL points at a scratch database. The behavioural half of them lives in
-``test_epistemic_guard_postgres.py``: a text check cannot tell a rule the database enforces from
-a rule the file merely describes, and that difference is the whole of defect 1.
+What a text check is still good for is catching a rule that has been deleted or renamed out of
+the file, which is why the assertions below name the specific mechanism rather than checking a
+shape. If a guard is removed, something fails here even when no behavioural test happened to
+cover the route it protected.
+
+Both migrations are covered. 0001 is the spine; 0002 closes the two defects that blocked
+identity work, corrects the tombstone predicate from ``now()`` to ``clock_timestamp()``, and adds
+the ingest admission function.
 """
 
 from __future__ import annotations
@@ -19,22 +24,26 @@ import re
 import pytest
 from orimera.migrations import Migration, migrations, verify_applied
 
-from pg_harness import KNOWN_SHIMS, migrated_schema
+from pg_harness import migrated_schema
 
-SQL = next(iter(migrations())).sql
+MIGRATIONS = {migration.version: migration.sql for migration in migrations()}
+SQL = MIGRATIONS["0001"]
+SQL_0002 = MIGRATIONS["0002"]
 
 
-def test_there_is_exactly_one_migration_and_it_is_numbered():
+def test_the_migrations_are_numbered_and_ordered():
     files = list(migrations())
-    assert [m.version for m in files] == ["0001"]
+    assert [m.version for m in files] == ["0001", "0002"]
 
 
-def test_the_migration_is_a_single_transaction_with_no_down_path():
-    statements = [line for line in SQL.splitlines() if line and not line.startswith("--")]
+@pytest.mark.parametrize("migration", list(migrations()), ids=lambda m: m.version)
+def test_every_migration_is_a_single_transaction_with_no_down_path(migration):
+    sql = migration.sql
+    statements = [line for line in sql.splitlines() if line and not line.startswith("--")]
     assert statements[0].strip() == "begin;"
     assert statements[-1].strip() == "commit;"
-    assert SQL.count("\nbegin;") == 1 and SQL.count("\ncommit;") == 1
-    lowered = SQL.lower()
+    assert sql.count("\nbegin;") == 1 and sql.count("\ncommit;") == 1
+    lowered = sql.lower()
     # Forward-only. A drop in a migration is how a "reversible" schema quietly loses data.
     for banned in ("drop table", "drop column", "drop type", "rollback;"):
         assert banned not in lowered, f"forward-only migrations must not {banned}"
@@ -378,20 +387,128 @@ def test_a_checksum_is_stable_across_reads():
     assert migration.checksum == Migration(migration.version, migration.path).checksum
 
 
+# -- migration 0002 ---------------------------------------------------------------------
+
+
+def test_a_user_statement_cannot_carry_a_producing_run():
+    """R2. One UPDATE laundered a model row into a user-stated name, and the laundered row kept
+    produced_by_run pointing at the pipeline run that made it. A claim the user made was not
+    produced by a run, so the row is refusable on exactly that."""
+    assert "constraint a_user_statement_has_no_producing_run" in SQL_0002
+    assert "check (kind <> 'user' or produced_by_run is null)" in SQL_0002
+
+
+def test_an_assertion_is_not_editable_in_place():
+    """The other half of R2. Rewriting object_value bypasses supersedes and retraction, and
+    every citation already issued against the row then points at a different claim."""
+    body = SQL_0002.split("create or replace function tg_assertion_no_in_place_rewrite()")[1]
+    body = body.split("$fn$;")[0]
+    for column in (
+        "kind",
+        "predicate_id",
+        "subject_ref",
+        "object_value",
+        "support_span_ids",
+        "produced_by_run",
+        "stated_by_user",
+        "supersedes",
+        "emit_key",
+    ):
+        assert f"new.{column}" in body, column
+    # status, calibration_id and calibrated_p are the mutable surface and must NOT be listed.
+    for mutable in ("new.status", "new.calibration_id", "new.calibrated_p"):
+        assert mutable not in body, mutable
+    assert "before update on assertion" in SQL_0002
+
+
+def test_a_name_on_an_entity_requires_an_active_user_assertion():
+    """R1. display_name was enforced by a comment, on the single most important column in
+    canonical state."""
+    body = SQL_0002.split("create or replace function tg_entity_name_is_user_stated()")[1]
+    body = body.split("$fn$;")[0]
+    assert "raise exception" in body
+    assert "a.kind         = 'user'" in body
+    assert "a.status       = 'active'" in body
+    # Matched on the vocabulary flag, never on the key 'name_is', so a later 'nickname_is'
+    # cannot escape the rule by being spelled differently.
+    assert "p.writes_a_name" in body
+    assert "name_is" not in body
+    assert "perform assert_workspace_context(new.workspace_id);" in body
+    assert "before insert or update of display_name on entity" in SQL_0002
+
+
+def test_a_retracted_name_does_not_survive_on_the_entity():
+    """A name that outlives the statement supporting it is the failure the deletion design
+    exists to prevent."""
+    assert "create or replace function tg_entity_name_follows_its_assertion()" in SQL_0002
+    assert "after update of status on assertion" in SQL_0002
+    body = SQL_0002.split("create or replace function tg_entity_name_follows_its_assertion()")[1]
+    body = body.split("$fn$;")[0]
+    assert "set display_name = null" in body
+    assert "perform assert_workspace_context(new.workspace_id);" in body
+
+
+def test_the_tombstone_predicates_use_the_wall_clock_rather_than_the_transaction_clock():
+    """now() is transaction_timestamp(), pinned when the WRITING transaction began.
+
+    0001 made the tombstone functions VOLATILE specifically so a tombstone committed during a
+    write would be seen. It is seen, and then discarded by `effective_at <= now()`, because its
+    effective_at is later than the writing transaction's start. Measured: the row is visible,
+    the predicate is false, and the guard returns false. The volatility bought nothing until
+    this changed.
+    """
+    for function in (
+        "tombstone_blocks_span",
+        "tombstone_blocks_capture",
+        "tombstone_blocks_entity",
+        "tombstone_admits_new_capture",
+    ):
+        body = SQL_0002.split(f"create or replace function {function}(")[1].split("$fn$;")[0]
+        assert "effective_at <= clock_timestamp()" in body, function
+        assert "effective_at <= now()" not in body, function
+    # And no executable line anywhere in the file still carries the old predicate. Comments
+    # quote it deliberately, which is why they are stripped rather than searched.
+    executable = "\n".join(
+        line for line in SQL_0002.splitlines() if not line.lstrip().startswith("--")
+    )
+    assert "effective_at <= now()" not in executable
+    assert executable.count("effective_at <= clock_timestamp()") == 4
+
+
+def test_the_admission_function_omits_only_the_capture_branch():
+    """It answers a different question from tombstone_blocks_span: "given that I am about to
+    register a live capture for these bytes, will the span write be refused?" The capture branch
+    of the guard fires precisely because no live capture exists yet, so including it would
+    refuse every deliberate re-import."""
+    body = SQL_0002.split("create or replace function tombstone_admits_new_capture(")[1]
+    body = body.split("$fn$;")[0]
+    assert "t.scope = 'workspace'" in body
+    assert "t.blocklist_hash" in body
+    assert "t.scope = 'interval'" in body
+    assert "t.scope = 'capture'" not in body
+    assert "language sql volatile" in body
+
+
+def test_migration_0002_records_no_checksum_of_its_own():
+    """The runner writes schema_migrations. A migration that writes its own row invents a
+    checksum, and verify_applied then compares the file against a number the file chose."""
+    assert "insert into schema_migrations" not in SQL_0002
+
+
 @pytest.mark.postgres
 def test_the_migration_actually_applies():
     """Runs only against a real PostgreSQL server.
 
     Everything above is a text check. This is the test that proves the SQL parses, that the
-    multirange types are present, and that every trigger attaches.
+    multirange types are present, and that every trigger and function from both migrations
+    attaches.
 
     The earlier version of this test applied the migration to ``public`` and then called
     ``rollback()``. That does not undo it: the migration contains its own ``commit;``, so the
     schema was already committed and the next run failed on "type already exists". The shared
     harness applies it to a throwaway schema and drops that schema instead.
     """
-    with migrated_schema() as (_psycopg, conn, shims):
-        assert set(shims) <= KNOWN_SHIMS, shims
+    with migrated_schema() as (_psycopg, conn):
         scratch = conn.execute("select current_schema()").fetchone()[0]
         tables = conn.execute(
             "select count(*) from information_schema.tables where table_schema = %s",
@@ -404,7 +521,25 @@ def test_the_migration_actually_applies():
             (scratch,),
         ).fetchall()
         names = {row[0] for row in triggers}
-        assert "tg_assertion_kind_is_allowed" in names
-        for guard in ("tg_guard_span", "tg_guard_occurrence", "tg_guard_assertion",
-                      "tg_guard_embedding", "tg_guard_entity_link"):
-            assert guard in names, guard
+        for trigger in (
+            "tg_assertion_kind_is_allowed",
+            "tg_guard_span",
+            "tg_guard_occurrence",
+            "tg_guard_assertion",
+            "tg_guard_embedding",
+            "tg_guard_entity_link",
+            # 0002. Without these three, identity work has no enforcement behind it.
+            "tg_assertion_no_in_place_rewrite",
+            "tg_entity_name_is_user_stated",
+            "tg_entity_name_follows_its_assertion",
+        ):
+            assert trigger in names, trigger
+        functions = {
+            row[0]
+            for row in conn.execute(
+                "select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace "
+                "where n.nspname = %s",
+                (scratch,),
+            ).fetchall()
+        }
+        assert "tombstone_admits_new_capture" in functions

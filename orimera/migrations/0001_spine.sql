@@ -14,14 +14,31 @@
 
 begin;
 
-create extension if not exists vector;    -- pgvector >= 0.8.6
-create extension if not exists pgcrypto;
-create extension if not exists pg_trgm;
+-- Two things about the four statements below, both learned by running eight appliers at once
+-- against a fresh database.
+--
+-- `create extension if not exists` is not concurrency safe. Two sessions can both pass the
+-- existence check and the loser fails with `duplicate key (extname)`; seven of eight concurrent
+-- runs failed that way. The transaction-scoped advisory lock serialises the whole migration, so
+-- a parallel test runner or a second deployment worker waits instead of racing. The key is
+-- arbitrary and fixed; only agreement between concurrent appliers of this file matters.
+--
+-- `with schema public` is the other half, and without it the lock alone just moves the failure.
+-- An extension lands in the FIRST schema on the session search_path, so the winner installed
+-- pgvector into its own schema and the other seven then skipped creation, found no `halfvec`
+-- they could resolve, and failed on the embedding table instead. Extensions are database-wide
+-- objects; pinning them to public makes where they live a property of the database rather than
+-- of whichever session happened to create them.
+select pg_advisory_xact_lock(119622309);
+
+create extension if not exists vector with schema public;    -- pgvector >= 0.8.6
+create extension if not exists pgcrypto with schema public;
+create extension if not exists pg_trgm with schema public;
 -- DIVERGENCE, and this one is a hard build error rather than a style point. The committed
 -- schema declares gist (blob_sha256, t_range), gist (capture_id, presence) and
 -- gist (workspace_id, valid_time) without this extension. Core GiST has no operator class for
 -- bytea or uuid, so all three CREATE INDEX statements fail outright. btree_gist supplies them.
-create extension if not exists btree_gist;
+create extension if not exists btree_gist with schema public;
 
 -- --------------------------------------------------------------------------------------------
 -- 0. Migration bookkeeping
@@ -1168,7 +1185,14 @@ begin
   end loop;
 end $$;
 
--- embedding is partitioned; RLS is declared on the parent and inherited by partitions.
+-- embedding is partitioned. CORRECTION, verified by probe against a non-superuser role: the
+-- policy below governs queries that name the PARENT. A query that names a PARTITION directly is
+-- governed by that partition's own policies, and a partition created without any is readable by
+-- every workspace. So each per-workspace partition must be given the same ENABLE, FORCE and
+-- ws_isolation policy at the moment it is created, which is what
+-- orimera.db.migrate.provision_workspace does. Without that step, workspace B reads workspace
+-- A's embeddings by spelling the table name differently, and the parent policy here reports a
+-- correct zero while it happens.
 alter table embedding enable row level security;
 alter table embedding force  row level security;
 create policy ws_isolation on embedding

@@ -46,3 +46,20 @@ class ImmutableKeyError(OrimeraError):
 
 class PurgeNotAuthorisedError(OrimeraError):
     """A purge was attempted without a well formed authorisation."""
+
+
+class EpistemicViolation(OrimeraError):
+    """A write would file a claim under a provenance class its predicate does not allow.
+
+    The database refuses the same write with an SQLSTATE and no explanation. This carries the
+    explanation: which predicate, which kind, and which kinds it does allow.
+    """
+
+
+class TombstonedError(OrimeraError):
+    """A committed tombstone covers this address. Terminal, never retried.
+
+    Control-flow relevant, and this is the one that costs something when it is wrong. A worker
+    cancels on this and retries on anything else, so a tombstone refusal that arrives as some
+    other error type becomes an unbounded retry loop against content the user deleted.
+    """

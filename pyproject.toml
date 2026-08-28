@@ -18,10 +18,15 @@ license = { file = "LICENSE" }
 #               thing needed is one POST, and over urllib because MockTransport lets the
 #               retry, failover and truncation paths be tested without a network or a
 #               credential.
+#   psycopg   - PostgreSQL 18 is the only data layer. It was optional while a portable SQLite
+#               mirror carried the ingest path; the mirror is deleted, so nothing in this
+#               package runs without a database and pretending otherwise would just move the
+#               failure to a later import.
 dependencies = [
   "httpx>=0.27",
   "jsonschema>=4.23",
   "pillow>=12.3.0",
+  "psycopg[binary]>=3.2",
   "pydantic>=2.9",
 ]
 
@@ -35,13 +40,12 @@ orimera-ingest = "orimera.ingest.cli:main"
 # snapshot instead of the network, which is how the offline test runs it.
 orimera-preflight = "orimera.models.preflight:main"
 
-[project.optional-dependencies]
-# Only needed to run the migration against a real PostgreSQL 18 server. Tests that need it
-# skip when ORIMERA_TEST_DATABASE_URL is unset, so this is not required for `pytest`.
-postgres = ["psycopg[binary]>=3.2"]
-
 [dependency-groups]
 dev = [
+  # import-linter enforces the layering below. The web workspace has had a dependency-cruiser
+  # contract since it was created and the backend had nothing, which meant the layering was a
+  # comment. A boundary nobody checks is a boundary that has already been crossed.
+  "import-linter>=2.0",
   "pytest>=8.3",
   "ruff>=0.7",
 ]
@@ -93,5 +97,72 @@ minversion = "8.0"
 testpaths = ["tests"]
 addopts = "-q --strict-markers --strict-config"
 markers = [
-  "postgres: requires a live PostgreSQL 18 server via ORIMERA_TEST_DATABASE_URL",
+  "postgres: requires a live PostgreSQL 18 server with pgvector via ORIMERA_TEST_DATABASE_URL",
 ]
+
+
+# --------------------------------------------------------------------------------------------
+# The backend layering, enforced. `uv run lint-imports`.
+#
+# The rule this encodes: the core is pure and the edges depend on it, never the reverse. The
+# evidence address, the object store and the model client know nothing about each other and
+# nothing about a database; a change to any one of them cannot reach the other two. Everything
+# that talks to PostgreSQL is above them, and the future HTTP layer will sit above that.
+# --------------------------------------------------------------------------------------------
+
+[tool.importlinter]
+root_package = "orimera"
+# Needed by the forbidden contract below: without it, psycopg is invisible to the graph and the
+# contract passes for the wrong reason.
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "The backend is layered, and the core is at the bottom"
+type = "layers"
+layers = [
+  # The two top-level workflows. Neither may import the other: ingesting a photograph and
+  # answering a question about one are separate concerns that happen to share a database, and a
+  # dependency either way would be the first step to the query path reaching for a writer.
+  "orimera.selection | orimera.ingest",
+  "orimera.identity",
+  "orimera.epistemics",
+  "orimera.db | orimera.models | orimera.store",
+  "orimera.evidence | orimera.migrations",
+  "orimera.canonical",
+  "orimera.errors",
+]
+
+[[tool.importlinter.contracts]]
+# The model client is the one part of the core that must know nothing about the rest of it.
+# Everything it touches is a request and a response; if it ever learns what an evidence address
+# is, the temptation to have it write one follows immediately, and invariant 4 is the rule that
+# a model never writes into canonical state.
+#
+# Note what is deliberately NOT claimed here. `orimera.store` DOES import `orimera.evidence`,
+# because a content-addressed store is keyed by a content address and BlobId is that address.
+# The layer list above permits exactly that direction and no other.
+name = "The model client knows nothing about evidence, storage or the database"
+type = "forbidden"
+source_modules = ["orimera.models"]
+forbidden_modules = [
+  "orimera.evidence",
+  "orimera.store",
+  "orimera.db",
+  "orimera.ingest",
+  "orimera.migrations",
+]
+
+[[tool.importlinter.contracts]]
+# The pure core is testable with no server and no credentials, and that is a property worth
+# pinning rather than rediscovering. A psycopg import here would mean an evidence address had
+# learned how it is stored.
+name = "The pure core does not know a database exists"
+type = "forbidden"
+source_modules = [
+  "orimera.canonical",
+  "orimera.errors",
+  "orimera.evidence",
+  "orimera.models",
+  "orimera.store",
+]
+forbidden_modules = ["psycopg"]

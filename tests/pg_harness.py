@@ -1,20 +1,28 @@
 """Applying migration 0001 to a real server, for the tests that need one.
 
-Two things about this migration make a naive harness wrong, and both were learned by running it:
+Three things about this migration make a naive harness wrong, and all three were learned by
+running it:
 
 *   **The file carries its own ``begin;`` and ``commit;``.** Applying it and then calling
     ``rollback()`` does not undo it: the embedded COMMIT has already landed by the time control
     returns. A harness written that way silently leaves a schema behind, and the next run fails
     with "type assertion_kind already exists". So the schema is created inside a throwaway
     namespace and that namespace is dropped afterwards.
-*   **The documented target is PostgreSQL 18 with pgvector, and most servers are neither.**
-    Rather than skip everything on an older server, two features are substituted, and the
-    substitutions are named and returned so a test can assert that nothing else was faked:
-    ``uuidv7()`` becomes ``gen_random_uuid()``, and ``halfvec(4096)`` becomes ``bytea``. Neither
-    is on the write path of any invariant tested through this harness.
+*   **The target is PostgreSQL 18 with pgvector, and this harness now requires it.** An earlier
+    version substituted ``gen_random_uuid()`` for ``uuidv7()`` and ``bytea`` for
+    ``halfvec(4096)`` so that the suite could run on an older server. That made the suite green
+    while the vector path had never executed even once, and it hid a real defect: a test wrote
+    raw bytes into ``embedding.v`` and passed, because under the substitution the column was
+    ``bytea``. A wrong server is now a loud failure naming what is missing, not a silent fake.
+*   **Extensions are database-wide objects and ``create extension if not exists`` races.** Two
+    connections applying the migration at once can both pass the existence check, and the loser
+    gets ``duplicate key (extname)``. They are created here, once, in ``public``, under an
+    advisory lock, before the throwaway schema goes on the search path. Creating them inside the
+    scratch schema instead would put ``halfvec`` somewhere the next run cannot resolve and would
+    drop it again with the schema.
 
-Nothing outside the throwaway schema is read or written, and the database name must contain
-"test" before the harness will touch it at all.
+Nothing outside the throwaway schema is read or written, apart from those extensions, and the
+database name must contain "test" before the harness will touch it at all.
 """
 
 from __future__ import annotations
@@ -27,46 +35,82 @@ from contextlib import contextmanager
 import pytest
 from orimera.migrations import migrations
 
-#: The only substitutions this harness is allowed to make. A test asserts the set it actually
-#: applied is a subset of this one, so a third missing feature fails rather than passes quietly.
-KNOWN_SHIMS = frozenset({"uuidv7", "halfvec"})
+#: uuidv7() is a PostgreSQL 18 built-in. Nothing older can run this schema unfaked.
+REQUIRED_SERVER_VERSION: int = 180_000
+
+#: Declared by the migration itself. btree_gist is not optional: without it three GiST indexes
+#: fail to build, because core GiST has no operator class for bytea or uuid.
+REQUIRED_EXTENSIONS: tuple[str, ...] = ("vector", "pgcrypto", "pg_trgm", "btree_gist")
+
+#: The same advisory lock key migration 0001 takes, so creating the extensions here and applying
+#: the migration elsewhere serialise against each other rather than racing.
+_EXTENSION_LOCK_KEY = 119_622_309
 
 
-def apply_migration(conn, scratch: str) -> list[str]:
-    """Create schema ``scratch``, apply migration 0001 into it, return the shims used.
+class WrongServer(Exception):
+    """The configured server cannot run the schema without substitutions."""
 
-    ``search_path`` is set at session level rather than with SET LOCAL, because the migration
+
+def require_target(conn) -> None:
+    """Refuse a server that is not the documented target, naming exactly what is missing.
+
+    This raises rather than skipping. Skipping is right when no database was configured at all;
+    here the operator pointed the suite at a specific server, and quietly testing a different
+    schema than the one that ships is the failure mode this whole harness exists to avoid.
+    """
+    missing: list[str] = []
+    version = conn.execute("show server_version_num").fetchone()[0]
+    if int(version) < REQUIRED_SERVER_VERSION:
+        shown = conn.execute("show server_version").fetchone()[0]
+        missing.append(f"PostgreSQL 18 or newer for uuidv7(), server is {shown}")
+    available = {
+        row[0]
+        for row in conn.execute(
+            "select name from pg_available_extensions where name = any(%s)",
+            (list(REQUIRED_EXTENSIONS),),
+        ).fetchall()
+    }
+    for extension in REQUIRED_EXTENSIONS:
+        if extension not in available:
+            missing.append(f"the {extension} extension is not available on this server")
+    if missing:
+        raise WrongServer(
+            "ORIMERA_TEST_DATABASE_URL points at a server that cannot run migration 0001:\n  "
+            + "\n  ".join(missing)
+            + "\n\nThe schema is not portable and it is not shimmed. On macOS:\n"
+            "  brew install postgresql@18 pgvector && brew services start postgresql@18"
+        )
+
+
+def ensure_extensions(conn) -> None:
+    """Create the required extensions in ``public``, serialised against concurrent runs."""
+    conn.execute("select pg_advisory_xact_lock(%s)", (_EXTENSION_LOCK_KEY,))
+    for extension in REQUIRED_EXTENSIONS:
+        conn.execute(f"create extension if not exists {extension} with schema public")
+    conn.commit()
+
+
+def apply_migration(conn, scratch: str) -> None:
+    """Create schema ``scratch`` and apply every migration into it, in order, verbatim.
+
+    ``search_path`` is set at session level rather than with SET LOCAL, because each migration
     commits partway through this function and a transaction-local setting would not survive it.
     """
-    sql = next(iter(migrations())).sql
-    shims: list[str] = []
     cursor = conn.cursor()
     cursor.execute(f'create schema "{scratch}"')
     cursor.execute(f'set search_path to "{scratch}", public')
-    if not cursor.execute(
-        "select 1 from pg_available_extensions where name = 'vector'"
-    ).fetchone():
-        sql = sql.replace("create extension if not exists vector;", "-- shimmed: no pgvector")
-        sql = sql.replace("halfvec(4096)", "bytea")
-        shims.append("halfvec")
-    # to_regprocedure resolves through the search_path, so a uuidv7 left in some other schema by
-    # an earlier crashed run does not count as "the server has it".
-    if cursor.execute("select to_regprocedure('uuidv7()')").fetchone()[0] is None:
-        cursor.execute(
-            f'create function "{scratch}".uuidv7() returns uuid language sql volatile '
-            "as $$ select gen_random_uuid() $$"
-        )
-        shims.append("uuidv7")
-    cursor.execute(sql)
-    return shims
+    for migration in migrations():
+        cursor.execute(migration.sql)
 
 
 @contextmanager
 def migrated_schema() -> Iterator[tuple]:
-    """Yield ``(psycopg, connection, shims)`` with 0001 applied to a throwaway schema.
+    """Yield ``(psycopg, connection)`` with every migration applied, unmodified, to a throwaway
+    schema.
 
     Skips the calling test when no database is configured, when psycopg is not installed, or
-    when the configured database is not obviously a scratch one.
+    when the configured database is not obviously a scratch one. Fails, rather than skipping,
+    when a database *is* configured but is the wrong server.
     """
     url = os.environ.get("ORIMERA_TEST_DATABASE_URL")
     if not url:
@@ -86,11 +130,30 @@ def migrated_schema() -> Iterator[tuple]:
 
     scratch = f"orimera_test_{uuid.uuid4().hex[:12]}"
     with psycopg.connect(url) as conn:
-        shims = apply_migration(conn, scratch)
+        require_target(conn)
+        ensure_extensions(conn)
+        apply_migration(conn, scratch)
         try:
-            yield psycopg, conn, shims
+            yield psycopg, conn
         finally:
             # Uncommitted rows go back; the schema the migration committed has to be dropped.
             conn.rollback()
             conn.execute(f'drop schema "{scratch}" cascade')
             conn.commit()
+
+
+def open_scratch_connection(psycopg, scratch: str):
+    """A fresh autocommit connection into an already-migrated throwaway schema.
+
+    Autocommit is not a preference here, it is required. ``IngestRepository.transaction()``
+    has to be an OUTERMOST transaction that commits on exit; on a connection with autocommit
+    off, psycopg opens an implicit transaction at the first statement, every later
+    ``transaction()`` degrades to a savepoint inside it, and nothing is ever committed. The
+    pipeline's rule that object-store writes happen only after the database transaction commits
+    would then be testing nothing at all.
+    """
+    url = os.environ["ORIMERA_TEST_DATABASE_URL"]
+    connection = psycopg.connect(url, autocommit=True)
+    connection.execute(f'set search_path to "{scratch}", public')
+    connection.execute("set time zone \'UTC\'")
+    return connection

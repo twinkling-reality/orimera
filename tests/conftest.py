@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import datetime as dt
 import io
+import os
+import urllib.parse
 import uuid
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -20,7 +22,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from orimera.db import DATABASE_URL_ENV
 from orimera.ingest.vision import VisionObservation, VisionResult
+from orimera.migrations import migrations
 from orimera.models.budget import BudgetGuard
 from orimera.models.client import ModelClient
 from orimera.models.manifest import load_manifest
@@ -28,6 +32,7 @@ from PIL import Image
 from PIL.TiffImagePlugin import IFDRational
 
 from model_fakes import FakeTransport
+from pg_harness import migrated_schema, open_scratch_connection
 
 #: Explicit rather than environment-derived, so a developer's exported ORIMERA_BUDGET_USD cannot
 #: change what a test asserts.
@@ -189,6 +194,127 @@ def workspace_id() -> uuid.UUID:
     return uuid.uuid4()
 
 
+# ---------------------------------------------------------------------------------------
+# The spine. One migrated throwaway schema per session, wiped between tests.
+#
+# There is one data layer and it is PostgreSQL, so a test of the ingest path is a test against
+# a real server or it is nothing. Applying the migration costs a few hundred milliseconds, so
+# it happens once and the tables are truncated between tests instead. Truncation rather than a
+# rolled-back transaction, because the pipeline commits on purpose: its whole object-store
+# ordering rule is "write the bytes after the transaction commits", and a test that wrapped
+# everything in one never-committed transaction would exercise the opposite of the code.
+# ---------------------------------------------------------------------------------------
+
+#: Seeded by the migration, not by a test, and every assertion write reads it. Truncating it
+#: would empty the vocabulary and every later insert would be refused by a guard doing its job.
+_PRESERVED_TABLES = frozenset({"predicate", "schema_migrations", "stage_registry"})
+
+
+@pytest.fixture(scope="session")
+def spine_schema():
+    """The migrated throwaway schema, and the name it lives under."""
+    with migrated_schema() as (psycopg, owner):
+        scratch = owner.execute("select current_schema()").fetchone()[0]
+        yield psycopg, scratch
+
+
+@pytest.fixture(scope="session")
+def _spine_tables(spine_schema):
+    psycopg, scratch = spine_schema
+    connection = open_scratch_connection(psycopg, scratch)
+    rows = connection.execute(
+        "select tablename from pg_tables where schemaname = %s", (scratch,)
+    ).fetchall()
+    connection.close()
+    names = sorted(row[0] for row in rows if row[0] not in _PRESERVED_TABLES)
+    return names
+
+
+@pytest.fixture
+def ingest_spine(spine_schema, _spine_tables, workspace_id):
+    """A repository over the spine, on a clean schema, scoped to this test's workspace.
+
+    Yields ``(repository, open_another)``. ``open_another()`` returns a repository on a
+    genuinely new connection, which is what "reopen the database" now means: a fresh
+    repository object over the same connection would prove nothing about what was committed.
+    """
+    from orimera.ingest.repository import IngestRepository
+
+    psycopg, scratch = spine_schema
+    opened = []
+
+    def open_another() -> IngestRepository:
+        connection = open_scratch_connection(psycopg, scratch)
+        opened.append(connection)
+        return IngestRepository(connection, workspace_id)
+
+    primary = open_another()
+    primary.connection.execute(
+        "truncate table " + ", ".join(f'"{name}"' for name in _spine_tables) + " cascade"
+    )
+    try:
+        yield primary, open_another
+    finally:
+        for connection in opened:
+            connection.close()
+
+
+@pytest.fixture
+def repository(ingest_spine):
+    """Just the repository, for the tests that never reopen."""
+    return ingest_spine[0]
+
+
+@pytest.fixture
+def cli_database(spine_schema, _spine_tables, monkeypatch):
+    """Point the command line at the spine schema, through the environment it reads itself.
+
+    The CLI is the one caller that opens its own connections: ``_repository`` calls
+    ``Database.from_env()``, which resolves ``ORIMERA_DATABASE_URL`` and connects several times
+    over a single command. So the throwaway schema goes on the ``search_path`` inside the URL
+    rather than being set with a statement afterwards, because there is no connection object to
+    hand it a statement on.
+
+    Two things then have to be arranged before the CLI can run against a schema the harness
+    migrated, and neither is guesswork; both were observed:
+
+    *   **``schema_migrations`` is empty even though the schema is fully migrated.** The table
+        is created by migration 0001, but the rows that say a version was applied are written
+        by :func:`orimera.db.apply_pending`, and the harness applies the files directly. The
+        CLI would therefore find nothing applied, try 0001 again, and fail on ``type
+        "assertion_kind" already exists``. Recording what the harness applied makes the
+        bookkeeping agree with the schema that is actually there, which is also the only
+        honest description of it.
+    *   **Workspace scoping alone does not isolate two CLI tests.** ``artifact_id`` is
+        ``uuid5`` over the idempotency key, and that key is a hash of the source bytes, the
+        stage and its parameters, with no workspace in it. Two tests that ingest byte-identical
+        photographs therefore compute the same primary key under different workspaces, and the
+        second insert dies on ``artifact_pkey`` rather than being absorbed by ``on conflict
+        (workspace_id, idempotency_key)``. Row-level security does not help here: a unique
+        index is enforced over rows the policy hides. So the tables are wiped between tests
+        exactly as :func:`ingest_spine` wipes them, and a fresh workspace per test is a convenience
+        rather than the isolation mechanism.
+    """
+    psycopg, scratch = spine_schema
+    base = os.environ["ORIMERA_TEST_DATABASE_URL"]
+    options = urllib.parse.quote(f"-csearch_path={scratch},public", safe="")
+    monkeypatch.setenv(DATABASE_URL_ENV, f"{base}{'&' if '?' in base else '?'}options={options}")
+
+    connection = open_scratch_connection(psycopg, scratch)
+    try:
+        connection.execute(
+            "truncate table " + ", ".join(f'"{name}"' for name in _spine_tables) + " cascade"
+        )
+        for migration in migrations():
+            connection.execute(
+                "insert into schema_migrations (version, checksum) values (%s, %s) "
+                "on conflict (version) do nothing",
+                (migration.version, migration.checksum),
+            )
+    finally:
+        connection.close()
+
+
 @pytest.fixture
 def photo_dir(tmp_path: Path) -> Path:
     directory = tmp_path / "photos"
@@ -235,29 +361,57 @@ def client(manifest, transport) -> ModelClient:
     )
 
 
+#: A test that requests any of these cannot run without a server. Collection marks it
+#: ``postgres`` on that basis rather than trusting a module-level marker, because a module-level
+#: marker also catches the tests in the same file that need no database at all, and because a
+#: marker somebody forgot is a test that quietly disappears from the count below. Files with
+#: their own migrated-schema fixtures declare the marker themselves.
+DATABASE_FIXTURES = frozenset({"spine_schema", "ingest_spine", "repository", "cli_database"})
+
+
+def pytest_collection_modifyitems(config, items):
+    """Mark every test that reaches a real database, by what it asks for rather than by where
+    it lives."""
+    for item in items:
+        if DATABASE_FIXTURES & set(getattr(item, "fixturenames", ())):
+            item.add_marker(pytest.mark.postgres)
+
+
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
-    """Say loudly when the epistemic guard tests did not run.
+    """Say loudly, and accurately, which guarantees this run did not check.
 
     A green summary that omits them is the exact failure this codebase already shipped once: a
     test that passes without exercising its case. Silence here would be the same mistake at the
     level of the suite.
+
+    The count comes from the ``postgres`` marker. It used to come from a substring search over
+    the skip location and the node id, which reported 19 skips out of 77 real ones: a skip
+    raised inside a session-scoped fixture is attributed to the requesting test's own file, and
+    most of those file names contain neither "pg_harness" nor "postgres". An undercount here is
+    the same class of problem as the silence it replaced.
     """
     import os
 
     if os.environ.get("ORIMERA_TEST_DATABASE_URL"):
         return
     skipped = [
-        r
-        for r in terminalreporter.stats.get("skipped", [])
-        if "pg_harness" in str(r.longrepr) or "postgres" in str(getattr(r, "nodeid", ""))
+        report
+        for report in terminalreporter.stats.get("skipped", [])
+        if "postgres" in getattr(report, "keywords", {})
     ]
     if not skipped:
         return
+    files = sorted({report.nodeid.split("::")[0] for report in skipped})
     terminalreporter.write_sep("=", "UNVERIFIED INVARIANT", red=True, bold=True)
     terminalreporter.write_line(
-        f"{len(skipped)} PostgreSQL tests were skipped. These are the only executable proof that a "
-        "model cannot write a name into canonical state (invariant 4)."
+        f"{len(skipped)} PostgreSQL tests were skipped, across {len(files)} files. They are the "
+        "only executable proof of the guarantees the database carries: that a model cannot write "
+        "a name into canonical state, that one workspace cannot read another's rows, and that a "
+        "tombstoned address refuses the write."
     )
+    for name in files:
+        terminalreporter.write_line(f"  {name}")
     terminalreporter.write_line(
-        "Run them with:  ORIMERA_TEST_DATABASE_URL=postgresql:///orimera_spine_test uv run pytest"
+        "Run them with:  "
+        "ORIMERA_TEST_DATABASE_URL=postgresql://localhost:5433/orimera_spine_test uv run pytest"
     )

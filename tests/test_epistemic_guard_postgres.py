@@ -12,9 +12,10 @@ So these tests write the offending rows and require the database to refuse them.
 Running them
 ------------
 Set ``ORIMERA_TEST_DATABASE_URL`` to a scratch database; without it every test here skips, which
-is the normal state on a machine with no server. ``tests/pg_harness.py`` explains how the schema
-is applied and torn down, and which two features it substitutes on a server older than the
-documented target. Each test runs inside a savepoint, so no test sees another one's rows.
+is the normal state on a machine with no server. The server must be the documented target,
+PostgreSQL 18 with pgvector: nothing is substituted, and a server that cannot run the schema
+fails loudly rather than being faked. ``tests/pg_harness.py`` explains how the schema is applied
+and torn down. Each test runs inside a savepoint, so no test sees another one's rows.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from pg_harness import KNOWN_SHIMS, migrated_schema
+from pg_harness import REQUIRED_EXTENSIONS, REQUIRED_SERVER_VERSION, migrated_schema
 
 pytestmark = pytest.mark.postgres
 
@@ -37,7 +38,7 @@ class _Rollback(Exception):
 @pytest.fixture(scope="module")
 def spine():
     """A migrated schema plus the few rows an assertion needs to reference."""
-    with migrated_schema() as (psycopg, conn, shims):
+    with migrated_schema() as (psycopg, conn):
         workspace = uuid.uuid4()
         cursor = conn.cursor()
         cursor.execute("select set_config('orimera.workspace_id', %s, false)", (str(workspace),))
@@ -61,18 +62,17 @@ def spine():
         run_id = cursor.fetchone()[0]
         cursor.execute("select key, predicate_id from predicate")
         predicates = dict(cursor.fetchall())
-        yield Spine(psycopg, conn, workspace, span_id, run_id, predicates, shims)
+        yield Spine(psycopg, conn, workspace, span_id, run_id, predicates)
 
 
 class Spine:
-    def __init__(self, psycopg, conn, workspace, span_id, run_id, predicates, shims) -> None:
+    def __init__(self, psycopg, conn, workspace, span_id, run_id, predicates) -> None:
         self.psycopg = psycopg
         self.conn = conn
         self.workspace = workspace
         self.span_id = span_id
         self.run_id = run_id
         self.predicates = predicates
-        self.shims = shims
         self.subject = psycopg.types.json.Json(
             {"type": "entity", "id": str(uuid.uuid4())}
         )
@@ -104,9 +104,73 @@ class Spine:
         )
 
 
-def test_the_shims_are_only_the_two_documented_ones(spine):
-    """A third feature needing a fake would mean this suite is testing something else."""
-    assert set(spine.shims) <= KNOWN_SHIMS, spine.shims
+def test_the_schema_under_test_is_the_one_that_ships(spine):
+    """Nothing here is substituted, and this is what proves it.
+
+    The harness used to swap ``uuidv7()`` for ``gen_random_uuid()`` and ``halfvec(4096)`` for
+    ``bytea`` so the suite could run on PostgreSQL 14. Everything passed and the vector path had
+    never executed once. So the two substituted features are asserted to be the real ones: a
+    server-supplied ``uuidv7`` resolving in ``pg_catalog`` rather than a scratch-schema stand-in,
+    and a column whose type is genuinely ``halfvec``.
+    """
+    version = int(spine.conn.execute("show server_version_num").fetchone()[0])
+    assert version >= REQUIRED_SERVER_VERSION, spine.conn.execute(
+        "show server_version"
+    ).fetchone()[0]
+
+    owner = spine.conn.execute(
+        "select n.nspname from pg_proc p join pg_namespace n on n.oid = p.pronamespace "
+        "where p.oid = to_regprocedure('uuidv7()')"
+    ).fetchone()
+    assert owner is not None and owner[0] == "pg_catalog", owner
+
+    column_type = spine.conn.execute(
+        "select format_type(a.atttypid, a.atttypmod) from pg_attribute a "
+        "where a.attrelid = 'embedding'::regclass and a.attname = 'v'"
+    ).fetchone()
+    assert column_type is not None and column_type[0] == "halfvec(4096)", column_type
+
+    installed = {
+        row[0]
+        for row in spine.conn.execute(
+            "select extname from pg_extension where extname = any(%s)",
+            (list(REQUIRED_EXTENSIONS),),
+        ).fetchall()
+    }
+    assert installed == set(REQUIRED_EXTENSIONS), sorted(installed)
+
+
+def test_the_seeded_vocabulary_is_what_the_guards_read(spine):
+    """Read the live rows, not the migration text.
+
+    The deleted SQLite test read these rows from a running database and asserted the shape of
+    the seed. Its replacement in ``test_migration.py`` is a substring search over the file, and
+    a substring search cannot notice a trigger that refused the seed: a vocabulary that failed
+    to insert surfaces as an empty table, which reads as "no predicate accepts anything" and
+    refuses every write for a reason nobody would guess from the error.
+
+    The specific row that matters is ``name_is``. It is the only naming predicate, and
+    ``allows_kind`` on it is the whole of invariant 4 at the data layer.
+    """
+    rows = spine.conn.execute(
+        "select key, allows_kind::text[] as allows_kind, writes_a_name, functional "
+        "from predicate order by key"
+    ).fetchall()
+    vocabulary = {row[0]: row for row in rows}
+
+    assert len(rows) == 11, sorted(vocabulary)
+    naming = [row[0] for row in rows if row[2]]
+    assert naming == ["name_is"], naming
+    assert vocabulary["name_is"][1] == ["user"]
+    assert vocabulary["caption_is"][1] == ["inference"]
+    assert vocabulary["ocr_text_is"][1] == ["inference"]
+    assert vocabulary["device_model_is"][1] == ["capture"]
+    assert vocabulary["public_entity_status_is"][1] == ["external"]
+    # A detection is an inference no matter how confident it is, and the user may also say it.
+    assert sorted(vocabulary["person_present"][1]) == ["inference", "user"]
+    for row in rows:
+        assert row[1], f"{row[0]} allows no kind at all, which refuses every write"
+        assert None not in row[1], f"{row[0]} has a NULL element, which disarms the guard"
 
 
 # -- defect 1: a model writing a name ---------------------------------------------------
@@ -385,18 +449,37 @@ def test_re_uploading_deleted_bytes_creates_a_new_capture(spine):
 
 
 def test_the_embedding_width_is_the_measured_one(spine):
-    """Runtime measurement recorded 4096 dimensions. A row claiming 1024 is a bug, not a variant."""
+    """Runtime measurement recorded 4096 dimensions. A row claiming 1024 is a bug, not a variant.
+
+    Both halves of the guarantee are exercised, because they fail differently. ``dims`` is a
+    check constraint on a number the writer supplies, so a row that lies about its width is a
+    CheckViolation. The width of ``v`` is the column type, so a vector of the wrong length is a
+    type error the writer cannot argue with. A 4096-wide vector with an honest ``dims`` lands.
+    """
+    insert = (
+        "insert into embedding (workspace_id, family, ref_type, ref_id, model_ref, "
+        "pipeline_version, dims, v) values (%s,'text_chunk','span',%s,'m',1,%s,%s)"
+    )
+    wide = "[" + ",".join(["0.5"] * 4096) + "]"
+    narrow = "[" + ",".join(["0.5"] * 1024) + "]"
     with spine.undone():
         spine.conn.execute(
             f"create table embedding_ws_test partition of embedding "
             f"for values in ('{spine.workspace}')"
         )
+
+        # Honest width, real vector: accepted.
+        with spine.conn.transaction():
+            spine.conn.execute(insert, (spine.workspace, spine.span_id, 4096, wide))
+
+        # A row claiming a width the column cannot hold.
         with pytest.raises(spine.psycopg.errors.CheckViolation), spine.conn.transaction():
-                spine.conn.execute(
-                    "insert into embedding (workspace_id, family, ref_type, ref_id, model_ref, "
-                    "pipeline_version, dims, v) values (%s,'text_chunk','span',%s,'m',1,1024,%s)",
-                    (spine.workspace, spine.span_id, b"\x00"),
-                )
+            spine.conn.execute(insert, (spine.workspace, spine.span_id, 1024, wide))
+
+        # A vector that is genuinely the wrong width. Under the old bytea substitution this
+        # column accepted arbitrary bytes and this assertion could not have been written.
+        with pytest.raises(spine.psycopg.Error), spine.conn.transaction():
+            spine.conn.execute(insert, (spine.workspace, spine.span_id, 4096, narrow))
 
 
 def test_the_tombstone_guard_fires_on_a_table_with_no_capture_id_column(spine):
