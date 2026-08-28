@@ -83,9 +83,11 @@ on conflict.
 The evidence spine is implemented rather than only specified: migration
 `orimera/migrations/0001_spine.sql` and the `orimera/evidence/` modules, with tests. Building it
 found errors in the committed design, and those are corrected in place and marked **CORRECTED**
-rather than left for the next reader to trip over. The suite is 430 tests, 19 of which require a live
-PostgreSQL instance and skip without one. That migration has not yet been applied against a
-PostgreSQL 18 server, so every SQL-level guarantee is a text-level claim until it is.
+rather than left for the next reader to trip over. The suite is 415 tests, 85 of which require a
+live PostgreSQL instance and skip without one. Those 85 now run against the documented target,
+PostgreSQL 18 with pgvector, with nothing substituted for either, so the SQL-level guarantees are
+executed rather than described. The SQLite mirror the ingest path used to write is deleted:
+there is one schema.
 
 The browser renderer is decided: PlayCanvas Engine 2.21.4, on matched-resolution measurement
 ([adr/0003-renderer-selection.md](adr/0003-renderer-selection.md)).

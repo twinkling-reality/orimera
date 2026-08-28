@@ -188,8 +188,9 @@ credits: the model client is exercised through a scripted HTTP transport, and te
 generated rather than committed, so the content of every test image is known exactly.
 
 ```bash
-uv run pytest                       # 411 pass, 19 skip without a database
+uv run pytest                       # 330 pass, 85 skip without a database
 uv run ruff check .                 # lints backend, tests and scripts
+uv run lint-imports                 # the backend layering contract, three rules
 uv run orimera-preflight            # checks every manifest id against the live catalog
 uv run orimera-preflight --catalog-file <snapshot.json>   # same check, offline
 uv run orimera-ingest ingest ./photos   # safe to run repeatedly; a second run issues no model calls
@@ -197,33 +198,37 @@ uv run orimera-ingest ingest ./photos --offline           # skip the vision stag
 uv run scripts/verify_platform.py      # the runtime verification harness, needs NEBIUS_API_KEY
 ```
 
-`uv run ruff check .` currently reports one line-length finding in `orimera/models/schema.py`. It is
-a docstring, not a code defect.
-
 ### The tests that need a database
 
-19 of the 430 backend tests apply migration `orimera/migrations/0001_spine.sql` to a real server.
-They are the only executable proof that a model cannot write a name into canonical state, so a
-default run prints a reminder that they were skipped rather than reporting green in silence.
+**PostgreSQL is the only data layer.** 85 of the 415 backend tests need a real server, and they
+are the executable proof of everything the database carries: that a model cannot write a name into
+canonical state, that one workspace cannot read another's rows, that a tombstoned address refuses
+the write, and that the whole ingest path works. A default run prints a reminder naming the files
+it skipped rather than reporting green in silence.
+
+The target is PostgreSQL 18 with pgvector, and nothing is substituted for it. On macOS:
 
 ```bash
+brew install postgresql@18 pgvector
+brew services start postgresql@18
 createdb orimera_spine_test
-uv sync --extra postgres
-ORIMERA_TEST_DATABASE_URL=postgresql:///orimera_spine_test uv run pytest
+ORIMERA_TEST_DATABASE_URL=postgresql://localhost:5433/orimera_spine_test uv run pytest
 ```
+
+The port is 5433 only if an older PostgreSQL already holds 5432; use whatever the server is on.
 
 Three things to know about that harness:
 
 - **The database name must contain "test".** It refuses to touch anything else. All work happens
-  inside a throwaway schema that is dropped afterwards, because the migration carries its own
+  inside a throwaway schema that is dropped afterwards, because each migration carries its own
   `commit;` and cannot be undone by a rollback.
-- **The documented target is PostgreSQL 18 with pgvector.** On an older server the harness
-  substitutes `gen_random_uuid()` for `uuidv7()` and `bytea` for `halfvec(4096)`, names both
-  substitutions, and a test asserts that nothing else was faked.
-- Set `ORIMERA_REQUIRE_POSTGRES=1` to turn the skip into a failure, which is how CI should run.
-
-The migration has not yet been applied against a real PostgreSQL 18 server, so the SQL-level
-guarantees are text-level claims until it is.
+- **A server that cannot run the schema is a loud failure, not a silent substitution.** An earlier
+  version of the harness swapped `gen_random_uuid()` for `uuidv7()` and `bytea` for
+  `halfvec(4096)` so the suite could run on PostgreSQL 14. Everything passed and the vector path
+  had never executed once, which hid a test that wrote raw bytes into a vector column.
+- Set `ORIMERA_REQUIRE_POSTGRES=1` to turn the skip into a failure, which is how continuous
+  integration should run it. The suite is safe to run in parallel against one database: verified
+  with five concurrent runs.
 
 ### Web
 
@@ -260,8 +265,11 @@ so there is currently no single command that starts Orimera end to end.
 | `orimera/ingest/` | The photograph ingest pipeline: EXIF, orientation, derivatives, vision, scene grouping, the provenance ledger, the CLI |
 | `orimera/models/` | The Token Factory client, the model manifest, preflight, the budget guard, the response cache, strict json_schema handling, reasoning-token stripping |
 | `orimera/store/` | Content-addressed storage |
-| `orimera/migrations/` | `0001_spine.sql`, the schema the evidence spine requires |
-| `tests/` | 430 tests. No network, no credentials, no committed binary fixtures |
+| `orimera/migrations/` | `0001_spine.sql`, the schema the evidence spine requires, and `0002_naming_and_admission.sql` |
+| `orimera/db/` | Connections carrying the workspace context, the migration runner, the runtime roles |
+| `pyproject.toml` | Also the backend layering contract, enforced by `uv run lint-imports` |
+| `orimera/canonical.py`, `orimera/errors.py` | Canonical JSON and the one rounding rule; the error taxonomy |
+| `tests/` | 415 tests, 85 of which need a PostgreSQL 18 server. No network, no credentials, no committed binary fixtures |
 | `scripts/` | The standalone runtime verification harnesses, kept byte-identical so their evidence stays reproducible |
 | `web/packages/atlas-core/` | Scene graph, island frames, focus resolution, layout solver. No React, no DOM, no renderer |
 | `web/packages/atlas-react/` | Renderer bindings, anchor overlay, HUD, comfort settings |

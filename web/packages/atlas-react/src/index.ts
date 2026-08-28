@@ -6,12 +6,12 @@
  * `@orimera/graph-client/mutations` in `.dependency-cruiser.cjs`.
  *
  * Named for a renderer BINDING layer, not for a specific engine. Which engine sits under it is
- * ADR-0003, which is unresolved and settles at the bake-off. Everything engine-specific belongs
- * in this package, because the module contract is what turns a renderer switch from a front-end
- * rewrite into a two-package rewrite.
+ * ADR-0003, resolved on 2026-08-28 in favour of PlayCanvas Engine 2.21.4 by matched-resolution
+ * measurement. Everything engine-specific belongs in this package, because the module contract is
+ * what turns a renderer switch from a front-end rewrite into a two-package rewrite.
  *
- * STATUS: two competing implementations of this package are the bake-off. This file fixes the
- * package identity and the boundary.
+ * The three.js binding in `@orimera/atlas-three` is deliberately retained rather than deleted:
+ * the ADR records that keeping a second implementation is what proves the boundary holds.
  */
 
 export const ATLAS_REACT_PACKAGE = '@orimera/atlas-react';

@@ -105,10 +105,11 @@ none is needed: every inference in this system is either a Token Factory call or
 surface and must carry real focusable labelled elements for every entity, evidence item and source
 moment.
 
-**OPEN.** Renderer choice. `browser-rendering` recommends PlayCanvas Engine 2.21.x;
-`interaction-architecture` designed the entire Companion, Atlas and overlay system against
-three.js / react-three-fiber. The research recorded this as genuinely unresolved and did not pick a
-winner on evidence. Settled by a bake-off (experiment X-R1) by the end of week 3. Not a model
+**RESOLVED, PlayCanvas Engine 2.21.4.** The research recorded this as genuinely unresolved:
+`browser-rendering` recommended PlayCanvas, `interaction-architecture` designed the Companion,
+Atlas and overlay system against three.js / react-three-fiber, and neither picked a winner on
+evidence. A matched-resolution bake-off settled it on 2026-08-28, and the reasoning and the
+numbers are in [adr/0003-renderer-selection.md](adr/0003-renderer-selection.md). Not a model
 selection question, recorded here only because it sits on this boundary.
 
 ---
