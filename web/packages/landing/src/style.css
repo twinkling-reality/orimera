@@ -1,0 +1,689 @@
+/*
+ * The landing surface.
+ *
+ * Two grounds, one set of tokens. `[data-ground="pale"]` is the signed-out page and
+ * `[data-ground="deep"]` is the Atlas interior, and the canvas behind the DOM lerps between the
+ * same two palettes continuously. The DOM flips its tokens behind the pane fade, so the change of
+ * ground is only ever seen as one continuous move.
+ *
+ * Typography is a system stack at light weights rather than a web font: no network request on
+ * first paint, no layout shift when a face arrives, and on the stated target machine it resolves
+ * to a family with real 200 and 300 weights.
+ */
+
+:root {
+  --ink: #1b2236;
+  --ink-soft: #4b556f;
+  /* Held at 4.5:1 against the pale ground. This is body copy in several places, so it is a
+     contrast requirement rather than a taste decision. */
+  --ink-faint: #5c6580;
+  --accent: #1a35a8;
+  --accent-soft: #5f4bbf;
+  --rule: rgba(27, 34, 54, 0.14);
+  --panel: rgba(255, 255, 255, 0.55);
+  --panel-line: rgba(27, 34, 54, 0.1);
+  --focus: #1a35a8;
+  --scrim: rgba(244, 245, 248, 0.84);
+
+  --step: clamp(0.6rem, 1.4vh, 1.1rem);
+  --measure: 34rem;
+
+  --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial,
+    sans-serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+}
+
+:root[data-ground='deep'] {
+  --ink: #e6ecf8;
+  --ink-soft: #a8b4cf;
+  --ink-faint: #8d99b4;
+  --accent: #7cc0ff;
+  --accent-soft: #b79dff;
+  --rule: rgba(230, 236, 248, 0.16);
+  --panel: rgba(10, 16, 30, 0.5);
+  --panel-line: rgba(230, 236, 248, 0.12);
+  --focus: #8fd7ff;
+  --scrim: rgba(7, 10, 19, 0.74);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/*
+ * `hidden` has to win. Several elements here are `display: grid`, and a display declaration in a
+ * class rule beats the user-agent rule for `[hidden]`, so an element the panel hid would stay on
+ * screen. That failure mode is worse here than usual: the thing that would leak through is a
+ * stage track for a capture that is not forming.
+ */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-weight: 300;
+  color: var(--ink);
+  background: #eceef3;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0.005em;
+}
+
+#field {
+  position: fixed;
+  inset: 0;
+  display: block;
+  z-index: 0;
+}
+
+#overlay {
+  position: relative;
+  z-index: 1;
+  min-height: 100%;
+}
+
+/*
+ * A soft scrim under the text column.
+ *
+ * The field is atmosphere and the words are the content, so the words win. This is a gradient
+ * rather than a panel because a panel would cut the field in half and the continuity of the field
+ * is the whole idea. It fades out well before the composition, which sits to the right.
+ */
+#overlay::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(
+    98deg,
+    var(--scrim) 0%,
+    var(--scrim) 30%,
+    color-mix(in srgb, var(--scrim) 55%, transparent) 48%,
+    transparent 68%
+  );
+  transition: background 400ms ease;
+}
+
+.pane {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(var(--step) * 1.4);
+  padding: clamp(2rem, 6vw, 6.5rem);
+  max-width: 62rem;
+  opacity: 1;
+  transition: opacity 260ms ease;
+}
+
+.pane.is-faded {
+  opacity: 0;
+}
+
+/* ------------------------------------------------------------------ landing */
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.display {
+  margin: 0;
+  max-width: 18ch;
+  font-size: clamp(2.6rem, 6.4vw, 5rem);
+  font-weight: 200;
+  line-height: 1.02;
+  letter-spacing: -0.028em;
+}
+
+.display em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.lede {
+  margin: 0;
+  max-width: var(--measure);
+  font-size: clamp(1rem, 1.5vw, 1.16rem);
+  line-height: 1.62;
+  color: var(--ink-soft);
+}
+
+.commitments {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.55rem;
+  max-width: var(--measure);
+  border-left: 1px solid var(--rule);
+  padding-left: 1.1rem;
+}
+
+.commitments li {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--ink-faint);
+}
+
+.commitments strong {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.paths {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: calc(var(--step) * 0.6);
+}
+
+.path {
+  appearance: none;
+  display: grid;
+  gap: 0.18rem;
+  min-width: 13rem;
+  min-height: 44px;
+  padding: 0.75rem 1.1rem;
+  text-align: left;
+  text-decoration: none;
+  font-family: inherit;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 2px;
+  cursor: pointer;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    transform 180ms ease;
+}
+
+.path:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.path-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #f6f8ff;
+}
+
+:root[data-ground='deep'] .path-primary {
+  color: #06090f;
+}
+
+.path-primary .path-sub {
+  color: inherit;
+  opacity: 0.72;
+}
+
+.path-label {
+  font-size: 0.98rem;
+  font-weight: 400;
+}
+
+.path-sub {
+  font-size: 0.76rem;
+  color: var(--ink-faint);
+}
+
+.footnote {
+  margin: 0;
+  max-width: var(--measure);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------- how it works */
+
+.how {
+  margin-top: calc(var(--step) * 1.2);
+  border-top: 1px solid var(--rule);
+  padding-top: 1rem;
+  max-width: 48rem;
+}
+
+.how > summary {
+  cursor: pointer;
+  font-size: 0.86rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  padding: 0.4rem 0;
+}
+
+.steps {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  display: grid;
+  gap: 1.1rem;
+}
+
+.steps li {
+  counter-increment: step;
+  padding-left: 2.2rem;
+  position: relative;
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0.1rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--accent);
+}
+
+.steps h3,
+.sub-head {
+  margin: 0 0 0.3rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.sub-head {
+  margin-top: 1.8rem;
+}
+
+.steps p,
+.body {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.62;
+  color: var(--ink-soft);
+  max-width: 40rem;
+}
+
+/* The four provenance classes. Distinguishable by mark shape as well as by colour, because a
+   colour-only distinction is not a distinction for every reader. */
+
+.provenance {
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.prov {
+  display: grid;
+  grid-template-columns: 1.1rem minmax(9rem, auto) 1fr;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+}
+
+.prov-label {
+  color: var(--ink);
+}
+
+.prov-mark {
+  width: 9px;
+  height: 9px;
+  align-self: center;
+}
+
+.prov-capture .prov-mark {
+  background: var(--accent);
+}
+
+.prov-inference .prov-mark {
+  border: 1px dashed var(--accent-soft);
+}
+
+.prov-user .prov-mark {
+  background: #c98a3a;
+  border-radius: 50%;
+}
+
+.prov-external .prov-mark {
+  border: 1px solid var(--ink-faint);
+  transform: rotate(45deg);
+}
+
+.rungs {
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.rung {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  gap: 0.7rem;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--rule);
+}
+
+.rung-free {
+  border-left-color: var(--accent);
+}
+
+.rung-n {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------- atlas pane */
+
+.pane-atlas {
+  gap: 0.9rem;
+  padding-block: clamp(1.6rem, 5vh, 4rem);
+}
+
+.atlas-head {
+  display: grid;
+  gap: 0.5rem;
+  max-width: var(--measure);
+}
+
+.atlas-lede {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.62;
+  color: var(--ink-soft);
+}
+
+.arrival {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--accent);
+}
+
+.atlas-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-top: var(--step);
+}
+
+.standing-caption {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--ink-faint);
+  border-left: 1px solid var(--rule);
+  padding-left: 0.8rem;
+}
+
+.ghost {
+  appearance: none;
+  font-family: inherit;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  background: none;
+  border: 1px solid var(--panel-line);
+  border-radius: 2px;
+  min-height: 44px;
+  padding: 0 1rem;
+  cursor: pointer;
+}
+
+.ghost:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+/* -------------------------------------------------------- formation console */
+
+.console {
+  max-width: 40rem;
+  padding: 1.1rem 1.2rem 1.2rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 3px;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.mock-banner {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: #8c4a0e;
+  border: 1px dashed rgba(179, 101, 28, 0.55);
+  padding: 0.45rem 0.6rem;
+}
+
+:root[data-ground='deep'] .mock-banner {
+  color: #f0a95c;
+  border-color: rgba(240, 169, 92, 0.45);
+}
+
+.console-heading {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.track {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.track-step {
+  display: grid;
+  grid-template-columns: 0.9rem 1fr;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  opacity: 0.55;
+}
+
+.track-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+}
+
+.track-step.is-passed {
+  opacity: 0.85;
+}
+
+.track-step.is-passed .track-dot {
+  background: currentColor;
+}
+
+.track-step.is-current {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.track-step.is-current .track-dot {
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.track-outcome.is-failed,
+.track-outcome.is-partial {
+  color: #c0662a;
+}
+
+.label {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.stage-name {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.headline {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 300;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.detail {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.idle {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.elapsed,
+.note {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+
+.meter {
+  height: 2px;
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 220ms linear;
+}
+
+/* Contact lost: the panel says so, and nothing in it moves. */
+.console[data-stream='lost'] .meter-fill {
+  transition: none;
+  background: var(--ink-faint);
+}
+
+.scenarios {
+  border-top: 1px solid var(--panel-line);
+  padding-top: 0.7rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.scenarios-head {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.scenario-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.scenario {
+  appearance: none;
+  font-family: inherit;
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  background: none;
+  border: 1px solid var(--panel-line);
+  border-radius: 2px;
+  min-height: 44px;
+  padding: 0 0.85rem;
+  cursor: pointer;
+}
+
+.scenario:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+/* ------------------------------------------------------------------ focus */
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/*
+ * Reduced motion. The calm alternative is a still composition that is still complete: the field
+ * holds its figure exactly, the grain stops crawling, the panes cross-fade instead of sliding,
+ * and the arrival caption carries what the movement would have said. Nothing is hidden and no
+ * layout collapses.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 160ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .path:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 46rem) {
+  /*
+   * On a narrow viewport there is no column of negative space for the composition to live in, so
+   * the field becomes a full-bleed backdrop instead of a subject. The scrim goes uniform and the
+   * atmosphere reads as texture behind the words rather than as a shape competing with them.
+   */
+  #overlay::before {
+    background: var(--scrim);
+  }
+
+  .pane {
+    padding: 2rem 1.4rem;
+    justify-content: flex-start;
+    padding-top: 4rem;
+  }
+
+  .path {
+    min-width: 100%;
+  }
+}

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Orimera</title>
+    <meta
+      name="description"
+      content="A personal world memory model. Your photographs become navigable memory regions, and every claim opens the photograph it came from."
+    />
+  </head>
+  <body>
+    <!--
+      One canvas for the whole session. The landing composition, the entrance transition and the
+      unformed Atlas are all the same particle field with a different figure assigned to it, which
+      is the 2D echo of interaction-model.md 1.1: there is no "enter scene" and no page swap.
+    -->
+    <canvas id="field" aria-hidden="true"></canvas>
+    <div id="overlay"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
