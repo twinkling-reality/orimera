@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No "DOM". atlas-core forbids DOM imports, and a global is not an import, so the ban has
+    // to live in `lib` or it is unenforceable. `document` is a compile error in this package.
+    "lib": ["ES2022"],
+    "types": [],
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

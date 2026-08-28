@@ -1,0 +1,11 @@
+{
+  "name": "@orimera/atlas-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./presentation-metrics": "./src/presentation-metrics.ts"
+  },
+  "scripts": { "typecheck": "tsc --build" }
+}

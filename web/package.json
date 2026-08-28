@@ -1,0 +1,32 @@
+{
+  "name": "orimera-web",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.7.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --build --force",
+    "boundaries": "depcruise --config .dependency-cruiser.cjs packages",
+    "test": "vitest run",
+    "check": "pnpm run typecheck && pnpm run boundaries && pnpm run test",
+    "synth": "tsx packages/scene-synth/src/cli.ts",
+    "bakeoff": "pnpm --filter @orimera/bakeoff dev",
+    "landing": "pnpm --filter @orimera/landing dev",
+    "landing:build": "pnpm --filter @orimera/landing build",
+    "bakeoff:build": "pnpm --filter @orimera/bakeoff build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "dependency-cruiser": "^16.9.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

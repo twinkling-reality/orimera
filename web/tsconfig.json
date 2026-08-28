@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/graph-client" },
+    { "path": "./packages/atlas-core" },
+    { "path": "./packages/companion-runtime" },
+    { "path": "./packages/world-index" },
+    { "path": "./packages/atlas-react" },
+    { "path": "./packages/scene-synth" },
+    { "path": "./packages/atlas-three" },
+    { "path": "./packages/bakeoff" },
+    { "path": "./packages/landing" }
+  ]
+}
