@@ -1,0 +1,13 @@
+{
+  "name": "@orimera/scene-synth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./format": "./src/format/index.ts"
+  },
+  "bin": { "orimera-synth": "./src/cli.ts" },
+  "dependencies": { "@orimera/atlas-core": "workspace:*" },
+  "scripts": { "typecheck": "tsc --build" }
+}
