@@ -192,6 +192,7 @@ uv run pytest                       # 330 pass, 85 skip without a database
 uv run ruff check .                 # lints backend, tests and scripts
 uv run lint-imports                 # the backend layering contract, three rules
 uv run orimera-preflight            # checks every manifest id against the live catalog
+uv run uvicorn --factory orimera.api.app:create_app   # the HTTP API, on port 8000
 uv run orimera-preflight --catalog-file <snapshot.json>   # same check, offline
 uv run orimera-ingest ingest ./photos   # safe to run repeatedly; a second run issues no model calls
 uv run orimera-ingest ingest ./photos --offline           # skip the vision stage entirely
@@ -230,6 +231,30 @@ Three things to know about that harness:
   integration should run it. The suite is safe to run in parallel against one database: verified
   with five concurrent runs.
 
+### Running the API
+
+Three environment variables, and the API refuses to start without the first two rather than
+defaulting to something:
+
+```bash
+export ORIMERA_DATABASE_URL=postgresql://localhost:5433/orimera
+export ORIMERA_API_TOKENS='{"<a long random token>":{"workspace_id":"<uuid>","actor":"<uuid>"}}'
+export ORIMERA_DATA_DIR=.orimera/local          # where the content-addressed store lives
+uv run uvicorn --factory orimera.api.app:create_app --port 8000
+```
+
+Two more are optional and both are reported by `/readyz` when absent, because a defence that is
+off and silent is worse than one that is absent:
+
+- `ORIMERA_READONLY_DATABASE_URL` points the Selection executor at `orimera_ro`, a role holding
+  SELECT and nothing else. Without it the executor runs as the write role.
+- `NEBIUS_API_KEY` enables the two endpoints that need a model. Without it they return 503 and
+  every other endpoint works.
+
+`GET /healthz` touches nothing. `GET /readyz` runs one query and one object-store call, reports
+each check separately, and never calls a model: a check every five minutes for the judging window
+is about 13,200 checks, and it must not depend on the prepaid balance.
+
 ### Web
 
 ```bash
@@ -267,6 +292,10 @@ so there is currently no single command that starts Orimera end to end.
 | `orimera/store/` | Content-addressed storage |
 | `orimera/migrations/` | `0001_spine.sql`, the schema the evidence spine requires, and `0002_naming_and_admission.sql` |
 | `orimera/db/` | Connections carrying the workspace context, the migration runner, the runtime roles |
+| `orimera/epistemics/` | Writing a claim under exactly one of the four provenance classes |
+| `orimera/identity/` | Occurrence keys, the identity tables, and the user decisions that promote an occurrence to a person |
+| `orimera/selection/` | The one Selection primitive: plan, validation, deterministic execution, evidence packet, answer validation |
+| `orimera/api/` | The HTTP surface. Routes validate and delegate; the only unauthenticated ones are the health probes |
 | `pyproject.toml` | Also the backend layering contract, enforced by `uv run lint-imports` |
 | `orimera/canonical.py`, `orimera/errors.py` | Canonical JSON and the one rounding rule; the error taxonomy |
 | `tests/` | 415 tests, 85 of which need a PostgreSQL 18 server. No network, no credentials, no committed binary fixtures |
