@@ -1,0 +1,97 @@
+[project]
+name = "orimera"
+version = "0.1.0"
+description = "Orimera: a personal world memory model with an evidence-addressed spine."
+requires-python = ">=3.11,<3.12"
+license = { file = "LICENSE" }
+
+# Deliberately minimal. Each entry is justified:
+#   pydantic  - boundary schemas (HTTP request/response, model json_schema strict payloads).
+#               NOT used for the evidence spine types in orimera.evidence: those are frozen
+#               dataclasses with explicit validation, because coercion is a hazard for values
+#               that feed a hash (see orimera/canonical.py).
+#   pillow    - JPEG/PNG decode, EXIF, and the orientation transform at ingest. Orientation is
+#               eight values including four mirrored ones, and ImageOps.exif_transpose is the
+#               reference implementation of that table; a hand-rolled version would be a
+#               subtle wrong-axis bug in a photograph corpus.
+#   httpx     - the Token Factory HTTP client. Chosen over the openai SDK because the only
+#               thing needed is one POST, and over urllib because MockTransport lets the
+#               retry, failover and truncation paths be tested without a network or a
+#               credential.
+dependencies = [
+  "httpx>=0.27",
+  "jsonschema>=4.23",
+  "pillow>=12.3.0",
+  "pydantic>=2.9",
+]
+
+[project.scripts]
+# `uv run orimera-ingest ingest ./photos`. Safe to run repeatedly: the second run reports what
+# it skipped and issues no model calls.
+orimera-ingest = "orimera.ingest.cli:main"
+# `uv run orimera-preflight`. Checks every model identifier the manifest can reach against the
+# live catalog. Exit 0 clean, 1 on any failure, so CI and the weekly uptime check through the
+# judging window can both call it without parsing output. `--catalog-file` checks a saved
+# snapshot instead of the network, which is how the offline test runs it.
+orimera-preflight = "orimera.models.preflight:main"
+
+[project.optional-dependencies]
+# Only needed to run the migration against a real PostgreSQL 18 server. Tests that need it
+# skip when ORIMERA_TEST_DATABASE_URL is unset, so this is not required for `pytest`.
+postgres = ["psycopg[binary]>=3.2"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "ruff>=0.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["orimera"]
+
+[tool.uv]
+# The ML stack lags Python 3.14 (the system interpreter here), so the interpreter is pinned
+# rather than merely lower-bounded. .python-version holds the concrete pin for `uv run`.
+package = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["orimera", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W",    # pycodestyle
+  "F",         # pyflakes
+  "I",         # import sorting
+  "UP",        # pyupgrade
+  "B",         # bugbear
+  "SIM",       # simplify
+  "RUF",       # ruff-specific
+  "ANN",       # missing type annotations: the project rule is type hints everywhere
+]
+ignore = [
+  "ANN401",    # allow typing.Any where a genuinely open value is intended
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN"]
+# Standalone PEP 723 verification harnesses, committed before this package existed and left
+# byte-identical so the runtime evidence they produced stays reproducible. Still linted for real
+# errors (pyflakes, bugbear); only cosmetic rules are waived.
+"scripts/*" = ["ANN", "E501", "E401", "I001"]
+
+[tool.ruff.format]
+exclude = ["scripts/*.py"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
+markers = [
+  "postgres: requires a live PostgreSQL 18 server via ORIMERA_TEST_DATABASE_URL",
+]
