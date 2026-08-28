@@ -1,0 +1,98 @@
+# Internal working area: raw agent reports, scratch research, experiments, private media
+.orimera/
+
+# Secrets and environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/*.key.example
+secrets/
+credentials.json
+service-account*.json
+
+# Raw personal media and sensitive derivatives
+media/raw/
+media/private/
+**/raw_media/
+*.mp4
+*.mov
+*.m4v
+*.wav
+*.m4a
+*.aac
+!docs/assets/**/*.mp4
+
+# Sensitive derived artifacts
+transcripts/
+**/transcripts/
+embeddings/
+**/*.embeddings
+**/*.npy
+**/face_*.bin
+**/voice_*.bin
+
+# Model caches and weights
+models/
+# ...but orimera/models is source code, not a weight cache. Without this negation the whole
+# model package is invisible to git and, because hatchling honours these rules, absent from the
+# built wheel. `uv run orimera-preflight` on an installed copy is what noticed.
+!orimera/models/
+checkpoints/
+*.ckpt
+*.safetensors
+*.pth
+*.onnx
+*.engine
+.cache/
+~/.cache/
+
+# Reconstruction outputs
+reconstructions/
+sparse/
+dense/
+*.ply
+*.splat
+*.ksplat
+*.spz
+colmap_output/
+
+# Raw API responses containing user data
+**/api_responses/
+*.raw.json
+
+# Local database and object store state
+*.db
+*.sqlite
+*.sqlite3
+pgdata/
+minio_data/
+.localstack/
+
+# Temporary GPU job artifacts
+job_artifacts/
+tmp/
+.tmp/
+
+# Standard build/tooling
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+coverage/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# Local agent tooling config, not part of the project
+.claude/
