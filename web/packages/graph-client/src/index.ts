@@ -8,11 +8,24 @@
  * Mutations live behind a second entry point, `@orimera/graph-client/mutations`, so that
  * "atlas-react forbids graph mutations" is a path a lint rule can name rather than a habit.
  *
- * STATUS: the transport is a stub owned by another workstream. The read MODEL below is real,
- * because companion-runtime and world-index both build against it and neither may define it
- * (the arrow between them would point the wrong way). The mutation gate is real for the reason
- * stated in mutations/index.ts: the module contract names it as a runtime check.
+ * The transport is real. `client.ts` speaks to the HTTP API and adapts its payloads into the
+ * read model below, and the adapter is the single place where the difference between what the
+ * read model asks for and what the server can answer is written down. The read model did not
+ * have to change to make the transport real, which is what the boundary was for.
  */
+
+export type {
+  ClientOptions,
+  GraphPayload,
+  IslandOf,
+  SelectionCapture,
+  SelectionSupport,
+  SelectionView,
+} from './client.js';
+export { OrimeraClient, adaptSnapshot } from './client.js';
+
+export type { ApiProblem, TransportOptions } from './transport.js';
+export { ApiError, Transport, toApiError } from './transport.js';
 
 export type {
   ConsequenceTier,

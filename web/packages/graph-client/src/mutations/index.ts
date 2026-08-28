@@ -13,7 +13,9 @@ import type { UpdateProposal } from '../proposal.js';
  * protects code that was not, including code that does not exist yet, and it fails loudly at the
  * moment of the write rather than at review time.
  *
- * STATUS: the transport is a stub owned by another workstream. The gate is not.
+ * The transport is in `./transport.ts`. The gate decides WHETHER a proposal may commit and
+ * the transport decides WHAT that means on the wire; keeping them apart is what lets the gate
+ * be tested with no server and the transport be replaced without touching the guarantee.
  */
 
 export class ProposalGateError extends Error {
@@ -110,3 +112,5 @@ export class ProposalGate {
     return { proposalId, stateVersion: nextVersion };
   }
 }
+
+export { UnsupportedOperationError, httpCommitTransport } from './transport.js';
