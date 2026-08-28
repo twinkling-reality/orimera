@@ -1,0 +1,204 @@
+"""The response cache. Invariant 6: idempotency keyed by content hash and pipeline version.
+
+This is a cost control before it is a correctness one. A full corpus pass costs about $0.41 and
+ten development iterations over the same photographs cost ten times that for identical answers.
+Re-running ingest must not re-bill.
+
+**The key is ``(input content hash, pipeline version, role, prompt version)``.** Each of the four
+is load bearing:
+
+*   *input content hash* over the canonical request, so identical work hits.
+*   *pipeline version* from the manifest, so replacing a model identifier invalidates every
+    answer the replaced model produced. A cache that outlives the model that filled it is a
+    correctness bug wearing a cost saving's coat.
+*   *role*, so vision answers and reasoning answers cannot collide.
+*   *prompt version*, so editing a prompt invalidates the answers it produced. Editing a prompt
+    and silently getting the old prompt's answers is the failure that wastes an afternoon.
+
+**The resolved model identifier is deliberately NOT in the key.** A fallback swap during a
+deprecation must still hit the cache, otherwise a withdrawal turns into a full re-bill on top of
+a quality regression. The identifier that actually served each entry is recorded *in* the entry,
+so provenance survives even though it does not participate in lookup.
+
+Digest input goes through ``orimera.canonical``, the same canonical JSON the evidence spine uses.
+That module refuses floats outright, which is right for a citation digest and inconvenient here
+because ``temperature`` is a float, so floats are converted to a tagged repr string first. That
+conversion is sound for a cache key, which only needs to be stable within a process family, and
+would not be sound for anything that has to be reproduced by another implementation.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import time
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Final, Protocol
+
+from orimera.canonical import sha256_of_canonical
+from orimera.models.manifest import Role
+
+__all__ = [
+    "CacheKey",
+    "FileResponseCache",
+    "InMemoryResponseCache",
+    "NullResponseCache",
+    "ResponseCache",
+    "cache_key",
+    "request_digest",
+]
+
+#: Keys excluded from the digest. ``model`` is excluded so a fallback shares the primary's cache
+#: (see the module docstring). ``stream`` and ``user`` do not change the answer.
+_NON_SEMANTIC: Final = frozenset({"model", "stream", "stream_options", "user"})
+
+
+def _digest_safe(value: Any) -> Any:
+    """Make a request payload acceptable to ``orimera.canonical``.
+
+    Floats become a tagged string rather than being rejected. ``orimera.canonical`` bans floats
+    because a citation digest must serialise identically in every language forever; a cache key
+    has no such obligation, and the tag keeps ``0.0`` from colliding with the string ``"0.0"``.
+    """
+    if isinstance(value, bool) or value is None or isinstance(value, (int, str)):
+        return value
+    if isinstance(value, float):
+        return {"__float__": repr(value)}
+    if isinstance(value, Mapping):
+        return {str(k): _digest_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_digest_safe(v) for v in value]
+    return {"__repr__": repr(value)}
+
+
+def request_digest(payload: Mapping[str, Any]) -> str:
+    """SHA-256 hex over the semantic content of a request payload."""
+    semantic = {k: v for k, v in payload.items() if k not in _NON_SEMANTIC}
+    return sha256_of_canonical(_digest_safe(semantic)).hex()
+
+
+@dataclass(frozen=True, slots=True)
+class CacheKey:
+    """The four-part key, and its flat string form."""
+
+    input_digest: str
+    pipeline_version: int
+    role: Role
+    prompt_version: str
+
+    def __str__(self) -> str:
+        return f"{self.role}/{self.pipeline_version}/{self.prompt_version}/{self.input_digest}"
+
+    @property
+    def digest(self) -> str:
+        """A hash of the whole key. Used as a filename, so no key component can escape a path."""
+        return sha256_of_canonical(
+            {
+                "input_digest": self.input_digest,
+                "pipeline_version": self.pipeline_version,
+                "role": str(self.role),
+                "prompt_version": self.prompt_version,
+            }
+        ).hex()
+
+
+def cache_key(
+    payload: Mapping[str, Any], *, pipeline_version: int, role: Role, prompt_version: str
+) -> CacheKey:
+    return CacheKey(
+        input_digest=request_digest(payload),
+        pipeline_version=pipeline_version,
+        role=role,
+        prompt_version=prompt_version,
+    )
+
+
+class ResponseCache(Protocol):
+    """Read-through cache over provider responses."""
+
+    def get(self, key: CacheKey) -> dict[str, Any] | None: ...
+
+    def put(self, key: CacheKey, entry: Mapping[str, Any]) -> None: ...
+
+
+class NullResponseCache:
+    """Caches nothing. The default, so caching is something a caller opts into knowingly."""
+
+    def get(self, key: CacheKey) -> dict[str, Any] | None:
+        return None
+
+    def put(self, key: CacheKey, entry: Mapping[str, Any]) -> None:
+        return None
+
+
+@dataclass
+class InMemoryResponseCache:
+    """Process-lifetime cache. Right for one script run and for tests."""
+
+    entries: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def get(self, key: CacheKey) -> dict[str, Any] | None:
+        return self.entries.get(key.digest)
+
+    def put(self, key: CacheKey, entry: Mapping[str, Any]) -> None:
+        self.entries[key.digest] = dict(entry)
+
+    def __len__(self) -> int:
+        return len(self.entries)
+
+
+class FileResponseCache:
+    """Cache on disk, so the saving survives between development runs.
+
+    One JSON file per entry under two levels of hex fanout, matching the layout the content
+    store already uses. Writes go to a temporary file and are moved into place, so a crash never
+    leaves a half-written entry that later parses as a truncated answer.
+
+    **Cached bodies are model output over the user's photographs, which is personal data.** The
+    root belongs somewhere the deletion cascade can reach, and it is not a place to put anything
+    that is not already derived from the corpus. No credential is ever written here: the entry
+    holds the response, never the request headers.
+    """
+
+    def __init__(self, root: str | os.PathLike[str]) -> None:
+        self._root = Path(root)
+        self._root.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def root(self) -> Path:
+        return self._root
+
+    def _path_for(self, key: CacheKey) -> Path:
+        digest = key.digest
+        return self._root / digest[:2] / digest[2:4] / f"{digest}.json"
+
+    def get(self, key: CacheKey) -> dict[str, Any] | None:
+        path = self._path_for(key)
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return None
+        try:
+            entry = json.loads(raw)
+        except json.JSONDecodeError:
+            # A corrupt entry is a miss, never an error. The worst case is one re-billed call.
+            return None
+        return entry if isinstance(entry, dict) else None
+
+    def put(self, key: CacheKey, entry: Mapping[str, Any]) -> None:
+        path = self._path_for(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = dict(entry)
+        payload.setdefault("cached_at", time.time())
+        payload.setdefault("cache_key", str(key))
+        handle, temp_name = tempfile.mkstemp(dir=path.parent, prefix="entry-", suffix=".tmp")
+        try:
+            with os.fdopen(handle, "w", encoding="utf-8") as fh:
+                json.dump(payload, fh, sort_keys=True)
+            os.replace(temp_name, path)
+        except BaseException:
+            Path(temp_name).unlink(missing_ok=True)
+            raise

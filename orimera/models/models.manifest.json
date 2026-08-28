@@ -1,0 +1,178 @@
+{
+  "manifest_version": "1",
+  "pipeline_version": 1,
+  "base_url": "https://api.tokenfactory.nebius.com/v1",
+  "catalog_url": "https://tokenfactory.nebius.com/api/public/models_info",
+  "api_key_env": "NEBIUS_API_KEY",
+  "catalog_retrieved_at": "2026-08-27",
+  "note": "The only place in this codebase where a model identifier appears. Every price, context window and use_cases list below was read from flavors[].model_id in the catalog named by catalog_url on catalog_retrieved_at. Bumping any identifier here MUST bump pipeline_version, because pipeline_version is an input to the response cache key and a stale cached answer from a replaced model is a correctness bug, not a saving.",
+
+  "models": {
+    "nvidia/Nemotron-3_5-Lightning": {
+      "input_usd_per_mtok": 0.06,
+      "output_usd_per_mtok": 0.24,
+      "context_window_tokens": 1048576,
+      "min_max_tokens": 640,
+      "default_max_tokens": 2048,
+      "emits_inline_reasoning": true,
+      "supports_json_schema": true,
+      "catalog_type": "text2text",
+      "catalog_use_cases": ["text", "reasoning", "function_calling", "code", "context_and_rag", "responses_api"],
+      "catalog_license": "OpenMDW v1.1",
+      "region_informational": "eu-north1",
+      "note": "Runtime-verified 2026-08-27: HTTP 200, echoed model field matches. Spends roughly 150 to 215 reasoning tokens on every call and there is no way to switch that off, which is where min_max_tokens comes from."
+    },
+    "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B": {
+      "input_usd_per_mtok": 0.06,
+      "output_usd_per_mtok": 0.24,
+      "context_window_tokens": 262144,
+      "min_max_tokens": 640,
+      "default_max_tokens": 2048,
+      "emits_inline_reasoning": true,
+      "supports_json_schema": true,
+      "catalog_type": "text2text",
+      "catalog_use_cases": ["text", "reasoning", "function_calling", "code", "context_and_rag", "responses_api"],
+      "catalog_license": "nvidia-open-model-license",
+      "region_informational": "eu-north1",
+      "note": "Same price and role as the cheap primary, quarter of the context. The vendor prefix is genuinely doubled in the callable identifier; that is not a typo here."
+    },
+    "nvidia/nemotron-3-super-120b-a12b": {
+      "input_usd_per_mtok": 0.3,
+      "output_usd_per_mtok": 0.9,
+      "context_window_tokens": 262144,
+      "min_max_tokens": 640,
+      "default_max_tokens": 2048,
+      "emits_inline_reasoning": true,
+      "supports_json_schema": true,
+      "catalog_type": "text2text",
+      "catalog_use_cases": ["dedicated-endpoint", "text", "summarization", "context_and_rag", "code", "reasoning", "function_calling", "complex_writing"],
+      "catalog_license": "nvidia-open-model-license",
+      "region_informational": "us-central1",
+      "note": "The callable identifier is entirely lowercase where the display name is not. 4.64x the cheap tier per turn."
+    },
+    "nvidia/Nemotron-3-Ultra-550b-a55b": {
+      "input_usd_per_mtok": 1.0,
+      "output_usd_per_mtok": 3.0,
+      "context_window_tokens": 1048576,
+      "min_max_tokens": 640,
+      "default_max_tokens": 2048,
+      "emits_inline_reasoning": true,
+      "supports_json_schema": true,
+      "catalog_type": "text2text",
+      "catalog_use_cases": ["dedicated-endpoint", "text", "summarization", "context_and_rag", "code", "reasoning", "function_calling", "complex_writing", "responses_api"],
+      "catalog_license": "openmdw-1.1",
+      "region_informational": "us-central1",
+      "note": "15.48x the cheap tier per turn and no measured advantage on this project's tasks. Reachable only by asking for the hard role explicitly; nothing routes here by default."
+    },
+    "MiniMaxAI/MiniMax-M3": {
+      "input_usd_per_mtok": 0.3,
+      "output_usd_per_mtok": 1.2,
+      "context_window_tokens": 1048576,
+      "min_max_tokens": 640,
+      "default_max_tokens": 2048,
+      "emits_inline_reasoning": true,
+      "supports_json_schema": true,
+      "catalog_type": "text2text",
+      "catalog_use_cases": ["dedicated-endpoint", "text", "reasoning", "function_calling", "code", "context_and_rag", "image", "video"],
+      "catalog_license": "MiniMax-M3",
+      "region_informational": "us-central1",
+      "note": "Runtime-verified 2026-08-27 to accept an image_url content part and describe the image correctly, despite catalog_type reading text2text. use_cases is authoritative, type is not. Measured 277 prompt tokens at 256px and 772 at 768px."
+    },
+    "openbmb/MiniCPM-V-4_5": {
+      "input_usd_per_mtok": 0.658,
+      "output_usd_per_mtok": 1.11,
+      "context_window_tokens": 32000,
+      "min_max_tokens": 256,
+      "default_max_tokens": 2048,
+      "emits_inline_reasoning": false,
+      "supports_json_schema": true,
+      "catalog_type": "image2text",
+      "catalog_use_cases": ["text", "image", "summarization", "context_and_rag"],
+      "catalog_license": "Apache 2.0 License",
+      "region_informational": "eu-north1",
+      "note": "Vision fallback. Both the type field and the use_cases list agree it takes images, so it is the safe side of the type-versus-use_cases disagreement. A 32K context is the reason it is not the primary."
+    },
+    "Qwen/Qwen3-235B-A22B-Instruct-2507": {
+      "input_usd_per_mtok": 0.2,
+      "output_usd_per_mtok": 0.6,
+      "context_window_tokens": 262144,
+      "min_max_tokens": 256,
+      "default_max_tokens": 2048,
+      "emits_inline_reasoning": false,
+      "supports_json_schema": true,
+      "catalog_type": "text2text",
+      "catalog_use_cases": ["text", "code", "function_calling", "context_and_rag", "fine_tune", "responses_api"],
+      "catalog_license": "Apache 2.0 License",
+      "region_informational": "eu-north1",
+      "note": "Held in reserve for the extraction role only, for the case where the reasoning core's schema conformance is measured to fail. Carries the catalog JSON mode tag, which no surviving text Nemotron does."
+    },
+    "deepseek-ai/DeepSeek-V4-Flash-0731": {
+      "input_usd_per_mtok": 0.14,
+      "output_usd_per_mtok": 0.28,
+      "context_window_tokens": 1048576,
+      "min_max_tokens": 640,
+      "default_max_tokens": 2048,
+      "emits_inline_reasoning": true,
+      "supports_json_schema": true,
+      "catalog_type": "text2text",
+      "catalog_use_cases": ["text", "reasoning", "function_calling", "code", "context_and_rag", "responses_api", "fine_tune"],
+      "catalog_license": "MIT License",
+      "region_informational": "us-central1",
+      "note": "The dated identifier, not the undated one. The undated deepseek-ai/DeepSeek-V4-Flash is scheduled for removal from Serverless on 2026-08-31 and must not be referenced."
+    },
+    "Qwen/Qwen3-Embedding-8B": {
+      "input_usd_per_mtok": 0.01,
+      "output_usd_per_mtok": 0.0,
+      "context_window_tokens": 40960,
+      "min_max_tokens": null,
+      "default_max_tokens": null,
+      "emits_inline_reasoning": false,
+      "supports_json_schema": false,
+      "embedding_dimensions": 4096,
+      "catalog_type": "embedding",
+      "catalog_use_cases": ["pair classification", "reranking", "multilabel classification", "multilingual", "classification", "clustering", "retrieval"],
+      "catalog_license": "Apache 2.0 License",
+      "region_informational": "eu-north1",
+      "note": "Runtime-verified 2026-08-27 to return 4096 dimensions, not the 1024 the schema document assumed."
+    }
+  },
+
+  "roles": {
+    "reasoning_cheap": {
+      "primary": "nvidia/Nemotron-3_5-Lightning",
+      "fallback": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+      "required_use_cases": ["text", "reasoning"],
+      "rationale": "Every Companion turn and every cross-scene continuity decision. Context length, not parameter count, is the binding constraint on a long shallow reasoning task over an evidence packet."
+    },
+    "reasoning_mid": {
+      "primary": "nvidia/nemotron-3-super-120b-a12b",
+      "fallback": "nvidia/Nemotron-3_5-Lightning",
+      "required_use_cases": ["text", "reasoning"],
+      "rationale": "Escalation, entered only where the cheap tier has been measured to fail a specific task. The fallback degrades to the cheap tier rather than failing the request."
+    },
+    "reasoning_hard": {
+      "primary": "nvidia/Nemotron-3-Ultra-550b-a55b",
+      "fallback": "nvidia/nemotron-3-super-120b-a12b",
+      "required_use_cases": ["text", "reasoning"],
+      "rationale": "Manual ceiling. Present so an escalation exists, absent from every default route because a 15.48x price for an unmeasured advantage is a claim this project has committed not to make."
+    },
+    "vision": {
+      "primary": "MiniMaxAI/MiniMax-M3",
+      "fallback": "openbmb/MiniCPM-V-4_5",
+      "required_use_cases": ["image"],
+      "rationale": "One structured-extraction pass per photograph at ingest. The primary is chosen on measured behaviour: it is a third the input price of the fallback, carries 32x the context, and was runtime-verified to comprehend an image rather than merely accept the request."
+    },
+    "structured_extraction": {
+      "primary": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+      "fallback": "deepseek-ai/DeepSeek-V4-Flash-0731",
+      "required_use_cases": ["text"],
+      "rationale": "Not in any default route. Reserved for the case where the reasoning core's json_schema conformance is measured to be unreliable, at which point the NVIDIA core keeps the reasoning role and gives up the extraction role."
+    },
+    "embedding": {
+      "primary": "Qwen/Qwen3-Embedding-8B",
+      "fallback": null,
+      "required_use_cases": ["retrieval"],
+      "rationale": "The only embedding-typed model in the catalog. This role has NO same-tier runtime fallback and the client says so loudly rather than degrading into a different vector space, which would silently poison every stored embedding."
+    }
+  }
+}

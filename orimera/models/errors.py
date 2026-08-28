@@ -1,0 +1,150 @@
+"""Errors raised by the model client, the manifest and the preflight.
+
+Kept separate from ``orimera.errors``, which is about the evidence spine and the object store.
+Every class here inherits ``OrimeraError`` so a caller can still catch the whole package with
+one except clause.
+
+Several of these are control-flow relevant rather than decorative:
+
+*   ``ModelUnavailableError`` is what triggers the fallback. Nothing else does.
+*   ``BudgetExceededError`` must not be retried; retrying is the runaway loop it exists to stop.
+*   ``TruncatedResponseError`` names a configuration mistake, not a model failure, and says so,
+    because the opposite reading has already cost this project one wrong conclusion.
+"""
+
+from __future__ import annotations
+
+from orimera.errors import OrimeraError
+
+__all__ = [
+    "AmbiguousStructuredOutputError",
+    "BudgetExceededError",
+    "GuidedJsonForbiddenError",
+    "ManifestError",
+    "MaxTokensTooLowError",
+    "ModelError",
+    "ModelUnavailableError",
+    "NoFallbackError",
+    "PreflightError",
+    "SchemaViolationError",
+    "StructuredOutputError",
+    "TransportError",
+    "TruncatedResponseError",
+]
+
+
+class ModelError(OrimeraError):
+    """Base class for everything raised by ``orimera.models``."""
+
+
+class ManifestError(ModelError, ValueError):
+    """The model manifest is missing, malformed, or does not bind a role the code needs."""
+
+
+class PreflightError(ModelError):
+    """A manifest identifier is absent from the live catalog, or no longer fits its role.
+
+    Raised by the preflight so a deprecation is a loud build failure rather than a quiet
+    404 in front of a judge six weeks later.
+    """
+
+
+class TransportError(ModelError):
+    """The HTTP call did not complete. Network, DNS, timeout, rate limit, or a 5xx.
+
+    ``retryable`` says whether issuing the identical request again could plausibly succeed. It
+    defaults to True because a connection that failed is the common case and it is transient. A
+    caller that opted into retries consults it; a caller that did not sees the same exception it
+    always saw, so the flag adds a capability rather than changing a behaviour.
+
+    A response the endpoint understood and refused is not this: a 4xx that is not a rate limit
+    will be refused identically forever, and retrying it is spend with no new information.
+    """
+
+    def __init__(self, message: str, *, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+
+
+class ModelUnavailableError(ModelError):
+    """The endpoint says this identifier does not exist. The one trigger for a fallback.
+
+    Deliberately narrow. A 500, a 429 or a timeout is not this: those are the same model having
+    a bad moment, and switching models in response would hide a platform incident behind a
+    quality regression.
+    """
+
+    def __init__(self, message: str, *, model_id: str, status_code: int) -> None:
+        super().__init__(message)
+        self.model_id = model_id
+        self.status_code = status_code
+
+
+class NoFallbackError(ModelError):
+    """The primary is unavailable and the role has no declared fallback left to try."""
+
+
+class MaxTokensTooLowError(ModelError, ValueError):
+    """``max_tokens`` sits under the role's reasoning floor, so the answer would be empty."""
+
+
+class GuidedJsonForbiddenError(ModelError, ValueError):
+    """A caller tried to constrain output with ``guided_json``.
+
+    The parameter is accepted and silently ignored by this endpoint: HTTP 200, prose body, no
+    schema enforced. A pipeline using it appears to work while enforcing nothing, which is the
+    exact shape of failure the "naked prose never enters canonical state" rule exists to stop.
+    """
+
+
+class StructuredOutputError(ModelError):
+    """The model returned a body that is not valid JSON, or does not validate against the schema."""
+
+
+class AmbiguousStructuredOutputError(StructuredOutputError):
+    """The body carried more than one candidate JSON object and none of them is identifiable.
+
+    The reasoning models write scratch work inline in ``message.content`` with no delimiter, and
+    scratch work about a JSON schema routinely contains a draft object. When the scratch work is
+    tagged it is stripped before extraction and this never arises. When it is not, there is no
+    evidence in the body saying which object is the answer: "the first" and "the last" are both
+    guesses, and a wrong guess writes the model's placeholder into canonical state as a fact.
+
+    Refusing is the correct answer. A refused call is a visible failure that costs one retry; a
+    guessed one is an invented memory that nobody ever attributes to the parser.
+
+    ``candidates`` holds the distinct objects found, so a caller logging the failure can show
+    what the model actually produced without re-parsing the body.
+    """
+
+    def __init__(self, message: str, *, candidates: tuple[dict[str, object], ...] = ()) -> None:
+        super().__init__(message)
+        self.candidates = candidates
+
+
+class SchemaViolationError(StructuredOutputError):
+    """Valid JSON that does not satisfy the exact schema the request sent.
+
+    Distinct from its parent because the two failures send a reader to different places. "Not
+    JSON at all" means the schema was not enforced end to end, which is the ``guided_json``
+    shape and a platform problem. "JSON of the wrong shape" means the endpoint accepted the
+    schema and returned something else anyway, which is what an unenforced ``strict: true``
+    looks like from the outside.
+    """
+
+    def __init__(self, message: str, *, errors: tuple[str, ...] = ()) -> None:
+        super().__init__(message)
+        self.errors = errors
+
+
+class TruncatedResponseError(ModelError):
+    """The response stopped on the token limit before any answer text was produced."""
+
+
+class BudgetExceededError(ModelError):
+    """The configured spend or call ceiling would be crossed by this call, so it did not happen."""
+
+    def __init__(self, message: str, *, spent_usd: object, ceiling_usd: object) -> None:
+        super().__init__(message)
+        self.spent_usd = spent_usd
+        self.ceiling_usd = ceiling_usd
