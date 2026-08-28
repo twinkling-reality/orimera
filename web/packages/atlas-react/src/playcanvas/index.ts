@@ -1,0 +1,54 @@
+/**
+ * The PlayCanvas renderer binding for the Atlas, and its bake-off harness.
+ *
+ * One of the two competing implementations of `@orimera/atlas-react`'s renderer binding, per
+ * ADR-0003. Everything engine-specific in the product is meant to live behind this barrel, so
+ * that switching engines is a two-package change rather than a front-end rewrite.
+ *
+ * Nothing here decides what the world should look like. Tier selection, focus resolution, view
+ * manifest application, layout and the coordinate frames all live in `@orimera/atlas-core`. This
+ * package converts those answers into PlayCanvas objects, and that is the whole job.
+ */
+
+export type { OpmHeader, OpmSection, OpmSegment, PointMap } from './opm.js';
+export { decodeOpm, footprintRadiusOf, packedVertexBytes } from './opm.js';
+
+export type { SegmentSemantics } from './semantics.js';
+export {
+  MAX_SEGMENTS,
+  PROVENANCE_SLOT,
+  defaultSemanticsFor,
+  isPresenceMarkerOnly,
+  packSemantics,
+  presenceMarkerSegmentIds,
+} from './semantics.js';
+
+export {
+  POINT_FRAGMENT_GLSL,
+  POINT_FRAGMENT_WGSL,
+  POINT_VERTEX_GLSL,
+  POINT_VERTEX_WGSL,
+} from './point-shader.js';
+
+export type { PointCloud, PointCloudOptions } from './point-cloud.js';
+export { createPointCloud } from './point-cloud.js';
+
+export type { CameraState, ControlsConfig, InputMode } from './controls.js';
+export { DEFAULT_CONTROLS, FirstPersonControls } from './controls.js';
+
+export type { OverlayCounts, OverlayFrame } from './anchor-overlay.js';
+export { AnchorOverlay } from './anchor-overlay.js';
+
+export type { ClaimResult } from './probes.js';
+export { probeAll, probeGlobalSort, probeSplatBudget, probeWebGpu } from './probes.js';
+
+export type {
+  AtlasBindingOptions,
+  FrameReport,
+  IslandVisual,
+  PlacementCheck,
+} from './atlas-binding.js';
+export { AtlasBinding } from './atlas-binding.js';
+
+export type { BakeoffResult, HarnessConfig, HarnessHandle, PathMode } from './harness.js';
+export { POINT_LADDER, fixtureName, parseConfig, runBakeoff } from './harness.js';

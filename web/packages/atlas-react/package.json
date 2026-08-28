@@ -1,0 +1,25 @@
+{
+  "name": "@orimera/atlas-react",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./playcanvas": "./src/playcanvas/index.ts"
+  },
+  "dependencies": {
+    "@orimera/atlas-core": "workspace:*",
+    "@orimera/companion-runtime": "workspace:*",
+    "@orimera/graph-client": "workspace:*",
+    "@orimera/world-index": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --build",
+    "bakeoff:playcanvas": "vite --config vite.config.ts",
+    "bakeoff:playcanvas:build": "vite build --config vite.config.ts"
+  },
+  "devDependencies": {
+    "playcanvas": "2.21.4",
+    "vite": "^6"
+  }
+}

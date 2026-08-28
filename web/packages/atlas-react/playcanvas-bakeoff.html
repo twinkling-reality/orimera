@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Orimera bake-off · PlayCanvas</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #e8e6e1;
+        --dim: #8d8a84;
+        --ground: #0e1016;
+        --capture: #f2eee6;
+        --inference: #9ec0ff;
+        --user: #ffd08c;
+        --external: #c7bcdd;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        background: var(--ground);
+        color: var(--ink);
+        font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      #stage { position: relative; display: inline-block; }
+      canvas { display: block; background: var(--ground); }
+
+      /* The reticle. Fixed screen centre, always: pointer lock freezes clientX/clientY, so there
+         is no cursor to target with and this is the only aim point that can exist. */
+      #reticle {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 14px;
+        height: 14px;
+        margin: -7px 0 0 -7px;
+        border: 1px solid rgba(232, 230, 225, 0.55);
+        border-radius: 50%;
+        pointer-events: none;
+      }
+
+      .orimera-overlay { font-size: 11px; }
+      .ov-focus {
+        white-space: pre;
+        padding: 6px 9px;
+        background: rgba(14, 16, 22, 0.86);
+        border: 1px solid rgba(232, 230, 225, 0.22);
+        border-radius: 3px;
+        max-width: 280px;
+      }
+      .ov-callout {
+        padding: 3px 7px;
+        background: rgba(14, 16, 22, 0.7);
+        border-left: 2px solid var(--dim);
+        white-space: nowrap;
+      }
+      .ov-callout[data-provenance='capture'] { border-left-color: var(--capture); }
+      .ov-callout[data-provenance='inference'] { border-left-color: var(--inference); }
+      .ov-callout[data-provenance='user'] { border-left-color: var(--user); }
+      .ov-callout[data-provenance='external'] { border-left-color: var(--external); }
+
+      /* A person is a citation, not a reconstruction: a timestamped marker over the position the
+         detection was estimated at, never geometry. */
+      .ov-marker {
+        padding: 2px 6px;
+        border: 1px dashed rgba(158, 192, 255, 0.75);
+        border-radius: 2px;
+        background: rgba(14, 16, 22, 0.55);
+        color: var(--inference);
+        letter-spacing: 0.04em;
+      }
+      .ov-marker[data-link-state='confirmed'] {
+        border-style: solid;
+        border-color: var(--user);
+        color: var(--user);
+      }
+
+      .ov-chevron {
+        width: 0;
+        height: 0;
+        border-left: 7px solid rgba(232, 230, 225, 0.65);
+        border-top: 5px solid transparent;
+        border-bottom: 5px solid transparent;
+        rotate: var(--angle, 0rad);
+      }
+
+      #readout {
+        padding: 8px 10px;
+        color: var(--dim);
+      }
+      #hint { padding: 0 10px 10px; color: var(--dim); max-width: 900px; }
+      b { color: var(--ink); font-weight: 500; }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <canvas id="atlas"></canvas>
+      <div id="reticle"></div>
+    </div>
+    <div id="readout">starting</div>
+    <div id="hint">
+      Click the canvas to take pointer lock, then <b>WASD</b> to move and the mouse to look.
+      <b>Escape</b> releases the mouse and is never bound by this page. Targeting is the reticle at
+      screen centre, because pointer lock freezes the cursor coordinates. Parameters:
+      <b>?points=1000000&amp;islands=1&amp;device=webgl2&amp;measure=15</b>. Results are printed to
+      the console, one line each, prefixed <b>ORIMERA-BAKEOFF</b>.
+    </div>
+    <script type="module" src="/src/playcanvas/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "types": [],
+    "jsx": "react-jsx",
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"],
+  "references": [
+    { "path": "../atlas-core" },
+    { "path": "../companion-runtime" },
+    { "path": "../graph-client" },
+    { "path": "../world-index" }
+  ]
+}
