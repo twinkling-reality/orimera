@@ -1,0 +1,13 @@
+{
+  "name": "@orimera/world-index",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@orimera/atlas-core": "workspace:*",
+    "@orimera/companion-runtime": "workspace:*",
+    "@orimera/graph-client": "workspace:*"
+  },
+  "scripts": { "typecheck": "tsc --build" }
+}

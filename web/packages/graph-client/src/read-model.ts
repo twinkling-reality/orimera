@@ -1,0 +1,356 @@
+/**
+ * The entity graph READ model.
+ *
+ * architecture-overview.md 1.1 gives graph-client "entity graph reads and writes, assertion log,
+ * evidence resolution". This file is the reads and the assertion log, as the shape the two
+ * consumers actually need: companion-runtime builds its option pool from it, world-index renders
+ * it. Both of those packages may import graph-client; graph-client may import neither.
+ *
+ * WHY THESE ENUMS ARE DUPLICATED FROM atlas-core. `ProvenanceClass`, `LinkState` and
+ * `ConfidenceBand` also exist in atlas-core/provenance.ts over the same closed sets. That is not
+ * an oversight and it must not be "fixed" by importing: graph-client sits UNDER atlas-core
+ * (`graph-client-is-the-base` in .dependency-cruiser.cjs), so the arrow can only point the other
+ * way, and atlas-core is deliberately self-contained. Both spellings are transcriptions of the
+ * same SQL enums in domain-and-evidence-model.md 2.1 and 4.3, which is the single source.
+ *
+ * WHY IDS ARE PLAIN STRINGS HERE. atlas-core brands its ids. Branding them a second time in this
+ * package would create two incompatible nominal types over one value and force a cast at every
+ * call site in world-index. A plain alias accepts an atlas-core branded id unchanged, so the
+ * seam costs nothing in the direction data actually flows (graph -> presentation).
+ */
+
+export type EntityIdRef = string;
+export type OccurrenceIdRef = string;
+export type IslandIdRef = string;
+export type AnchorIdRef = string;
+export type AssertionIdRef = string;
+
+/**
+ * An evidence handle is OPAQUE (interaction-model.md 3.4): "the interaction layer treats an
+ * evidence reference as an opaque handle and never constructs or parses one; it passes it to the
+ * evidence resolver and renders what comes back". The real address shape is
+ * domain-and-evidence-model.md 1.5 and it lives server-side.
+ */
+export type EvidenceHandle = string;
+
+/** The four provenance classes (domain-and-evidence-model.md 2.1). Four different things. */
+export type AssertionKind = 'capture' | 'inference' | 'user' | 'external';
+
+export type AssertionStatus = 'active' | 'superseded' | 'retracted' | 'disputed' | 'rejected';
+
+/** domain-and-evidence-model.md 4.3. id-2: `auto_provisional` may organize, never assert. */
+export type LinkState = 'proposed' | 'auto_provisional' | 'confirmed' | 'rejected' | 'revoked';
+
+/**
+ * Qualitative only. epi-4: `raw_score` is never rendered and `calibrated_p` is NULL until a
+ * calibration bin has enough observed decisions, so this type deliberately cannot hold a
+ * percentage. A percentage implies a frequency guarantee that cannot be made.
+ */
+export type ConfidenceBand = 'low' | 'medium' | 'high';
+
+/** interaction-model.md 6.1, the Kind facet. A region is an entity too. */
+export type EntityKind = 'person' | 'place' | 'object' | 'event' | 'region';
+
+/** interaction-model.md 6.1, the Status facet. */
+export type IndexStatus =
+  | 'confirmed'
+  | 'needs_review'
+  | 'inferred_only'
+  | 'user_asserted'
+  | 'rejected'
+  | 'merged_away';
+
+/** The five citation kinds (domain-and-evidence-model.md 1.6). A closed set. */
+export type CitationModality =
+  | 'still_image'
+  | 'frame_region'
+  | 'video_time'
+  | 'audio_time'
+  | 'transcript_text';
+
+/**
+ * A normalised region, in parts per million of the unit square (spine-9a).
+ *
+ * Integers, not floats: `region` is inside `span_digest` and no two JSON writers agree on how to
+ * render a float. One ppm of a 6000px-wide photograph is 0.006px.
+ */
+export interface EvidenceRegion {
+  readonly xPpm: number;
+  readonly yPpm: number;
+  readonly wPpm: number;
+  readonly hPpm: number;
+}
+
+/** What the resolver hands back for a handle. The UI renders this and never parses the handle. */
+export interface ResolvedEvidence {
+  readonly handle: EvidenceHandle;
+  readonly modality: CitationModality;
+  /** Opaque storage key for the original media. Opening a citation opens THIS. */
+  readonly sourceKey: string;
+  /**
+   * Wall clock, from a `clock_anchor` row, never smuggled into the media axis (1.5). Null when
+   * the capture carries no usable clock, which is a real and common state.
+   */
+  readonly capturedAtMs: number | null;
+  readonly capturedAtUncertaintyMs: number | null;
+  readonly region: EvidenceRegion | null;
+}
+
+export interface EvidenceResolver {
+  resolve(handles: readonly EvidenceHandle[]): Promise<readonly ResolvedEvidence[]>;
+}
+
+/**
+ * What produced an assertion. This is the "and what produced it" half of the provenance panel,
+ * and it is a discriminated union rather than a string because the four provenance classes carry
+ * genuinely different obligations: an inference must name its run, an external lookup must carry
+ * url + retrieved_at + snapshot hash (epi-2), a user assertion must name a human.
+ */
+export type AssertionProducer =
+  | { readonly by: 'capture'; readonly mediaKey: string }
+  | { readonly by: 'pipeline'; readonly runId: string; readonly modelRef: string }
+  | { readonly by: 'user'; readonly statedAtMs: number }
+  | {
+      readonly by: 'external';
+      readonly url: string;
+      readonly retrievedAtMs: number;
+      readonly snapshotHash: string;
+    };
+
+export interface AssertionView {
+  readonly assertionId: AssertionIdRef;
+  readonly kind: AssertionKind;
+  /** 'name_is', 'person_present', 'relation_is', ... `name_is` allows only `user` (epi-3). */
+  readonly predicateKey: string;
+  readonly status: AssertionStatus;
+  /** Typed by the predicate's value schema. Opaque to the presentation layer. */
+  readonly objectValue: unknown;
+  readonly supportEvidence: readonly EvidenceHandle[];
+  readonly producedBy: AssertionProducer;
+  /** Null for `capture` and `user`, which do not have confidence: they have support. */
+  readonly confidence: ConfidenceBand | null;
+  readonly assertedAtMs: number;
+  readonly supersedes: AssertionIdRef | null;
+}
+
+export interface RelationView {
+  readonly predicateKey: string;
+  readonly objectEntityId: EntityIdRef;
+  readonly kind: AssertionKind;
+  readonly supportEvidence: readonly EvidenceHandle[];
+}
+
+/**
+ * 5.4: "a system inference that contradicts a user assertion is recorded as a contradiction and
+ * surfaced as a question, NEVER APPLIED". The contradiction is therefore read-model state that
+ * the Companion turns into a `disambiguate_claim` intent and the index shows as needs-review.
+ */
+export interface ContradictionView {
+  readonly contradictionId: string;
+  readonly userAssertionId: AssertionIdRef;
+  readonly otherAssertionId: AssertionIdRef;
+  readonly predicateKey: string;
+  readonly openedAtMs: number;
+}
+
+export type HistoryEventType =
+  | 'entity_created'
+  | 'link_confirmed'
+  | 'link_rejected'
+  | 'link_revoked'
+  | 'entities_merged'
+  | 'entity_split'
+  | 'event_undone'
+  | 'assertion_committed';
+
+/**
+ * One row of the immutable assertion log (5.4), rendered as History in the entity detail view.
+ * "Nothing is ever silently rewritten."
+ */
+export interface HistoryEvent {
+  readonly eventId: string;
+  readonly type: HistoryEventType;
+  readonly actor: 'user' | 'system';
+  readonly atMs: number;
+  readonly stateVersion: number;
+  /** 5.1: the verbatim raw utterance, retained and never paraphrased away. */
+  readonly rawUtterance: string | null;
+  readonly summaryKey: string;
+  readonly undoes: string | null;
+}
+
+/**
+ * An entity as the index and the Companion see it.
+ *
+ * `displayName` is null when nobody has named it. id-1: the occurrence is anonymous and the
+ * entity holds the name; id-6: names come solely from the account holder's own annotation, so a
+ * null here is the normal state and not a missing value to be filled in by a model.
+ */
+export interface EntityRecord {
+  readonly entityId: EntityIdRef;
+  readonly kind: EntityKind;
+  readonly displayName: string | null;
+  readonly status: IndexStatus;
+
+  readonly occurrenceCount: number;
+  readonly islandIds: readonly IslandIdRef[];
+  readonly firstSeenMs: number | null;
+  readonly lastSeenMs: number | null;
+
+  /** Qualitative, and meaningful only while the entity is inference-backed. */
+  readonly confidence: ConfidenceBand | null;
+  /** Drives the ambient counter and the review queue. Never rendered as "N of M". */
+  readonly openQuestionCount: number;
+  /**
+   * How many stored answers cite this entity.
+   *
+   * interaction-model.md 5.3 requires a tier 3 confirmation to state "a named consequence: HOW
+   * MANY EXISTING ANSWERS CITE THIS ENTITY AND WILL LOSE THEIR CITATION". A confirmation cannot
+   * state a number the read model does not carry, so it is carried.
+   */
+  readonly citingAnswerCount: number;
+
+  readonly assertions: readonly AssertionView[];
+  readonly relations: readonly RelationView[];
+  readonly contradictions: readonly ContradictionView[];
+  readonly history: readonly HistoryEvent[];
+
+  /** Merge leaves alias redirects so old permalinks resolve (id-7). */
+  readonly mergedInto: EntityIdRef | null;
+}
+
+/**
+ * A ranked candidate link, from the promotion path in domain-and-evidence-model.md 3.2:
+ * "candidate generation: ANN over entity exemplars, plus hard constraints -> match_proposal
+ * rows, ranked -> gate".
+ *
+ * id-6: THE SYSTEM NEVER PROPOSES A REAL-WORLD IDENTITY. It proposes only "the same person as in
+ * these other captures". That is why this type carries entity ids and evidence and no name.
+ */
+export interface MatchProposalView {
+  readonly matchId: string;
+  /** The entity the user has already seen, and the entity (or bare occurrences) it might match. */
+  readonly entityId: EntityIdRef;
+  readonly candidateEntityId: EntityIdRef | null;
+  readonly occurrenceIds: readonly OccurrenceIdRef[];
+  readonly anchorIds: readonly AnchorIdRef[];
+  readonly islandIds: readonly IslandIdRef[];
+  readonly confidence: ConfidenceBand;
+  /**
+   * Which modalities were used, from the closed set in id-4:
+   * `{face, voice, gait, context_place, context_cooccurrence, user_text}`. The photograph corpus
+   * uses face, context_place and context_cooccurrence; voice and gait have no source material.
+   */
+  readonly basisModalities: readonly string[];
+  /**
+   * id-4, the re-proposal rule: a proposal is suppressed when an unrevoked rejection matches and
+   * the new basis is a SUBSET of the rejected basis. Resolved server-side, because it needs the
+   * rejection table; the client only needs to know not to offer it as if it were fresh.
+   */
+  readonly suppressedByRejection: boolean;
+  /** Set when the proposal resurfaced with a materially new modality. id-4 requires it be said. */
+  readonly newModality: string | null;
+  readonly evidence: readonly EvidenceHandle[];
+}
+
+/** A detection made addressable. Anonymous by construction: no name field exists here. */
+export interface OccurrenceRecord {
+  readonly occurrenceId: OccurrenceIdRef;
+  readonly anchorId: AnchorIdRef;
+  readonly islandId: IslandIdRef;
+  readonly entityId: EntityIdRef | null;
+  readonly linkState: LinkState;
+  readonly confidence: ConfidenceBand;
+  readonly evidence: readonly EvidenceHandle[];
+  readonly capturedAtMs: number | null;
+}
+
+/**
+ * An immutable read snapshot at one graph state version.
+ *
+ * Turn generation and index rendering both run against a snapshot rather than against a live
+ * connection, because both must be reproducible in a test with no transport, and because
+ * `stateVersion` is what expires an update proposal (5.1).
+ */
+export interface GraphSnapshot {
+  readonly stateVersion: number;
+  readonly entities: readonly EntityRecord[];
+  readonly occurrences: readonly OccurrenceRecord[];
+  /** Ranked candidate links awaiting a user decision. Drives the confirm-continuity intent. */
+  readonly matchProposals: readonly MatchProposalView[];
+  /**
+   * `never_same(A, B)` constraints written by a previous split (3.2, 3.4). Unordered pairs.
+   * The option pool refuses to offer a merge across one of these, with a stated reason.
+   */
+  readonly neverSame: readonly (readonly [EntityIdRef, EntityIdRef])[];
+  /**
+   * Entities the user deleted. Kept as ids rather than dropped rows because 4.4 stage 3 says
+   * "never offer an option targeting a deleted entity", and a client that has simply forgotten
+   * an entity cannot check that.
+   */
+  readonly deletedEntityIds: readonly EntityIdRef[];
+}
+
+/** Is this pair already asserted distinct? Order-independent, per `never_same`. */
+export function isNeverSame(
+  snapshot: GraphSnapshot,
+  a: EntityIdRef,
+  b: EntityIdRef,
+): boolean {
+  return snapshot.neverSame.some(
+    ([x, y]) => (x === a && y === b) || (x === b && y === a),
+  );
+}
+
+/** Whether the entity carries an active assertion for a predicate. */
+export function hasActiveAssertion(entity: EntityRecord, predicateKey: string): boolean {
+  return entity.assertions.some((a) => a.status === 'active' && a.predicateKey === predicateKey);
+}
+
+export function entityById(snapshot: GraphSnapshot): ReadonlyMap<EntityIdRef, EntityRecord> {
+  const map = new Map<EntityIdRef, EntityRecord>();
+  for (const e of snapshot.entities) map.set(e.entityId, e);
+  return map;
+}
+
+export function occurrencesOf(
+  snapshot: GraphSnapshot,
+  entityId: EntityIdRef,
+): readonly OccurrenceRecord[] {
+  return snapshot.occurrences.filter((o) => o.entityId === entityId);
+}
+
+/**
+ * Which of the four provenance classes actually back this entity.
+ *
+ * interaction-model.md 6.1: the "source of knowledge" facet deliberately reuses the same
+ * vocabulary as the confirmation panel, so "what do you actually know about this" is answered
+ * identically in every surface. Derived, never stored, so it cannot go stale.
+ */
+export function knowledgeSources(entity: EntityRecord): readonly AssertionKind[] {
+  const seen = new Set<AssertionKind>();
+  for (const a of entity.assertions) {
+    if (a.status === 'active') seen.add(a.kind);
+  }
+  const order: readonly AssertionKind[] = ['user', 'capture', 'inference', 'external'];
+  return order.filter((k) => seen.has(k));
+}
+
+/**
+ * The global open-question count (interaction-model.md 5.5).
+ *
+ * "One global counter sits in the persistent HUD ('7 open questions'). It never grows a badge,
+ * never animates, never pops, never changes colour. It is allowed to read 7 forever. THERE IS NO
+ * COMPLETION METRIC ANYWHERE IN THE PRODUCT."
+ *
+ * This returns a number and nothing else. There is deliberately no total, no percentage and no
+ * "resolved so far" here for a caller to render a progress ring out of.
+ */
+export function openQuestionCount(snapshot: GraphSnapshot): number {
+  let n = 0;
+  for (const e of snapshot.entities) {
+    if (e.status === 'merged_away' || e.status === 'rejected') continue;
+    n += e.openQuestionCount;
+  }
+  return n;
+}

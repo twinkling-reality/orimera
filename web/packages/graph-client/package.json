@@ -1,0 +1,11 @@
+{
+  "name": "@orimera/graph-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./mutations": "./src/mutations/index.ts"
+  },
+  "scripts": { "typecheck": "tsc --build" }
+}
