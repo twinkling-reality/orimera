@@ -30,6 +30,11 @@ import { toUpdateProposal } from './proposal.js';
 import { NO_GEOMETRY_RUNG, buildScene } from './scene.js';
 import { openSession, type Session } from './session.js';
 import { buildConfirm } from './ui/confirm.js';
+import { buildCompanionPanel } from './ui/companion-panel.js';
+import { buildWorldChrome } from './ui/world-chrome.js';
+import { buildCompanionStage } from './ui/companion-stage.js';
+import { createCompanionController } from './companion.js';
+import type { CompanionSession } from '@orimera/companion-runtime';
 import { buildDetail } from './ui/detail.js';
 import { buildFormation } from './ui/formation.js';
 import { el, replace } from './ui/dom.js';
@@ -48,6 +53,16 @@ let stopWatching: (() => void) | null = null;
 let snapshot: GraphSnapshot | null = null;
 let atlas: MountedAtlas | null = null;
 let evidence: EvidenceCache | null = null;
+let companionEngine: CompanionSession | null = null;
+/**
+ * Window listeners belonging to the current mount.
+ *
+ * `mount` runs again after every committed write and again on a hot reload, and a listener added
+ * without one of these survives the mount that added it. Two of them turn one key press into two
+ * toggles, which is a summon immediately undone by a dismiss and looks exactly like a key that
+ * does nothing.
+ */
+let mountListeners: AbortController | null = null;
 let search = '';
 let selected: string | null = null;
 /** Monotonic, so two proposals in one session never share an id. Not a clock and not random. */
@@ -117,6 +132,7 @@ async function start(token: string): Promise<void> {
   session = opened.session;
   snapshot = opened.initial;
   evidence = new EvidenceCache(opened.session.client);
+  companionEngine = opened.companion;
   await mount();
 }
 
@@ -125,14 +141,21 @@ async function mount(): Promise<void> {
   const currentSession = session;
   const currentEvidence = evidence;
   const currentCredentials = credentials_;
+  const currentCompanion = companionEngine;
   if (
     current === null ||
     currentSession === null ||
     currentEvidence === null ||
-    currentCredentials === null
+    currentCredentials === null ||
+    currentCompanion === null
   ) {
     return;
   }
+
+  // The turn engine outlives a re-mount, so it is told about the new graph rather than rebuilt.
+  // Rebuilding it would discard the memory of what has already been asked, and the Companion
+  // would open every refresh by asking the question the user just answered.
+  currentCompanion.observeSnapshot(current);
 
   const built = buildScene(current);
 
@@ -143,6 +166,29 @@ async function mount(): Promise<void> {
       confirm.hide();
     },
   });
+
+  // The Companion. The controller holds the turn, the panel renders it, and the confirmation
+  // surface built above is the only thing either of them can reach that writes.
+  const companionController = createCompanionController({
+    companion: currentCompanion,
+    onAwaitingConfirmation: (proposalId, summary, utterance) => {
+      confirm.show(proposalId, summary, utterance);
+    },
+  });
+  const companionPanel = buildCompanionPanel({
+    onDismiss: () => {
+      companionController.dismiss();
+      companionStage.hide();
+    },
+    onSelect: (optionId) => companionController.select(optionId),
+    onSubmit: (optionIds) => companionController.submit(optionIds),
+    onSay: (text) => companionController.say(text),
+    onEvidence: (index) => {
+      const handle = companionController.evidenceAt(index);
+      if (handle !== null) void currentEvidence.open(handle);
+    },
+  });
+  companionController.attach(companionPanel);
 
   const detail = buildDetail(currentEvidence, {
     onName: (occurrence) => propose(occurrence, confirm),
@@ -159,13 +205,19 @@ async function mount(): Promise<void> {
     onEntity: (entityId) => {
       selected = entityId;
       const entity = current.entities.find((e) => e.entityId === entityId);
-      if (entity !== undefined) detail.showEntity(current, entity);
+      if (entity !== undefined) {
+        detail.showEntity(current, entity);
+        detail.root.removeAttribute('hidden');
+      }
       library.render(current, search, selected);
     },
     onOccurrence: (occurrenceId) => {
       selected = occurrenceId;
       const occurrence = current.occurrences.find((o) => o.occurrenceId === occurrenceId);
-      if (occurrence !== undefined) detail.showOccurrence(occurrence);
+      if (occurrence !== undefined) {
+        detail.showOccurrence(occurrence);
+        detail.root.removeAttribute('hidden');
+      }
       library.render(current, search, selected);
     },
     onSearch: (text) => {
@@ -180,11 +232,18 @@ async function mount(): Promise<void> {
   // its nodes into, which is a different job from being the canvas.
   const forming = buildFormation();
   const stage = el('div', { class: 'stage' });
+  const chrome = buildWorldChrome(shell!);
+
+  // The Companion's own canvas, over the world.
+  const companionStage = buildCompanionStage({ parent: stage });
+
   replace(shell!, [
-    library.root,
     stage,
+    chrome.reticle,
+    library.root,
     detail.root,
     forming.root,
+    companionPanel.root,
     confirm.root,
     buildStatus({
       snapshot: current,
@@ -196,7 +255,7 @@ async function mount(): Promise<void> {
   ]);
 
   library.render(current, search, selected);
-  detail.showNothing();
+  detail.root.setAttribute('hidden', '');
   forming.render(null, null);
 
   // What there is to watch. There is no upload endpoint yet, so an intake starts from the command
@@ -214,6 +273,85 @@ async function mount(): Promise<void> {
 
   atlas?.dispose();
   atlas = await mountAtlas(canvas as HTMLCanvasElement, stage, built.scene);
+
+  // -- the two input modes, and the one key that calls the Companion ----------------------
+  //
+  // The mode follows the browser's pointer lock state and is never guessed at: the browser drops
+  // the lock on Escape and on focus loss without telling the application first, so a mode the
+  // application tracked itself would be wrong within seconds of the user tabbing away.
+  const mounted = atlas;
+  function reflectMode(next: 'traverse' | 'converse'): void {
+    chrome.setMode(next);
+    // The prompt says what is true right now. With the mouse free the useful instruction is how
+    // to get into the world; once inside it is how to call the Companion. An open conversation
+    // outranks both and is left alone.
+    if (companionPanel.state() === 'open') return;
+    companionPanel.setState(next === 'traverse' ? 'summon' : 'enter');
+  }
+  mounted.binding.controls.onModeChange = reflectMode;
+  reflectMode(mounted.binding.controls.mode);
+
+  /**
+   * Put the conversation beside what it is about.
+   *
+   * Once, when it opens, and not per frame. A panel that tracked the projection would slide
+   * across the screen the whole time the user looked around, and this is text somebody is in the
+   * middle of reading. With no subject, or a subject behind the camera, it falls back to the
+   * centre rather than to a guess about where the subject might be.
+   */
+  // Right click and C are already the summon verb in the controls.
+  function summonCompanion(): void {
+    companionController.summon(Date.now());
+    companionStage.show();
+  }
+
+  mounted.binding.controls.onSummon = summonCompanion;
+
+  mountListeners?.abort();
+  mountListeners = new AbortController();
+  window.addEventListener(
+    'keydown',
+    (event) => {
+      // Not while the user is typing an answer into the Companion or a name into the index.
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+      if (event.code === 'KeyI') {
+        event.preventDefault();
+        chrome.toggleIndex();
+        return;
+      }
+      // Answering by number, which is the only way to answer while the pointer is locked: there
+      // is no cursor to click with, and releasing the lock to reply would mean leaving the world
+      // for every question. Unavailable options return null and the key does nothing, rather than
+      // selecting the next one along and committing something nobody chose.
+      if (/^Digit[1-9]$/.test(event.code)) {
+        if (companionPanel.pressNumber(Number(event.code.slice(5)))) event.preventDefault();
+        return;
+      }
+      // Flip which side the Companion lives on. Bracket keys because they are unbound, adjacent,
+      // and read as "push it that way".
+      if (event.code === 'BracketLeft' || event.code === 'BracketRight') {
+        event.preventDefault();
+        chrome.toggleCompanionSide();
+        return;
+      }
+      // Cycle the Companion's form. A comparison in place, against the real world, rather than on
+      // a mockup page: the only question worth answering is which one belongs HERE.
+      if (event.code === 'KeyX') {
+        event.preventDefault();
+        if (companionPanel.state() === 'open') {
+          companionController.dismiss();
+          companionStage.hide();
+        } else {
+          summonCompanion();
+        }
+      }
+    },
+    { signal: mountListeners.signal },
+  );
+
+  // Nothing is asked unprompted. The Companion arrives when it is called, and until then the
+  // world is the whole of what is on screen.
 
   // Reported rather than trusted. A placement that does not reproduce atlas-core's own transform
   // is a region turned the wrong way, which is invisible until somebody walks behind it.
