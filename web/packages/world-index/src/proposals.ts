@@ -64,10 +64,26 @@ export function draftEdit(
  */
 export function draftMerge(
   snapshot: GraphSnapshot,
-  from: readonly EntityRecord[],
+  survivor: EntityRecord,
+  absorbed: readonly EntityRecord[],
   ids: IdFactory,
 ): ProposalDraft {
-  if (from.length < 2) throw new RangeError('a merge needs at least two entities');
+  if (absorbed.length < 1) throw new RangeError('a merge needs at least two entities');
+  if (absorbed.some((entity) => entity.entityId === survivor.entityId)) {
+    throw new RangeError('a record cannot be merged into itself');
+  }
+  // THE SURVIVOR IS A PARAMETER, and it is the whole reason this function changed shape. It used
+  // to emit a flat list and leave which record survives to be inferred downstream, which nothing
+  // could do: the two records are symmetric in the payload and only the user knows which name
+  // should remain. A merge that went the wrong way round is undoable only if somebody notices,
+  // so the answer is carried rather than guessed.
+  if (survivor.displayName === null && absorbed.some((e) => e.displayName !== null)) {
+    throw new RangeError(
+      'merging a named record into an unnamed one would leave the surviving record unnamed. ' +
+        'Merge the other way round.',
+    );
+  }
+  const from = [survivor, ...absorbed];
   const anchorIds = new Set<string>();
   const islandIds = new Set<string>();
   const occurrenceIds: string[] = [];
@@ -78,19 +94,24 @@ export function draftMerge(
       occurrenceIds.push(o.occurrenceId);
     }
   }
-  const first = from[0];
-  /* c8 ignore next */
-  if (first === undefined) throw new RangeError('a merge needs at least two entities');
-
   return makeDraft({
     draftId: ids('draft'),
     origin: 'user_choice',
     rawUtterance: '',
-    subjectEntityId: first.entityId,
+    subjectEntityId: survivor.entityId,
     operations: [
       draftOperation('merge', [...anchorIds], [...islandIds], {
-        fromEntityIds: from.map((e) => e.entityId),
+        // The endpoint's own vocabulary, so nothing downstream renames a key and decides a
+        // semantic question by doing it. `occurrenceIds` stays because id-7 says the payload
+        // records the exact link set at merge time, "which is what makes undo exact rather than
+        // approximate", and the endpoint's two fields cannot carry that.
+        target: survivor.entityId,
+        sources: absorbed.map((entity) => entity.entityId),
         occurrenceIds,
+        // The NAMES, so a confirmation surface can say what will happen in words rather than in
+        // identifiers. `subjectEntityId` carries the survivor's id and cannot carry this.
+        survivorName: survivor.displayName,
+        absorbedNames: absorbed.map((entity) => entity.displayName),
       }),
     ],
     provenanceSummaryKey: 'provenance.userMergedEntities',

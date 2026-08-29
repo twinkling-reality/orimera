@@ -102,18 +102,42 @@ function translate(
         operation: { ...base, payload: { occurrence_id: occurrenceId, display_name: displayName } },
       };
     }
+    case 'merge': {
+      // `draftMerge` now emits the endpoint's own vocabulary, so this translates rather than
+      // renames. It used to emit a flat list of entity ids, and which one survived was a
+      // semantic question this file could not answer by renaming a key: guessing it would merge
+      // the wrong way round, and a merge that went the wrong way is undoable only if somebody
+      // notices. The survivor is chosen by the user, upstream, and carried here.
+      const target = operation.payload['target'];
+      const sources = operation.payload['sources'];
+      if (typeof target !== 'string' || !Array.isArray(sources) || sources.length === 0) {
+        return { ok: false, reason: 'a merge proposal names no surviving record' };
+      }
+      return {
+        ok: true,
+        operation: { ...base, payload: { target, sources } },
+      };
+    }
+    case 'split': {
+      const entityId = operation.payload['entityId'];
+      const occurrenceIds = operation.payload['occurrenceIds'];
+      if (typeof entityId !== 'string' || !Array.isArray(occurrenceIds)) {
+        return { ok: false, reason: 'a split proposal names no record to split' };
+      }
+      if (occurrenceIds.length === 0) {
+        return { ok: false, reason: 'a split with no detections moved is not a split' };
+      }
+      return {
+        ok: true,
+        operation: {
+          ...base,
+          payload: { entity_id: entityId, occurrence_ids: occurrenceIds },
+        },
+      };
+    }
     default:
-      // Refused rather than passed through, and refused HERE rather than at the transport.
-      //
-      // `merge` and `split` do have endpoints, and they are deliberately not translated yet:
-      // `draftMerge` emits `{fromEntityIds, occurrenceIds}` while the endpoint takes
-      // `{sources, target}`, and which of the drafted entities is the survivor is a semantic
-      // question this file cannot answer by renaming a key. Guessing it would merge the wrong
-      // way round, and a merge that went the wrong way is undoable only if somebody notices.
-      //
-      // Both are unreachable in this instance regardless: a merge needs two entities and the
-      // library has none until somebody names a first detection. They are refused with a reason
-      // rather than left to fail after the user presses confirm.
+      // Refused rather than passed through, and refused HERE rather than at the transport, so a
+      // user never presses confirm on something that fails afterwards.
       return {
         ok: false,
         reason: `a ${operation.op} proposal is not wired to this instance's API yet`,

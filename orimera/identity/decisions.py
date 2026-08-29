@@ -418,9 +418,23 @@ def merge_entities(
     """
     if target in sources:
         raise IdentityError("an entity cannot be merged into itself")
-    _require_entity(repository, target)
+    surviving = _require_entity(repository, target)
     for source in sources:
-        _require_entity(repository, source)
+        absorbed = _require_entity(repository, source)
+        # THE SURVIVING RECORD KEEPS ITS NAME, so merging a named record into an unnamed one
+        # would leave the survivor unnamed and the name readable only in history. A user who
+        # wanted that wanted the merge the other way round.
+        #
+        # Refused here as well as in the client draft, and the duplication is deliberate: the
+        # client refusal does not cover a caller that never went through `draftMerge`, and this
+        # is the stronger guarantee. A merge that went the wrong way is undoable only if somebody
+        # notices, and nothing about an unnamed survivor is loud.
+        if surviving.display_name is None and absorbed.display_name is not None:
+            raise IdentityError(
+                f"merging {absorbed.display_name!r} into a record with no name would leave the "
+                "surviving record unnamed. Merge the other way round, so the name somebody "
+                "chose is the one that remains."
+            )
         if repository.is_never_same(source, target):
             raise NeverSame(
                 f"entities {source} and {target} were split apart by a user decision. "

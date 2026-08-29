@@ -30,6 +30,7 @@ import pytest
 from orimera.epistemics.assertions import AssertionWriter
 from orimera.identity import (
     AlreadyIdentified,
+    IdentityError,
     IdentityRepository,
     NeverSame,
     NotUndoable,
@@ -617,3 +618,32 @@ def _is_stale(library, derived_id: uuid.UUID) -> bool:
     ).fetchone()
     assert row is not None
     return row["stale"]
+
+
+def test_merging_a_named_record_into_an_unnamed_one_is_refused(library):
+    """The surviving record keeps its name, so the merge has to go the other way round.
+
+    Refused at the API as well as in the client draft, and the duplication is deliberate: the
+    client refusal does not cover a caller that never went through ``draftMerge``. A merge that
+    went the wrong way is undoable only if somebody notices, and nothing about an entity that
+    quietly lost its name is loud.
+    """
+    julie = library.name(0, "Julie")
+    unnamed = library.identity.create_entity(entity_class="person")
+
+    with pytest.raises(IdentityError, match="the other way round"):
+        merge_entities(
+            library.identity,
+            sources=[julie.entity_id],
+            target=unnamed,
+            actor=library.actor,
+        )
+
+    # The other direction is permitted, because the survivor keeps a name somebody chose.
+    merge_entities(
+        library.identity,
+        sources=[unnamed],
+        target=julie.entity_id,
+        actor=library.actor,
+    )
+    assert library.identity.resolve_entity(unnamed) == julie.entity_id

@@ -38,7 +38,8 @@ describe('index actions end in a proposal, like every other path', () => {
   it('makes a merge tier 2 with a blast radius that names the regions', () => {
     const draft = draftMerge(
       SNAPSHOT_T3,
-      [entity('ent-julie'), entity('ent-mira')],
+      entity('ent-julie'),
+      [entity('ent-mira')],
       sequentialIds(),
     );
     expect(draft.maxTier).toBe(2);
@@ -54,11 +55,40 @@ describe('index actions end in a proposal, like every other path', () => {
   it('records the exact link set, which is what makes undo exact', () => {
     const draft = draftMerge(
       SNAPSHOT_T3,
-      [entity('ent-julie'), entity('ent-mira')],
+      entity('ent-julie'),
+      [entity('ent-mira')],
       sequentialIds(),
     );
-    const payload = draft.operations[0]?.payload as { occurrenceIds?: readonly string[] };
+    const payload = draft.operations[0]?.payload as {
+      occurrenceIds?: readonly string[];
+      target?: string;
+      sources?: readonly string[];
+    };
     expect(payload.occurrenceIds?.length).toBe(5);
+    // The endpoint's own vocabulary, so nothing downstream has to rename a key and decide a
+    // semantic question by doing it.
+    expect(payload.target).toBe('ent-julie');
+    expect(payload.sources).toEqual(['ent-mira']);
+  });
+
+  it('refuses to merge a named record into an unnamed one', () => {
+    // The surviving record keeps its name, so merging a named record into an unnamed one would
+    // leave the survivor unnamed and the name only readable in history. A user who wanted that
+    // wanted the merge the other way round.
+    expect(() =>
+      draftMerge(
+        SNAPSHOT_T3,
+        { ...entity('ent-mira'), displayName: null },
+        [entity('ent-julie')],
+        sequentialIds(),
+      ),
+    ).toThrow(/the other way round/);
+  });
+
+  it('refuses to merge a record into itself', () => {
+    expect(() =>
+      draftMerge(SNAPSHOT_T3, entity('ent-julie'), [entity('ent-julie')], sequentialIds()),
+    ).toThrow(/into itself/);
   });
 
   it('makes a split tier 2 and says it writes a never-same constraint', () => {
