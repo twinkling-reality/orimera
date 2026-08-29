@@ -18,15 +18,9 @@ from orimera.models.cache import (
     cache_key,
     request_digest,
 )
-from orimera.models.client import (
-    ChatResult,
-    EmbeddingResult,
-    ModelClient,
-    StructuredResult,
-    api_key_from_env,
-    image_part,
-    text_part,
-)
+from orimera.models.chain import ChainResponse, ModelChain
+from orimera.models.client import ModelClient
+from orimera.models.credentials import api_key_from_env
 from orimera.models.errors import (
     AmbiguousStructuredOutputError,
     BudgetExceededError,
@@ -50,8 +44,10 @@ from orimera.models.manifest import (
     RoleBinding,
     load_manifest,
 )
+from orimera.models.messages import image_part, text_part
 from orimera.models.preflight import PreflightReport, run_preflight
 from orimera.models.reasoning import SplitContent, split_message, split_reasoning
+from orimera.models.results import ChatResult, EmbeddingResult, StructuredResult
 from orimera.models.schema import (
     extract_json_object,
     json_object_candidates,
@@ -72,6 +68,7 @@ __all__ = [
     "BudgetGuard",
     "CacheKey",
     "CallUsage",
+    "ChainResponse",
     "ChatResult",
     "CostLedger",
     "EmbeddingResult",
@@ -83,6 +80,7 @@ __all__ = [
     "Manifest",
     "ManifestError",
     "MaxTokensTooLowError",
+    "ModelChain",
     "ModelClient",
     "ModelError",
     "ModelSpec",

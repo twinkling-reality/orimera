@@ -40,8 +40,10 @@ from typing import Any, Final, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from orimera.errors import OrimeraError
-from orimera.models.client import ChatResult, ModelClient, image_part
+from orimera.models.client import ModelClient
 from orimera.models.manifest import Role
+from orimera.models.messages import image_part
+from orimera.models.results import ChatResult
 from orimera.models.schema import response_format_for_schema
 
 __all__ = [

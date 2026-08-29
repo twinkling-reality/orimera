@@ -1,0 +1,195 @@
+"""Turning a response body into a result a caller may believe.
+
+Separated from the client because these are the checks that decide whether a reply enters
+canonical state, and the client's other job is reaching the network. The four refusals here are
+each the answer to something measured:
+
+*   ``finish_reason: "length"`` with nothing written is a ``max_tokens`` that does not clear the
+    reasoning overhead. It reads exactly like a model that cannot do the task and is not one; it
+    produced one false negative in this project's own verification harness.
+*   ``finish_reason: "length"`` with a partial answer is never salvaged. Half a result that
+    happens to parse is a plausible fact with a piece missing.
+*   A reasoning block that was opened and never closed was cut mid-thought while the endpoint
+    reported an ordinary stop. ``finish_reason`` cannot see that one.
+*   A reply is validated locally against the byte-identical schema that was sent, because
+    sending a schema is a request and not a guarantee. ``guided_json`` proved on this platform
+    that a constraint parameter can be accepted, ignored, and answered with an HTTP 200 that
+    looks fine.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+
+from orimera.models.budget import BudgetGuard
+from orimera.models.errors import (
+    ModelError,
+    SchemaViolationError,
+    StructuredOutputError,
+    TransportError,
+    TruncatedResponseError,
+)
+from orimera.models.manifest import ModelSpec, Role
+from orimera.models.reasoning import SplitContent, split_message
+from orimera.models.results import ChatResult, EmbeddingResult
+from orimera.models.schema import (
+    AmbiguousStructuredOutputError,
+    extract_json_object,
+    validate_against_schema,
+)
+from orimera.models.usage import CallUsage
+
+__all__ = ["checked_payload", "embedding_from_body", "result_from_body"]
+
+
+def result_from_body(
+    *,
+    role: Role,
+    spec: ModelSpec,
+    body: Mapping[str, Any],
+    budget: BudgetGuard,
+    endpoint: str,
+    cache_hit: bool,
+    used_fallback: bool,
+    latency_s: float,
+    attempts: int,
+    tried: tuple[str, ...],
+    response_format: Mapping[str, Any] | None = None,
+) -> ChatResult:
+    choices = body.get("choices") or []
+    if not choices:
+        raise TransportError(f"{spec.model_id} returned no choices", retryable=False)
+    choice = choices[0]
+    message = choice.get("message") or {}
+    finish_reason = str(choice.get("finish_reason") or "")
+    split: SplitContent = split_message(message)
+
+    usage = CallUsage.from_response(
+        role=role,
+        spec=spec,
+        usage=body.get("usage"),
+        cache_hit=cache_hit,
+        used_fallback=used_fallback,
+        latency_s=latency_s,
+    )
+    budget.record(usage)
+
+    if finish_reason == "length" and split.empty_answer:
+        raise TruncatedResponseError(
+            f"{spec.model_id} stopped on the token limit before producing any answer "
+            f"({usage.reasoning_tokens} reasoning tokens spent, "
+            f"{usage.completion_tokens} completion tokens). This is a max_tokens setting "
+            "that does not clear the reasoning overhead, not a model that cannot do the "
+            "task. Raise max_tokens."
+        )
+    if finish_reason == "length":
+        raise TruncatedResponseError(
+            f"{spec.model_id} truncated the answer on the token limit. A partial answer is "
+            "never salvaged: half a result that happens to parse is a plausible fact with a "
+            "piece missing. Raise max_tokens and retry."
+        )
+    if not split.complete:
+        # The case finish_reason cannot see. A body that opens a reasoning block and never
+        # closes it was cut mid-thought, and the endpoint has been observed reporting that
+        # as an ordinary stop. Everything after the open tag is scratch work and everything
+        # before it is a preamble, so there is no answer here to salvage or to return empty.
+        raise TruncatedResponseError(
+            f"{spec.model_id} opened a reasoning block and never closed it, so the answer "
+            f"was cut mid-thought whatever finish_reason claims (it said {finish_reason!r}). "
+            "Everything after the open tag is scratch work and everything before it is a "
+            "preamble, so there is no answer in this response. Raise max_tokens and retry."
+        )
+
+    payload = (
+        None
+        if response_format is None
+        else checked_payload(split.answer, response_format, spec.model_id)
+    )
+
+    return ChatResult(
+        role=role,
+        model_id=spec.model_id,
+        served_model_id=str(body.get("model") or spec.model_id),
+        answer=split.answer,
+        reasoning=split.reasoning,
+        finish_reason=finish_reason,
+        usage=usage,
+        raw=body,
+        cache_hit=cache_hit,
+        used_fallback=used_fallback,
+        endpoint=endpoint,
+        attempts=attempts,
+        tried=tried,
+        payload=payload,
+    )
+
+def checked_payload(
+    answer: str, response_format: Mapping[str, Any], model_id: str
+) -> dict[str, Any]:
+    """Parse the answer and validate it against the schema this request actually sent.
+
+    Two separate guarantees, and both are wanted. ``extract_json_object`` refuses a body
+    that carries more than one candidate object rather than guessing which one was the
+    answer; ``validate_against_schema`` then checks the winner against the byte-identical
+    schema in ``response_format``, because a request for enforcement is not proof of it.
+    ``guided_json`` was measured being accepted and ignored on this platform, and a
+    ``json_schema`` the endpoint quietly stopped honouring would look exactly the same from
+    the outside: HTTP 200, a plausible object, the wrong shape.
+
+    The parse failure and the shape failure are raised separately on purpose. "Not JSON at
+    all" and "JSON of the wrong shape" send a reader to different places, and one message
+    covering both sends them to the wrong one.
+    """
+    declared = response_format.get("json_schema") or {}
+    schema = declared.get("schema")
+    name = str(declared.get("name") or "response")
+    try:
+        parsed = extract_json_object(answer)
+    except (AmbiguousStructuredOutputError, SchemaViolationError):
+        # Both already say precisely what went wrong. Rewrapping either as "not JSON and
+        # contains no JSON object" would be false of a body that parsed perfectly, and it
+        # would send a reader looking for a transport fault instead of a shape one.
+        raise
+    except StructuredOutputError as exc:
+        raise StructuredOutputError(
+            f"{model_id} returned text that is not JSON and contains no JSON object, even "
+            "though response_format was json_schema strict. That is what an unenforced "
+            f"schema looks like. Answer was {answer[:300]!r}"
+        ) from exc
+    if not isinstance(schema, Mapping):
+        # response_format is only ever built by orimera.models.schema and only ever accepted
+        # by _build_payload after it has checked the type and the strict flag, so this is
+        # unreachable from a supported call site. It is still raised rather than skipped:
+        # silently returning unvalidated data is the defect this method exists to close.
+        raise StructuredOutputError(
+            f"{model_id} was sent a response_format carrying no schema, so its reply cannot "
+            "be validated locally. Build response_format with orimera.models.schema."
+        )
+    return validate_against_schema(parsed, schema, name=name)
+
+
+def embedding_from_body(
+    role: Role,
+    spec: ModelSpec,
+    body: Mapping[str, Any],
+    *,
+    budget: BudgetGuard,
+    cache_hit: bool,
+) -> EmbeddingResult:
+    rows = body.get("data") or []
+    vectors = tuple(tuple(float(x) for x in row.get("embedding") or ()) for row in rows)
+    usage = CallUsage.from_response(
+        role=role, spec=spec, usage=body.get("usage"), cache_hit=cache_hit
+    )
+    budget.record(usage)
+    dimensions = len(vectors[0]) if vectors else 0
+    expected = spec.embedding_dimensions
+    if expected is not None and vectors and dimensions != expected:
+        raise ModelError(
+            f"{spec.model_id} returned {dimensions}-dimensional vectors, manifest declares "
+            f"{expected}. Storing these alongside existing vectors would corrupt the index."
+        )
+    return EmbeddingResult(
+        model_id=spec.model_id, vectors=vectors, usage=usage, dimensions=dimensions
+    )

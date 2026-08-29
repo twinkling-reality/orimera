@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from orimera.models.client import ModelClient, image_part
+from orimera.models.client import ModelClient
 from orimera.models.errors import (
     AmbiguousStructuredOutputError,
     GuidedJsonForbiddenError,
@@ -21,6 +21,7 @@ from orimera.models.errors import (
     TruncatedResponseError,
 )
 from orimera.models.manifest import Role
+from orimera.models.messages import image_part
 from orimera.models.reasoning import split_reasoning
 from orimera.models.transport import HttpResponse
 from pydantic import BaseModel
