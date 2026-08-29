@@ -1,12 +1,13 @@
 /**
  * Opening a citation, which is the promise the whole product reduces to.
  *
- * **Bytes, not a URL.** `OrimeraClient.evidenceUrl` exists and this does not use it. The client's
- * own comment says why: the bearer token is in a header on every other call and an `<img src>`
- * request would not carry it, so the only ways to make a plain URL work are to put the token in
- * the query string or to move authentication into a cookie. The first puts somebody's photograph
- * library behind a value that ends up in a proxy log. The second is a session mechanism this API
- * does not have. So the bytes are fetched with the header and wrapped in a blob URL.
+ * **Bytes, not a URL.** `OrimeraClient` answers a citation with bytes and offers no URL to point
+ * an element at. The client's own comment says why: the bearer token is in a header on every
+ * call and an `<img src>` request would not carry it, so the only ways to make a plain URL work
+ * are to put the token in the query string or to move authentication into a cookie. The first
+ * puts somebody's photograph library behind a value that ends up in a proxy log. The second is a
+ * session mechanism this API does not have. So the bytes are fetched with the header and wrapped
+ * in a blob URL.
  *
  * **The cache is keyed by the handle and bounded.** A blob URL holds its bytes alive until it is
  * revoked, so an unbounded cache over a photograph library is a memory leak measured in

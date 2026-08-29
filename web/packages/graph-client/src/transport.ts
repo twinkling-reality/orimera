@@ -10,8 +10,8 @@
  *
  * **A failure carries its code, not its status.** The API answers every failure with
  * `{code, detail}`, and the code is the thing worth branching on: `unknown_reference` means the
- * same thing whether it arrived as a 404 from the evidence route or from the Selection
- * validator. Callers that switch on a number end up encoding the router.
+ * same thing whether it arrived as a 404 from the evidence route or from an identity commit.
+ * Callers that switch on a number end up encoding the router.
  *
  * **404 is not an error class of its own.** The API returns 404 for 'not there' and for "not
  * yours", deliberately and identically, so that the surface is not an existence oracle. A client
@@ -88,7 +88,13 @@ export class Transport {
     return this.#request('GET', path, query === undefined ? {} : { query });
   }
 
-  /** The URL of a resource, for an `<img src>` that the browser fetches itself. */
+  /**
+   * Where a resource lives, as a string. Used to make the request below, and read once as a
+   * label: `ResolvedEvidence.sourceKey` is the one caller outside `#request` and it says where an
+   * original came from rather than being fetched. Nothing loads bytes from this string, and
+   * nothing can: an `<img src>` pointed at one would arrive without the bearer header, which is
+   * why evidence is read as bytes through `getBytes`.
+   */
   url(path: string, query?: Record<string, string>): string {
     const url = new URL(`${this.#baseUrl}${path}`);
     for (const [key, value] of Object.entries(query ?? {})) url.searchParams.set(key, value);

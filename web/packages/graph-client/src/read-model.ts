@@ -324,8 +324,14 @@ export interface IslandRecord {
    * smoothed over, and a client cannot display what it does not carry.
    */
   readonly rung: ReconstructionRungRef | null;
-  /** How many of the region's captures have a recorded rung. A rung from two of sixteen is a
-   * weaker claim than one from all sixteen, and an interface showing them alike flattens that. */
+  /**
+   * How many of the region's captures stand behind the rung above. A rung from two of sixteen is
+   * a weaker claim than one from all sixteen, and an interface showing them alike flattens that.
+   *
+   * Zero whenever `rung` is null, which is not always the number of captures the server counted:
+   * the rung and the count are one statement and they stand or fall together, so a count beside
+   * no rung would be a measurement standing behind a claim that was never made.
+   */
   readonly rungCaptureCount: number;
 }
 
