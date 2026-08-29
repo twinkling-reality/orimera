@@ -10,8 +10,8 @@
  *
  * **A failure carries its code, not its status.** The API answers every failure with
  * `{code, detail}`, and the code is the thing worth branching on: `unknown_reference` means the
- * same thing whether it arrived as a 404 from the evidence route or from the Selection
- * validator. Callers that switch on a number end up encoding the router.
+ * same thing whether it arrived as a 404 from the evidence route or from an identity commit.
+ * Callers that switch on a number end up encoding the router.
  *
  * **404 is not an error class of its own.** The API returns 404 for 'not there' and for "not
  * yours", deliberately and identically, so that the surface is not an existence oracle. A client

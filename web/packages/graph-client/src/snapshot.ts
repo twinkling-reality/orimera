@@ -1,0 +1,262 @@
+/**
+ * The server's payload as the read model, with every gap stated.
+ *
+ * **The adapter is where the honesty lives.** The read model was designed against a fuller system
+ * than exists, and this file is the single auditable place where the difference is recorded.
+ * Every field the server cannot answer is listed in `adaptSnapshot` with the reason, because a
+ * zero that means 'not implemented' and a zero that means 'none' look identical in a user
+ * interface and only one of them is true.
+ *
+ * Nothing here knows the transport exists. The wire shapes come from `wire.ts` as types, so a
+ * test of this file needs a payload and no server.
+ */
+
+import { buildIslands, groupIslands, type IslandOf } from './islands.js';
+import type {
+  AnchorIdRef,
+  AssertionProducer,
+  AssertionView,
+  EntityIdRef,
+  EntityRecord,
+  EvidenceHandle,
+  GraphSnapshot,
+  HistoryEvent,
+  LinkState,
+  MatchProposalView,
+  OccurrenceRecord,
+} from './read-model.js';
+import { type AssertionPayload, type GraphPayload, type HistoryPayload, toMs } from './wire.js';
+
+/**
+ * Server payload to read model, with every gap stated.
+ *
+ * Four fields the read model asks for that the server cannot answer today. Each is set to the
+ * value that is TRUE rather than the value that looks complete, and each says why:
+ *
+ *   - `confidence`: null on every entity and 'low' on every occurrence link. A confirmed link is
+ *     a human decision and has no confidence, it has support, which is exactly what the read
+ *     model's own comment says. A match proposal DOES carry a band now, and it is a count rather
+ *     than a score: how many independent signals agree. A band derived from an uncalibrated
+ *     weighted sum would be a guess wearing a band's clothes, and no calibration data exists.
+ *   - `citingAnswerCount`: 0, and it means 'no answer is stored anywhere', not "no answer cites
+ *     this". The field exists because a tier 3 confirmation must state how many answers lose
+ *     their citation. Until answers are stored, a tier 3 confirmation cannot state it, and the
+ *     gate refuses tier 3 anyway.
+ *   - `anchorIds` on a proposal: the occurrence's own id is used as its anchor. An anchor is a
+ *     placed object in the Atlas and the placement is the client's, so this is the identity map
+ *     until a layout exists to ask.
+ *   - `status`: derived from what the server knows, and the mapping is exact rather than
+ *     approximate. A name is only ever written by an active `kind='user'` assertion, so an
+ *     entity with one is `user_asserted`. An entity with `merged_into` set is `merged_away`.
+ *     Everything else is `inferred_only`: it exists because a detector saw something and no
+ *     person has spoken about it. `needs_review` outranks both and means one thing: a proposal
+ *     about this entity is pending, from `pending_match_proposal` on the server, which is a
+ *     question the user has not answered rather than one that was ever asked. It is the review
+ *     queue's only filter, so an entity is in the queue exactly when a question about it is
+ *     waiting. It loses to `merged_away`, because an alias redirect is not something to review,
+ *     and it beats `user_asserted`, because a named person with an open question is precisely
+ *     what the queue is for; the provenance triad still shows that a person has spoken.
+ */
+export function adaptSnapshot(
+  payload: GraphPayload,
+  islandOf?: IslandOf,
+): GraphSnapshot {
+  const toIsland = islandOf ?? groupIslands(payload);
+  const entities: readonly EntityRecord[] = payload.entities.map(
+    (row): EntityRecord => ({
+      entityId: row.entity_id as EntityIdRef,
+      kind: row.entity_class as EntityRecord['kind'],
+      displayName: row.display_name,
+      status: entityStatus(row.merged_into, row.display_name, row.open_question_count),
+      occurrenceCount: row.occurrence_count,
+      // The islands this entity was seen in, each named ONCE. Sixteen captures of one visit are
+      // one island, and the length of this array is read as an island count by four surfaces:
+      // whether the Companion asks which places a name covers, whether the option pool offers
+      // that choice at all, the cross-island reach term the review queue is ordered by, and the
+      // island count a delete confirmation states out loud. None of them de-duplicates first, so
+      // a capture list mapped straight through told all four that a person photographed three
+      // times in one kitchen had been seen in three places.
+      islandIds: [...new Set(row.capture_ids.map(toIsland))],
+      firstSeenMs: toMs(row.first_seen),
+      lastSeenMs: toMs(row.last_seen),
+      confidence: null,
+      openQuestionCount: row.open_question_count,
+      citingAnswerCount: 0,
+      assertions: row.assertions.map(adaptAssertion),
+      // Empty because nothing writes a relation predicate yet, not because relations are ignored.
+      // The vocabulary seeds no predicate whose object is another entity.
+      relations: [],
+      // Empty because nothing writes a dispute yet. The read model carries the field because 5.4
+      // requires a contradicting inference to be recorded and surfaced, never applied.
+      contradictions: [],
+      history: row.history.map((event) =>
+        adaptHistory(event, payload.state_version),
+      ),
+      mergedInto: (row.merged_into as EntityIdRef | null) ?? null,
+    }),
+  );
+
+  const occurrences: readonly OccurrenceRecord[] = payload.occurrences.map(
+    (row): OccurrenceRecord => ({
+      occurrenceId: row.occurrence_id as OccurrenceRecord['occurrenceId'],
+      anchorId: row.occurrence_id as AnchorIdRef,
+      islandId: toIsland(row.capture_id),
+      kind: row.occurrence_class as OccurrenceRecord['kind'],
+      entityId: (row.entity_id as EntityIdRef | null) ?? null,
+      linkState: (row.link_state ?? 'proposed') as LinkState,
+      confidence: 'low',
+      evidence: [row.primary_span_id as EvidenceHandle],
+      capturedAtMs: toMs(row.captured_at),
+    }),
+  );
+
+  const matchProposals: readonly MatchProposalView[] = payload.proposals.map(
+    (row): MatchProposalView => ({
+      matchId: row.proposal_id,
+      entityId: row.entity_id as EntityIdRef,
+      candidateEntityId: null,
+      occurrenceIds: [row.occurrence_id as OccurrenceRecord['occurrenceId']],
+      anchorIds: [row.occurrence_id as AnchorIdRef],
+      islandIds: [],
+      // A COUNT, not a score. "Two independent signals agree" is a countable fact about the
+      // basis; a band read off an uncalibrated weighted sum would be a guess dressed as a
+      // measurement, and there is no calibration data because no evaluation has run.
+      confidence: bandFromModalityCount(readModalities(row.basis).length),
+      basisModalities: readModalities(row.basis),
+      evidence: row.support_span_ids as readonly EvidenceHandle[],
+      suppressedByRejection: row.suppressed_by_rejection,
+      // What this proposal carries that the user has not already refused for the pair, computed
+      // by the producer that knows. Null when nothing about the pair was refused before, which
+      // is the ordinary case rather than a missing value.
+      newModality: row.new_modality,
+    }),
+  );
+
+  return {
+    stateVersion: payload.state_version,
+    entities,
+    occurrences,
+    islands: buildIslands(payload, toIsland),
+    matchProposals,
+    neverSame: payload.never_same.map(
+      ([a, b]) => [a as EntityIdRef, b as EntityIdRef] as const,
+    ),
+    deletedEntityIds: payload.deleted_entity_ids as readonly EntityIdRef[],
+  };
+}
+
+/** The modalities a proposal was built from, from its recorded basis. Never invented. */
+function readModalities(
+  basis: Readonly<Record<string, unknown>>,
+): readonly string[] {
+  const declared = basis['modalities'];
+  return Array.isArray(declared)
+    ? declared.filter((m): m is string => typeof m === 'string')
+    : [];
+}
+
+/**
+ * The band a proposal is shown under, from how many independent signals corroborate it.
+ *
+ * Deliberately not derived from the score. `score` is `raw_score` in the epistemic sense: never
+ * rendered, never a threshold that decides a factual claim, and produced by weights that no
+ * evaluation has validated. How many signals agree is a fact that can be counted, and counting
+ * is the strongest honest statement available until there is calibration data.
+ */
+function bandFromModalityCount(count: number): 'low' | 'medium' | 'high' {
+  if (count >= 3) return 'high';
+  if (count === 2) return 'medium';
+  return 'low';
+}
+
+/**
+ * How a stored entity presents in the index's Status facet.
+ *
+ * `user_asserted` rather than `confirmed` for a named entity, and the distinction is the
+ * product's: a name is a thing a person said, and `confirmed` in this vocabulary is about a link
+ * having been agreed rather than about an entity having been named.
+ */
+function entityStatus(
+  mergedInto: string | null,
+  displayName: string | null,
+  openQuestionCount: number,
+): EntityRecord['status'] {
+  if (mergedInto !== null) return 'merged_away';
+  if (openQuestionCount > 0) return 'needs_review';
+  if (displayName !== null) return 'user_asserted';
+  return 'inferred_only';
+}
+
+/**
+ * One stored claim, with what produced it.
+ *
+ * `confidence` is null for `capture` and `user` because those do not have confidence, they have
+ * support, which is the read model's own wording. An inference could carry a band, and does not
+ * yet: the server records the model's qualitative band on the occurrence rather than on the
+ * assertion, and inventing one here from a score is exactly the thing epi-4 forbids.
+ */
+function adaptAssertion(row: AssertionPayload): AssertionView {
+  return {
+    assertionId: row.assertion_id as AssertionView['assertionId'],
+    kind: row.kind as AssertionView['kind'],
+    predicateKey: row.predicate_key,
+    status: row.status as AssertionView['status'],
+    objectValue: row.object_value,
+    supportEvidence: row.support_span_ids as readonly EvidenceHandle[],
+    producedBy: adaptProducer(row),
+    confidence: null,
+    assertedAtMs: toMs(row.asserted_at) ?? 0,
+    supersedes: (row.supersedes as AssertionView['supersedes']) ?? null,
+  };
+}
+
+function adaptProducer(row: AssertionPayload): AssertionProducer {
+  const by = row.produced_by['by'];
+  if (by === 'user') {
+    return { by: 'user', statedAtMs: toMs(row.asserted_at) ?? 0 };
+  }
+  if (by === 'pipeline') {
+    return {
+      by: 'pipeline',
+      runId: String(row.produced_by['run_id'] ?? ''),
+      // The model that produced it is on the pipeline event rather than on the assertion, so
+      // this is empty rather than guessed. A model ref that named the wrong model would be
+      // worse than one that names none.
+      modelRef: '',
+    };
+  }
+  if (by === 'external') {
+    const source = (row.produced_by['source'] ?? {}) as Record<string, unknown>;
+    return {
+      by: 'external',
+      url: String(source['url'] ?? ''),
+      retrievedAtMs: toMs(String(source['retrieved_at'] ?? '')) ?? 0,
+      snapshotHash: String(source['snapshot_sha256'] ?? ''),
+    };
+  }
+  return { by: 'capture', mediaKey: row.support_span_ids[0] ?? '' };
+}
+
+/**
+ * One identity decision, as the entity detail view renders it.
+ *
+ * `actor` is 'user' for every event this system writes, and that is a fact rather than a
+ * simplification: every function that writes an identity event takes an actor and there is no
+ * path by which the system writes one on its own. When automatic proposals exist, the event they
+ * write will be a `match_proposal` row rather than an identity event, and this will still be
+ * true.
+ */
+function adaptHistory(row: HistoryPayload, stateVersion: number): HistoryEvent {
+  return {
+    eventId: row.event_id,
+    type: row.event_type as HistoryEvent['type'],
+    actor: 'user',
+    atMs: toMs(row.created_at) ?? 0,
+    stateVersion,
+    // The verbatim utterance lives on the update proposal that produced the decision, and the
+    // identity event records the decision. Null rather than a paraphrase.
+    rawUtterance: null,
+    summaryKey: `identity.${row.event_type}`,
+    undoes: row.undoes,
+  };
+}

@@ -1,0 +1,172 @@
+import { describe, expect, it } from 'vitest';
+
+import { adaptSnapshot } from '../src/index.js';
+import type { GraphPayload } from '../src/index.js';
+import { GROUP, PAYLOAD } from './graph-payload.js';
+
+describe('the two zeroes that stopped being zeroes', () => {
+  /** The payload above, with one pending proposal about Julie. */
+  const withProposal: GraphPayload = {
+    ...PAYLOAD,
+    entities: PAYLOAD.entities.map((row, index) =>
+      index === 0 ? { ...row, open_question_count: 1 } : row,
+    ),
+    proposals: [
+      {
+        proposal_id: 'p1',
+        occurrence_id: 'o2',
+        entity_id: 'e1',
+        rank: 0,
+        outcome: 'surfaced',
+        basis: {
+          modalities: ['context_cooccurrence', 'context_place'],
+          extractor_versions: { context_signals: '1' },
+        },
+        new_modality: 'context_place',
+        suppressed_by_rejection: false,
+        support_span_ids: ['s2'],
+      },
+    ],
+  };
+
+  it('marks an entity with a pending question as needs_review, outranking its name', () => {
+    // A named person with an open question is precisely what the review queue is for. Losing the
+    // `user_asserted` badge while the question stands costs nothing: the provenance triad still
+    // shows that a person has spoken about this entity.
+    const snapshot = adaptSnapshot(withProposal);
+    const julie = snapshot.entities.find((entity) => entity.entityId === 'e1');
+    expect(julie?.displayName).toBe('Julie');
+    expect(julie?.status).toBe('needs_review');
+    expect(julie?.openQuestionCount).toBe(1);
+  });
+
+  it('keeps merged_away ahead of needs_review', () => {
+    // An alias redirect is not something to review. It is somewhere else to look.
+    const merged: GraphPayload = {
+      ...withProposal,
+      entities: withProposal.entities.map((row) =>
+        row.entity_id === 'e2' ? { ...row, open_question_count: 3 } : row,
+      ),
+    };
+    const snapshot = adaptSnapshot(merged);
+    expect(snapshot.entities.find((e) => e.entityId === 'e2')?.status).toBe('merged_away');
+  });
+
+  it('bands a proposal by how many signals agree, not by its score', () => {
+    // Two independent signals agreeing is a countable fact. A band read off an uncalibrated
+    // weighted sum would be a guess dressed as a measurement, and no evaluation has run.
+    const snapshot = adaptSnapshot(withProposal);
+    const proposal = snapshot.matchProposals[0];
+    expect(proposal?.basisModalities).toEqual(['context_cooccurrence', 'context_place']);
+    expect(proposal?.confidence).toBe('medium');
+    expect(proposal?.newModality).toBe('context_place');
+  });
+
+  it('leaves an entity with no pending question alone', () => {
+    // The guard against the rule widening. Every entity in the base payload has no open
+    // question, so nothing here may become needs_review.
+    const snapshot = adaptSnapshot(PAYLOAD);
+    expect(snapshot.entities.map((entity) => entity.status)).toEqual([
+      'user_asserted',
+      'merged_away',
+    ]);
+  });
+});
+
+describe('the snapshot adapter states what the server cannot answer', () => {
+  const snapshot = adaptSnapshot(PAYLOAD, (captureId) => `island:${captureId}` as never);
+
+  it('maps a named entity to user_asserted, because a name is a thing somebody said', () => {
+    const julie = snapshot.entities[0]!;
+    expect(julie.status).toBe('user_asserted');
+    expect(julie.displayName).toBe('Julie');
+    expect(julie.assertions[0]!.predicateKey).toBe('name_is');
+    expect(julie.assertions[0]!.producedBy).toEqual({ by: 'user', statedAtMs: expect.any(Number) });
+  });
+
+  it('maps a merged entity to merged_away and keeps the redirect', () => {
+    const merged = snapshot.entities[1]!;
+    expect(merged.status).toBe('merged_away');
+    expect(merged.mergedInto).toBe('e1');
+  });
+
+  it('carries the state version so a proposal can expire against it', () => {
+    expect(snapshot.stateVersion).toBe(7);
+  });
+
+  it('leaves an unlinked occurrence as proposed rather than inventing a link', () => {
+    expect(snapshot.occurrences[1]!.entityId).toBeNull();
+    expect(snapshot.occurrences[1]!.linkState).toBe('proposed');
+    expect(snapshot.occurrences[1]!.capturedAtMs).toBeNull();
+  });
+
+  it('asks the caller what an island is rather than deciding', () => {
+    expect(snapshot.entities[0]!.islandIds).toEqual(['island:c1', 'island:c2']);
+    expect(snapshot.occurrences[0]!.islandId).toBe('island:c1');
+  });
+
+  it('reports citingAnswerCount as zero because no answer is stored anywhere', () => {
+    // Documented in adaptSnapshot. Asserted so the day answers ARE stored, this fails and
+    // somebody has to decide rather than shipping a zero that has stopped being true.
+    expect(snapshot.entities[0]!.citingAnswerCount).toBe(0);
+  });
+});
+
+describe('a timestamp the client cannot read', () => {
+  it('becomes null rather than NaN, because NaN goes on to be rendered as a date', () => {
+    // `wire.ts` says of `toMs` that it is "never NaN", and this is that sentence. A NaN travels
+    // through every arithmetic comparison the layout solver and the timeline make without
+    // throwing, and comes out the far end as an Invalid Date beside a photograph. A null has to
+    // be handled by whoever received it.
+    const unreadable: GraphPayload = {
+      ...PAYLOAD,
+      entities: [{ ...PAYLOAD.entities[0]!, first_seen: 'the fourth of March', last_seen: null }],
+    };
+    expect(adaptSnapshot(unreadable).entities[0]!.firstSeenMs).toBeNull();
+  });
+});
+
+/**
+ * How many islands an entity was seen in, which is a count four surfaces act on.
+ *
+ * `entity.islandIds.length` decides whether the Companion asks which places a name covers
+ * (companion-runtime `confirmation.ts`), whether the option pool offers that choice at all
+ * (`pool.ts`), the cross-island reach term the review queue is ordered by (`value.ts`) and the
+ * island count a delete confirmation states out loud (world-index `proposals.ts`). None of them
+ * de-duplicates first, so this adapter has to.
+ */
+describe('an entity is counted once per island, not once per capture', () => {
+  /** Three photographs of one person in one kitchen. One island, seen three times. */
+  const threeInOneGroup: GraphPayload = {
+    ...PAYLOAD,
+    entities: [
+      { ...PAYLOAD.entities[0]!, occurrence_count: 3, capture_ids: ['c1', 'c2', 'c3'] },
+    ],
+    scene_groups: [{ ...GROUP, capture_ids: ['c1', 'c2', 'c3'] }],
+  };
+
+  it('reports one island for three captures of one scene group', () => {
+    expect(adaptSnapshot(threeInOneGroup).entities[0]!.islandIds).toEqual(['g1']);
+  });
+
+  it('still reports both islands for an entity that genuinely spans two', () => {
+    // The guard against the de-duplication collapsing islands that really do differ. An entity
+    // seen in the kitchen and at the harbour must keep reading as two places, or the reach term
+    // stops firing for exactly the entities it was written for.
+    const twoGroups: GraphPayload = {
+      ...threeInOneGroup,
+      scene_groups: [
+        { ...GROUP, capture_ids: ['c1', 'c2'] },
+        {
+          ...GROUP,
+          group_id: 'g2',
+          ordinal: 1,
+          capture_ids: ['c3'],
+          member_count: 1,
+          positioned_member_count: 1,
+        },
+      ],
+    };
+    expect(adaptSnapshot(twoGroups).entities[0]!.islandIds).toEqual(['g1', 'g2']);
+  });
+});
