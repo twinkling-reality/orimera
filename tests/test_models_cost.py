@@ -109,29 +109,44 @@ def test_the_request_digest_encoding_is_injective():
     This is the unframed idempotency key of ``orimera.ingest.stages`` a second time, and it gets
     the same answer: frame the encoding rather than rely on no payload ever spelling the tag.
 
+    There were two live forgeries, not one. ``__repr__`` is the other tag, and it is reachable
+    in the direction that matters: a JSON-legal payload spelling it writes the entry, and an
+    opaque object whose ``repr`` matches then reads it. The cache is consulted before anything
+    is serialised, so nothing on the hit path ever notices the value was not JSON.
+
     The last pair is the one that says the framing is real rather than a longer tag to guess. A
     payload that spells the new tag encodes one wrapper deeper than the wrapper itself, so there
     is no depth at which the two meet.
     """
+
+    class Opaque:
+        """Not JSON serialisable, so it reaches the encoder's last branch."""
+
+        def __repr__(self) -> str:
+            return "0.0"
+
     confusable = [
         {"temperature": 0.0},
         {"temperature": {"__float__": "0.0"}},
         {"temperature": "0.0"},
         {"temperature": [0.0]},
+        {"temperature": Opaque()},
         {"temperature": {"__repr__": "0.0"}},
         {"temperature": 0},
         {"temperature": False},
         {"temperature": {"__map__": {"__float__": "0.0"}}},
     ]
     digests = [request_digest(payload) for payload in confusable]
+    # Reported with the digest, because two colliding payloads can render identically: an
+    # instance whose repr is "0.0" prints exactly like the float it collides with.
     collisions = [
-        payload
+        f"{payload!r} -> {digest[:12]}"
         for payload, digest in zip(confusable, digests, strict=True)
         if digests.count(digest) > 1
     ]
     assert not collisions, (
-        f"two request payloads share one cache digest: {collisions}. The second would be served "
-        "the first one's stored response."
+        f"request payloads sharing one cache digest: {collisions}. Each would be served "
+        "another payload's stored response."
     )
 
 

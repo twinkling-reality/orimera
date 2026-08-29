@@ -213,6 +213,37 @@ def test_a_top_level_scalar_is_refused_as_the_wrong_type_and_not_as_unparseable(
         extract_json_object('"a waterfall"')
 
 
+def test_an_object_inside_an_array_behind_prose_is_not_a_candidate():
+    """One word in front of the array is enough to slip past a whole-body type check.
+
+    The scanner's own contract is "every TOP-LEVEL balanced object", and an array element is not
+    top level. It found the object anyway, so a reply that was an array was accepted as an object
+    whenever the model wrote anything at all before it, which is the shape this whole module
+    exists for.
+    """
+    body = 'Let me think about this. My answer: [{"scene_description": "A waterfall."}]'
+    assert json_object_candidates(body) == []
+    with pytest.raises(SchemaViolationError, match="array"):
+        extract_json_object(body)
+
+
+def test_an_array_of_scalars_in_prose_does_not_hide_a_real_answer():
+    """The rule is about where an object sits, not about a bracket appearing in the body.
+
+    Transcribed text and scratch work both contain brackets. An object outside every array is
+    still the answer, and a rule that refused on the presence of a bracket would break the case
+    the scanner was written for.
+    """
+    body = 'The tags were [1, 2] and the answer is {"scene_description": "A waterfall."}'
+    assert extract_json_object(body)["scene_description"] == "A waterfall."
+
+
+def test_a_bracket_in_transcribed_text_is_not_an_array():
+    """A region that balances but does not parse is prose, exactly as it is for braces."""
+    body = 'The sign reads [OPEN which never closes properly] so {"objects": ["sign"]}'
+    assert extract_json_object(body)["objects"] == ["sign"]
+
+
 def test_an_object_that_contains_an_array_is_untouched():
     """The other side of the rule. The array has to be at the top level for this to fire.
 

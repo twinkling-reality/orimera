@@ -252,22 +252,33 @@ def response_format_for(model: type[BaseModel], *, name: str | None = None) -> d
     return response_format_for_schema(strict_json_schema(model), name or model.__name__)
 
 
-def json_object_candidates(content: str) -> list[dict[str, Any]]:
-    """Every top-level balanced ``{...}`` in ``content`` that parses as a JSON object.
+def _json_array_spans(content: str) -> list[tuple[int, int]]:
+    """Every balanced ``[...]`` in ``content`` that parses as a JSON array, as ``(start, end)``.
 
-    The scan is deliberately not a regex and not a naive brace counter: brace counting that
-    ignores quoting mis-parses any JSON string containing a brace, and transcribed signage will
-    eventually contain one.
-
-    Two rules keep the count honest.
-
-    *   A region that balances **and** parses is one candidate, and the scan resumes after its
-        closing brace. Objects nested inside an answer are part of that answer, not rivals to it.
-    *   A region that balances but does not parse is prose that happened to contain braces, so
-        the scan resumes one character in rather than skipping the region. ``the sign read
-        {OPEN} until {"a": 1}`` must not lose the object that follows the noise.
+    A region that balances but does not parse is prose that happened to contain a bracket, and
+    is not a span, exactly as it is not a candidate for braces. ``the sign reads [OPEN which
+    never closes properly]`` is text.
     """
-    found: list[dict[str, Any]] = []
+    spans: list[tuple[int, int]] = []
+    index = content.find("[")
+    while index != -1:
+        end = _balanced_end(content, index, opening="[", closing="]")
+        if end is not None:
+            try:
+                parsed = json.loads(content[index:end])
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, list):
+                spans.append((index, end))
+                index = content.find("[", end)
+                continue
+        index = content.find("[", index + 1)
+    return spans
+
+
+def _object_spans(content: str) -> list[tuple[int, dict[str, Any]]]:
+    """Every balanced ``{...}`` in ``content`` that parses, with the offset it starts at."""
+    found: list[tuple[int, dict[str, Any]]] = []
     index = content.find("{")
     while index != -1:
         end = _balanced_end(content, index)
@@ -277,11 +288,39 @@ def json_object_candidates(content: str) -> list[dict[str, Any]]:
             except json.JSONDecodeError:
                 parsed = None
             if isinstance(parsed, dict):
-                found.append(parsed)
+                found.append((index, parsed))
                 index = content.find("{", end)
                 continue
         index = content.find("{", index + 1)
     return found
+
+
+def json_object_candidates(content: str) -> list[dict[str, Any]]:
+    """Every **top-level** balanced ``{...}`` in ``content`` that parses as a JSON object.
+
+    The scan is deliberately not a regex and not a naive brace counter: brace counting that
+    ignores quoting mis-parses any JSON string containing a brace, and transcribed signage will
+    eventually contain one.
+
+    Three rules keep the count honest.
+
+    *   A region that balances **and** parses is one candidate, and the scan resumes after its
+        closing brace. Objects nested inside an answer are part of that answer, not rivals to it.
+    *   A region that balances but does not parse is prose that happened to contain braces, so
+        the scan resumes one character in rather than skipping the region. ``the sign read
+        {OPEN} until {"a": 1}`` must not lose the object that follows the noise.
+    *   An object inside a JSON array is **not** top level and is not a candidate. This word was
+        in the sentence above before it was in the code: the scan started at the first ``{``
+        wherever it sat, so ``[{"a": 1}]`` yielded ``{"a": 1}`` and a reply that was an array was
+        read as an object. Nothing in the body says which element of an array is the answer, and
+        taking the first is the same guess this scanner was rewritten to stop making.
+    """
+    arrays = _json_array_spans(content)
+    return [
+        parsed
+        for start, parsed in _object_spans(content)
+        if not any(begin < start < end for begin, end in arrays)
+    ]
 
 
 def extract_json_object(content: str) -> dict[str, Any]:
@@ -321,6 +360,14 @@ def extract_json_object(content: str) -> dict[str, Any]:
             )
 
     candidates = json_object_candidates(content)
+    if not candidates and _object_spans(content) and _json_array_spans(content):
+        raise SchemaViolationError(
+            "the response body carries objects, and every one of them is an element of a JSON "
+            "array. An array element is not the answer: the reply at that point was an array, "
+            "and nothing in the body says which element to take. Strict mode needs a top-level "
+            f"object. Body was {content[:300]!r}",
+            errors=("<root>: the reply is not of type 'object'",),
+        )
     if not candidates:
         raise StructuredOutputError(
             "the response body contained no parseable JSON object. Naked prose never enters "
@@ -390,8 +437,15 @@ def validate_against_schema(
     )
 
 
-def _balanced_end(content: str, start: int) -> int | None:
-    """Index just past the ``}`` that closes the ``{`` at ``start``, or None if unbalanced."""
+def _balanced_end(
+    content: str, start: int, *, opening: str = "{", closing: str = "}"
+) -> int | None:
+    """Index just past the bracket closing the one at ``start``, or None if unbalanced.
+
+    Quote aware, because brace counting that ignores quoting mis-parses any JSON string
+    containing a brace and transcribed signage will eventually contain one. The same is true of
+    a square bracket, which is why the pair is a parameter rather than two copies of this.
+    """
     depth = 0
     in_string = False
     escaped = False
@@ -407,9 +461,9 @@ def _balanced_end(content: str, start: int) -> int | None:
             continue
         if char == '"':
             in_string = True
-        elif char == "{":
+        elif char == opening:
             depth += 1
-        elif char == "}":
+        elif char == closing:
             depth -= 1
             if depth == 0:
                 return index + 1
