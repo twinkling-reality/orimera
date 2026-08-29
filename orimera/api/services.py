@@ -33,8 +33,9 @@ from typing import Final
 from orimera.api.authorisation import TokenDirectory, load_token_directory
 from orimera.db.session import DATABASE_URL_ENV, Database
 from orimera.ingest.vision import NebiusVisionModel
-from orimera.ingest.worker import DerivativeWorker
+from orimera.ingest.worker import DerivativeWorker, lease_seconds_for
 from orimera.models.client import ModelClient
+from orimera.models.manifest import Role
 from orimera.store.base import ContentAddressedStore
 from orimera.store.local import LocalContentAddressedStore
 
@@ -128,6 +129,17 @@ class Services:
         dependency and an API image that carries it is a different image. An uploaded photograph
         is therefore rung 4 until a reconstruction pass runs, which ``warnings`` states rather
         than leaves to be discovered.
+
+        **The lease is computed here because this is the only place that can compute it.** How
+        long a claimant may be silent depends on the longest model call it can be inside, and
+        that is a property of the client rather than of the role: this builds ``ModelClient()``
+        with a 180 second timeout and one attempt while ``orimera-ingest`` builds one with three,
+        so a lease typed as a constant would be right for one of them. The same expression
+        decides whether there is a vision model at all, so the two cannot disagree: no client
+        means no vision model and the floor, and that is a stated deployment rather than an
+        oversight. Reading a budget off the vision model instead would mean widening a protocol
+        whose whole point is that the pipeline needs two things from a model, and would break
+        every fake in the suite at runtime.
         """
         if not self.runs_derivative_worker:
             return None
@@ -136,6 +148,9 @@ class Services:
             self.store,
             self.tokens.workspaces,
             vision=NebiusVisionModel(self.model_client) if self.model_client else None,
+            lease_seconds=lease_seconds_for(
+                self.model_client.worst_case_seconds(Role.VISION) if self.model_client else None
+            ),
         )
 
 

@@ -598,6 +598,48 @@ def test_a_skipped_job_is_not_retried_before_its_cooldown(purged):
     ), "a blob something else holds was re-examined immediately, which is a spin"
 
 
+def test_a_deferred_job_spends_an_attempt_and_is_reported_once_it_has_spent_them_all(
+    purged, monkeypatch
+):
+    """`MAX_ATTEMPTS` bounds CLAIMS, not failures, and a deferral is a claim.
+
+    The comment above it used to say a target that fails this many times will not succeed on the
+    next identical attempt. A deferred job's next attempt is not identical: it was deferred
+    because another live capture, possibly in another workspace, holds those exact bytes, and
+    that changes when the other capture is deleted. So the bound can be reached by a job that
+    never broke, and what makes that acceptable rather than a silent incompletion is that the
+    count is reported. This holds both halves.
+    """
+    capture_id = purged.rows("select capture_id from capture")[0]["capture_id"]
+    blob = BlobId(bytes(purged.rows("select blob_sha256 from capture")[0]["blob_sha256"]))
+    # A second workspace holds the same bytes for the whole of this test, so every pass defers.
+    purged.repository.connection.execute(
+        "insert into capture (workspace_id, blob_sha256) values (%s, %s)",
+        (uuid.uuid4(), blob.digest),
+    )
+    purged.tombstone_the_capture(capture_id)
+    monkeypatch.setattr(queue, "RETRY_AFTER", dt.timedelta(0))
+
+    seen = []
+    for _ in range(queue.MAX_ATTEMPTS + 2):
+        outcome = purged.worker().drain()
+        seen.append(outcome.skipped)
+    row = purged.rows(
+        "select state, attempts from purge_job where target_kind = 'blob'"
+    )[0]
+    assert row["state"] == "skipped", "nothing here failed; the bytes are still held"
+    assert row["attempts"] == queue.MAX_ATTEMPTS, (
+        "a deferral has to spend an attempt, or a permanently held blob is re-examined for ever"
+    )
+    assert seen[-1] == 0, "the job at the bound was claimed again"
+
+    assert purged.worker().drain().exhausted == 1, (
+        "a job that has used every attempt while never failing is invisible, and its tombstone "
+        "is incomplete with nothing saying so"
+    )
+    assert purged.store.exists(blob), "the bytes are still held, which is why it kept deferring"
+
+
 # -- correction 4: completion asks whether the deletion happened ------------------------------
 
 

@@ -24,10 +24,19 @@ at the end of a directory. Inside the batch, so continuity search appears in the
 as the stage it is: left out, a watched upload would stop after entity indexing and finish with
 no account of the gap.
 
+**A claim is a lease this worker keeps saying it still holds.** It beats before every capture and
+before ``run_continuity``, so the longest a job can be silent while alive is one gap: a rendition,
+a vision call, a depth forward, and for the last gap the two continuity passes as well. When a
+beat answers False the lease has been taken, and this worker then does nothing at all to that job:
+it does not finish it and it does not close its batch, because the worker that took the lease owns
+both. Measured without that check, with two real processes: two terminal events for one batch
+4.5 seconds apart, `succeeded` then `failed`, the second contradicting the first.
+
 **One thread, and it says so.** This is a synchronous worker over a synchronous driver, polling
 one indexed query. That is right for a demonstration with one person uploading, and it is not a
-job system: there is no reclaim of a dead worker's row, no backoff schedule and no dead-letter
-queue. The first of those is R20 on the defect register with what a real one needs.
+job system: there is no backoff schedule and no dead-letter queue, and the only recovery for a
+job that has stranded :data:`~orimera.ingest.derivative_queue.MAX_CLAIMS` times is to fail it so
+its batch can close.
 """
 
 from __future__ import annotations
@@ -49,12 +58,53 @@ from orimera.ingest.vision import VisionModel
 from orimera.reconstruction import DepthModel
 from orimera.store.base import ContentAddressedStore
 
-__all__ = ["DerivativeWorker", "JobOutcome"]
+__all__ = ["MINIMUM_LEASE_SECONDS", "DerivativeWorker", "JobOutcome", "lease_seconds_for"]
 
 #: How often an idle worker asks again. Slow enough that an idle instance costs one cheap
 #: indexed query per workspace every two seconds, fast enough that an upload's remaining stages
 #: begin while the person who uploaded it is still watching.
 _POLL_SECONDS: Final = 2.0
+
+#: The lease when there is no model call in the gap between two beats, and the floor under every
+#: computed one. It is a stated floor rather than an accident: an instance with no
+#: ``NEBIUS_API_KEY`` runs a worker with ``vision=None``, which ``Services.warnings`` describes as
+#: an ordinary configuration, and the model budget that sizes every other lease does not exist
+#: there.
+#:
+#: Measured on this machine against a 200-photograph corpus with no vision model and no depth
+#: model, which is exactly that deployment: the largest single capture gap was 0.059 seconds, and
+#: the last gap, which also carries ``run_continuity`` over the whole corpus, was 0.033 seconds.
+#: Sixty seconds is three orders of magnitude above the thing it bounds, and it is what recovery
+#: costs when there is nothing slow to wait for.
+MINIMUM_LEASE_SECONDS: Final = 60.0
+
+
+def lease_seconds_for(vision_budget_seconds: float | None) -> float:
+    """How long a claimant may be silent, given the model budget in one gap between beats.
+
+    ``None`` means there is no vision model, which is a configuration rather than a fault, and
+    the answer is :data:`MINIMUM_LEASE_SECONDS`.
+
+    Otherwise the budget is doubled. The gap a lease has to cover is a rendition decode, a vision
+    walk, a depth forward and, in the last gap, ``run_continuity``, and exactly one of those has a
+    timeout. The second half is therefore an allowance for the local work rather than a bound on
+    it, which is why the claim token exists: a lease that turns out to be too short costs one
+    duplicated vision call, not two terminal events. The number falls the day the worker's client
+    is given a measured timeout, because it is computed from that client rather than typed.
+    """
+    if vision_budget_seconds is None:
+        return MINIMUM_LEASE_SECONDS
+    return max(MINIMUM_LEASE_SECONDS, 2.0 * vision_budget_seconds)
+
+
+class _LeaseLost(Exception):
+    """A beat said this worker no longer holds the job. Not an error: an ordinary outcome.
+
+    Private, and it never leaves this module. It exists so the beat can be one line inside the
+    capture loop rather than a return value every caller has to remember to test, and it is
+    caught before the general handler so that a lost lease is never recorded as a job failure on
+    a row this worker no longer owns.
+    """
 
 
 @dataclass
@@ -67,6 +117,15 @@ class JobOutcome:
     failed: int = 0
     cancelled: int = 0
     errors: list[str] = field(default_factory=list)
+    #: This worker's lease was taken while it held the job, so another worker owns the job and
+    #: the batch. A separate fact from ``failed``: nothing about the work went wrong here, and
+    #: the counts above describe captures this worker computed that another worker may compute
+    #: again.
+    lease_lost: bool = False
+    #: This job was ended by :func:`~orimera.ingest.derivative_queue.abandon` rather than run: it
+    #: had used every claim it is allowed. A third fact again, and the one that says a batch was
+    #: closed by a worker that never processed a single one of its captures.
+    abandoned: bool = False
 
     @property
     def captures(self) -> int:
@@ -86,7 +145,21 @@ class DerivativeWorker:
         depth: DepthModel | None = None,
         name: str = "derivatives",
         poll_seconds: float = _POLL_SECONDS,
+        lease_seconds: float = MINIMUM_LEASE_SECONDS,
     ) -> None:
+        """``lease_seconds`` is a value rather than something read off the vision model.
+
+        The protocol in :mod:`orimera.ingest.vision` is ``model_id`` and ``observe``, and it stays
+        that way: widening it would break every fake in the suite at runtime rather than at lint
+        time, since nothing here type-checks. The one place that can compute a lease is the one
+        that holds a :class:`~orimera.models.client.ModelClient` and knows whether there is one at
+        all, which is :mod:`orimera.api.services`. It calls :func:`lease_seconds_for`.
+
+        The default is the floor, which is exactly right for a worker with no vision model and
+        too short for one with a slow model and a caller that decided nothing. Too short is
+        survivable and says so: the claim token turns it into one duplicated call and a
+        ``lease_lost`` outcome, rather than into two workers closing one batch.
+        """
         self._database = database
         self._store = store
         self._workspaces = workspaces
@@ -94,6 +167,7 @@ class DerivativeWorker:
         self._depth = depth
         self._name = name
         self._poll_seconds = poll_seconds
+        self._lease_seconds = lease_seconds
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._last_error: str | None = None
@@ -113,6 +187,16 @@ class DerivativeWorker:
         This is the whole of the worker's work, factored out of the loop so that a test drives it
         directly rather than starting a thread and waiting. A thread that has to be waited on is
         a test that is slow when it passes and flaky when it does not.
+
+        **The abandon pass runs when there is nothing left to claim**, which is where it belongs
+        rather than being convenient: a job that has used every claim is invisible to
+        :func:`~orimera.ingest.derivative_queue.claim` for ever and holds
+        ``job_one_live_job_per_batch`` against its batch while it sits there, so nothing else can
+        ever be queued for that batch and the client watching it never gets a terminal event.
+        What this does NOT cover is an instance running no worker at all, which
+        ``ORIMERA_DERIVATIVE_WORKER=off`` makes a real deployment: there, nothing abandons
+        anything, and the note in ``Services.warnings`` about a queue drained elsewhere is the
+        statement of it.
         """
         outcomes: list[JobOutcome] = []
         for workspace_id in sorted(self._workspaces):
@@ -127,6 +211,7 @@ class DerivativeWorker:
                     if outcome is None:
                         break
                     outcomes.append(outcome)
+                outcomes.extend(self._abandon_stranded(connection, repository))
         return outcomes
 
     def start(self) -> None:
@@ -204,29 +289,40 @@ class DerivativeWorker:
         upload in the instance, which is a much worse failure than the one it is reacting to.
         """
         workspace_id = repository.workspace_id
-        claimed = derivative_queue.claim(connection, workspace_id, worker=self._name)
+        claimed = derivative_queue.claim(
+            connection, workspace_id, worker=self._name, lease_seconds=self._lease_seconds
+        )
         if claimed is None:
             return None
         outcome = JobOutcome(job_id=claimed.job_id, batch_id=claimed.batch_id)
         try:
             self._run_job(repository, claimed, outcome)
+        except _LeaseLost:
+            # **Withdraw, and touch nothing.** Another worker holds this job and this batch now.
+            # Writing either would be the second opinion the token exists to prevent.
+            outcome.lease_lost = True
+            return outcome
         except Exception as exc:
             outcome.errors.append(f"{type(exc).__name__}: {exc}")
-            derivative_queue.finish(
+            held = derivative_queue.finish(
                 connection,
                 workspace_id,
                 job_id=claimed.job_id,
                 state="failed",
+                claim_token=claimed.claim_token,
                 error="; ".join(outcome.errors)[:2000],
             )
+            if not held:
+                outcome.lease_lost = True
+                return outcome
             # **failed, and not what the per-capture counts happen to say.** The counts describe
             # the captures this job reached; a raise outside that loop, in the corpus-wide pass
             # or before the loop began, leaves them at zero or at whatever it got to, and
             # `outcome_for(0, 0)` is "succeeded". A batch that closed succeeded after a job
             # failed would tell the person watching that their upload finished cleanly.
-            self._close_batch(repository, claimed.batch_id, outcome, status="failed")
+            self._close_batch(repository, claimed.batch_id, "failed")
             return outcome
-        derivative_queue.finish(
+        held = derivative_queue.finish(
             connection,
             workspace_id,
             job_id=claimed.job_id,
@@ -234,10 +330,43 @@ class DerivativeWorker:
             # deletion path working. A job that was entirely deletions is cancelled, which
             # is a third fact and the column already has a word for it.
             state=self._job_state(outcome),
+            claim_token=claimed.claim_token,
             error="; ".join(outcome.errors)[:2000] or None,
         )
-        self._close_batch(repository, claimed.batch_id, outcome)
+        if not held:
+            # The lease went between the last beat and this write. The job is somebody else's and
+            # so is its terminal event.
+            outcome.lease_lost = True
+            return outcome
+        self._close_batch(
+            repository,
+            claimed.batch_id,
+            IntakeBatch.outcome_for(succeeded=outcome.succeeded, failed=outcome.failed),
+        )
         return outcome
+
+    def _abandon_stranded(
+        self, connection: psycopg.Connection, repository: IngestRepository
+    ) -> list[JobOutcome]:
+        """End the jobs that have used every claim, and close the batches waiting on them."""
+        outcomes: list[JobOutcome] = []
+        while not self._stop.is_set():
+            stranded = derivative_queue.abandon(connection, repository.workspace_id)
+            if stranded is None:
+                return outcomes
+            outcomes.append(
+                JobOutcome(
+                    job_id=stranded.job_id,
+                    batch_id=stranded.batch_id,
+                    abandoned=True,
+                    errors=[
+                        f"{stranded.job_id}: claimed {stranded.attempts} times and stranded "
+                        "every time"
+                    ],
+                )
+            )
+            self._close_batch(repository, stranded.batch_id, "failed")
+        return outcomes
 
     def _run_job(
         self,
@@ -249,6 +378,9 @@ class DerivativeWorker:
             repository, self._store, vision=self._vision, depth=self._depth
         )
         for capture_id in claimed.capture_ids:
+            # Before the capture rather than after it, so the lease covers the work that follows
+            # the beat rather than the work that preceded it.
+            self._beat(repository, claimed)
             result = pipeline.ingest_derivatives(capture_id, batch_id=claimed.batch_id)
             if result.tombstoned:
                 outcome.cancelled += 1
@@ -262,7 +394,27 @@ class DerivativeWorker:
         # captures and cannot be computed from one. Inside the batch so it appears in the
         # formation stream as the stage it is. The same call `orimera-ingest` makes at the end
         # of a directory, and the same one, so the two cannot drift.
+        #
+        # The last beat, and the only one whose gap carries two passes over the whole corpus
+        # rather than one photograph. Nothing bounds how long those take; see `lease_seconds_for`.
+        self._beat(repository, claimed)
         run_continuity(repository, batch_id=claimed.batch_id)
+
+    def _beat(
+        self, repository: IngestRepository, claimed: derivative_queue.QueuedDerivatives
+    ) -> None:
+        """Say this worker is still here, and stop the job when the answer is that it is not."""
+        if not derivative_queue.heartbeat(
+            repository.connection,
+            repository.workspace_id,
+            job_id=claimed.job_id,
+            claim_token=claimed.claim_token,
+            lease_seconds=self._lease_seconds,
+        ):
+            raise _LeaseLost(
+                f"job {claimed.job_id} was reclaimed while this worker held it; withdrawing "
+                "without finishing it and without closing its batch"
+            )
 
     @staticmethod
     def _job_state(outcome: JobOutcome) -> str:
@@ -274,27 +426,25 @@ class DerivativeWorker:
 
     @staticmethod
     def _close_batch(
-        repository: IngestRepository,
-        batch_id: uuid.UUID | None,
-        outcome: JobOutcome,
-        *,
-        status: str | None = None,
+        repository: IngestRepository, batch_id: uuid.UUID | None, status: str
     ) -> None:
         """Close the watched intake with what happened, which is what ends the stream.
 
-        ``status`` overrides the counts, and exists for the one case they cannot describe: a job
-        that raised outside the per-capture loop, where the counts are whatever the loop reached
-        before the raise, or zero, and ``outcome_for(0, 0)`` is "succeeded".
+        The caller computes the status rather than handing over counts, because two of the three
+        callers have no counts to hand over: a job that raised outside the per-capture loop
+        reached whatever the loop reached, or zero, and ``outcome_for(0, 0)`` is "succeeded", and
+        an abandoned job was never run by this worker at all.
 
         A capture the user deleted mid-flight counts as neither succeeded nor failed here: it
         was withdrawn. Counting it as a failure would put a red state in front of somebody who
         had just pressed delete and got exactly what they asked for, and the terminal event
         already tells the truth about what is left: ``photographsAvailable`` counts live
         captures, so a batch whose every photograph was deleted ends as ready with none.
+
+        ``IntakeBatch.close`` refuses a batch that is not ``running``, so this is safe to call
+        for a batch some other worker has already closed. It is the second guard rather than the
+        first: the token on ``finish`` is what stops this being reached at all.
         """
         if batch_id is None:
             return
-        IntakeBatch(repository=repository, batch_id=batch_id).close(
-            status
-            or IntakeBatch.outcome_for(succeeded=outcome.succeeded, failed=outcome.failed)
-        )
+        IntakeBatch(repository=repository, batch_id=batch_id).close(status)

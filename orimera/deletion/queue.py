@@ -18,16 +18,22 @@ The only recovery was writing a second tombstone for the same capture, which no 
 It is now re-claimable, bounded by :data:`MAX_ATTEMPTS` so a permanently broken target reports
 rather than spins.
 
-**And ``running`` is reclaimed, which the derivative queue's is deliberately not.** The
-difference is what a re-run costs. Every step here is idempotent and cheap: the advisory lock
-serialises two purgers on one object, ``purge`` returns False when the object is already absent,
-``mark_purged`` is a conditional UPDATE, and the predicate is re-asked before anything is
-destroyed. So a second worker taking a stranded row does the safe thing by construction. That is
-not true of a derivative job, whose stages can call a model, which is why R20 stays open there
-and is closed here. What a stranded row leaves without this is worse than "work not done":
-measured, a crash between the store unlink and the COMMIT leaves the bytes gone, the ``blob``
-row saying they are live, and a ``storage_key`` pointing at an object that is not there, which
-is the exact inverse of what 0001's stub design exists to produce.
+**And ``running`` is reclaimed here, on a timestamp, which the derivative queue may not do.**
+Both queues reclaim now; the shapes differ and the difference is what a re-run costs. Every step
+here is idempotent and cheap: the advisory lock serialises two purgers on one object, ``purge``
+returns False when the object is already absent, ``mark_purged`` is a conditional UPDATE, and the
+predicate is re-asked before anything is destroyed. So a second worker taking a row a live purger
+is still working on does the safe thing by construction, and ``attempted_at`` alone is a good
+enough signal. A derivative job's expensive step is a paid model call with a per-request nonce
+and no caching, so a reclaim of a LIVE claimant there costs money and can produce two terminal
+events for one batch; that queue therefore carries a lease the claimant renews and a token every
+write of its own is conditional on. Same defect, two costs, two shapes, and
+:mod:`orimera.ingest.derivative_queue` is where the other one is explained.
+
+What a stranded row leaves without this is worse than "work not done": measured, a crash between
+the store unlink and the COMMIT leaves the bytes gone, the ``blob`` row saying they are live, and
+a ``storage_key`` pointing at an object that is not there, which is the exact inverse of what
+0001's stub design exists to produce.
 """
 
 from __future__ import annotations
@@ -59,10 +65,23 @@ __all__ = [
 #: thing releasing it.
 RETRY_AFTER: Final = dt.timedelta(minutes=15)
 
-#: How many times a job may be claimed before it stops being re-claimed. A target that fails this
-#: many times is not going to succeed on the next identical attempt, and a queue that retries it
-#: for ever hides it behind its own noise. It stays ``failed`` with its ``last_error``, and
-#: `orimera-purge` reports how many are in that state rather than leaving it to be discovered.
+#: How many times a job may be CLAIMED before it stops being re-claimed. Claimed, not failed, and
+#: the distinction is the correction: :func:`claim_purge` increments ``attempts`` on every claim
+#: including one that ends ``skipped``, and a skipped job's next attempt is NOT identical to its
+#: last. It was deferred because another live capture, possibly in another workspace, still holds
+#: those exact bytes, and that is a fact about the world which changes when that capture is
+#: deleted. So the bound is on how many times this queue will look at a job, not on how many
+#: times a target has broken.
+#:
+#: **The comment was corrected and the behaviour was left, which is the choice worth stating.**
+#: Not charging a deferral would mean a blob some other workspace keeps for ever is re-examined
+#: every fifteen minutes for ever, which is the spin this bound exists to stop. Charging it means
+#: a long-held blob can use its eight looks and stop being examined while its tombstone is still
+#: incomplete, and the reason that is acceptable is that it is VISIBLE:
+#: :func:`orimera.deletion.worker._exhausted` counts every non-``done`` job at the bound,
+#: deferrals included, and `orimera-purge` prints "job(s) have used every attempt and will not be
+#: retried". A bound that is reported is a decision; the same bound, unreported, would be the
+#: silent incompletion corrections 3 and 13 were both about.
 MAX_ATTEMPTS: Final = 8
 
 #: The kinds this worker knows how to destroy. `purge_job.target_kind` also permits `embedding`
@@ -155,8 +174,15 @@ def claim_purge(
     oldest attempt, so a fresh deletion is never queued behind a blob something else has been
     holding for a week.
 
-    ``running`` is in that list, and the module docstring says why it is safe here and not in the
-    derivative queue. ``done`` is the only terminal state.
+    ``running`` is in that list, and the module docstring says why a timestamp is enough to
+    reclaim it here and why the derivative queue needs a lease and a token for the same job.
+    ``done`` is the only terminal state.
+
+    **The reclaim arm is not served by ``purge_job_queue_idx``**, which migration 0013 left
+    partial on ``state in ('queued', 'skipped')``. Measured with ``enable_seqscan`` off: the plan
+    is a bitmap scan on the unique constraint's index with the state test as a filter. That is a
+    cost rather than a defect at this queue's size, and it is said here rather than left for
+    somebody to infer from the index definition that the predicate is covered.
     """
     row = connection.execute(
         "update purge_job set state = 'running', attempts = attempts + 1, "
