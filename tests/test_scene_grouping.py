@@ -126,8 +126,8 @@ def test_grouping_never_creates_an_entity(grouped):
     entity, and an inference drawn from a photograph of a signpost is not one.
     """
     run_scene_grouping(grouped)
-    assert grouped.count("entity") == 0
-    assert grouped.count("entity_link") == 0
+    assert grouped.rows_in_schema("entity") == 0
+    assert grouped.rows_in_schema("entity_link") == 0
     kinds = {
         row["kind"]
         for row in grouped.connection.execute("select kind from derived_artifact").fetchall()
@@ -145,14 +145,14 @@ def test_grouping_never_creates_an_entity(grouped):
             "insert into entity (workspace_id, class, display_name) values (%s, 'place', %s)",
             (grouped.workspace_id, "Gullfoss"),
         )
-    assert grouped.count("entity") == 0
+    assert grouped.rows_in_schema("entity") == 0
 
 
 def test_running_grouping_twice_writes_nothing_new(grouped):
     run_scene_grouping(grouped)
-    before = grouped.count("derived_artifact")
+    before = grouped.rows_in_schema("derived_artifact")
     run_scene_grouping(grouped)
-    assert grouped.count("derived_artifact") == before
+    assert grouped.rows_in_schema("derived_artifact") == before
 
 
 def test_grouping_is_recorded_in_the_ledger_as_a_proposal_event(grouped):

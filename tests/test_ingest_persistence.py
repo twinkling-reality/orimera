@@ -28,6 +28,7 @@ import ast
 import copy
 import dataclasses
 import datetime as dt
+import inspect
 import json
 import pathlib
 import uuid
@@ -276,7 +277,7 @@ def test_an_unlocated_person_is_asserted_but_gets_no_occurrence(ingested):
     the same photograph under one identity key.
     """
     repository, *_ = ingested
-    assert repository.count("occurrence") > 0, "the fixture produced no occurrences at all"
+    assert repository.rows_in_schema("occurrence") > 0, "the fixture produced no occurrences at all"
     people = repository.connection.execute(
         "select count(*) as n from occurrence where class = 'person'"
     ).fetchone()
@@ -306,8 +307,8 @@ def test_the_ingest_path_never_writes_an_entity_a_link_or_a_match_proposal(inges
     repository, *_ = ingested
     # Without this the three counts below would be zero on an empty database and the test would
     # pass while proving nothing about the ingest.
-    assert repository.count("occurrence") > 0
-    assert repository.count("assertion") > 0
+    assert repository.rows_in_schema("occurrence") > 0
+    assert repository.rows_in_schema("assertion") > 0
 
     for table in ("entity", "entity_link", "match_proposal"):
         # A fixed literal from the tuple above, never user input.
@@ -463,7 +464,7 @@ def test_a_failed_stage_is_recorded_as_failed_with_its_error_class(
     assert events[-1]["type"] == "run_failed"
     # The intake stage still committed: a failed inference does not undo a capture-supported
     # record that was already true.
-    assert repository.count("capture") == 1
+    assert repository.rows_in_schema("capture") == 1
 
 
 # -- deletion ---------------------------------------------------------------------------
@@ -554,6 +555,26 @@ def test_an_explicit_hash_blocklist_refuses_the_write_and_cancels_the_run(ingest
 
 
 _STORE_WRITE_METHODS = frozenset({"put_bytes", "put_stream", "put_file"})
+
+#: Every module in ``orimera/ingest/spine/``, written out by hand. Both sweeps below consume it,
+#: and it is a literal rather than a directory listing on purpose: a required set derived from
+#: the walk it is checking is a tautology, which is the exact failure the store write sweep
+#: already had twice.
+_SPINE_MODULES = (
+    "__init__.py",
+    "artifacts.py",
+    "blobs.py",
+    "captures.py",
+    "counts.py",
+    "derived.py",
+    "inferences.py",
+    "occurrences.py",
+    "scope.py",
+    "spans.py",
+    "stage_registry.py",
+    "tombstones.py",
+    "tracks.py",
+)
 
 
 def _swept_packages() -> list[pathlib.Path]:
@@ -667,6 +688,12 @@ def test_the_store_write_sweep_can_see_every_stage():
         "ingest/stages/rendition.py",
         "ingest/stages/vision.py",
         "ingest/stages/depth.py",
+        # The data layer, which is where every SQL write in the ingest path now lives. Named
+        # module by module rather than as a directory, because "the sweep walked some files under
+        # spine/" is the coverage check that has already gone quiet twice here, once on directory
+        # depth and once on a package boundary.
+        "ingest/repository.py",
+        *(f"ingest/spine/{module}" for module in _SPINE_MODULES),
         # The route that holds uploaded bytes and a store in the same function.
         "api/routes/intake.py",
     }
@@ -674,6 +701,101 @@ def test_the_store_write_sweep_can_see_every_stage():
         "the store write sweep no longer reads every stage: "
         f"{sorted(required - walked)} were not walked. A write in a file the sweep does not "
         "open is a write the sweep will call clean."
+    )
+
+
+def _spine_directory() -> pathlib.Path:
+    return pathlib.Path(pipeline_module.__file__).parent / "spine"
+
+
+def _public_spine_functions() -> list[tuple[str, str, list[ast.arg]]]:
+    """Every public module-level function in the spine package, as (module, name, args)."""
+    found = []
+    for path in sorted(_spine_directory().glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            if node.name.startswith("_"):
+                continue
+            found.append((path.name, node.name, node.args.posonlyargs + node.args.args))
+    return found
+
+
+def _annotations_naming_a_connection() -> list[str]:
+    """Every parameter in the spine package annotated as a psycopg connection, as file:function."""
+    named = []
+    for path in sorted(_spine_directory().glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        enclosing: dict[ast.AST, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                for inner in ast.walk(node):
+                    enclosing[inner] = node.name
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.arg)
+                and node.annotation is not None
+                and "Connection" in ast.unparse(node.annotation)
+            ):
+                named.append(f"{path.name}:{enclosing.get(node, '<module scope>')}")
+    return sorted(set(named))
+
+
+def test_every_spine_function_takes_a_workspace_scope():
+    """Twenty tables refuse to be read or written by a session that named no workspace.
+
+    ``current_workspace()`` is what the row-level security policies compare against, and the
+    tombstone and epistemic guards go further: they call ``assert_workspace_context()`` and raise
+    when it is unset, because a guard that silently sees no tombstones is worse than no guard.
+    So no path into the spine package may begin with a connection that has not declared one, and
+    ``WorkspaceScope`` has no constructor that skips the declaration.
+
+    This is checked structurally because there is nothing else to check it with. There is no
+    ``[tool.mypy]`` and no pyright configuration in ``pyproject.toml``, so the parameter type is
+    documentation until something reads it, and this is the thing that reads it.
+
+    Two halves, and the second is the one that closes the loophole. Requiring the first parameter
+    to be a scope says nothing about a *second* parameter that is a bare connection, so the
+    package is also asserted to name ``psycopg.Connection`` in exactly one file: ``scope.py``,
+    which is where a raw connection is turned into a scoped one and therefore the only place the
+    type may legitimately appear.
+    """
+    unscoped = [
+        f"{module}:{name}"
+        for module, name, args in _public_spine_functions()
+        if not args
+        or args[0].arg != "scope"
+        or args[0].annotation is None
+        or ast.unparse(args[0].annotation) != "WorkspaceScope"
+    ]
+    assert unscoped == [], (
+        f"{unscoped} do not take a WorkspaceScope as their first parameter. A spine function "
+        "reachable with anything else is a spine function reachable with a connection that "
+        "declared no workspace, and every guarded table would refuse it with an SQLSTATE about "
+        "privileges rather than with a sentence."
+    )
+    assert _annotations_naming_a_connection() == ["scope.py:__init__"], (
+        "a psycopg connection is named outside scope.py: "
+        f"{_annotations_naming_a_connection()}. scope.py is the one place a raw connection "
+        "becomes a scoped one; anywhere else it is a way around the scope."
+    )
+
+
+def test_the_scope_sweep_reads_every_spine_module():
+    """The coverage half of the sweep above, in the same shape as the store write one.
+
+    Without it the sweep is a rule over whatever files happen to be there, and a module renamed
+    or added is a module the rule silently stops covering. Equality rather than a subset, so
+    this fails both ways: a spine module that disappeared and a new one nobody listed are both
+    facts worth a failure.
+    """
+    walked = {path.name for path in sorted(_spine_directory().glob("*.py"))}
+    listed = set(_SPINE_MODULES)
+    assert walked == listed, (
+        f"the spine package is not what the sweeps think it is: {sorted(walked - listed)} are "
+        f"walked but unlisted, {sorted(listed - walked)} are listed but not walked. Both sweeps "
+        "here and the store write sweep above read this list."
     )
 
 
@@ -746,8 +868,8 @@ def test_a_tombstone_racing_the_intake_transaction_leaves_the_store_untouched(
     repository, store = _race_a_tombstone(
         ingest_spine, tmp_path, photo_dir, monkeypatch, intercept="upsert_span"
     )
-    assert repository.count("capture") == 0
-    assert repository.count("blob") == 0
+    assert repository.rows_in_schema("capture") == 0
+    assert repository.rows_in_schema("blob") == 0
     assert list(store.iter_blob_ids()) == [], "the rolled-back transaction left bytes behind"
 
 
@@ -770,8 +892,10 @@ def test_a_tombstone_racing_the_vision_stage_cancels_the_run_and_writes_no_occur
     repository, _store = _race_a_tombstone(
         ingest_spine, tmp_path, photo_dir, monkeypatch, intercept="insert_occurrence"
     )
-    assert repository.count("occurrence") == 0
-    assert repository.count("capture") == 1, "intake committed before the tombstone existed"
+    assert repository.rows_in_schema("occurrence") == 0
+    assert repository.rows_in_schema("capture") == 1, (
+        "intake committed before the tombstone existed"
+    )
 
 
 def test_an_interval_tombstone_covers_the_degenerate_photograph_interval(ingested):
@@ -893,9 +1017,15 @@ def test_no_derivative_is_written_for_tombstoned_bytes(
     What this does NOT close is the derivative written BEFORE the tombstone arrived. That is the
     purge queue, and it is still unimplemented.
     """
-    # The THIRD call, which is the rendition stage's own look-up: intake's artifact write calls
-    # it twice before the intake transaction commits, and racing either of those tests the span
-    # guard rather than this one.
+    # The THIRD call, which is the rendition stage's artifact WRITE. The measured sequence over
+    # one ingest_file is intake-persist, rendition-lookup, rendition-persist, vision-lookup,
+    # vision-persist, so racing call 3 commits the tombstone in the window between the rendition
+    # stage deciding it has no artifact yet and inserting the one it just made, which is the
+    # write migration 0011 refuses. Racing call 1 would abort intake instead and leave this
+    # assertion true for the wrong reason: no rendition, because no intake.
+    # test_the_race_harness_intercepts_the_rendition_stages_artifact_write pins that sequence,
+    # because nothing else does and a fourth find_artifact anywhere earlier would silently move
+    # this race onto a different guard.
     repository, _store = _race_a_tombstone(
         ingest_spine, tmp_path, photo_dir, monkeypatch, intercept="find_artifact", on_call=3
     )
@@ -903,6 +1033,120 @@ def test_no_derivative_is_written_for_tombstoned_bytes(
         "select count(*) as n from artifact where stage_key = 'rendition'"
     ).fetchone()["n"]
     assert renditions == 0, "a rendition of tombstoned bytes was written"
+
+
+def test_the_race_harness_intercepts_the_rendition_stages_artifact_write(
+    tmp_path, photo_dir, repository, monkeypatch
+):
+    """``on_call=3`` above is a positional count, so what sits in position three is an invariant.
+
+    Measured over one ``ingest_file``: five calls to ``find_artifact`` through the facade, in the
+    order intake-persist, rendition-lookup, rendition-persist, vision-lookup, vision-persist.
+    Nothing else pins that. A single extra look-up added anywhere before the rendition stage
+    would slide the whole sequence along, ``test_no_derivative_is_written_for_tombstoned_bytes``
+    would race a different guard, and it would go on passing while proving something else. That
+    is the failure this exists to make loud rather than silent, so the observed sequence is
+    printed on failure.
+
+    Attributed by the caller's own frame rather than by a stack search, so a call that stopped
+    going through the facade would not be counted here at all, which is the other thing worth
+    knowing.
+    """
+    path = write_photo(photo_dir, "a.jpg")
+    store = LocalContentAddressedStore(tmp_path / "blobs")
+    pipeline = PhotoIngestPipeline(repository, store, vision=CountingVisionModel())
+
+    real = repository.find_artifact
+    observed: list[str] = []
+
+    def record(*args, **kwargs):
+        frame = inspect.currentframe().f_back
+        observed.append(f"{pathlib.Path(frame.f_code.co_filename).name}:{frame.f_code.co_name}")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(repository, "find_artifact", record)
+    assert pipeline.ingest_file(path).error is None
+
+    assert observed == [
+        "pipeline.py:persist_artifact",
+        "rendition.py:run",
+        "pipeline.py:persist_artifact",
+        "vision.py:run",
+        "pipeline.py:persist_artifact",
+    ], (
+        "the find_artifact sequence changed, so on_call=3 in "
+        f"test_no_derivative_is_written_for_tombstoned_bytes now races {observed[2:3]} rather "
+        f"than the rendition stage's artifact write. Observed: {observed}"
+    )
+
+
+def test_the_object_lock_is_taken_before_the_first_content_write(
+    tmp_path, photo_dir, repository, monkeypatch
+):
+    """The purge lock is worth nothing if the ingest has already claimed the bytes.
+
+    ``tests/test_purge.py::test_an_ingest_waits_for_a_purge_of_the_same_object`` proves the lock
+    is TAKEN, behaviourally, through a real pipeline. What it cannot prove is that it is taken
+    *early enough*, because an ingest that locked after ``upsert_blob`` would still block and
+    still pass: it would just block having already inserted the row the purger is about to
+    invalidate.
+
+    The property is deliberately not "before the first insert", which is false and measured
+    false: ``pipeline_run`` and ``pipeline_event`` rows are written first, three of them, and
+    they are ledger entries about a run rather than claims on content. No purge destroys them.
+    The true property is the one that matters: the lock precedes every write to a table whose
+    rows say this workspace holds these bytes.
+    """
+    content_tables = ("blob", "capture", "media_track", "clock_anchor", "evidence_span")
+    statements: list[str] = []
+    connection = repository.connection
+    real_execute = connection.execute
+
+    def recorder(query, params=None, **kwargs):
+        text = query if isinstance(query, str) else query.decode()
+        statements.append(" ".join(text.split()))
+        if params is None:
+            return real_execute(query, **kwargs)
+        return real_execute(query, params, **kwargs)
+
+    # Patched after the pipeline is constructed, so register_stages is not in the trace: the
+    # stage registry is a deployment fact written once, not a claim on anyone's photograph.
+    path = write_photo(photo_dir, "a.jpg")
+    store = LocalContentAddressedStore(tmp_path / "blobs")
+    pipeline = PhotoIngestPipeline(repository, store, vision=CountingVisionModel())
+    monkeypatch.setattr(connection, "execute", recorder)
+    assert pipeline.ingest_file(path).error is None
+
+    def writes_to_content(statement: str) -> bool:
+        lowered = statement.lower()
+        return any(lowered.startswith(f"insert into {table} ") for table in content_tables)
+
+    lock_at = next(
+        (i for i, s in enumerate(statements) if "purge_lock_object" in s),
+        None,
+    )
+    first_content = next((i for i, s in enumerate(statements) if writes_to_content(s)), None)
+    trace = [f"{i}. {s[:60]}" for i, s in enumerate(statements[: (first_content or 0) + 2])]
+    assert lock_at is not None, f"the intake never took the object lock at all. Trace: {trace}"
+    assert first_content is not None, f"the intake wrote no content row at all. Trace: {trace}"
+    assert lock_at < first_content, (
+        f"purge_lock_object was issued at statement {lock_at}, after the first content write at "
+        f"{first_content}. A lock taken after the row it protects serialises nothing: the purger "
+        f"can already see a live claim on bytes it was told to destroy. Trace: {trace}"
+    )
+    # And say which zero this is. The statements that DO precede the lock are named, so this
+    # test cannot be satisfied one day by an insert nobody noticed moving ahead of it.
+    ahead = sorted(
+        {
+            s.lower().split()[2]
+            for s in statements[:lock_at]
+            if s.lower().startswith("insert into ")
+        }
+    )
+    assert ahead == ["pipeline_event", "pipeline_run"], (
+        f"{ahead} are written before the object lock. Only the ledger may be, because a ledger "
+        "row is a statement about a run and not a claim on content."
+    )
 
 
 def test_the_artifact_guard_refuses_directly_and_not_only_through_the_pipeline(ingest_spine):
@@ -943,3 +1187,61 @@ def test_the_artifact_guard_refuses_directly_and_not_only_through_the_pipeline(i
             byte_size=1,
             produced_by_event=None,
         )
+
+
+def test_only_an_allowlisted_table_can_be_counted(repository):
+    """The one statement in this package that interpolates a name into SQL, and its only guard.
+
+    ``rows_in_schema`` builds ``select count(*) from <table>`` by formatting, because a table
+    name cannot be a bound parameter. The allowlist is therefore not a convenience for callers,
+    it is the whole of what stands between this function and an injection, and it had no test.
+    """
+    with pytest.raises(ValueError, match="not a countable table: 'capture; drop table capture'"):
+        repository.rows_in_schema("capture; drop table capture")
+    # Still there, which is the half of the claim a ValueError alone does not make.
+    assert repository.rows_in_schema("capture") == 0
+
+
+def test_a_row_count_is_schema_wide_and_not_workspace_scoped(ingest_spine, workspace_id):
+    """``rows_in_schema`` is named for what it counts, and this is the measurement behind it.
+
+    It was called ``count``, on a class every one of whose other methods filters on
+    ``workspace_id``, and the name invited a reading the number never supported. Four of the
+    thirteen countable tables have no ``workspace_id`` column at all. The other nine are under
+    FORCE row-level security, which the owner bypasses, and every caller of this function is a
+    test connecting as the owner.
+
+    So the honest sentence is the one asserted here: two workspaces write one capture each into
+    one schema, and both of them are told there are two. A zero from this function means "no
+    rows in this schema", never "none of mine", and a test that read it the second way would be
+    asserting something the database does not say.
+    """
+    from orimera.evidence.blob import BlobId
+    from orimera.ingest.repository import IngestRepository
+
+    repository, open_another = ingest_spine
+    other_workspace = uuid.uuid4()
+    elsewhere = IngestRepository(open_another().connection, other_workspace)
+    assert other_workspace != workspace_id
+
+    superuser = repository.connection.execute(
+        "select rolsuper from pg_roles where rolname = current_user"
+    ).fetchone()["rolsuper"]
+    assert superuser, (
+        "this test is only meaningful on a connection that bypasses row-level security, which "
+        "is the connection every caller of rows_in_schema actually uses"
+    )
+
+    for index, repo in enumerate((repository, elsewhere)):
+        data = f"probe bytes {index}".encode()
+        blob = BlobId.of_bytes(data)
+        repo.upsert_blob(
+            blob, byte_size=len(data), media_type="image/jpeg", storage_key=f"k{index}"
+        )
+        repo.insert_capture(blob, device_id="probe", started_at=None)
+
+    assert repository.rows_in_schema("capture") == 2
+    assert elsewhere.rows_in_schema("capture") == 2, (
+        "rows_in_schema returned a workspace-scoped number, which its name says it does not. "
+        "Either the name or the query is now wrong, and they cannot both be right."
+    )
