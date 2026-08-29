@@ -165,10 +165,14 @@ layers = [
   # The HTTP surface depends on everything and nothing depends on it. That is the definition of
   # a thin API: routes validate and delegate, so a route has nothing another module could want.
   "orimera.api",
-  # The two top-level workflows. Neither may import the other: ingesting a photograph and
-  # answering a question about one are separate concerns that happen to share a database, and a
-  # dependency either way would be the first step to the query path reaching for a writer.
-  "orimera.selection | orimera.ingest",
+  # The three top-level workflows, and none of them may import another: ingesting a photograph,
+  # answering a question about one, and reading the whole graph back are separate concerns that
+  # happen to share a database, and a dependency in any direction would be the first step to the
+  # read path reaching for a writer. `orimera.graph` is named here rather than left out for the
+  # same reason `orimera.corpus` is named at the bottom: a module absent from every contract is a
+  # module the layering says nothing about. It sits one step under the API, which is where an
+  # upward import is easiest to write and hardest to notice.
+  "orimera.graph | orimera.selection | orimera.ingest",
   "orimera.identity",
   "orimera.epistemics",
   "orimera.db | orimera.models | orimera.store",
