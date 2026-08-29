@@ -14,27 +14,26 @@ Originally built for the Nebius x NVIDIA Global AI Hackathon.
 
 ## Project status
 
-Checked on 2026-08-28 by running the commands in [Setup and running](#setup-and-running).
+Checked on 2026-08-29 by running the commands in [Setup and running](#setup-and-running).
 
 **Working, and verified by execution.** The evidence spine, the content-addressed store, the
 photograph ingest pipeline and the Nebius Token Factory model client are implemented and covered by
-871 backend tests, all passing. 408 of those apply the schema migration to a live PostgreSQL 18
+912 backend tests, all passing. 426 of those apply the schema migration to a live PostgreSQL 18
 server with pgvector, the only executable proof that a model cannot write a person's name into
 canonical state. Ingest runs end to end over a directory of photographs and is idempotent: a second
 pass recomputes nothing and issues no model calls. The HTTP API serves health, graph, selection,
 identity, evidence and intake routes, and an upload's intake stage runs in the request while its
 model stages are queued by capture id. The browser packages pass `pnpm check`: a typecheck of every
-package, an import-boundary contract, and 366 tests. The renderer was chosen on measurement, against the
+package, an import-boundary contract, and 371 tests. The renderer was chosen on measurement, against the
 earlier lean (PlayCanvas Engine 2.21.4,
 [docs/adr/0003-renderer-selection.md](docs/adr/0003-renderer-selection.md)). Real calls to NVIDIA
 Nemotron and to Tavily were made and archived on 2026-08-27.
 
-**Built, but not yet assembled into a product.** Query planning and answer composition are
-implemented in `orimera/selection/` and the graph client now reads the API over a real transport
-rather than a stub. What does not exist is the assembled application: the Atlas scene graph, the
-Companion dialogue runtime and the World Index are tested libraries that no shipped surface yet
-joins to the API, so there is still no single command that starts Orimera end to end. MoGe is the
-chosen reconstruction method and is not integrated.
+**Assembled for development, but not deployed.** Query planning and answer composition are
+implemented in `orimera/selection/`, and `web/packages/app/src/main.ts` joins the Atlas scene,
+Companion runtime and World Index to the API. It has been rendered against synthetic data. The API
+and Vite application still need separate commands, so there is no single command that starts
+Orimera end to end. MoGe is the chosen reconstruction method and is not integrated into upload.
 
 **Deliberately not claimed.** No personal photograph library has been ingested, so nothing about
 reconstruction quality, identity or retrieval has been measured on real material. No accuracy or
@@ -189,7 +188,7 @@ credits: the model client is exercised through a scripted HTTP transport, and te
 generated rather than committed, so the content of every test image is known exactly.
 
 ```bash
-uv run pytest                       # 871 tests; 408 skip without a database
+uv run pytest                       # 912 tests; 426 skip without a database
 uv run ruff check .                 # lints backend, tests and scripts
 uv run lint-imports                 # the backend layering contract, four rules
 uv run orimera-preflight            # checks every manifest id against the live catalog
@@ -202,7 +201,7 @@ uv run scripts/verify_platform.py      # the runtime verification harness, needs
 
 ### The tests that need a database
 
-**PostgreSQL is the only data layer.** 408 of the 871 backend tests need a real server, and they
+**PostgreSQL is the only data layer.** 426 of the 912 backend tests need a real server, and they
 are the executable proof of everything the database carries: that a model cannot write a name into
 canonical state, that one workspace cannot read another's rows, that a tombstoned address refuses
 the write, and that the whole ingest path works. A default run prints a reminder naming the files
@@ -305,7 +304,7 @@ pnpm check                   # typecheck, then the import-boundary contract, the
 ```
 
 `pnpm check` runs three gates that catch different failure modes: `tsc --build` across every
-package, a dependency-cruiser contract over the forbidden cross-package imports, and 366 vitest
+package, a dependency-cruiser contract over the forbidden cross-package imports, and 371 vitest
 tests. The boundary rules have each been probed with a deliberate violation, so they are known to
 fire rather than assumed to.
 
@@ -319,9 +318,9 @@ Fixtures are gitignored. Regenerate them rather than committing them.
 
 ### What runs today
 
-Every command above runs now. The HTTP API serves, and the backend and browser packages each build
-and test on their own, but **there is no assembled Atlas application yet**, so there is currently no
-single command that starts Orimera end to end.
+Every command above runs now. The HTTP API serves and the assembled Atlas application renders in
+development, but they still start with separate commands. There is currently no single command
+that starts Orimera end to end.
 [Project status](#project-status) has the rest of the picture.
 
 ## Repository layout
@@ -332,7 +331,7 @@ single command that starts Orimera end to end.
 | `orimera/ingest/` | The photograph ingest pipeline: EXIF, orientation, derivatives, vision, scene grouping, the provenance ledger, the CLI, the derivative queue and the worker that drains it |
 | `orimera/models/` | The Token Factory client, the model manifest, preflight, the budget guard, the response cache, strict json_schema handling, reasoning-token stripping |
 | `orimera/store/` | Content-addressed storage |
-| `orimera/migrations/` | `0001_spine.sql`, the schema the evidence spine requires, and `0002_naming_and_admission.sql` |
+| `orimera/migrations/` | The forward-only PostgreSQL schema history, from `0001_spine.sql` through migration 0016 |
 | `orimera/db/` | Connections carrying the workspace context, the migration runner, the runtime roles |
 | `orimera/epistemics/` | Writing a claim under exactly one of the four provenance classes |
 | `orimera/identity/` | Occurrence keys, the identity tables, and the user decisions that promote an occurrence to a person |
@@ -341,7 +340,7 @@ single command that starts Orimera end to end.
 | `orimera/deletion/` | The purge queue a tombstone fills and the worker that empties it. Destroys objects, marks rows, and holds DELETE on nothing |
 | `pyproject.toml` | Also the backend layering contract, enforced by `uv run lint-imports` |
 | `orimera/canonical.py`, `orimera/errors.py` | Canonical JSON and the one rounding rule; the error taxonomy |
-| `tests/` | 871 tests, 408 of which need a PostgreSQL 18 server. No network, no credentials, no committed binary fixtures |
+| `tests/` | 912 tests, 426 of which need a PostgreSQL 18 server. No network, no credentials, no committed binary fixtures |
 | `scripts/` | The standalone runtime verification harnesses, kept byte-identical so their evidence stays reproducible |
 | `web/packages/atlas-core/` | Scene graph, island frames, focus resolution, layout solver. No React, no DOM, no renderer |
 | `web/packages/atlas-react/` | Renderer bindings, anchor overlay, HUD, comfort settings |
