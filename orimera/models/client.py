@@ -136,6 +136,17 @@ class ModelClient:
             f"pipeline_version={self._manifest.pipeline_version})"
         )
 
+    def worst_case_seconds(self, role: Role) -> float:
+        """The longest one call for this role can take on THIS client, timeouts and retries in.
+
+        Asked by anything that has to decide how long a caller may be silent before the silence
+        means something. It is a question about this client rather than about the role, because
+        the timeout and the retry count are constructor arguments: the API builds
+        ``ModelClient()`` with the defaults and ``orimera-ingest`` builds one with
+        ``max_attempts=3``, and a caller that typed a constant would be right for one of them.
+        """
+        return self._chain.worst_case_seconds(role)
+
     # -- request construction --------------------------------------------------------------
 
     @staticmethod

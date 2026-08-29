@@ -18,7 +18,7 @@ Checked on 2026-08-28 by running the commands in [Setup and running](#setup-and-
 
 **Working, and verified by execution.** The evidence spine, the content-addressed store, the
 photograph ingest pipeline and the Nebius Token Factory model client are implemented and covered by
-842 backend tests, all passing. 382 of those apply the schema migration to a live PostgreSQL 18
+871 backend tests, all passing. 408 of those apply the schema migration to a live PostgreSQL 18
 server with pgvector, the only executable proof that a model cannot write a person's name into
 canonical state. Ingest runs end to end over a directory of photographs and is idempotent: a second
 pass recomputes nothing and issues no model calls. The HTTP API serves health, graph, selection,
@@ -189,9 +189,9 @@ credits: the model client is exercised through a scripted HTTP transport, and te
 generated rather than committed, so the content of every test image is known exactly.
 
 ```bash
-uv run pytest                       # 842 tests; 382 skip without a database
+uv run pytest                       # 871 tests; 408 skip without a database
 uv run ruff check .                 # lints backend, tests and scripts
-uv run lint-imports                 # the backend layering contract, three rules
+uv run lint-imports                 # the backend layering contract, four rules
 uv run orimera-preflight            # checks every manifest id against the live catalog
 uv run uvicorn --factory orimera.api.app:create_app   # the HTTP API, on port 8000
 uv run orimera-preflight --catalog-file <snapshot.json>   # same check, offline
@@ -202,7 +202,7 @@ uv run scripts/verify_platform.py      # the runtime verification harness, needs
 
 ### The tests that need a database
 
-**PostgreSQL is the only data layer.** 382 of the 842 backend tests need a real server, and they
+**PostgreSQL is the only data layer.** 408 of the 871 backend tests need a real server, and they
 are the executable proof of everything the database carries: that a model cannot write a name into
 canonical state, that one workspace cannot read another's rows, that a tombstoned address refuses
 the write, and that the whole ingest path works. A default run prints a reminder naming the files
@@ -341,7 +341,7 @@ single command that starts Orimera end to end.
 | `orimera/deletion/` | The purge queue a tombstone fills and the worker that empties it. Destroys objects, marks rows, and holds DELETE on nothing |
 | `pyproject.toml` | Also the backend layering contract, enforced by `uv run lint-imports` |
 | `orimera/canonical.py`, `orimera/errors.py` | Canonical JSON and the one rounding rule; the error taxonomy |
-| `tests/` | 842 tests, 382 of which need a PostgreSQL 18 server. No network, no credentials, no committed binary fixtures |
+| `tests/` | 871 tests, 408 of which need a PostgreSQL 18 server. No network, no credentials, no committed binary fixtures |
 | `scripts/` | The standalone runtime verification harnesses, kept byte-identical so their evidence stays reproducible |
 | `web/packages/atlas-core/` | Scene graph, island frames, focus resolution, layout solver. No React, no DOM, no renderer |
 | `web/packages/atlas-react/` | Renderer bindings, anchor overlay, HUD, comfort settings |

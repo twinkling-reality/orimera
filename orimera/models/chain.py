@@ -138,6 +138,35 @@ class ModelChain:
             )
         return body
 
+    def worst_case_seconds(self, role: Role) -> float:
+        """The longest one :meth:`walk` of this role can take, from this chain's own numbers.
+
+        A caller outside the models package cannot compute this and must not guess it: it is the
+        product of the manifest's chain length, the transport timeout and the retry count, and
+        two of those three are constructor arguments that differ between the API's client and
+        the ingest CLI's. :mod:`orimera.ingest.worker` needs it to decide how long a claimant may
+        be silent before its silence means something.
+
+        The arithmetic follows :meth:`walk` exactly. A ``ModelUnavailableError`` is not retried,
+        so every model before the last costs one request; the last one costs a full retry budget,
+        because a retry exhaustion raises out of ``walk`` rather than falling through to a
+        fallback. Backoff is added for the gaps between those retries, at its ceiling rather than
+        its jittered value.
+
+        **It bounds the arithmetic and not the wall clock**, which is stated here because the
+        difference has already been measured on this transport:
+        :mod:`orimera.models.transport` passes one float to httpx, which sets connect, read,
+        write and pool each to it, and httpx has no total-request timeout. A response that
+        dribbles one chunk every ``timeout`` seconds is never cut off. So this is the right
+        number to size a lease from and the wrong number to call a guarantee.
+        """
+        chain = self._manifest[role].chain
+        return (len(chain) - 1 + self._max_attempts) * self._timeout + self._backoff_ceiling()
+
+    def _backoff_ceiling(self) -> float:
+        """The unjittered sum of the sleeps between ``max_attempts`` requests to one model."""
+        return sum(min(8.0, 0.5 * (2 ** (attempt - 1))) for attempt in range(1, self._max_attempts))
+
     def _backoff(self, attempt: int) -> None:
         """Exponential with jitter.
 

@@ -74,14 +74,25 @@ class IntakeBatch:
             (size, self.batch_id, self.repository.workspace_id),
         )
 
-    def close(self, status: str) -> None:
+    def close(self, status: str) -> bool:
+        """Close a running batch. False when it was already closed and nothing was written.
+
+        **A closed batch is not reopened, and that is a guard rather than tidiness.** A batch's
+        terminal event is what ends a formation stream, so a second close writes a second
+        terminal event: measured with two workers and no claim token, one wrote ``succeeded`` and
+        the other rewrote the same batch as ``failed`` with a fresh ``ended_at`` 4.5 seconds
+        later, after the subscriber's stream had already ended on the first. The queue's claim
+        token is what stops a worker reaching here without the right to; this is the second guard,
+        and it holds for any caller rather than only for the one that holds a lease.
+        """
         if status not in BATCH_STATUSES or status == "running":
             raise ValueError(f"a batch cannot be closed as {status!r}")
-        self.repository.connection.execute(
+        updated = self.repository.connection.execute(
             "update intake_batch set status = %s, ended_at = now() "
-            "where batch_id = %s and workspace_id = %s",
+            "where batch_id = %s and workspace_id = %s and status = 'running'",
             (status, self.batch_id, self.repository.workspace_id),
         )
+        return updated.rowcount == 1
 
     @staticmethod
     def outcome_for(succeeded: int, failed: int) -> str:
