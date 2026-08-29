@@ -47,6 +47,9 @@ orimera-ingest = "orimera.ingest.cli:main"
 # judging window can both call it without parsing output. `--catalog-file` checks a saved
 # snapshot instead of the network, which is how the offline test runs it.
 orimera-preflight = "orimera.models.preflight:main"
+# `uv run orimera-corpus`. Writes the synthetic corpus and the ground truth manifest that goes
+# with it. Deterministic from its seed, so a rebuild followed by an ingest recomputes nothing.
+orimera-corpus = "orimera.corpus.__main__:main"
 
 [dependency-groups]
 dev = [
@@ -141,7 +144,12 @@ layers = [
   "orimera.db | orimera.models | orimera.store",
   "orimera.evidence | orimera.migrations",
   "orimera.canonical",
-  "orimera.errors",
+  # The corpus generator sits at the bottom and depends on nothing in this package at all: it
+  # draws pictures with Pillow and knows nothing about evidence, storage or the database. Listed
+  # here rather than left out, because a module absent from every contract is a module the
+  # layering says nothing about, and the point of the corpus is to be the input to the pipeline
+  # rather than a participant in it.
+  "orimera.corpus | orimera.errors",
 ]
 
 [[tool.importlinter.contracts]]

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from orimera.corpus.photograph import TO_SENSOR_TRANSPOSE
 from orimera.db import DATABASE_URL_ENV
 from orimera.ingest.vision import VisionObservation, VisionResult
 from orimera.migrations import migrations
@@ -60,16 +61,6 @@ def upright_pixels(width: int = 160, height: int = 100) -> Image.Image:
     return image
 
 
-_INVERSE_TRANSFORM = {
-    1: None,
-    2: Image.Transpose.FLIP_LEFT_RIGHT,
-    3: Image.Transpose.ROTATE_180,
-    4: Image.Transpose.FLIP_TOP_BOTTOM,
-    5: Image.Transpose.TRANSPOSE,
-    6: Image.Transpose.ROTATE_90,
-    7: Image.Transpose.TRANSVERSE,
-    8: Image.Transpose.ROTATE_270,
-}
 
 
 def photo_bytes(
@@ -88,7 +79,10 @@ def photo_bytes(
     them: sensor readout plus a tag saying how to display it.
     """
     image = upright_pixels(*size)
-    inverse = _INVERSE_TRANSFORM[orientation]
+    # The display-to-sensor table lives in orimera.corpus.photograph and is imported rather
+    # than repeated: four of the eight entries include a mirror, and a second table is a
+    # second place for those four to drift.
+    inverse = TO_SENSOR_TRANSPOSE.get(orientation)
     stored = image.transpose(inverse) if inverse is not None else image
 
     exif = Image.Exif()
