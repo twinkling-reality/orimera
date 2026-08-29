@@ -334,20 +334,30 @@ is done, no claim is made here about range requests being on the browser path.
 | `ORIMERA_READONLY_DATABASE_URL` | The Selection executor's role | Optional, and `/readyz` says so when it is absent |
 | `ORIMERA_DERIVATIVE_WORKER` | Whether this process drains what `POST /intake` queues | Defaults to **on**. Off is for an instance that leaves the queue to somebody else, and `/readyz` reports which it is: a queue nobody drains and a queue drained elsewhere look identical from outside |
 
-### 5.1.1 The request body bound belongs partly to the proxy
+### 5.1.1 The request body bound, and the part of it a proxy still owns
 
-`POST /intake` is multipart, and a route runs **after** the body has been received and parsed. So
-the checks inside the route bound what reaches the object store and the database, which is what
-they exist for, and they cannot bound the temporary file the parser has already written.
+`POST /intake` is multipart, and **the body is received and parsed before any route function and
+before any dependency runs**, so it is parsed before authentication: an anonymous request has
+already had its parts spooled to temporary files by the time the bearer token is looked at.
+Starlette's `max_part_size` bounds non-file parts only; file parts are unbounded there. So the
+checks inside the route bound what reaches the object store and the database, which is what they
+exist for, and they cannot bound what reaches the disk.
 
-`orimera/api/body_limit.py` is pure ASGI middleware and runs ahead of routing. It refuses a request
-whose `Content-Length` exceeds 512 MiB before any of the body is read. **It does not cover a request
-sent with `Transfer-Encoding: chunked`**, which declares no length; bounding that means counting
-bytes already accepted, which is the work the refusal exists to avoid.
+`orimera/api/body_limit.py` is pure ASGI middleware, so it is upstream of all of that, and it
+applies two bounds:
 
-A deployment therefore sets a body size limit on whatever terminates TLS in front of the
-application: `client_max_body_size` on nginx, `proxy-body-size` on an ingress. Stated here rather
-than left to be discovered, because the symptom of its absence is a full disk rather than an error.
+- a declared `Content-Length` over 512 MiB is refused before a byte is read;
+- a request that declares no length, which is what `Transfer-Encoding: chunked` produces, is
+  **counted as it arrives** and cut off the moment the running total crosses the limit. The
+  overshoot is one chunk rather than the whole body.
+
+The second is what makes the first more than a courtesy: without it, omitting one header walks
+past the whole thing.
+
+A deployment should still set a body size limit on whatever terminates TLS in front of the
+application: `client_max_body_size` on nginx, `proxy-body-size` on an ingress. A proxy refuses
+before the application is involved at all, which is strictly better than refusing one chunk in,
+and it is the only bound that applies when the application is not the thing under load.
 
 ### 5.2 What a deployment additionally needs
 
