@@ -24,6 +24,7 @@ import pytest
 from fastapi.testclient import TestClient
 from orimera.api.app import create_app
 from orimera.api.authorisation import load_token_directory
+from orimera.api.routes import routable_paths
 from orimera.api.services import Services
 from orimera.epistemics.assertions import AssertionWriter
 from orimera.identity import IdentityRepository, name_occurrence
@@ -195,47 +196,6 @@ def deployment(tmp_path, photo_dir, repository, spine_schema, monkeypatch):
 # -- the sweep ----------------------------------------------------------------------------
 
 
-def _routes(app) -> list[tuple[str, str]]:
-    """Every routable (method, path) in the application, however the framework nests them.
-
-    THIS WALKS A TREE AND IT DID NOT USED TO. FastAPI 0.141 stopped flattening an included
-    router's routes into ``app.routes`` and started storing an ``_IncludedRouter`` wrapper there
-    instead. The previous version of this function iterated ``app.routes`` one level deep and
-    read ``.methods`` off each entry, so from that release onward it saw the four documentation
-    routes and six wrappers with no ``methods`` attribute, and returned only the documentation
-    routes. Every one of those is in ``PUBLIC_ROUTES``, so the coverage check below computed an
-    empty list of uncovered routes and passed, on an application whose entire authenticated
-    surface it could no longer see.
-
-    That is the failure this file's own docstring says it exists to prevent, and it is the
-    failure mode `.orimera/working/known-defects.md` records twice: a test that passes without
-    exercising its case. It was found by adding a route and noticing the suite stayed green.
-
-    So the walk is recursive over anything that carries routes, and
-    ``test_the_route_sweep_can_actually_see_the_application`` below asserts the walk found the
-    surface rather than trusting that it did.
-    """
-    found: list[tuple[str, str]] = []
-    seen: set[int] = set()
-    stack = [app]
-    while stack:
-        node = stack.pop()
-        if id(node) in seen:
-            continue
-        seen.add(id(node))
-        for attribute in ("routes", "original_router"):
-            nested = getattr(node, attribute, None)
-            if nested is None:
-                continue
-            stack.extend(nested if isinstance(nested, list) else [nested])
-        path = getattr(node, "path", None)
-        if path is None:
-            continue
-        for method in sorted(getattr(node, "methods", set()) - {"HEAD", "OPTIONS"}):
-            found.append((method, path))
-    return sorted(set(found))
-
-
 def test_the_route_sweep_can_actually_see_the_application(deployment):
     """The guard on the guard, and it is not decoration.
 
@@ -245,7 +205,7 @@ def test_the_route_sweep_can_actually_see_the_application(deployment):
     returned only the documentation pages are both green under the check below, and both mean the
     authorisation sweep is testing nothing.
     """
-    found = _routes(deployment.client.app)
+    found = routable_paths(deployment.client.app)
     assert ("GET", "/graph") in found, found
     assert ("POST", "/identity/name") in found, found
     assert ("GET", "/evidence/{span_id}") in found, found
@@ -259,7 +219,7 @@ def test_every_route_is_covered_by_this_file(deployment):
     """The generated half. A new endpoint with no entry here fails, which is the point."""
     uncovered = [
         (method, path)
-        for method, path in _routes(deployment.client.app)
+        for method, path in routable_paths(deployment.client.app)
         if path not in PUBLIC_ROUTES and (method, path) not in ROUTE_PROBES
     ]
     assert not uncovered, (

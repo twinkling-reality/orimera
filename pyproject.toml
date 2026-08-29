@@ -88,6 +88,9 @@ orimera-identity = "orimera.identity.cli:main"
 # `uv run orimera-db`. Brings a database up to the schema and the roles this code expects, in the
 # one correct order. A deployment runs it before the API starts.
 orimera-db = "orimera.db.cli:main"
+# `uv run orimera-eval run --corpus <dir> --workspace <uuid>`. Measures what can be measured and
+# says what stopped the rest. Read docs/evaluation-methodology.md section 3 before quoting it.
+orimera-eval = "orimera.evaluation.cli:main"
 
 [dependency-groups]
 dev = [
@@ -185,6 +188,13 @@ type = "layers"
 exhaustive = true
 containers = ["orimera"]
 layers = [
+  # The evaluation harness is the one module allowed to depend on the HTTP surface, and it is
+  # allowed for one reason: M10 specifies its authorisation sweep as "generated from the router",
+  # and a harness that cannot see the router hand-enumerates routes, which is the failure that
+  # specification exists to prevent. It sits ABOVE the API rather than beside it so the sentence
+  # stays true of everything that ships: nothing the product runs depends on the API, and the
+  # only thing that does is the thing that measures it.
+  "evaluation",
   # The HTTP surface depends on everything and nothing depends on it. That is the definition of
   # a thin API: routes validate and delegate, so a route has nothing another module could want.
   "api",
