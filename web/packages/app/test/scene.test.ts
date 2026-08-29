@@ -43,6 +43,8 @@ function island(islandId: string, firstMs: number | null = 1_700_000_000_000) {
     lastCapturedAtMs: firstMs,
     positionedCaptureCount: 1,
     spreadMetres: 12,
+    rung: null as 1 | 2 | 3 | 4 | null,
+    rungCaptureCount: 0,
   };
 }
 

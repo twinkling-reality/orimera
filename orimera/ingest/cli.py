@@ -27,6 +27,7 @@ from orimera.ingest.ledger import Ledger
 from orimera.ingest.pipeline import IngestReport, PhotoIngestPipeline
 from orimera.ingest.repository import IngestRepository
 from orimera.ingest.scenes import run_scene_grouping
+from orimera.ingest.stages import stage
 from orimera.ingest.vision import NebiusVisionModel, VisionModel
 from orimera.store.local import LocalContentAddressedStore
 
@@ -128,6 +129,29 @@ def _build_vision(args: argparse.Namespace, stream: Any) -> VisionModel | None:
     return NebiusVisionModel(client)
 
 
+def _build_depth(args: argparse.Namespace, stream: Any) -> Any:
+    """The depth model, or None with the reason printed.
+
+    Not configured is a normal state and not an error. Every region is then rung 4, which is a
+    real rung with a real experience, and every citation still opens its original: reconstruction
+    quality never participates in the truth guarantee, and this is the branch where that stops
+    being a sentence and becomes what happens when the model is absent.
+    """
+    if not args.reconstruct:
+        return None
+    from orimera.reconstruction.moge import DepthModelUnavailable, MoGeDepthModel
+
+    try:
+        model = MoGeDepthModel(max_edge_px=int(stage("depth").params["max_edge_px"]))
+    except DepthModelUnavailable as exc:
+        raise SystemExit(f"reconstruction: {exc}") from exc
+    print(
+        f"reconstruction: {model.model_id}, metric={model.metric}",
+        file=stream,
+    )
+    return model
+
+
 def _print_report(report: IngestReport, stream: Any) -> None:
     print(f"\npipeline {report.pipeline_digest}", file=stream)
     print(f"  ingested   {len(report.ingested)}", file=stream)
@@ -157,8 +181,9 @@ def _cmd_ingest(args: argparse.Namespace, stream: Any) -> int:
     data_dir = Path(args.data_dir)
     store = LocalContentAddressedStore(data_dir / "blobs")
     vision = _build_vision(args, stream)
+    depth = _build_depth(args, stream)
     with _repository(args, stream) as repository:
-        pipeline = PhotoIngestPipeline(repository, store, vision=vision)
+        pipeline = PhotoIngestPipeline(repository, store, vision=vision, depth=depth)
 
         target = Path(args.path)
         print(f"workspace {repository.workspace_id}", file=stream)
@@ -267,6 +292,15 @@ def main(argv: list[str] | None = None, stream: Any = None) -> int:
         "--offline",
         action="store_true",
         help="skip the vision stage; record capture-supported facts only",
+    )
+    ingest.add_argument(
+        "--reconstruct",
+        action="store_true",
+        help=(
+            "run monocular depth and write a point map per photograph. Needs the reconstruction "
+            "extra, which is a 1.3 GB checkpoint; without it every region is rung 4 and every "
+            "citation still opens its original."
+        ),
     )
     ingest.add_argument("--skip-preflight", action="store_true")
     ingest.add_argument("--json", action="store_true")

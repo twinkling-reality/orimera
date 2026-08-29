@@ -68,6 +68,15 @@ from orimera.ingest.vision import (
     VisionObservation,
     prompt_digest,
 )
+from orimera.reconstruction import (
+    DepthModel,
+    DepthPrediction,
+    RungDecision,
+    Viewpoint,
+    build_point_map,
+    decide_rung,
+    encode_opm,
+)
 from orimera.store.base import ContentAddressedStore
 
 __all__ = ["SUPPORTED_SUFFIXES", "IngestOutcome", "IngestReport", "PhotoIngestPipeline"]
@@ -167,10 +176,12 @@ class PhotoIngestPipeline:
         store: ContentAddressedStore,
         *,
         vision: VisionModel | None = None,
+        depth: DepthModel | None = None,
     ) -> None:
         self._repository = repository
         self._store = store
         self._vision = vision
+        self._depth = depth
         # The run-time half of every stage's identity, resolved once. For the vision stage that
         # is the identifier the model role points at right now: it is not in the registry
         # because it does not live in the source, and it is in the key because swapping it
@@ -178,6 +189,11 @@ class PhotoIngestPipeline:
         self._bindings: dict[str, dict[str, str]] = {}
         if vision is not None:
             self._bindings["vision"] = {"model_id": vision.model_id}
+        if depth is not None:
+            # The resolved model is in the key for the same reason the vision model is: swapping
+            # the weights changes what the stage produces, and a corpus keyed as though nothing
+            # had changed would never reprocess.
+            self._bindings["depth"] = {"model_id": depth.model_id}
         repository.register_stages(STAGES)
 
     @property
@@ -312,6 +328,12 @@ class PhotoIngestPipeline:
             facts,
             ledger,
             outcome,
+        )
+        # After vision, and from the UPRIGHT source rather than from the rendition. The rendition
+        # is 768px and exists so a model can look at something small; depth is the geometry the
+        # photograph will be walked through and is worth the full frame the size parameter allows.
+        self._depth_stage(
+            blob_id, upright, capture_id, image_span_id, intake, ledger, outcome
         )
 
     # -- stage 1: intake ----------------------------------------------------------------
@@ -809,6 +831,129 @@ class PhotoIngestPipeline:
             idempotency_key=key,
             reused=False,
         )
+
+
+    # -- stage 4: depth ------------------------------------------------------------------
+
+    def _depth_stage(
+        self,
+        blob_id: BlobId,
+        upright: Image.Image,
+        capture_id: uuid.UUID,
+        image_span_id: uuid.UUID,
+        intake: StageResult,
+        ledger: Ledger,
+        outcome: IngestOutcome,
+    ) -> None:
+        """One photograph becomes a metric point map, and the rung it earned is recorded.
+
+        **The point map is an artifact and never a blob.** Invariant 2: reconstruction is never
+        evidence. An ``evidence_span`` references ``blob``, artifacts do not live there, and so a
+        point map has nothing a citation could point at. That is structural rather than guarded,
+        and ``tests/test_reconstruction_is_not_evidence.py`` asserts it from four directions.
+
+        **The rung is a proposal about presentation, not a claim about the world.** It is written
+        as an inference-class assertion on the capture, which is the only class it could honestly
+        take: a model looked at a photograph and reported how much of it could be placed. It
+        supports no historical clause and could not, because the vocabulary refuses.
+
+        With no depth model configured the stage is reported as SKIPPED rather than run, exactly
+        as vision is. A capture with no point map is a rung 4 region, which is a real rung with a
+        real experience, and the absence of a stage is not the same fact as a stage that failed.
+        """
+        spec = stage("depth")
+        if self._depth is None:
+            outcome.stages_skipped.append(spec.key)
+            return
+
+        input_digest = input_digest_of([intake.content_sha256])
+        key = idempotency_key(blob_id, spec, input_digest, binding=self._binding_for(spec))
+        existing = self._repository.find_artifact(key)
+        if existing is not None:
+            outcome.stages_reused.append(spec.key)
+            ledger.reused(spec, existing.artifact_id, input_blob=blob_id)
+            return
+
+        with ledger.stage(
+            spec, input_artifact_ids=[intake.artifact_id], input_blob=blob_id
+        ) as recorder:
+            prediction = self._depth.predict(upright)
+            points = build_point_map(prediction, upright)
+            decision = decide_rung(
+                prediction,
+                min_valid_fraction=int(spec.params["min_valid_fraction_milli"]) / 1000,
+            )
+            payload = encode_opm(
+                points,
+                generator=prediction.model_id,
+                viewpoint=Viewpoint(
+                    fov_y_degrees=prediction.fov_y_degrees,
+                    aspect=prediction.width / max(1, prediction.height),
+                ),
+                source_size=upright.size,
+                # Carried from the model rather than assumed. A map that is not metric produces a
+                # region that is not metric, and a spatial question over it refuses with a stated
+                # reason instead of estimating a distance.
+                metric=prediction.metric,
+            )
+            with self._committed_writes() as pending:
+                result = self._persist_artifact(
+                    spec=spec,
+                    blob_id=blob_id,
+                    key=key,
+                    input_digest=input_digest,
+                    payload=payload,
+                    recorder=recorder,
+                    outcome=outcome,
+                    pending=pending,
+                )
+                self._record_rung(
+                    capture_id, image_span_id, decision, result, prediction, ledger
+                )
+        # `_persist_artifact` already recorded the stage as run. Appending it here as well is what
+        # printed "depth+depth" in the command line's per-file summary.
+
+    def _record_rung(
+        self,
+        capture_id: uuid.UUID,
+        image_span_id: uuid.UUID,
+        decision: RungDecision,
+        result: StageResult,
+        prediction: DepthPrediction,
+        ledger: Ledger,
+    ) -> None:
+        """Write the rung as what it is: something a model inferred about a photograph.
+
+        ``inference`` and not ``capture``. A capture-supported fact is a deterministic property of
+        the bytes, and how much of a frame a neural network could place is not one: a different
+        checkpoint would give a different answer over the same file. Filing it as capture would be
+        the exact flattening invariant 4 forbids.
+
+        **It cites the photograph, not the point map**, and the support-span rule is what forced
+        the question. An inference must name at least one evidence span, so a rung had to point at
+        something; the only honest answer is the frame the model looked at. Citing the point map
+        would have required the point map to be evidence, which is the thing invariant 2 exists to
+        prevent, and the constraint refused it before anybody had to notice.
+        """
+        assertion_id = self._repository.insert_assertion(
+            kind="inference",
+            predicate_key="reconstruction_rung_is",
+            subject_ref={"type": "capture", "id": str(capture_id)},
+            object_value={
+                **decision.as_payload(),
+                "model_id": prediction.model_id,
+                "metric": prediction.metric,
+                # The artifact id, so an interface explaining a rung can open the map it is
+                # about. An artifact id and an evidence address are not the same kind of thing
+                # and this is not a citation: nothing resolves it through the evidence route.
+                "point_map_artifact": str(result.artifact_id),
+            },
+            emit_key=f"{result.idempotency_key}:rung",
+            support_span_ids=[image_span_id],
+            produced_by_run=ledger.run_id,
+        )
+        if assertion_id is not None:
+            ledger.emitted("assertion", [assertion_id], stage("depth"))
 
 
 def _verbatim_json(document: dict[str, Any]) -> bytes:

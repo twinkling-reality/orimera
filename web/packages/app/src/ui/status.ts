@@ -29,10 +29,41 @@ export const STANDING_CAPTION =
 export interface StatusInput {
   readonly snapshot: GraphSnapshot;
   readonly regionCount: number;
-  /** The rung every region in this world earned. One value while nothing reconstructs. */
+  /**
+   * What a region renders as when nothing has reconstructed it.
+   *
+   * Rung 4 is "evidence cards laid out by time and semantic proximity. No geometry", which is
+   * what an unreconstructed region IS, so the scene graph is right to draw one that way. The
+   * sentence below still distinguishes the two cases, because "nothing has run" and "it ran and
+   * found nothing to place" are different facts and only the second is a verdict.
+   */
   readonly rung: ReconstructionRung;
   readonly omittedRegionCount: number;
   readonly undrawable: ReadonlyMap<OccurrenceKind, number>;
+}
+
+/**
+ * What the regions in this world earned, in one sentence.
+ *
+ * The WORST rung present, because a library is only as navigable as its weakest region and a
+ * sentence describing the best one would describe a world the user does not have. Regions with no
+ * rung at all are counted separately and said separately: "nothing has reconstructed this" and
+ * "reconstruction ran and found nothing to place" are different facts, and rung 4 is the second.
+ */
+function rungSentence(snapshot: GraphSnapshot, fallback: ReconstructionRung): string {
+  const earned = snapshot.islands.map((island) => island.rung).filter((r) => r !== null);
+  const unreconstructed = snapshot.islands.length - earned.length;
+  if (earned.length === 0) {
+    return (
+      `${say(rungProperties(fallback).labelKey)} ` +
+      'Nothing here has been through reconstruction.'
+    );
+  }
+  const worst = Math.max(...earned) as 1 | 2 | 3 | 4;
+  const sentence = say(rungProperties(worst).labelKey);
+  return unreconstructed === 0
+    ? sentence
+    : `${sentence} ${unreconstructed} more have not been through reconstruction.`;
 }
 
 export function buildStatus(input: StatusInput): HTMLElement {
@@ -49,7 +80,7 @@ export function buildStatus(input: StatusInput): HTMLElement {
         `${snapshot.entities.length} identified, ` +
         `state version ${snapshot.stateVersion}`,
     }),
-    el('p', { class: 'status-rung', text: say(rungProperties(input.rung).labelKey) }),
+    el('p', { class: 'status-rung', text: rungSentence(snapshot, input.rung) }),
   );
 
   if (input.omittedRegionCount > 0) {

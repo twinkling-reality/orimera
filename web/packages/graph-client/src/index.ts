@@ -62,6 +62,7 @@ export type {
   OccurrenceIdRef,
   OccurrenceKind,
   OccurrenceRecord,
+  ReconstructionRungRef,
   RelationView,
   ResolvedEvidence,
 } from './read-model.js';

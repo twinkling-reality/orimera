@@ -42,6 +42,7 @@ import type {
   LinkState,
   MatchProposalView,
   OccurrenceRecord,
+  ReconstructionRungRef,
   ResolvedEvidence,
 } from './read-model.js';
 import { Transport, type TransportOptions } from './transport.js';
@@ -114,6 +115,8 @@ export interface GraphPayload {
     readonly radius_m: number | null;
     readonly centroid_lat_e7: number | null;
     readonly centroid_lon_e7: number | null;
+    readonly rung: number | null;
+    readonly rung_capture_count: number;
   }[];
   readonly never_same: readonly (readonly [string, string])[];
   readonly deleted_entity_ids: readonly string[];
@@ -377,6 +380,8 @@ function buildIslands(payload: GraphPayload, islandOf: IslandOf): readonly Islan
       lastCapturedAtMs: toMs(group.last_utc),
       positionedCaptureCount: group.positioned_member_count,
       spreadMetres: group.positioned_member_count > 0 ? group.radius_m : null,
+      rung: asRung(group.rung),
+      rungCaptureCount: group.rung_capture_count,
     });
   }
 
@@ -395,6 +400,10 @@ function buildIslands(payload: GraphPayload, islandOf: IslandOf): readonly Islan
       lastCapturedAtMs: maxOf(existing?.lastCapturedAtMs ?? null, atMs),
       positionedCaptureCount: 0,
       spreadMetres: null,
+      // A capture the grouping did not place has no group to carry a rung, and the server
+      // reports rungs per group. Null is the honest answer rather than a guess at rung 4.
+      rung: null,
+      rungCaptureCount: 0,
     });
   }
 
@@ -419,6 +428,18 @@ function buildIslands(payload: GraphPayload, islandOf: IslandOf): readonly Islan
     if (b === null) return a;
     return Math.max(a, b);
   }
+}
+
+/**
+ * The rung, narrowed to the four the ladder has, or null.
+ *
+ * Null means nothing reconstructed this region, which is a different fact from rung 4 and is not
+ * flattened into it: rung 4 means reconstruction ran and found nothing to place. A value outside
+ * one to four is a server this client does not understand, and reporting it as a rung would be
+ * showing a label for a ladder position that does not exist.
+ */
+function asRung(value: number | null): ReconstructionRungRef | null {
+  return value === 1 || value === 2 || value === 3 || value === 4 ? value : null;
 }
 
 function toMs(value: string | null): number | null {

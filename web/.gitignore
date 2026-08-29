@@ -2,4 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 fixtures/
+# ...except the .opm pin, which is 2 KB and is the only thing tying the Python writer to the
+# decoder that reads it. The rule above is for scene-synth's generated bake-off fixtures,
+# which are tens of megabytes and are rebuilt by `pnpm synth`.
+!packages/atlas-react/test/fixtures/
+!packages/atlas-react/test/fixtures/*.opm
 bakeoff-results/

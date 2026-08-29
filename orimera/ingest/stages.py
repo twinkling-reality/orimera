@@ -159,6 +159,28 @@ STAGES: Final[dict[str, StageSpec]] = {
         model_role="vision",
         params=vision_stage_params(),
     ),
+    "depth": StageSpec(
+        key="depth",
+        version=1,
+        output_kind="point_map",
+        # A neural depth model is not deterministic in the sense this flag means: the same
+        # weights on the same bytes can differ across accelerators and across library versions.
+        # Marking it false is what stops a legitimate difference being reported as a fault.
+        deterministic=False,
+        model_role="depth",
+        params={
+            # UNVALIDATED DEFAULTS, in the parameters rather than in constants precisely because
+            # the corpus that would validate them is the thing this stage exists to produce. An
+            # edit changes the stage key and regenerates, so a later tuning pass cannot leave
+            # stale rungs behind.
+            "min_valid_fraction_milli": 150,
+            # The longest edge handed to the model. Monocular depth cost is quadratic in pixels
+            # and a point map is 18 bytes per pixel, so this is a size decision and a storage
+            # decision at once: 512 is roughly 190k points and 3.4 MB per photograph.
+            "max_edge_px": 512,
+            "container": "opm/1",
+        },
+    ),
     "scene_group": StageSpec(
         key="scene_group",
         version=1,

@@ -158,10 +158,17 @@ def test_the_seeded_vocabulary_is_what_the_guards_read(spine):
     ).fetchall()
     vocabulary = {row[0]: row for row in rows}
 
-    assert len(rows) == 11, sorted(vocabulary)
+    # Twelve: the eleven seeded by 0001 plus `reconstruction_rung_is` from 0005. The count is
+    # asserted rather than only the individual rows, because a predicate added without anybody
+    # deciding what may write it is exactly the hole `allows_kind` exists to close.
+    assert len(rows) == 12, sorted(vocabulary)
     naming = [row[0] for row in rows if row[2]]
     assert naming == ["name_is"], naming
     assert vocabulary["name_is"][1] == ["user"]
+    # A rung is what a model managed to place, and a different checkpoint gives a different
+    # answer over the same bytes. `{inference}` alone is what stops it being filed as a
+    # capture-supported fact, which would be the flattening invariant 4 forbids.
+    assert vocabulary["reconstruction_rung_is"][1] == ["inference"]
     assert vocabulary["caption_is"][1] == ["inference"]
     assert vocabulary["ocr_text_is"][1] == ["inference"]
     assert vocabulary["device_model_is"][1] == ["capture"]

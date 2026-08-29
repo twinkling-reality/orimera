@@ -556,3 +556,142 @@ def test_a_stale_grouping_is_not_offered_at_all(deployment, repository, photo_di
         "update derived_artifact set stale = true where kind = 'scene_group'"
     )
     assert deployment.as_owner("GET", "/graph").json()["scene_groups"] == []
+
+
+# -- the rung a region earned, which is displayed rather than hidden ---------------------------
+
+
+def _reconstruct(repository, photo_dir, store, *, valid_fraction=1.0, when="2026:08:27 13:00:00"):
+    """Ingest one photograph with reconstruction on, then group it.
+
+    ``when`` differs per call because it goes into the EXIF and therefore into the bytes, and the
+    bytes are the identity. Two calls with the same timestamp produce the same blob, the same
+    idempotency key and the same artifact, which is the cost control working exactly as designed
+    and not what a test of two regions wants.
+    """
+    from orimera.ingest.scenes import run_scene_grouping
+    from orimera.reconstruction.testing import FlatDepthModel
+
+    pipeline = PhotoIngestPipeline(
+        repository, store, vision=None, depth=FlatDepthModel(valid_fraction=valid_fraction)
+    )
+    outcome = pipeline.ingest_file(
+        write_photo(photo_dir, f"r{when[-8:].replace(':', '')}.jpg", when=when)
+    )
+    assert outcome.error is None, outcome.error
+    run_scene_grouping(repository)
+    return outcome
+
+
+def test_the_graph_reports_the_rung_a_region_earned(deployment, repository, photo_dir):
+    """product-specification.md 5.1: the rung is displayed, not hidden and not smoothed over.
+
+    An interface cannot display a rung the API does not carry, so this is the half of that
+    decision that lives on the wire.
+    """
+    _reconstruct(repository, photo_dir, deployment.store)
+    groups = deployment.as_owner("GET", "/graph").json()["scene_groups"]
+    assert groups, "no scene group to carry a rung"
+    earned = [g for g in groups if g["rung"] is not None]
+    assert earned, groups
+    assert earned[0]["rung"] == 3
+    assert earned[0]["rung_capture_count"] >= 1
+
+
+def test_a_group_reports_its_worst_rung_rather_than_its_best(deployment, repository, photo_dir):
+    """A region is navigable at the level of its weakest part.
+
+    A group where one photograph has no geometry has a hole in it, and reporting the best or the
+    mean would describe a region nobody can walk through as though they could.
+    """
+    _reconstruct(repository, photo_dir, deployment.store, valid_fraction=1.0)
+    # Twenty minutes later, so it lands in the same scene group and the two rungs have to be
+    # reduced to one number for the region they share.
+    _reconstruct(
+        repository, photo_dir, deployment.store, valid_fraction=0.01, when="2026:08:27 13:20:00"
+    )
+    groups = deployment.as_owner("GET", "/graph").json()["scene_groups"]
+    worst = [g for g in groups if g["rung_capture_count"] >= 2]
+    assert worst, [g["rung_capture_count"] for g in groups]
+    assert worst[0]["rung"] == 4
+
+
+def test_a_group_nothing_has_reconstructed_says_so_rather_than_claiming_rung_four(
+    deployment, repository, photo_dir
+):
+    """Null and rung 4 are different facts.
+
+    Rung 4 means reconstruction ran and there was nothing to place. Null means it never ran. An
+    interface that showed them identically would be reporting a decision nobody made.
+    """
+    from orimera.ingest.scenes import run_scene_grouping
+
+    pipeline = PhotoIngestPipeline(repository, deployment.store, vision=None, depth=None)
+    outcome = pipeline.ingest_file(write_photo(photo_dir, "none.jpg", when="2026:08:27 14:00:00"))
+    assert outcome.error is None
+    assert "depth" in outcome.stages_skipped
+    run_scene_grouping(repository)
+
+    groups = deployment.as_owner("GET", "/graph").json()["scene_groups"]
+    assert any(g["rung"] is None for g in groups), groups
+
+
+def test_the_newest_rung_is_the_one_reported(deployment, repository, photo_dir):
+    """Reconstruction run twice reports what the latest run found, not what the first one did.
+
+    This test found defect R16. ``predicate.functional`` is documented in migration 0001 as "at
+    most one active object per subject" and is enforced by nothing: no constraint, no index and no
+    trigger reads the column. So the second claim below does NOT supersede the first, both stay
+    active, and an unordered read would report whichever row the query planner returned.
+
+    The behaviour asserted here is therefore what the reader guarantees rather than what the
+    vocabulary was believed to: newest active wins, deterministically. Both halves are checked,
+    because a later fix that makes ``functional`` real must not change what is displayed.
+    """
+    _reconstruct(repository, photo_dir, deployment.store, valid_fraction=1.0)
+    capture = repository.connection.execute(
+        "select capture_id from capture where workspace_id = %s order by created_at desc limit 1",
+        (repository.workspace_id,),
+    ).fetchone()
+    span = repository.connection.execute(
+        "select span_id from evidence_span where workspace_id = %s limit 1",
+        (repository.workspace_id,),
+    ).fetchone()
+
+    before = deployment.as_owner("GET", "/graph").json()["scene_groups"]
+    assert any(g["rung"] == 3 for g in before), before
+
+    # A second run of a later version of the stage, reporting a worse outcome over the same
+    # photograph. `reconstruction_rung_is` is functional, so this supersedes rather than adding.
+    # A real run row, because `assertion.produced_by_run` has a foreign key: an inference that
+    # named a run nobody could look up would be an inference with no provenance.
+    from orimera.ingest.ledger import Ledger
+
+    rerun = Ledger.start_run(repository, trigger="reprocess")
+    repository.insert_assertion(
+        kind="inference",
+        predicate_key="reconstruction_rung_is",
+        subject_ref={"type": "capture", "id": str(capture["capture_id"])},
+        object_value={"rung": 4, "valid_fraction": 0.01, "reason": "a later run placed less"},
+        emit_key="test:rerun",
+        support_span_ids=[span["span_id"]],
+        produced_by_run=rerun.run_id,
+    )
+
+    after = deployment.as_owner("GET", "/graph").json()["scene_groups"]
+    reported = {g["rung"] for g in after if g["rung"] is not None}
+    assert reported == {4}, after
+    # Defect R16, asserted so the day `functional` is enforced this fails and somebody decides
+    # deliberately rather than discovering the change through a rung that moved.
+    statuses = [
+        row["status"]
+        for row in repository.connection.execute(
+            "select a.status from assertion a join predicate p on p.predicate_id = a.predicate_id "
+            "where a.workspace_id = %s and p.key = 'reconstruction_rung_is' order by a.asserted_at",
+            (repository.workspace_id,),
+        ).fetchall()
+    ]
+    assert statuses == ["active", "active"], (
+        "functional is now enforced. The reported rung above is unchanged, which is the point; "
+        "update this assertion and remove R16."
+    )

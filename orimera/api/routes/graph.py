@@ -148,6 +148,18 @@ class SceneGroupRow(BaseModel):
     radius_m: int | None
     centroid_lat_e7: int | None
     centroid_lon_e7: int | None
+    #: The reconstruction rung the captures in this group earned, WORST FIRST.
+    #:
+    #: The worst rather than the best or the mean, and that is the honest reduction. A region is
+    #: navigable at the level of its weakest part: a group where one photograph has no geometry
+    #: has a hole in it, and reporting the average would describe a region nobody can walk
+    #: through as though they could. `null` means nothing in the group has been through
+    #: reconstruction at all, which is a different fact from rung 4 and is not flattened into it.
+    rung: int | None
+    #: How many of the group's captures have a recorded rung. A rung derived from two of sixteen
+    #: photographs is a weaker claim than one derived from all sixteen, and an interface that
+    #: showed them identically would be flattening that.
+    rung_capture_count: int
 
 
 class GraphPayload(BaseModel):
@@ -412,6 +424,7 @@ def _scene_groups(connection: psycopg.Connection, workspace: uuid.UUID) -> list[
         "order by (d.payload->>'ordinal')::int",
         (workspace,),
     ).fetchall()
+    rungs = _rung_by_capture(connection, workspace)
     live = {
         row["capture_id"]
         for row in connection.execute(
@@ -429,8 +442,11 @@ def _scene_groups(connection: psycopg.Connection, workspace: uuid.UUID) -> list[
         ]
         if not members:
             continue
+        earned = [rungs[capture_id] for capture_id in members if capture_id in rungs]
         groups.append(
             SceneGroupRow(
+                rung=max(earned) if earned else None,
+                rung_capture_count=len(earned),
                 group_id=row["derived_id"],
                 ordinal=int(payload.get("ordinal", 0)),
                 capture_ids=members,
@@ -446,6 +462,40 @@ def _scene_groups(connection: psycopg.Connection, workspace: uuid.UUID) -> list[
             )
         )
     return groups
+
+
+def _rung_by_capture(
+    connection: psycopg.Connection, workspace: uuid.UUID
+) -> dict[uuid.UUID, int]:
+    """The rung each capture earned, from the claim that records it.
+
+    Read from ``assertion`` rather than from a column, because the rung is not a property of the
+    photograph: it is what a particular model at a particular version managed to place from it,
+    and a different checkpoint gives a different answer over the same bytes. Migration 0005 seeds
+    the predicate with ``allows_kind = {inference}`` alone, so the database refuses a rung filed
+    as a capture-supported fact whatever the pipeline later tries.
+
+    Active rows only, NEWEST FIRST, and the ordering is load bearing rather than tidy.
+    ``predicate.functional`` is documented in migration 0001 as "at most one active object per
+    subject" and is enforced by nothing: no constraint, no index and no trigger reads the column.
+    That is defect R16. So a capture reconstructed twice can carry two active rungs, and an
+    unordered read would report whichever row the planner happened to return. Taking the newest
+    per capture means the rung on screen is the most recent one whatever the vocabulary does or
+    does not enforce, and the day it is enforced this query is unchanged.
+
+    A superseded rung is what a previous run believed and stays readable in the history;
+    presenting it as current would be presenting a stale reconstruction as the one on screen.
+    """
+    rows = connection.execute(
+        "select distinct on (a.subject_ref->>'id') "
+        "  a.subject_ref->>'id' as capture_id, a.object_value->>'rung' as rung "
+        "from assertion a join predicate p on p.predicate_id = a.predicate_id "
+        "where a.workspace_id = %s and p.key = 'reconstruction_rung_is' "
+        "  and a.status = 'active' and a.subject_ref->>'type' = 'capture' "
+        "order by a.subject_ref->>'id', a.asserted_at desc, a.assertion_id desc",
+        (workspace,),
+    ).fetchall()
+    return {uuid.UUID(row["capture_id"]): int(row["rung"]) for row in rows if row["rung"]}
 
 
 def _proposals(connection: psycopg.Connection, workspace: uuid.UUID) -> list[ProposalRow]:

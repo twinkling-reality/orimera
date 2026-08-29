@@ -278,7 +278,10 @@ def test_ingest_without_a_vision_model_records_capture_facts_and_says_vision_did
     report = PhotoIngestPipeline(repository, store, vision=None).ingest_directory(photo_dir)
 
     outcome = report.outcomes[0]
-    assert outcome.stages_skipped == ["vision"]
+    # Depth joins vision here: neither model is configured, and a stage that never ran is
+    # reported as skipped rather than as failed. The capture is complete for
+    # capture-supported facts and incomplete for inference, which is two different things.
+    assert outcome.stages_skipped == ["vision", "depth"]
     assert outcome.model_calls == 0
     kinds = [
         row["kind"]

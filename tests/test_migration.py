@@ -16,7 +16,8 @@ Every migration is covered. 0001 is the spine; 0002 closes the two defects that 
 identity work, corrects the tombstone predicate from ``now()`` to ``clock_timestamp()``, and adds
 the ingest admission function; 0003 adds the intake batch, which is the unit the interface calls
 a capture and this schema does not; 0004 records a stage resolved from an existing artifact,
-which the ledger previously left out of its own replay.
+which the ledger previously left out of its own replay; 0005 seeds the reconstruction rung as
+a claim a model may make and a capture may not carry as a fact.
 """
 
 from __future__ import annotations
@@ -40,7 +41,7 @@ ALL_SQL = "\n".join(MIGRATIONS[version] for version in sorted(MIGRATIONS))
 
 def test_the_migrations_are_numbered_and_ordered():
     files = list(migrations())
-    assert [m.version for m in files] == ["0001", "0002", "0003", "0004"]
+    assert [m.version for m in files] == ["0001", "0002", "0003", "0004", "0005"]
 
 
 @pytest.mark.parametrize("migration", list(migrations()), ids=lambda m: m.version)

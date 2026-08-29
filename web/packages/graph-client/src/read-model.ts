@@ -298,6 +298,15 @@ export interface OccurrenceRecord {
  * than a group where every member agreed on a position, and an interface that showed the two
  * identically would be flattening that.
  */
+/**
+ * A rung on the reconstruction ladder, as a closed set.
+ *
+ * Duplicated from atlas-core's `ReconstructionRung` for the same reason `ConfidenceBand` and
+ * `LinkState` are: graph-client sits UNDER atlas-core and the arrow can only point the other way.
+ * Both are transcriptions of the four rungs in product-specification.md section 5.
+ */
+export type ReconstructionRungRef = 1 | 2 | 3 | 4;
+
 export interface IslandRecord {
   readonly islandId: IslandIdRef;
   readonly captureIds: readonly string[];
@@ -306,6 +315,18 @@ export interface IslandRecord {
   readonly positionedCaptureCount: number;
   /** Null when nothing in the group had a position. Not zero: zero is a real spread. */
   readonly spreadMetres: number | null;
+  /**
+   * The rung this region earned, WORST FIRST across its captures, or null.
+   *
+   * Null means nothing here has been through reconstruction at all, which is a different fact
+   * from rung 4 and must not be shown as one: rung 4 means reconstruction ran and there was too
+   * little to place. product-specification.md 5.1 requires the rung be displayed rather than
+   * smoothed over, and a client cannot display what it does not carry.
+   */
+  readonly rung: ReconstructionRungRef | null;
+  /** How many of the region's captures have a recorded rung. A rung from two of sixteen is a
+   * weaker claim than one from all sixteen, and an interface showing them alike flattens that. */
+  readonly rungCaptureCount: number;
 }
 
 /**

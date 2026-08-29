@@ -448,6 +448,10 @@ function islandsOf(occurrences: readonly OccurrenceRecord[]): readonly IslandRec
         lastCapturedAtMs: times.last,
         positionedCaptureCount: 0,
         spreadMetres: null,
+        // Nothing has reconstructed this fixture, which is a different fact from rung 4 and
+        // is carried as one: rung 4 means reconstruction ran and found nothing to place.
+        rung: null,
+        rungCaptureCount: 0,
       }),
     ),
   );

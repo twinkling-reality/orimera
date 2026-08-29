@@ -75,6 +75,8 @@ function snapshot(entities: readonly EntityRecord[], occurrences: readonly Occur
         lastCapturedAtMs: null,
         positionedCaptureCount: 0,
         spreadMetres: null,
+        rung: null,
+        rungCaptureCount: 0,
       },
     ],
     matchProposals: [],

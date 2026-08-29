@@ -9,12 +9,13 @@
  * Three decisions in this file are epistemic rather than graphical, and each is the honest read
  * of what the system currently knows.
  *
- * **Every island is rung 4, and that is displayed rather than hidden.** Rung 4 is "evidence
- * cards laid out by time and semantic proximity. No geometry." Nothing reconstructs yet, so
- * there is no geometry, and claiming rung 3 would be claiming a metric point map that does not
- * exist. `product-specification.md` 5.1: "the reconstruction rung a scene earned is displayed,
- * not hidden. The ladder is the honesty feature." When reconstruction lands, this becomes the
- * rung the pipeline recorded, and the interface will not need to change to show it.
+ * **The rung is the one the pipeline recorded, and it is displayed rather than hidden.**
+ * `product-specification.md` 5.1: "the reconstruction rung a scene earned is displayed, not
+ * hidden. The ladder is the honesty feature." A region the pipeline has not reconstructed carries
+ * no rung at all, and that is not the same fact as rung 4: rung 4 means reconstruction ran and
+ * there was too little to place. An unreconstructed region falls back to rung 4 for the SCENE
+ * GRAPH, because the scene graph has to render something and no geometry is what rung 4 is, and
+ * the interface says which of the two it is from the record rather than from the scene.
  *
  * **No island is metric.** `scaleIsMetric: false` is what makes `asMetricLocal` return null, and
  * that null is what makes a spatial question refuse with a stated reason instead of estimating.
@@ -63,10 +64,13 @@ import type {
 } from '@orimera/graph-client';
 
 /**
- * The rung an island earns with no reconstruction at all.
+ * What an island renders as when nothing has reconstructed it.
  *
- * Named rather than written inline so that the day a point map exists, the thing that has to
- * change is one lookup and not a scattering of literal fours.
+ * Rung 4 is "evidence cards laid out by time and semantic proximity. No geometry", which is
+ * exactly what a region with no point map is, so the SCENE GRAPH is right to say 4. What the
+ * record says is separate and is null, and the interface reads the record rather than the scene
+ * when it explains the rung, because "nothing has run" and "it ran and found nothing" are two
+ * different sentences.
  */
 export const NO_GEOMETRY_RUNG: ReconstructionRung = 4;
 
@@ -174,7 +178,12 @@ export function buildScene(snapshot: GraphSnapshot, layoutVersion = 1): SceneBui
       islandId: toIslandId(record.islandId),
       createdAt: orderingKey(record),
       placement: layout.placements.get(toIslandId(record.islandId)) ?? originPlacement(),
-      rung: NO_GEOMETRY_RUNG,
+      rung: record.rung ?? NO_GEOMETRY_RUNG,
+      // Not metric even at rung 3. A monocular point map has a real metric scale of its own,
+      // but an island's frame is the ATLAS's, and where a region sits there is a layout
+      // decision carrying no real-world meaning. Making the island metric would let a query
+      // measure across a placement, which is risk R-48. The metric frame that does exist is
+      // the point map's, and a question answered from it has to go through the point map.
       scaleIsMetric: false,
       footprintRadiusLocal: footprintOf(anchors),
       // The centre of the disc, at eye height. Not "where the camera stood": nothing recovered a
