@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./packages/graph-client" },
+    { "path": "./packages/formation" },
     { "path": "./packages/atlas-core" },
     { "path": "./packages/companion-runtime" },
     { "path": "./packages/world-index" },

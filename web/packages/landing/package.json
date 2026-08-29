@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@orimera/atlas-core": "workspace:*"
+    "@orimera/atlas-core": "workspace:*",
+    "@orimera/formation": "workspace:*"
   },
   "devDependencies": {
     "vite": "^6"

@@ -12,7 +12,7 @@ import {
   withStreamState,
   type FormationState,
   type StageEvent,
-} from '../src/formation/index.js';
+} from '../src/index.js';
 
 const CAPTURE = 'c1';
 

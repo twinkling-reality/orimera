@@ -24,7 +24,7 @@ import {
   withStreamState,
   type FormationState,
   type MockScenario,
-} from './formation/index.js';
+} from '@orimera/formation';
 import { buildAtlasPane } from './ui/atlas-pane.js';
 import { buildChrome, type Surface } from './ui/chrome.js';
 import { FIRST_RUN_OFFER, SAMPLE_PLACED, buildCompanion } from './ui/companion.js';

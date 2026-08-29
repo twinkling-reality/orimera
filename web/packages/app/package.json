@@ -7,6 +7,7 @@
     "@orimera/atlas-core": "workspace:*",
     "@orimera/atlas-react": "workspace:*",
     "@orimera/companion-runtime": "workspace:*",
+    "@orimera/formation": "workspace:*",
     "@orimera/graph-client": "workspace:*",
     "@orimera/world-index": "workspace:*"
   },

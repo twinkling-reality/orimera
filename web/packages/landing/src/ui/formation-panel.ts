@@ -27,7 +27,7 @@ import {
   type FormationStage,
   type FormationState,
   type MockScenario,
-} from '../formation/index.js';
+} from '@orimera/formation';
 import { el } from './dom.js';
 
 export interface FormationPanelHandles {

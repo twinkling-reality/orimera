@@ -540,3 +540,74 @@ button.ghost {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ------------------------------------------------------------------ forming */
+
+/*
+ * The forming panel.
+ *
+ * No bar and no ring, and that is a structural absence rather than a styling choice. There is no
+ * element here a percentage could be written into: interaction-model.md 8.1 rules out a synthetic
+ * progress bar, and a rule kept by having nowhere to put the thing is kept better than one kept
+ * by remembering not to.
+ */
+.forming {
+  position: fixed;
+  left: var(--gap);
+  bottom: 6.5rem;
+  width: min(24rem, calc(100vw - 2 * var(--gap)));
+  z-index: 3;
+  padding: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  backdrop-filter: blur(14px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.forming[hidden] {
+  display: none;
+}
+
+.forming-stage {
+  margin: 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.forming-head {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.forming-headline {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.forming-detail {
+  margin: 0;
+  padding-left: 1rem;
+  font-size: 0.84rem;
+  color: var(--ink-faint);
+}
+
+.forming-elapsed,
+.forming-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+/* The pipeline's own words, visibly the pipeline's and not the product's. */
+.forming-note {
+  font-style: italic;
+  border-left: 2px solid var(--edge);
+  padding-left: 0.6rem;
+}

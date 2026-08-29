@@ -205,19 +205,35 @@ module.exports = {
       to: { path: notPkgRef('bakeoff', 'atlas-core', 'atlas-three') },
     },
 
+    // ---- formation: the contract two surfaces share ------------------------------------------
+    {
+      name: 'formation-imports-atlas-core-only',
+      severity: 'error',
+      comment:
+        'The formation contract sits under both surfaces that use it: the signed-out page shows ' +
+        'a scripted demonstration and the app watches a real pipeline, and neither package may ' +
+        'import the other. So this one may reach atlas-core, for the rung ladder its labels are ' +
+        'written from, and nothing else in the workspace. It must never learn about graph-client: ' +
+        'its transport takes a fetch by injection precisely so that watching an ingest costs no ' +
+        'dependency on the graph.',
+      from: { path: pkg('formation') },
+      to: { path: notPkgRef('formation', 'atlas-core') },
+    },
+
     // ---- landing: the signed-out surface -----------------------------------------------------
     {
-      name: 'landing-imports-atlas-core-only',
+      name: 'landing-imports-atlas-core-and-formation-only',
       severity: 'error',
       comment:
         'The landing page and the entrance transition must not depend on the ADR-0003 outcome, ' +
-        'and must not pay for a 3D engine on first paint. Its atmosphere is a 2D canvas particle ' +
-        'field. It may import atlas-core (for the epistemic vocabulary, the rung ladder and the ' +
-        'same phyllotaxis seed the layout solver uses) and nothing else in the workspace. The ' +
-        'renderer ban is already covered by engine-specific-code-stays-behind-the-binding, which ' +
-        'does not list landing among the packages allowed to name an engine.',
+        'and must not pay for a 3D engine on first paint. It may import atlas-core (for the ' +
+        'epistemic vocabulary, the rung ladder and the same phyllotaxis seed the layout solver ' +
+        'uses) and formation (the stage-event contract it demonstrates), and nothing else in the ' +
+        'workspace. The renderer ban is already covered by ' +
+        'engine-specific-code-stays-behind-the-binding, which does not list landing among the ' +
+        'packages allowed to name an engine.',
       from: { path: pkg('landing') },
-      to: { path: notPkgRef('landing', 'atlas-core') },
+      to: { path: notPkgRef('landing', 'atlas-core', 'formation') },
     },
 
     // ---- app: the composition root ---------------------------------------------------------
@@ -227,7 +243,7 @@ module.exports = {
       comment:
         'The app is the composition root: it is the one place that knows a transport, a scene ' +
         'graph, a renderer binding, an index and a Companion all exist at once. It may reach ' +
-        'the five product packages and nothing else in the workspace. Not atlas-three, which is ' +
+        'the six product packages and nothing else in the workspace. Not atlas-three, which is ' +
         'the retained second renderer binding and would be a second engine in the product; not ' +
         'bakeoff, which is a measurement harness; not scene-synth, which writes files with ' +
         'node:fs; and not landing, which is the signed-out surface and must keep paying for no ' +
@@ -240,6 +256,7 @@ module.exports = {
           'atlas-core',
           'atlas-react',
           'companion-runtime',
+          'formation',
           'world-index',
         ),
       },

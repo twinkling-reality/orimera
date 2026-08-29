@@ -12,9 +12,11 @@ the file, which is why the assertions below name the specific mechanism rather t
 shape. If a guard is removed, something fails here even when no behavioural test happened to
 cover the route it protected.
 
-Both migrations are covered. 0001 is the spine; 0002 closes the two defects that blocked
+Every migration is covered. 0001 is the spine; 0002 closes the two defects that blocked
 identity work, corrects the tombstone predicate from ``now()`` to ``clock_timestamp()``, and adds
-the ingest admission function.
+the ingest admission function; 0003 adds the intake batch, which is the unit the interface calls
+a capture and this schema does not; 0004 records a stage resolved from an existing artifact,
+which the ledger previously left out of its own replay.
 """
 
 from __future__ import annotations
@@ -30,10 +32,15 @@ MIGRATIONS = {migration.version: migration.sql for migration in migrations()}
 SQL = MIGRATIONS["0001"]
 SQL_0002 = MIGRATIONS["0002"]
 
+#: Every migration concatenated. A table added by a later file exists just as much as one in
+#: 0001, and a required-table check that only read the spine would go green on a table nobody
+#: ever created the day somebody moved a `create table` into a new file.
+ALL_SQL = "\n".join(MIGRATIONS[version] for version in sorted(MIGRATIONS))
+
 
 def test_the_migrations_are_numbered_and_ordered():
     files = list(migrations())
-    assert [m.version for m in files] == ["0001", "0002"]
+    assert [m.version for m in files] == ["0001", "0002", "0003", "0004"]
 
 
 @pytest.mark.parametrize("migration", list(migrations()), ids=lambda m: m.version)
@@ -59,6 +66,7 @@ def test_every_migration_is_a_single_transaction_with_no_down_path(migration):
         "clock_anchor",
         "evidence_span",
         "stage_registry",
+        "intake_batch",
         "pipeline_run",
         "pipeline_event",
         "artifact",
@@ -86,7 +94,7 @@ def test_every_migration_is_a_single_transaction_with_no_down_path(migration):
     ],
 )
 def test_every_required_table_exists(table):
-    assert re.search(rf"create table (if not exists )?{table} \(", SQL)
+    assert re.search(rf"create table (if not exists )?{table} \(", ALL_SQL)
 
 
 def test_a_span_interval_is_half_open_and_never_empty():

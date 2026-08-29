@@ -120,11 +120,19 @@ class Ledger:
         trigger: str,
         capture_id: uuid.UUID | None = None,
         pipeline_digest: str | None = None,
+        batch_id: uuid.UUID | None = None,
     ) -> Ledger:
+        """Open a run, optionally inside a watched intake batch.
+
+        ``batch_id`` is None for a run that nobody is watching, which is most of them: a
+        single-file ingest, a reprocess and a repair are all real runs with no batch. It is not
+        defaulted to a freshly created batch, because a batch of one invented to satisfy a
+        column would appear in the formation stream as somebody's upload.
+        """
         row = repository.connection.execute(
-            'insert into pipeline_run (workspace_id, capture_id, "trigger", status) '
-            "values (%s, %s, %s, 'running') returning run_id",
-            (repository.workspace_id, capture_id, trigger),
+            'insert into pipeline_run (workspace_id, capture_id, "trigger", status, batch_id) '
+            "values (%s, %s, %s, 'running', %s) returning run_id",
+            (repository.workspace_id, capture_id, trigger, batch_id),
         ).fetchone()
         assert row is not None
         run_id = row["run_id"]
@@ -279,6 +287,26 @@ class Ledger:
             started_at=started_at,
             ended_at=_now(),
             duration_ms=int((time.monotonic() - started_monotonic) * 1000),
+        )
+
+    def reused(
+        self, spec: StageSpec, artifact_id: uuid.UUID, *, input_blob: BlobId | None = None
+    ) -> None:
+        """Record that a stage was satisfied by an artifact that already existed.
+
+        Not ``stage_succeeded``, because the stage did not run and a succeeded event carries a
+        duration and a cost for work that was performed. This carries the artifact it resolved to
+        and nothing else, which is the whole of what happened.
+
+        Without it the Assembly Replay of a second ingest has no rendition step in it, which is
+        the failure this module's own docstring names: a DAG that is only implicit in the source
+        lies as soon as the source changes, and it lies most convincingly about old runs.
+        """
+        self.event(
+            "stage_reused",
+            stage=spec,
+            output_artifact_ids=[artifact_id],
+            input_blob=input_blob,
         )
 
     def emitted(self, kind: str, ids: Sequence[uuid.UUID], stage: StageSpec) -> None:

@@ -25,11 +25,13 @@ import { confirmationFor, draftEdit } from '@orimera/world-index';
 import { mountAtlas, type MountedAtlas } from './atlas.js';
 import { credentials, developmentToken } from './config.js';
 import { EvidenceCache } from './evidence.js';
+import { listBatches, watchBatch, type BatchSummary } from './formation.js';
 import { toUpdateProposal } from './proposal.js';
 import { NO_GEOMETRY_RUNG, buildScene } from './scene.js';
 import { openSession, type Session } from './session.js';
 import { buildConfirm } from './ui/confirm.js';
 import { buildDetail } from './ui/detail.js';
+import { buildFormation } from './ui/formation.js';
 import { el, replace } from './ui/dom.js';
 import { buildLibrary } from './ui/library.js';
 import { buildStatus } from './ui/status.js';
@@ -40,7 +42,9 @@ if (!(canvas instanceof HTMLCanvasElement) || shell === null) {
   throw new Error('app: expected #atlas and #shell in the document');
 }
 
+let credentials_: { baseUrl: string; token: string } | null = null;
 let session: Session | null = null;
+let stopWatching: (() => void) | null = null;
 let snapshot: GraphSnapshot | null = null;
 let atlas: MountedAtlas | null = null;
 let evidence: EvidenceCache | null = null;
@@ -108,7 +112,8 @@ function askForToken(): void {
 }
 
 async function start(token: string): Promise<void> {
-  const opened = await openSession(credentials(token));
+  credentials_ = credentials(token);
+  const opened = await openSession(credentials_);
   session = opened.session;
   snapshot = opened.initial;
   evidence = new EvidenceCache(opened.session.client);
@@ -119,7 +124,15 @@ async function mount(): Promise<void> {
   const current = snapshot;
   const currentSession = session;
   const currentEvidence = evidence;
-  if (current === null || currentSession === null || currentEvidence === null) return;
+  const currentCredentials = credentials_;
+  if (
+    current === null ||
+    currentSession === null ||
+    currentEvidence === null ||
+    currentCredentials === null
+  ) {
+    return;
+  }
 
   const built = buildScene(current);
 
@@ -165,11 +178,13 @@ async function mount(): Promise<void> {
   // Moving it into the shell would put it in the shell's stacking context, where it paints over
   // the rail. The stage is the hole it shows through and the parent the anchor overlay writes
   // its nodes into, which is a different job from being the canvas.
+  const forming = buildFormation();
   const stage = el('div', { class: 'stage' });
   replace(shell!, [
     library.root,
     stage,
     detail.root,
+    forming.root,
     confirm.root,
     buildStatus({
       snapshot: current,
@@ -182,6 +197,20 @@ async function mount(): Promise<void> {
 
   library.render(current, search, selected);
   detail.showNothing();
+  forming.render(null, null);
+
+  // What there is to watch. There is no upload endpoint yet, so an intake starts from the command
+  // line and this asks the API rather than assuming: an empty list renders as nothing forming,
+  // which is a true statement, and a fabricated batch would not be.
+  stopWatching?.();
+  stopWatching = null;
+  void listBatches(currentCredentials!).then((batches) => {
+    const watching = mostRecentlyStarted(batches);
+    if (watching === undefined) return;
+    stopWatching = watchBatch(currentCredentials!, watching.batchId, (state) => {
+      forming.render(state, watching.label);
+    });
+  });
 
   atlas?.dispose();
   atlas = await mountAtlas(canvas as HTMLCanvasElement, stage, built.scene);
@@ -280,4 +309,16 @@ function syntheticEntityFor(occurrence: OccurrenceRecord) {
     history: [],
     mergedInto: null,
   };
+}
+
+
+/**
+ * The batch to watch, or none.
+ *
+ * The most recently started one, running or not. A finished batch replays its history and ends,
+ * which is the same code path a live subscriber takes, so somebody who opens the page after an
+ * ingest finished reads what happened rather than finding nothing and concluding it was lost.
+ */
+function mostRecentlyStarted(batches: readonly BatchSummary[]): BatchSummary | undefined {
+  return [...batches].sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
 }

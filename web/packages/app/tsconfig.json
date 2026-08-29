@@ -12,6 +12,7 @@
   "references": [
     { "path": "../graph-client" },
     { "path": "../atlas-core" },
+    { "path": "../formation" },
     { "path": "../atlas-react" },
     { "path": "../companion-runtime" },
     { "path": "../world-index" }

@@ -31,7 +31,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from orimera.api.authorisation import TokenNotAccepted
-from orimera.api.routes import evidence, graph, health, identity, selection
+from orimera.api.routes import evidence, formation, graph, health, identity, selection
 from orimera.api.services import Services, build_services
 from orimera.db.migrate import verify_schema
 from orimera.errors import (
@@ -93,6 +93,7 @@ def create_app(services: Services | None = None, *, verify: bool = True) -> Fast
     app.include_router(selection.router)
     app.include_router(identity.router)
     app.include_router(evidence.router)
+    app.include_router(formation.router)
 
     @app.exception_handler(TokenNotAccepted)
     async def _unauthenticated(_request: Request, exc: TokenNotAccepted) -> JSONResponse:

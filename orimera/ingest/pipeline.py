@@ -46,6 +46,7 @@ from orimera.evidence import PHOTOGRAPH_INTERVAL, EvidenceAddress
 from orimera.evidence.blob import BlobId
 from orimera.evidence.region import DisplayGeometry, Rect, Region
 from orimera.identity.keys import occurrence_identity_key
+from orimera.ingest.batch import IntakeBatch
 from orimera.ingest.derivatives import render
 from orimera.ingest.exif import ExifFacts, extract_exif_facts
 from orimera.ingest.ledger import Ledger, StageRecorder
@@ -126,6 +127,9 @@ class IngestReport:
 
     pipeline_digest: str
     outcomes: list[IngestOutcome] = field(default_factory=list)
+    #: The watched intake this run belonged to, and what the formation stream is addressed by.
+    #: None for an unwatched run, which is a real state rather than a missing value.
+    batch_id: uuid.UUID | None = None
 
     @property
     def ingested(self) -> list[IngestOutcome]:
@@ -211,24 +215,54 @@ class PhotoIngestPipeline:
     # -- directory ----------------------------------------------------------------------
 
     def ingest_directory(
-        self, directory: str | Path, *, recursive: bool = True, limit: int | None = None
+        self,
+        directory: str | Path,
+        *,
+        recursive: bool = True,
+        limit: int | None = None,
+        batch: IntakeBatch | None = None,
     ) -> IngestReport:
-        """Ingest every supported image under ``directory``. Safe to run repeatedly."""
+        """Ingest every supported image under ``directory``. Safe to run repeatedly.
+
+        ``batch`` is a watched intake to run inside, and this method JOINS it rather than owning
+        it. The distinction is not tidiness. A batch's terminal event is what tells the interface
+        the work is over and lets a client stop listening, so it has to come after all of the
+        work; and this method is not all of the work, because continuity search runs over the
+        whole corpus once the photographs are in. A pipeline that closed the batch it opened
+        would emit "finished" and then carry on emitting stages into a stream nobody was reading.
+
+        What it does own is the declaration of size, because it is what walks the directory. The
+        order matters: the batch exists before the walk so a client can subscribe to something
+        that honestly reports no total, and the total is written once, from what the walk found,
+        rather than accumulated as it goes. A denominator that grows is one that moves under a
+        fraction somebody is already reading.
+        """
         report = IngestReport(pipeline_digest=self.pipeline_digest)
-        for count, path in enumerate(_iter_images(Path(directory), recursive=recursive)):
-            if limit is not None and count >= limit:
-                break
-            report.outcomes.append(self.ingest_file(path))
+        report.batch_id = batch.batch_id if batch else None
+
+        paths = list(_iter_images(Path(directory), recursive=recursive))
+        if limit is not None:
+            paths = paths[:limit]
+        if batch is not None:
+            batch.declare_size(len(paths))
+
+        for path in paths:
+            report.outcomes.append(self.ingest_file(path, batch_id=report.batch_id))
         return report
 
     # -- one file -----------------------------------------------------------------------
 
-    def ingest_file(self, path: str | Path) -> IngestOutcome:
+    def ingest_file(
+        self, path: str | Path, *, batch_id: uuid.UUID | None = None
+    ) -> IngestOutcome:
         """Ingest one photograph. Never raises for a bad file: the outcome carries the error."""
         source = Path(path)
         outcome = IngestOutcome(path=source)
         ledger = Ledger.start_run(
-            self._repository, trigger="ingest", pipeline_digest=self.pipeline_digest
+            self._repository,
+            trigger="ingest",
+            pipeline_digest=self.pipeline_digest,
+            batch_id=batch_id,
         )
         outcome.run_id = ledger.run_id
         try:
@@ -410,7 +444,10 @@ class PhotoIngestPipeline:
             and self._store.exists(BlobId(existing.content_sha256))
         ):
             # The whole file is already encoded and stored. No decode, no resample, no write.
+            # Recorded, because a stage satisfied without running is still a step in the DAG and
+            # the replay is generated from the ledger and from nothing else.
             outcome.stages_reused.append(spec.key)
+            ledger.reused(spec, existing.artifact_id, input_blob=blob_id)
             return StageResult(
                 artifact_id=existing.artifact_id,
                 content_sha256=existing.content_sha256,
@@ -467,6 +504,7 @@ class PhotoIngestPipeline:
             # key: the prompt through ``params["prompt_sha256"]`` and the model through the
             # binding.
             outcome.stages_reused.append(spec.key)
+            ledger.reused(spec, existing.artifact_id, input_blob=blob_id)
             return
 
         image_bytes = self._store.get(BlobId(rendition.content_sha256))

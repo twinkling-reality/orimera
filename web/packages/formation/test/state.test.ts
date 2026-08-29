@@ -8,7 +8,7 @@ import {
   reduceFormation,
   withStreamState,
   type StageEvent,
-} from '../src/formation/index.js';
+} from '../src/index.js';
 
 const CAPTURE = 'c1';
 

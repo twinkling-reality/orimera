@@ -38,6 +38,9 @@ importers:
       '@orimera/companion-runtime':
         specifier: workspace:*
         version: link:../companion-runtime
+      '@orimera/formation':
+        specifier: workspace:*
+        version: link:../formation
       '@orimera/graph-client':
         specifier: workspace:*
         version: link:../graph-client
@@ -117,6 +120,12 @@ importers:
         specifier: workspace:*
         version: link:../graph-client
 
+  packages/formation:
+    dependencies:
+      '@orimera/atlas-core':
+        specifier: workspace:*
+        version: link:../atlas-core
+
   packages/graph-client: {}
 
   packages/landing:
@@ -124,6 +133,9 @@ importers:
       '@orimera/atlas-core':
         specifier: workspace:*
         version: link:../atlas-core
+      '@orimera/formation':
+        specifier: workspace:*
+        version: link:../formation
     devDependencies:
       vite:
         specifier: ^6

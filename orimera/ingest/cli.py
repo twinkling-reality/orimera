@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any
 
 from orimera.db import Database, apply_pending, provision_workspace
+from orimera.ingest.batch import IntakeBatch
+from orimera.ingest.ledger import Ledger
 from orimera.ingest.pipeline import IngestReport, PhotoIngestPipeline
 from orimera.ingest.repository import IngestRepository
 from orimera.ingest.scenes import run_scene_grouping
@@ -160,11 +162,15 @@ def _cmd_ingest(args: argparse.Namespace, stream: Any) -> int:
 
         target = Path(args.path)
         print(f"workspace {repository.workspace_id}", file=stream)
+        batch: IntakeBatch | None = None
         if target.is_dir():
+            batch = IntakeBatch.open(repository, label=str(target))
             report = pipeline.ingest_directory(
-                target, recursive=not args.no_recursive, limit=args.limit
+                target, recursive=not args.no_recursive, limit=args.limit, batch=batch
             )
         else:
+            # One file is not a watched intake. Inventing a batch of one to satisfy the stream
+            # would put a single photograph in the place a visitor's upload goes.
             report = IngestReport(pipeline_digest=pipeline.pipeline_digest)
             report.outcomes.append(pipeline.ingest_file(target))
 
@@ -177,7 +183,27 @@ def _cmd_ingest(args: argparse.Namespace, stream: Any) -> int:
                     state += f" (not run: {'+'.join(outcome.stages_skipped)})"
             print(f"  {outcome.path.name:40s} {state}", file=stream)
 
-        scenes = run_scene_grouping(repository)
+        # Grouped inside the batch, so continuity search appears in the formation stream as the
+        # stage it is. Left outside, it would run in a batchless run and a visitor watching a
+        # region form would see the pipeline stop after entity indexing and then finish with no
+        # explanation of what happened in between.
+        scenes = run_scene_grouping(
+            repository,
+            ledger=Ledger.start_run(repository, trigger="ingest", batch_id=report.batch_id)
+            if report.batch_id
+            else None,
+        )
+        # Closed here, after every stage the batch contains, so its terminal event is genuinely
+        # the last one. Closing it when the photographs finished would put "ready" in the stream
+        # ahead of continuity search, and a client that stops on the terminal event, which is
+        # exactly what a client should do, would never see the stage at all.
+        if batch is not None:
+            batch.close(
+                IntakeBatch.outcome_for(
+                    succeeded=len(report.outcomes) - len(report.failed),
+                    failed=len(report.failed),
+                )
+            )
         _print_report(report, stream)
         print(
             f"  scenes      {len(scenes.groups)} groups, {len(scenes.proposals)} place "
@@ -185,10 +211,15 @@ def _cmd_ingest(args: argparse.Namespace, stream: Any) -> int:
             "left ungrouped",
             file=stream,
         )
+        if report.batch_id is not None:
+            # What a client subscribes to. Printed rather than only stored, because a batch id
+            # nobody can read is a stream nobody can watch.
+            print(f"  batch       {report.batch_id}", file=stream)
         if args.json:
             json.dump(
                 {
                     "workspace_id": str(repository.workspace_id),
+                    "batch_id": str(report.batch_id) if report.batch_id else None,
                     "pipeline_digest": report.pipeline_digest,
                     "ingested": len(report.ingested),
                     "unchanged": len(report.unchanged),

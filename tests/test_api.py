@@ -27,6 +27,7 @@ from orimera.api.authorisation import load_token_directory
 from orimera.api.services import Services
 from orimera.epistemics.assertions import AssertionWriter
 from orimera.identity import IdentityRepository, name_occurrence
+from orimera.ingest.batch import IntakeBatch
 from orimera.ingest.pipeline import PhotoIngestPipeline
 from orimera.store.local import LocalContentAddressedStore
 
@@ -55,6 +56,11 @@ ROUTE_PROBES: dict[tuple[str, str], dict] = {
     ("GET", "/evidence/{span_id}"): {},
     ("GET", "/evidence/{span_id}/region"): {},
     ("GET", "/identity/events"): {},
+    # The stream is opened but never read here: an anonymous or foreign caller is refused
+    # before the generator starts, which is the only thing this sweep asks about. Reading it
+    # as the owner is `test_formation_stream.py`, which has a batch to read.
+    ("GET", "/formation"): {},
+    ("GET", "/formation/{batch_id}"): {},
     ("POST", "/identity/name"): {
         "json": {"occurrence_id": str(uuid.uuid4()), "display_name": "X"}
     },
@@ -81,7 +87,9 @@ _STRANGER_TOKEN = "stranger-token-that-is-long-enough-to-pass"
 class Deployment:
     """An application over the test schema, with two tokens: one owner and one stranger."""
 
-    def __init__(self, client, store, owner, stranger, span_id, occurrence_id, entity_id) -> None:
+    def __init__(
+        self, client, store, owner, stranger, span_id, occurrence_id, entity_id, batch_id
+    ) -> None:
         self.client = client
         self.store = store
         self.owner = owner
@@ -89,6 +97,7 @@ class Deployment:
         self.span_id = span_id
         self.occurrence_id = occurrence_id
         self.entity_id = entity_id
+        self.batch_id = batch_id
 
     def _request(self, token: str, method: str, path: str, **kwargs):
         headers = {"Authorization": f"Bearer {token}", **kwargs.pop("headers", {})}
@@ -101,7 +110,9 @@ class Deployment:
         return self._request(_STRANGER_TOKEN, method, path, **kwargs)
 
     def fill(self, path: str) -> str:
-        return path.replace("{span_id}", str(self.span_id))
+        return path.replace("{span_id}", str(self.span_id)).replace(
+            "{batch_id}", str(self.batch_id)
+        )
 
 
 @pytest.fixture
@@ -143,6 +154,12 @@ def deployment(tmp_path, photo_dir, repository, spine_schema, monkeypatch):
         "select span_id from evidence_span where modality = 'still_image' limit 1"
     ).fetchone()
 
+    # A real batch, so the formation route has something to be asked about. Opened and closed
+    # immediately: an open batch would make the stream wait for events that are never coming.
+    batch = IntakeBatch.open(repository, label="test")
+    batch.declare_size(1)
+    batch.close("succeeded")
+
     stranger = uuid.uuid4()
     monkeypatch.setenv(
         "ORIMERA_API_TOKENS",
@@ -168,7 +185,7 @@ def deployment(tmp_path, photo_dir, repository, spine_schema, monkeypatch):
     with TestClient(app) as client:
         yield Deployment(
             client, store, owner, stranger, span["span_id"], occurrence["occurrence_id"],
-            named.entity_id,
+            named.entity_id, batch.batch_id,
         )
 
 
@@ -176,11 +193,63 @@ def deployment(tmp_path, photo_dir, repository, spine_schema, monkeypatch):
 
 
 def _routes(app) -> list[tuple[str, str]]:
-    found = []
-    for route in app.routes:
-        for method in sorted(getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}):
-            found.append((method, route.path))
-    return sorted(found)
+    """Every routable (method, path) in the application, however the framework nests them.
+
+    THIS WALKS A TREE AND IT DID NOT USED TO. FastAPI 0.141 stopped flattening an included
+    router's routes into ``app.routes`` and started storing an ``_IncludedRouter`` wrapper there
+    instead. The previous version of this function iterated ``app.routes`` one level deep and
+    read ``.methods`` off each entry, so from that release onward it saw the four documentation
+    routes and six wrappers with no ``methods`` attribute, and returned only the documentation
+    routes. Every one of those is in ``PUBLIC_ROUTES``, so the coverage check below computed an
+    empty list of uncovered routes and passed, on an application whose entire authenticated
+    surface it could no longer see.
+
+    That is the failure this file's own docstring says it exists to prevent, and it is the
+    failure mode `.orimera/working/known-defects.md` records twice: a test that passes without
+    exercising its case. It was found by adding a route and noticing the suite stayed green.
+
+    So the walk is recursive over anything that carries routes, and
+    ``test_the_route_sweep_can_actually_see_the_application`` below asserts the walk found the
+    surface rather than trusting that it did.
+    """
+    found: list[tuple[str, str]] = []
+    seen: set[int] = set()
+    stack = [app]
+    while stack:
+        node = stack.pop()
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
+        for attribute in ("routes", "original_router"):
+            nested = getattr(node, attribute, None)
+            if nested is None:
+                continue
+            stack.extend(nested if isinstance(nested, list) else [nested])
+        path = getattr(node, "path", None)
+        if path is None:
+            continue
+        for method in sorted(getattr(node, "methods", set()) - {"HEAD", "OPTIONS"}):
+            found.append((method, path))
+    return sorted(set(found))
+
+
+def test_the_route_sweep_can_actually_see_the_application(deployment):
+    """The guard on the guard, and it is not decoration.
+
+    A coverage check over an empty set of routes passes. So before asking whether every route is
+    covered, this asks whether the walk found any routes at all, and whether it found ones this
+    file knows exist by name. Both halves matter: a walk that returned nothing and a walk that
+    returned only the documentation pages are both green under the check below, and both mean the
+    authorisation sweep is testing nothing.
+    """
+    found = _routes(deployment.client.app)
+    assert ("GET", "/graph") in found, found
+    assert ("POST", "/identity/name") in found, found
+    assert ("GET", "/evidence/{span_id}") in found, found
+    # Every probed route must be reachable. A probe for a route that no longer exists is a test
+    # asserting things about nothing, which is the same defect pointing the other way.
+    missing = sorted(set(ROUTE_PROBES) - set(found))
+    assert not missing, f"probed routes that the application does not serve: {missing}"
 
 
 def test_every_route_is_covered_by_this_file(deployment):
