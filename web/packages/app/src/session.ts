@@ -25,6 +25,7 @@
 import type { GraphSnapshot, UpdateProposal } from '@orimera/graph-client';
 import { OrimeraClient, Transport } from '@orimera/graph-client';
 import { ProposalGate, httpCommitTransport } from '@orimera/graph-client/mutations';
+import { CompanionSession } from '@orimera/companion-runtime';
 
 export interface SessionOptions {
   readonly baseUrl: string;
@@ -54,6 +55,16 @@ export interface Session {
 export interface OpenedSession {
   readonly session: Session;
   readonly initial: GraphSnapshot;
+  /**
+   * The Companion's turn engine.
+   *
+   * Built HERE and nowhere else, for the same reason the gate is: `CompanionSession` takes the
+   * gate directly, so any other module that constructed one would need the gate handed to it and
+   * the invariant at the top of this file would be gone. Handing out the built session instead
+   * keeps stage and commit as separate calls with a rendered confirmation between them, which is
+   * the whole point.
+   */
+  readonly companion: CompanionSession;
 }
 
 export async function openSession(options: SessionOptions): Promise<OpenedSession> {
@@ -78,5 +89,6 @@ export async function openSession(options: SessionOptions): Promise<OpenedSessio
     },
     stateVersion: () => gate.stateVersion,
   };
-  return { session, initial };
+  const companion = new CompanionSession({ snapshot: initial, gate });
+  return { session, initial, companion };
 }

@@ -81,6 +81,62 @@ const COPY: Readonly<Record<string, string>> = Object.freeze({
   'rung.2': 'Recovered along the path the camera travelled. Movement follows that path.',
   'rung.3': 'Photographic panels with a little depth. Movement is between them.',
   'rung.4': 'No geometry was reconstructed. Evidence is laid out by time and by what it shares.',
+
+  // -- what the Companion says -------------------------------------------------------------
+  //
+  // Every one of these is a QUESTION or an offer, never a statement of something the system
+  // worked out for itself. Cross-capture identity is proposed and never asserted: open-set face
+  // identification reaches about 60% at FAR = 0.01, so a sentence like "this is your sister"
+  // would be wrong for two people in five and would put a guess into the account holder's own
+  // record. The hedges here are load bearing, not politeness.
+  'utterance.resolveIdentity': 'Is this the same person as the one in the earlier photograph?',
+  'utterance.confirmContinuity': 'These two moments may show the same person. Do they?',
+  'utterance.disambiguate': 'More than one person you have named could be this one. Which?',
+  'utterance.nameScope': 'Should that name be used everywhere this person appears, or only here?',
+  'utterance.relation': 'How do you know them?',
+  'utterance.acknowledge': 'Noted.',
+
+  'option.yesSamePerson': 'Yes, the same person',
+  'option.noDifferentPeople': 'No, different people',
+  'option.someoneIAlreadyNamed': 'Someone I have already named',
+  'option.giveName': 'Give a name',
+  'option.useADifferentName': 'Use a different name',
+  'option.useNameEverywhere': 'Use it everywhere they appear',
+  'option.keepNamePrivate': 'Only use it here',
+  'option.keepWhatIToldYou': 'Keep what I told you',
+  'option.acceptTheOtherReading': 'Use the other reading',
+  'option.showBothMoments': 'Show me both moments',
+  'option.showMeTheEvidence': 'Show me the photograph',
+
+  'option.relation.family': 'Family',
+  'option.relation.friend': 'A friend',
+  'option.relation.colleague': 'A colleague',
+  'option.relation.partner': 'A partner',
+  'option.relation.met_through_someone': 'Someone I met through another person',
+
+  // The four escapes. Worded so none of them reads as the wrong answer, because none of them is:
+  // an escape is data about the question, and a user who feels judged for taking one stops
+  // taking them and starts guessing.
+  'escape.notSure': 'Not sure',
+  'escape.skip': 'Skip',
+  'escape.later': 'Later',
+  'escape.wrongQuestion': 'That is the wrong question',
+
+  // Availability semantics: an option that cannot be taken is still shown, with the reason.
+  'unavailable.alreadyAssertedDistinct': 'You have said these are different people.',
+  'unavailable.rejectedOnTheSameEvidence': 'You turned this down on the same photograph.',
+
+  // Refusals. Each says what happened rather than apologising for it.
+  'refused.couldNotParse': 'I could not tell what that meant.',
+  'refused.noSubject': 'There is nothing here to attach that to.',
+  'refused.noTurn': 'There is no open question.',
+  'refused.notAMultiSet': 'That question takes a single answer.',
+  'refused.nothingSelected': 'Nothing was selected.',
+  'refused.subjectMissing': 'What that question was about is no longer in the graph.',
+  'refused.tierNotOfferableHere': 'That change reaches too far to offer from here.',
+  'refused.unavailable': 'That option is not available on this question.',
+  'refused.unknownOption': 'That option is not on this question.',
+  'refused.useSubmit': 'Choose everything that applies, then press Submit.',
 });
 
 /** The sentence for a key, or the key itself when nobody has written one. */
