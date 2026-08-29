@@ -14,6 +14,12 @@ Two distinct guarantees are checked, because they fail in different ways:
     on SELECT and there cannot be one. If the policy is inert, the read succeeds silently and
     nothing anywhere reports a problem.
 
+A third guarantee joined them when the identity repository was split over its eight tables:
+that the repository DECLARES the workspace on the connection it was handed. That one is only
+visible here for the mirror-image reason. On an owner connection the predicate inside each
+statement scopes the read by itself, so removing the declaration changes nothing; with the
+policy in force, removing it makes every read empty and every write refused.
+
 The partition case is the one that was actually broken. ``embedding`` is partitioned by
 workspace, migration 0001 enables FORCE row-level security on the parent, and the comment there
 used to claim partitions inherit it. They do not: a query naming a partition directly is
@@ -30,6 +36,7 @@ import psycopg
 import pytest
 from orimera.db.migrate import provision_workspace
 from orimera.db.roles import EXECUTOR_ROLE, RUNTIME_ROLE, provision_runtime_role
+from orimera.identity import IdentityRepository
 from psycopg.rows import dict_row
 
 from pg_harness import migrated_schema
@@ -248,3 +255,41 @@ def test_a_session_with_no_workspace_declared_reads_nothing(scoped):
     assert connection.execute("select current_workspace() as w").fetchone()["w"] is None
     for table in ("capture", "evidence_span", "embedding", "assertion"):
         assert _count(connection, table) == 0, table
+
+
+def test_an_identity_repository_declares_the_workspace_on_a_connection_that_has_not(scoped):
+    """The one line in ``IdentityRepository.__init__`` that no other test in the suite can see.
+
+    Everywhere else the repository is built on an owner connection, and the owner is a superuser,
+    so the ``where workspace_id = %s`` predicate inside each statement does all the scoping by
+    itself: delete ``set_workspace`` from the constructor and nothing changes anywhere. Here the
+    policy is in force. A session that has declared no workspace fails its WITH CHECK on every
+    insert and reads nothing at all, so the constructor declaring one is the only reason the
+    write below lands and the read below finds it.
+
+    The converse test is ``test_identity.py::test_no_identity_read_crosses_a_workspace_boundary``,
+    which has to be run as the owner: with the policy in force a dropped predicate is invisible
+    by construction, because ``ws_isolation`` has already filtered to ``current_workspace()``.
+    """
+    connection = psycopg.connect(scoped._dsn(RUNTIME_ROLE), autocommit=True, row_factory=dict_row)
+    scoped._open.append(connection)
+    connection.execute(f'set search_path to "{scoped.scratch}", public')
+    assert connection.execute("select current_workspace() as w").fetchone()["w"] is None
+
+    mine = IdentityRepository(connection, scoped.workspace_a)
+    entity_id = mine.entities.create(entity_class="person")
+    event_id = mine.events.record(
+        "entity_created", actor=uuid.uuid4(), payload={"entity_id": str(entity_id)}
+    )
+    assert mine.entities.by_id(entity_id) is not None
+    assert mine.events.by_id(event_id) is not None
+
+    # And the policy is doing its own half: a repository for the other workspace, on a fresh
+    # connection, cannot see either row however it spells the query.
+    other = psycopg.connect(scoped._dsn(RUNTIME_ROLE), autocommit=True, row_factory=dict_row)
+    scoped._open.append(other)
+    other.execute(f'set search_path to "{scoped.scratch}", public')
+    theirs = IdentityRepository(other, scoped.workspace_b)
+    assert theirs.entities.by_id(entity_id) is None
+    assert theirs.events.by_id(event_id) is None
+    assert _count(other, "entity") == 0

@@ -5,11 +5,20 @@ occurrence is not a persistent entity, and promotion between them requires expli
 confirmation. Model confidence is never user confirmation, and a rejected match is never
 re-proposed identically.
 
-Six modules, and the split between the last three is the one worth knowing:
+Eighteen modules in three groups. Six carry the argument, and the split between the last three of
+those is the one worth knowing. Eight more are the tables themselves, one module per table, and
+:mod:`orimera.identity.repository` is the index of them. The remaining four are the producer and
+its command line: :mod:`orimera.identity.proposer` writes ``match_proposal`` and never a link,
+:mod:`orimera.identity.signals` is the three context signals it scores a pair on, and
+:mod:`orimera.identity.cli` with :mod:`orimera.identity.__main__` are how it is run by hand.
+
+The six:
 
 *   :mod:`orimera.identity.keys` derives the two evidence-shaped keys a decision is recorded
     under, so that rejection memory survives a detector re-run.
-*   :mod:`orimera.identity.repository` reads and writes the identity tables, and nothing else.
+*   :mod:`orimera.identity.repository` is one workspace, one connection, and the eight
+    vocabularies over the identity tables. Its docstring says which module answers which
+    question; a call site names the vocabulary before it names the method.
 *   :mod:`orimera.identity.subjects` is what every decision shares: what can go wrong, and what a
     subject has to be for a decision to be about it.
 *   :mod:`orimera.identity.decisions` applies one user decision as one transaction, and records
@@ -35,6 +44,7 @@ from orimera.identity.decisions import (
     revoke_link,
     split_entity,
 )
+from orimera.identity.entities import EntityRow
 from orimera.identity.keys import (
     REGION_GRID,
     TIME_BUCKET_NS,
@@ -43,13 +53,10 @@ from orimera.identity.keys import (
     occurrence_identity_key,
     region_bucket,
 )
+from orimera.identity.links import LinkRow
 from orimera.identity.naming import ConcurrentRename, RenamedEntity, rename_entity
-from orimera.identity.repository import (
-    EntityRow,
-    IdentityRepository,
-    LinkRow,
-    OccurrenceRow,
-)
+from orimera.identity.occurrences import OccurrenceRow
+from orimera.identity.repository import IdentityRepository
 from orimera.identity.subjects import (
     AlreadyIdentified,
     IdentityError,

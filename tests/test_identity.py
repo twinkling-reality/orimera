@@ -22,11 +22,18 @@ prevents:
 
 from __future__ import annotations
 
+import ast
 import copy
+import inspect
+import pathlib
+import re
 import uuid
+from dataclasses import dataclass
 
+import orimera.identity.repository
 import psycopg
 import pytest
+from orimera.db.session import set_workspace
 from orimera.epistemics.assertions import AssertionWriter
 from orimera.identity import (
     AlreadyIdentified,
@@ -118,7 +125,7 @@ class Library:
         )
 
     def identity_key(self, index: int) -> bytes:
-        occurrence = self.identity.occurrence(self.occurrences[index])
+        occurrence = self.identity.occurrences.by_id(self.occurrences[index])
         assert occurrence is not None
         return occurrence.identity_key
 
@@ -133,7 +140,7 @@ def test_a_person_named_once_is_confirmable_in_a_second_capture(library):
     directions: which occurrences are this person, and which person is this occurrence.
     """
     named = library.name(0, "Julie")
-    entity = library.identity.entity(named.entity_id)
+    entity = library.identity.entities.by_id(named.entity_id)
     assert entity is not None
     assert entity.display_name == "Julie"
     assert entity.entity_class == "person"
@@ -145,13 +152,13 @@ def test_a_person_named_once_is_confirmable_in_a_second_capture(library):
         actor=library.actor,
     )
 
-    occurrences = library.identity.occurrences_of(named.entity_id)
+    occurrences = library.identity.occurrences.of_entity(named.entity_id)
     assert {o.occurrence_id for o in occurrences} == set(library.occurrences)
     # Two captures, not one photograph counted twice. That is the claim.
     assert len({o.capture_id for o in occurrences}) == 2
 
     for occurrence_id in library.occurrences:
-        link = library.identity.link_for_occurrence(occurrence_id)
+        link = library.identity.links.for_occurrence(occurrence_id)
         assert link is not None
         assert link.entity_id == named.entity_id
         assert link.state == "confirmed"
@@ -178,7 +185,7 @@ def test_the_name_is_a_cache_of_an_assertion_the_user_made(library):
     # outright if it were, which is what closed the laundering route.
     assert row["produced_by_run"] is None
     # It cites the photograph the user was looking at.
-    occurrence = library.identity.occurrence(library.occurrences[0])
+    occurrence = library.identity.occurrences.by_id(library.occurrences[0])
     assert list(row["support_span_ids"]) == [occurrence.primary_span_id]
 
 
@@ -189,12 +196,12 @@ def test_retracting_the_statement_takes_the_name_off_the_entity(library):
     trigger rather than by a cleanup pass, so there is no window in which the two disagree.
     """
     named = library.name(0, "Julie")
-    assert library.identity.entity(named.entity_id).display_name == "Julie"
+    assert library.identity.entities.by_id(named.entity_id).display_name == "Julie"
 
     library.assertions.retract(
         named.assertion_id, retracted_by=library.actor, reason="wrong person"
     )
-    assert library.identity.entity(named.entity_id).display_name is None
+    assert library.identity.entities.by_id(named.entity_id).display_name is None
 
     retraction = library.repository.connection.execute(
         "select status from assertion where assertion_id = %s", (named.assertion_id,)
@@ -215,7 +222,7 @@ def test_no_model_can_name_an_entity_by_any_route(library, kind):
     """
     named = library.name(0, "Julie")
     connection = library.repository.connection
-    other = library.identity.create_entity(entity_class="person")
+    other = library.identity.entities.create(entity_class="person")
 
     with pytest.raises(REFUSED, match="name_is"), connection.transaction():
         connection.execute(
@@ -240,7 +247,7 @@ def test_no_model_can_name_an_entity_by_any_route(library, kind):
         )
 
     # The one that is allowed still is, so the guard is not simply refusing everything.
-    assert library.identity.entity(named.entity_id).display_name == "Julie"
+    assert library.identity.entities.by_id(named.entity_id).display_name == "Julie"
 
 
 def test_a_link_cannot_be_confirmed_without_a_human(library):
@@ -275,7 +282,8 @@ def test_one_occurrence_cannot_be_two_people(library):
             entity_id=other.entity_id,
             actor=library.actor,
         )
-    assert library.identity.link_for_occurrence(library.occurrences[0]).entity_id == first.entity_id
+    still = library.identity.links.for_occurrence(library.occurrences[0])
+    assert still.entity_id == first.entity_id
 
 
 # -- rejection memory --------------------------------------------------------------------
@@ -297,7 +305,7 @@ def test_a_rejection_is_durable_and_keyed_by_evidence_not_by_the_row(library):
         actor=library.actor,
     )
     key = library.identity_key(1)
-    assert library.identity.is_rejected(
+    assert library.identity.rejections.is_rejected(
         scope=OCCURRENCE_ENTITY,
         key_a=key,
         key_b=named.entity_id.bytes,
@@ -305,7 +313,7 @@ def test_a_rejection_is_durable_and_keyed_by_evidence_not_by_the_row(library):
     )
 
     # A second detector version over the same photograph: a new row, the same evidence.
-    original = library.identity.occurrence(library.occurrences[1])
+    original = library.identity.occurrences.by_id(library.occurrences[1])
     reborn = library.repository.insert_occurrence(
         capture_id=original.capture_id,
         occurrence_class="person",
@@ -320,9 +328,9 @@ def test_a_rejection_is_durable_and_keyed_by_evidence_not_by_the_row(library):
         emit_key="rerun:person:0",
     )
     assert reborn is not None and reborn != library.occurrences[1]
-    assert library.identity.is_rejected(
+    assert library.identity.rejections.is_rejected(
         scope=OCCURRENCE_ENTITY,
-        key_a=library.identity.occurrence(reborn).identity_key,
+        key_a=library.identity.occurrences.by_id(reborn).identity_key,
         key_b=named.entity_id.bytes,
         basis_digest=USER_STATEMENT_BASIS,
     ), "a re-detected occurrence must inherit the answer the user already gave"
@@ -344,7 +352,7 @@ def test_a_rejection_does_not_gag_a_proposal_built_from_different_signals(librar
     )
     richer = basis_digest(["co_presence", "place"], {"scene_grouping": "2"})
     assert richer != USER_STATEMENT_BASIS
-    assert not library.identity.is_rejected(
+    assert not library.identity.rejections.is_rejected(
         scope=OCCURRENCE_ENTITY,
         key_a=library.identity_key(1),
         key_b=named.entity_id.bytes,
@@ -367,13 +375,13 @@ def test_confirming_after_a_rejection_overrules_it(library):
         entity_id=named.entity_id,
         actor=library.actor,
     )
-    assert not library.identity.is_rejected(
+    assert not library.identity.rejections.is_rejected(
         scope=OCCURRENCE_ENTITY,
         key_a=library.identity_key(1),
         key_b=named.entity_id.bytes,
         basis_digest=USER_STATEMENT_BASIS,
     )
-    assert library.identity.link_for_occurrence(library.occurrences[1]).state == "confirmed"
+    assert library.identity.links.for_occurrence(library.occurrences[1]).state == "confirmed"
 
 
 def test_a_rejection_is_revoked_and_never_deleted(library):
@@ -385,7 +393,7 @@ def test_a_rejection_is_revoked_and_never_deleted(library):
         entity_id=named.entity_id,
         actor=library.actor,
     )
-    library.identity.revoke_rejection(
+    library.identity.rejections.revoke(
         scope=OCCURRENCE_ENTITY,
         key_a=library.identity_key(1),
         key_b=named.entity_id.bytes,
@@ -412,11 +420,11 @@ def test_merging_two_records_of_one_person_keeps_every_link_resolving(library):
         target=julie.entity_id,
         actor=library.actor,
     )
-    assert library.identity.resolve_entity(duplicate.entity_id) == julie.entity_id
+    assert library.identity.entities.resolve(duplicate.entity_id) == julie.entity_id
     # The link still names the entity it was written against, and still resolves.
-    link = library.identity.link_for_occurrence(library.occurrences[1])
+    link = library.identity.links.for_occurrence(library.occurrences[1])
     assert link.entity_id == duplicate.entity_id
-    assert library.identity.resolve_entity(link.entity_id) == julie.entity_id
+    assert library.identity.entities.resolve(link.entity_id) == julie.entity_id
 
 
 def test_a_split_refuses_a_later_merge_of_the_two_it_separated(library):
@@ -434,10 +442,10 @@ def test_a_split_refuses_a_later_merge_of_the_two_it_separated(library):
         occurrence_ids=[library.occurrences[1]],
         actor=library.actor,
     )
-    moved = library.identity.link_for_occurrence(library.occurrences[1])
+    moved = library.identity.links.for_occurrence(library.occurrences[1])
     assert moved.entity_id != julie.entity_id
     # The new entity is unnamed: the user said "not that person", not "this is somebody named X".
-    assert library.identity.entity(moved.entity_id).display_name is None
+    assert library.identity.entities.by_id(moved.entity_id).display_name is None
 
     with pytest.raises(NeverSame, match="split apart"):
         merge_entities(
@@ -471,14 +479,14 @@ def test_every_recorded_decision_can_be_undone_exactly(library, decision):
         )
         event = _latest(library, "link_confirmed")
         undo(library.identity, event_id=event, actor=library.actor)
-        assert library.identity.link_for_occurrence(second) is None
+        assert library.identity.links.for_occurrence(second) is None
     elif decision == "reject":
         reject_link(
             library.identity, occurrence_id=second, entity_id=julie.entity_id, actor=library.actor
         )
         event = _latest(library, "link_rejected")
         undo(library.identity, event_id=event, actor=library.actor)
-        assert not library.identity.is_rejected(
+        assert not library.identity.rejections.is_rejected(
             scope=OCCURRENCE_ENTITY,
             key_a=library.identity_key(1),
             key_b=julie.entity_id.bytes,
@@ -489,9 +497,9 @@ def test_every_recorded_decision_can_be_undone_exactly(library, decision):
             library.identity, occurrence_id=second, entity_id=julie.entity_id, actor=library.actor
         )
         revoke_link(library.identity, occurrence_id=second, actor=library.actor)
-        assert library.identity.link_for_occurrence(second) is None
+        assert library.identity.links.for_occurrence(second) is None
         undo(library.identity, event_id=_latest(library, "link_revoked"), actor=library.actor)
-        restored = library.identity.link_for_occurrence(second)
+        restored = library.identity.links.for_occurrence(second)
         assert restored is not None and restored.entity_id == julie.entity_id
     elif decision == "merge":
         other = library.name(1, "Leo")
@@ -502,7 +510,7 @@ def test_every_recorded_decision_can_be_undone_exactly(library, decision):
             actor=library.actor,
         )
         undo(library.identity, event_id=_latest(library, "entities_merged"), actor=library.actor)
-        assert library.identity.resolve_entity(other.entity_id) == other.entity_id
+        assert library.identity.entities.resolve(other.entity_id) == other.entity_id
     else:
         confirm_link(
             library.identity, occurrence_id=second, entity_id=julie.entity_id, actor=library.actor
@@ -513,10 +521,10 @@ def test_every_recorded_decision_can_be_undone_exactly(library, decision):
             occurrence_ids=[second],
             actor=library.actor,
         )
-        moved = library.identity.link_for_occurrence(second).entity_id
+        moved = library.identity.links.for_occurrence(second).entity_id
         undo(library.identity, event_id=_latest(library, "entity_split"), actor=library.actor)
-        assert library.identity.link_for_occurrence(second).entity_id == julie.entity_id
-        assert not library.identity.is_never_same(julie.entity_id, moved)
+        assert library.identity.links.for_occurrence(second).entity_id == julie.entity_id
+        assert not library.identity.never_same.holds(julie.entity_id, moved)
 
 
 def test_an_event_cannot_be_undone_twice_and_an_undo_cannot_be_undone(library):
@@ -629,7 +637,7 @@ def test_merging_a_named_record_into_an_unnamed_one_is_refused(library):
     quietly lost its name is loud.
     """
     julie = library.name(0, "Julie")
-    unnamed = library.identity.create_entity(entity_class="person")
+    unnamed = library.identity.entities.create(entity_class="person")
 
     with pytest.raises(IdentityError, match="the other way round"):
         merge_entities(
@@ -646,4 +654,318 @@ def test_merging_a_named_record_into_an_unnamed_one_is_refused(library):
         target=julie.entity_id,
         actor=library.actor,
     )
-    assert library.identity.resolve_entity(unnamed) == julie.entity_id
+    assert library.identity.entities.resolve(unnamed) == julie.entity_id
+
+# -- every query names its workspace ------------------------------------------------------
+#
+# This section exists because of what the identity repository was split into. Nine modules now
+# hold the SQL that one class used to, and the thing a move like that loses silently is a
+# `where workspace_id = %s` on the way past.
+#
+# It is checked HERE, as the database owner, rather than in `test_row_level_security.py`. The
+# owner is a superuser and PostgreSQL says plainly that "superusers and roles with the BYPASSRLS
+# attribute always bypass the row security system", so on this connection the predicate inside
+# each statement is the ONLY thing scoping the read, and dropping one leaks. On a non-superuser
+# connection the same drop is unobservable by construction: `ws_isolation` already filters to
+# `current_workspace()`, so the query returns the same rows either way. The two facts need two
+# different roles, and the other one is in `test_row_level_security.py`.
+
+
+@dataclass(frozen=True, slots=True)
+class Neighbour:
+    """Somebody else's workspace, with a row in every identity table."""
+
+    repository: IdentityRepository
+    entity_id: uuid.UUID
+    merged_id: uuid.UUID
+    sibling_id: uuid.UUID
+    occurrence_id: uuid.UUID
+    spare_occurrence_id: uuid.UUID
+    identity_key: bytes
+    link_id: uuid.UUID
+    event_id: uuid.UUID
+    undone_id: uuid.UUID
+    rejection_id: uuid.UUID
+    derived_id: uuid.UUID
+
+
+@pytest.fixture
+def neighbour(library):
+    """A second workspace on the same connection, seeded through the same code the library used.
+
+    The seed ends by reading every row back from the workspace that owns it. Without that half,
+    a seed that quietly wrote nothing would make every assertion in the two tests below pass
+    for the wrong reason.
+    """
+    connection = library.repository.connection
+    workspace = uuid.uuid4()
+    theirs = IdentityRepository(connection, workspace)
+    assertions = AssertionWriter(connection, workspace)
+    actor = uuid.uuid4()
+
+    digest = bytes([9]) * 32
+    connection.execute(
+        "insert into blob (blob_sha256, byte_size, media_type) "
+        "values (%s, 3, 'image/jpeg') on conflict (blob_sha256) do nothing",
+        (digest,),
+    )
+    capture_id = connection.execute(
+        "insert into capture (workspace_id, blob_sha256) values (%s, %s) returning capture_id",
+        (workspace, digest),
+    ).fetchone()["capture_id"]
+    run_id = connection.execute(
+        "insert into pipeline_run (workspace_id, trigger) values (%s, 'manual') returning run_id",
+        (workspace,),
+    ).fetchone()["run_id"]
+
+    occurrence_ids = []
+    for index in range(2):
+        span_id = connection.execute(
+            "insert into evidence_span (workspace_id, blob_sha256, track_key, t_start_ns, "
+            "t_end_ns, modality, span_digest) values (%s, %s, 'img', %s, %s, 'still_image', %s) "
+            "returning span_id",
+            (workspace, digest, index, index + 1, bytes([index]) * 32),
+        ).fetchone()["span_id"]
+        occurrence_ids.append(
+            connection.execute(
+                "insert into occurrence (workspace_id, capture_id, class, primary_span_id, "
+                "span_ids, presence, produced_by_run, detector_version, identity_key, emit_key) "
+                "values (%s, %s, 'person', %s, array[%s]::uuid[], '{[0,1)}'::int8multirange, "
+                "%s, 'v1', %s, %s) returning occurrence_id",
+                (
+                    workspace,
+                    capture_id,
+                    span_id,
+                    span_id,
+                    run_id,
+                    bytes([index + 40]) * 32,
+                    f"neighbour:occurrence:{index}",
+                ),
+            ).fetchone()["occurrence_id"]
+        )
+
+    named = name_occurrence(
+        theirs,
+        assertions,
+        occurrence_id=occurrence_ids[0],
+        display_name="Somebody Else",
+        actor=actor,
+    )
+    merged_id = theirs.entities.create(entity_class="person")
+    theirs.entities.set_merged_into(merged_id, named.entity_id)
+    sibling_id = theirs.entities.create(entity_class="person")
+    theirs.never_same.record(named.entity_id, sibling_id)
+
+    occurrence = theirs.occurrences.by_id(occurrence_ids[0])
+    rejection_id = theirs.rejections.record(
+        scope=OCCURRENCE_ENTITY,
+        key_a=occurrence.identity_key,
+        key_b=named.entity_id.bytes,
+        basis_digest=USER_STATEMENT_BASIS,
+        rejected_by=actor,
+        basis_modalities=["context_place"],
+    )
+    assert theirs.proposals.record(
+        occurrence_id=occurrence_ids[1],
+        entity_id=named.entity_id,
+        score=0.9,
+        rank=1,
+        basis_digest=USER_STATEMENT_BASIS,
+        basis={"modalities": ["context_place"]},
+        outcome="surfaced",
+        produced_by_run=run_id,
+        emit_key="neighbour:proposal:0",
+    ) is not None
+    undone_id = theirs.events.record(
+        "event_undone",
+        actor=actor,
+        payload={"undid": str(named.event_ids[-1]), "type": "link_confirmed"},
+        undoes=named.event_ids[-1],
+    )
+    derived_id = uuid.uuid4()
+    connection.execute(
+        "insert into derived_artifact (derived_id, workspace_id, kind, depends_on, dep_index, "
+        "source_ids, payload, stale) values (%s, %s, 'episode_summary', '[]'::jsonb, "
+        "%s::text[], '{}'::uuid[], '{}'::jsonb, false)",
+        (derived_id, workspace, [f"entity:{named.entity_id}"]),
+    )
+
+    assert theirs.occurrences.by_id(occurrence_ids[0]) is not None
+    assert len(theirs.occurrences.of_entity(named.entity_id)) == 1
+    assert theirs.entities.by_id(named.entity_id).display_name == "Somebody Else"
+    assert theirs.entities.resolve(merged_id) == named.entity_id
+    assert theirs.links.for_occurrence(occurrence_ids[0]) is not None
+    assert len(theirs.links.of_entity(named.entity_id)) == 1
+    assert theirs.rejections.covering(
+        scope=OCCURRENCE_ENTITY,
+        key_a=occurrence.identity_key,
+        key_b=named.entity_id.bytes,
+        modalities=["context_place"],
+    ) == (True, None)
+    assert theirs.rejections.is_rejected(
+        scope=OCCURRENCE_ENTITY,
+        key_a=occurrence.identity_key,
+        key_b=named.entity_id.bytes,
+        basis_digest=USER_STATEMENT_BASIS,
+    )
+    assert theirs.never_same.holds(named.entity_id, sibling_id)
+    assert (
+        theirs.proposals.pending(occurrence_id=occurrence_ids[1], entity_id=named.entity_id)
+        is not None
+    )
+    assert theirs.events.by_id(named.event_ids[-1]) is not None
+    assert theirs.events.undo_of(named.event_ids[-1]) == undone_id
+    assert named.event_ids[-1] in {row["event_id"] for row in theirs.events.recent(limit=200)}
+
+    # Back to the workspace the library fixture left the session on, so the tests below run
+    # scoped exactly as a request would be.
+    set_workspace(connection, library.repository.workspace_id)
+    return Neighbour(
+        repository=theirs,
+        entity_id=named.entity_id,
+        merged_id=merged_id,
+        sibling_id=sibling_id,
+        occurrence_id=occurrence_ids[0],
+        spare_occurrence_id=occurrence_ids[1],
+        identity_key=occurrence.identity_key,
+        link_id=named.link_id,
+        event_id=named.event_ids[-1],
+        undone_id=undone_id,
+        rejection_id=rejection_id,
+        derived_id=derived_id,
+    )
+
+
+def test_no_identity_read_crosses_a_workspace_boundary(library, neighbour):
+    """Thirteen reads over six tables and one view, none of which may see the workspace next door.
+
+    Drop the ``and workspace_id = %s`` from any one of the moved SELECTs and the matching line
+    here fails, because this connection belongs to the owner and row-level security is filtering
+    nothing for it.
+    """
+    mine = library.identity
+
+    assert mine.occurrences.by_id(neighbour.occurrence_id) is None
+    assert mine.occurrences.of_entity(neighbour.entity_id) == []
+    assert mine.entities.by_id(neighbour.entity_id) is None
+    # Not the merge target. An unreadable row has no `merged_into` to follow, so the walk stops
+    # where it started rather than redirecting into somebody else's workspace.
+    assert mine.entities.resolve(neighbour.merged_id) == neighbour.merged_id
+    assert mine.links.for_occurrence(neighbour.occurrence_id) is None
+    assert mine.links.of_entity(neighbour.entity_id) == []
+    assert mine.rejections.covering(
+        scope=OCCURRENCE_ENTITY,
+        key_a=neighbour.identity_key,
+        key_b=neighbour.entity_id.bytes,
+        modalities=["context_place"],
+    ) == (False, None)
+    assert not mine.rejections.is_rejected(
+        scope=OCCURRENCE_ENTITY,
+        key_a=neighbour.identity_key,
+        key_b=neighbour.entity_id.bytes,
+        basis_digest=USER_STATEMENT_BASIS,
+    )
+    assert not mine.never_same.holds(neighbour.entity_id, neighbour.sibling_id)
+    assert (
+        mine.proposals.pending(
+            occurrence_id=neighbour.spare_occurrence_id, entity_id=neighbour.entity_id
+        )
+        is None
+    )
+    assert mine.events.by_id(neighbour.event_id) is None
+    assert mine.events.undo_of(neighbour.event_id) is None
+    assert neighbour.event_id not in {row["event_id"] for row in mine.events.recent(limit=200)}
+
+
+def test_no_identity_write_crosses_a_workspace_boundary(library, neighbour):
+    """The eight UPDATE and DELETE predicates, which fail more quietly than the reads do.
+
+    A read that leaks is at least visible to whoever reads it. An UPDATE that lost its workspace
+    predicate rewrites another account's decisions and returns a row count nobody looks at, which
+    is why the second half repeats every call from the side that owns the rows: each zero above
+    has to mean "no rows of mine to change" rather than "nothing to change anywhere".
+    """
+    mine = library.identity
+    theirs = neighbour.repository
+
+    assert mine.recomputation.mark_stale(entity=neighbour.entity_id) == 0
+    assert (
+        mine.rejections.revoke(
+            scope=OCCURRENCE_ENTITY,
+            key_a=neighbour.identity_key,
+            key_b=neighbour.entity_id.bytes,
+            basis_digest=USER_STATEMENT_BASIS,
+        )
+        == 0
+    )
+    assert (
+        mine.rejections.revoke_all(
+            scope=OCCURRENCE_ENTITY,
+            key_a=neighbour.identity_key,
+            key_b=neighbour.entity_id.bytes,
+        )
+        == []
+    )
+    assert mine.rejections.revive([neighbour.rejection_id]) == 0
+    assert mine.never_same.forget(neighbour.entity_id, neighbour.sibling_id) == 0
+    mine.links.set_state(neighbour.link_id, "revoked")
+    mine.entities.set_name_cache(neighbour.entity_id, None)
+    mine.entities.set_merged_into(neighbour.merged_id, None)
+
+    assert theirs.links.for_occurrence(neighbour.occurrence_id).state == "confirmed"
+    assert theirs.entities.by_id(neighbour.entity_id).display_name == "Somebody Else"
+    assert theirs.entities.resolve(neighbour.merged_id) == neighbour.entity_id
+
+    assert theirs.recomputation.mark_stale(entity=neighbour.entity_id) == 1
+    assert theirs.rejections.revoke_all(
+        scope=OCCURRENCE_ENTITY,
+        key_a=neighbour.identity_key,
+        key_b=neighbour.entity_id.bytes,
+    ) == [neighbour.rejection_id]
+    assert theirs.rejections.revive([neighbour.rejection_id]) == 1
+    assert theirs.never_same.forget(neighbour.entity_id, neighbour.sibling_id) == 1
+
+
+def test_the_facade_holds_no_sql():
+    """The repository is a workspace, a connection, a transaction and eight names.
+
+    Scanned over the class's CODE, with docstrings removed first and comments dropped by the
+    round trip through the syntax tree. A plain scan of ``inspect.getsource`` matches prose
+    instead: this class used to carry a docstring saying a revocation is "never a delete", and
+    that sentence alone would have turned the check red with no query anywhere near it.
+    """
+    tree = ast.parse(inspect.getsource(IdentityRepository))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef):
+            continue
+        first = node.body[0]
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+            node.body = node.body[1:] or [ast.Pass()]
+    code = ast.unparse(ast.fix_missing_locations(tree)).lower()
+
+    for statement in ("select", "insert", "update", "delete"):
+        assert statement not in code, f"the facade carries SQL again: {statement}"
+    # The stripping is what makes the four above mean anything, so it is checked rather than
+    # assumed: one phrase that is only in the class docstring, one name that is only in the code.
+    assert "vocabularies over the identity tables" not in code
+    assert "recomputation" in code
+
+
+def test_the_package_docstring_accounts_for_every_module_in_the_package():
+    """The three-way split at the top of ``orimera.identity`` is a partition, not a gesture.
+
+    A docstring that says six modules carry the argument, eight are the tables and four are the
+    producer is a claim about all eighteen files, and the arithmetic is the point of writing it
+    that way. The eight are named one rung down, in ``repository.py``'s index, so the two
+    docstrings are read together. Add a module and name it in neither and this goes red, which
+    is what stops a count nobody can reproduce from the code turning into decoration.
+    """
+    package = pathlib.Path(orimera.identity.__file__).parent
+    on_disk = {path.stem for path in package.glob("*.py")} - {"__init__"}
+    prose = f"{orimera.identity.__doc__}\n{orimera.identity.repository.__doc__}"
+    named = set(re.findall(r"orimera\.identity\.(\w+)", prose))
+
+    assert on_disk - named == set(), "modules that neither docstring accounts for"
+    assert named - on_disk == set(), "a docstring naming a module that is gone"
+    assert len(on_disk) == 18
+    assert "Eighteen modules in three groups" in orimera.identity.__doc__

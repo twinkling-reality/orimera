@@ -138,7 +138,7 @@ def _rejection_basis(proposal: dict[str, Any] | None) -> dict[str, Any]:
     """What to record a rejection under: the proposal's basis, or the user's own statement.
 
     An unprompted no carries no modality list at all, which is not the same as an empty one. See
-    ``IdentityRepository.record_rejection``.
+    :meth:`orimera.identity.rejections.Rejections.record`.
     """
     if proposal is None:
         return {}
@@ -265,7 +265,7 @@ def events(identity: Identity, limit: int = 50) -> list[dict]:
             "undoes": str(row["undoes"]) if row["undoes"] else None,
             "created_at": row["created_at"].isoformat(),
         }
-        for row in identity.repository.events(limit=min(limit, 200))
+        for row in identity.repository.events.recent(limit=min(limit, 200))
     ]
 
 

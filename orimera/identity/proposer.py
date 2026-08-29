@@ -225,7 +225,7 @@ def _write_proposal(
     }
     digest = basis_digest(normalised, basis["extractor_versions"])
 
-    suppressed, new_modality = repository.rejection_covering(
+    suppressed, new_modality = repository.rejections.covering(
         scope=OCCURRENCE_ENTITY,
         key_a=candidate.identity_key,
         key_b=anchor.entity_id.bytes,
@@ -247,7 +247,7 @@ def _write_proposal(
     emit_key = (
         f"match:{candidate.identity_key.hex()}:{anchor.entity_id}:{'+'.join(normalised)}"
     )
-    proposal_id = repository.record_proposal(
+    proposal_id = repository.proposals.record(
         occurrence_id=candidate.occurrence_id,
         entity_id=anchor.entity_id,
         score=score_milli / 1000,
