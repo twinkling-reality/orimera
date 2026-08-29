@@ -29,6 +29,7 @@ separate decision with legal weight and open item P-1 has not been answered.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -253,11 +254,14 @@ def confirm_link(
         )
 
     with repository.transaction():
-        repository.revoke_rejection(
+        # Every live no about this pair, not only the one the user themselves said. Confirming
+        # is a change of mind about the PAIR, and a machine rejection left live would suppress
+        # future proposals for a link the account holder has now confirmed. The ids are recorded
+        # on the event so undo restores exactly these and not whatever is live at the time.
+        revoked = repository.revoke_all_rejections(
             scope=OCCURRENCE_ENTITY,
             key_a=occurrence.identity_key,
             key_b=target.bytes,
-            basis_digest=USER_STATEMENT_BASIS,
         )
         proposed = repository.link_for_occurrence(
             occurrence_id, states=("proposed", "auto_provisional")
@@ -281,6 +285,7 @@ def confirm_link(
                 "entity_id": str(target),
                 "method": _USER_CONFIRM,
                 "superseded_proposal": str(proposed.link_id) if proposed else None,
+                "revoked_rejections": [str(value) for value in revoked],
             },
         )
         repository.mark_derived_stale(_dependency_keys(entity=target, occurrence=occurrence_id))
@@ -294,12 +299,20 @@ def reject_link(
     entity_id: uuid.UUID,
     actor: uuid.UUID,
     basis_digest: bytes = USER_STATEMENT_BASIS,
+    basis_modalities: Sequence[str] | None = None,
 ) -> uuid.UUID:
     """No, that is not them. Remembered against the evidence, not against the row.
 
     ``basis_digest`` defaults to the user's own statement. A caller rejecting a proposal should
     pass the proposal's basis instead, so that a later proposal built from genuinely different
     signals is not silently suppressed by an answer to a different question.
+
+    ``basis_modalities`` is what the user was SHOWN, and None means nothing: they looked at their
+    own photograph and said no, unprompted. That suppresses every later proposal for the pair,
+    because no machine signal outranks a person about their own life. Passing an empty list would
+    suppress nothing at all and is refused by the database. The digest alone cannot carry this,
+    because it covers extractor versions, so a version bump would move it and revive every
+    rejection.
     """
     occurrence = _require_occurrence(repository, occurrence_id)
     entity = _require_entity(repository, entity_id)
@@ -324,6 +337,7 @@ def reject_link(
             key_b=target.bytes,
             basis_digest=basis_digest,
             rejected_by=actor,
+            basis_modalities=basis_modalities,
         )
         repository.record_event(
             "link_rejected",
@@ -334,6 +348,7 @@ def reject_link(
                 "entity_id": str(target),
                 "identity_key": occurrence.identity_key.hex(),
                 "basis_digest": basis_digest.hex(),
+                "basis_modalities": list(basis_modalities) if basis_modalities else None,
                 "link_id": str(proposed.link_id) if proposed else None,
             },
         )
@@ -561,6 +576,14 @@ def _undo_confirm(repository: IdentityRepository, payload: dict[str, Any]) -> li
         # The proposal this confirmation replaced goes back to being a proposal, which is what
         # the state was before the user answered.
         repository.set_link_state(uuid.UUID(superseded), "proposed")
+    # Exactly the rejections this confirmation withdrew, by id, and not "every rejection for the
+    # pair". Un-revoking by pair would revive ones that were already withdrawn before the
+    # confirm, and an undo that restores more than the action removed is not an undo. The list is
+    # absent on events recorded before confirming withdrew anything but the user's own no, which
+    # is why it is read with a default rather than indexed.
+    repository.revive_rejections(
+        [uuid.UUID(value) for value in payload.get("revoked_rejections") or []]
+    )
     return _dependency_keys(
         entity=uuid.UUID(payload["entity_id"]), occurrence=uuid.UUID(payload["occurrence_id"])
     )

@@ -295,18 +295,103 @@ class IdentityRepository:
         key_b: bytes,
         basis_digest: bytes,
         rejected_by: uuid.UUID,
+        basis_modalities: Sequence[str] | None = None,
     ) -> uuid.UUID:
-        """Remember a no. Re-recording the same no revives it rather than duplicating it."""
+        """Remember a no. Re-recording the same no revives it rather than duplicating it.
+
+        ``basis_modalities`` is what the user was SHOWN, and None is a different fact from an
+        empty list rather than a missing value. None means they were shown no machine signal and
+        spoke unprompted about their own photograph, which suppresses every later proposal for
+        the pair. An empty list would suppress none, so migration 0008 refuses one.
+        """
         row = self._db.execute(
             "insert into identity_rejection (workspace_id, scope, key_a, key_b, basis_digest, "
-            "rejected_by) values (%s, %s, %s, %s, %s, %s) "
+            "rejected_by, basis_modalities) values (%s, %s, %s, %s, %s, %s, %s) "
             "on conflict (workspace_id, scope, key_a, key_b, basis_digest) do update "
             "set revoked_at = null, rejected_at = now(), rejected_by = excluded.rejected_by "
             "returning rejection_id",
-            (self.workspace_id, scope, key_a, key_b, basis_digest, rejected_by),
+            (
+                self.workspace_id,
+                scope,
+                key_a,
+                key_b,
+                basis_digest,
+                rejected_by,
+                list(basis_modalities) if basis_modalities is not None else None,
+            ),
         ).fetchone()
         assert row is not None
         return row["rejection_id"]
+
+    def rejection_covering(
+        self, *, scope: str, key_a: bytes, key_b: bytes, modalities: Sequence[str]
+    ) -> tuple[bool, str | None]:
+        """Is this pair on this basis already refused, and if not, what is new about it?
+
+        Decision id-4's rule is a SUBSET test: a proposal is suppressed when everything it is
+        built on was already refused. ``X <@ Y`` is literally that. Digest equality, which is
+        what ``is_rejected`` implements, is only the degenerate case, and it under-suppresses in
+        the dangerous direction: ``basis_digest`` covers extractor versions, so bumping the
+        producer's version moves the digest while the modality set stands still and every
+        rejected proposal comes back. Asking the user again is exactly the failure invariant 3
+        names.
+
+        A rejection with NULL modalities is the account holder speaking about their own
+        photograph having been shown nothing. It covers every basis, because no machine signal
+        outranks that.
+
+        Returns ``(suppressed, new_modality)``. The second is what this proposal carries that the
+        user has not already refused, which is what lets an interface say why it is asking again
+        rather than appearing to nag.
+        """
+        wanted = list(modalities)
+        rows = self._db.execute(
+            "select basis_modalities from identity_rejection "
+            "where workspace_id = %s and scope = %s and key_a = %s and key_b = %s "
+            "  and revoked_at is null",
+            (self.workspace_id, scope, key_a, key_b),
+        ).fetchall()
+        if not rows:
+            return False, None
+        refused: set[str] = set()
+        for row in rows:
+            if row["basis_modalities"] is None:
+                return True, None
+            refused.update(row["basis_modalities"])
+        if set(wanted) <= refused:
+            return True, None
+        fresh = sorted(set(wanted) - refused)
+        return False, fresh[0] if fresh else None
+
+    def revoke_all_rejections(self, *, scope: str, key_a: bytes, key_b: bytes) -> list[uuid.UUID]:
+        """Withdraw every live no about this pair, and say which ones were withdrawn.
+
+        A user who refused a proposal and then confirmed the link has changed their mind about
+        the pair, not about one basis. Leaving the other rejections live would suppress future
+        proposals for a pair they have now confirmed.
+
+        The ids are returned rather than discarded because undo has to be exact. Un-revoking
+        "every rejection for this pair" would revive ones that were live before the confirm, and
+        an undo that restores more than the action removed is not an undo.
+        """
+        rows = self._db.execute(
+            "update identity_rejection set revoked_at = now() where workspace_id = %s "
+            "and scope = %s and key_a = %s and key_b = %s and revoked_at is null "
+            "returning rejection_id",
+            (self.workspace_id, scope, key_a, key_b),
+        ).fetchall()
+        return [row["rejection_id"] for row in rows]
+
+    def revive_rejections(self, rejection_ids: Sequence[uuid.UUID]) -> int:
+        """Put back exactly the rejections a confirm withdrew. Used only by undo."""
+        if not rejection_ids:
+            return 0
+        cursor = self._db.execute(
+            "update identity_rejection set revoked_at = null "
+            "where workspace_id = %s and rejection_id = any(%s)",
+            (self.workspace_id, list(rejection_ids)),
+        )
+        return cursor.rowcount
 
     def is_rejected(
         self, *, scope: str, key_a: bytes, key_b: bytes, basis_digest: bytes
@@ -379,6 +464,7 @@ class IdentityRepository:
         outcome: str,
         produced_by_run: uuid.UUID,
         emit_key: str,
+        new_modality: str | None = None,
     ) -> uuid.UUID | None:
         """A candidate, including the ones that were discarded.
 
@@ -388,8 +474,8 @@ class IdentityRepository:
         """
         row = self._db.execute(
             "insert into match_proposal (workspace_id, occurrence_id, entity_id, score, rank, "
-            "basis_digest, basis, outcome, produced_by_run, emit_key) "
-            "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "basis_digest, basis, outcome, produced_by_run, emit_key, new_modality) "
+            "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
             "on conflict (workspace_id, emit_key) do nothing returning proposal_id",
             (
                 self.workspace_id,
@@ -402,9 +488,27 @@ class IdentityRepository:
                 outcome,
                 produced_by_run,
                 emit_key,
+                new_modality,
             ),
         ).fetchone()
         return None if row is None else row["proposal_id"]
+
+    def pending_proposal(
+        self, *, occurrence_id: uuid.UUID, entity_id: uuid.UUID
+    ) -> dict[str, Any] | None:
+        """The open question about this pair, or None when there is not one.
+
+        Read from ``pending_match_proposal`` rather than from ``match_proposal``, because
+        ``outcome`` records what the PRODUCER decided and whether the question is still open is a
+        fact about the user's later decisions. One definition, and the graph's open-question
+        count reads the same view, so the number on screen and the check on confirm cannot
+        disagree.
+        """
+        return self._db.execute(
+            "select proposal_id, basis, basis_digest, new_modality from pending_match_proposal "
+            "where workspace_id = %s and occurrence_id = %s and entity_id = %s",
+            (self.workspace_id, occurrence_id, entity_id),
+        ).fetchone()
 
     def proposals_for(self, occurrence_id: uuid.UUID) -> list[ProposalRow]:
         rows = self._db.execute(

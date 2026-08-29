@@ -26,7 +26,7 @@ yourself does not.
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -124,6 +124,21 @@ def name(body: NameRequest, identity: Identity) -> NamedView:
     )
 
 
+def _rejection_basis(proposal: dict[str, Any] | None) -> dict[str, Any]:
+    """What to record a rejection under: the proposal's basis, or the user's own statement.
+
+    An unprompted no carries no modality list at all, which is not the same as an empty one. See
+    ``IdentityRepository.record_rejection``.
+    """
+    if proposal is None:
+        return {}
+    modalities = (proposal.get("basis") or {}).get("modalities") or None
+    return {
+        "basis_digest": bytes(proposal["basis_digest"]),
+        "basis_modalities": modalities,
+    }
+
+
 @router.post("/confirm", summary="This occurrence is that person.")
 def confirm(body: LinkRequest, identity: Identity) -> dict[str, str]:
     _require_pending_proposal(identity, body)
@@ -138,12 +153,17 @@ def confirm(body: LinkRequest, identity: Identity) -> dict[str, str]:
 
 @router.post("/reject", summary="No, that is not them. Remembered against the evidence.")
 def reject(body: LinkRequest, identity: Identity) -> dict[str, str]:
-    _require_pending_proposal(identity, body)
+    proposal = _require_pending_proposal(identity, body)
+    # The basis the user was actually shown, or the default user statement when they were shown
+    # nothing. Passing the proposal's own basis is what lets a later proposal built from a
+    # genuinely different signal set ask again, which decision id-4 requires; passing the
+    # default would record a considered no as an unprompted one and suppress everything.
     rejection_id = reject_link(
         identity.repository,
         occurrence_id=body.occurrence_id,
         entity_id=body.entity_id,
         actor=identity.session.actor,
+        **_rejection_basis(proposal),
     )
     return {"rejection_id": str(rejection_id)}
 
@@ -208,20 +228,32 @@ def events(identity: Identity, limit: int = 50) -> list[dict]:
     ]
 
 
-def _require_pending_proposal(identity: WorkspaceIdentity, body: LinkRequest) -> None:
-    """Refuse an answer to a proposal that is not waiting for one.
+def _require_pending_proposal(
+    identity: WorkspaceIdentity, body: LinkRequest
+) -> dict[str, Any] | None:
+    """Refuse an answer to a proposal that is not waiting for one, and return what it said.
 
     Three cases collapse to one refusal, and deliberately: a proposal id that does not exist, one
     that belongs to another workspace, and one that has already been answered. Distinguishing
     them would let a caller learn which proposals exist by submitting ids.
 
     A request with no proposal id is not checked here, because it is not agreeing with anything.
+
+    The row is RETURNED rather than discarded. A user answering a proposal was shown its basis,
+    and recording their answer without it would file a considered no as though they had spoken
+    unprompted, which suppresses every future proposal for the pair rather than the ones they
+    were actually shown.
+
+    Read from ``pending_match_proposal`` rather than from ``match_proposal.outcome``: outcome is
+    what the producer decided, and whether the question is still open is a fact about the user's
+    later decisions. The graph's open-question count reads the same view, so the number on screen
+    and the check here cannot disagree.
     """
     if body.proposal_id is None:
-        return
+        return None
     row = identity.connection.execute(
-        "select outcome from match_proposal where workspace_id = %s and proposal_id = %s "
-        "and occurrence_id = %s and entity_id = %s",
+        "select proposal_id, basis, basis_digest, new_modality from pending_match_proposal "
+        "where workspace_id = %s and proposal_id = %s and occurrence_id = %s and entity_id = %s",
         (
             identity.session.workspace_id,
             body.proposal_id,
@@ -229,7 +261,7 @@ def _require_pending_proposal(identity: WorkspaceIdentity, body: LinkRequest) ->
             body.entity_id,
         ),
     ).fetchone()
-    if row is None or row["outcome"] != "surfaced":
+    if row is None:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -238,3 +270,4 @@ def _require_pending_proposal(identity: WorkspaceIdentity, body: LinkRequest) ->
                 "still be pending."
             ),
         )
+    return row

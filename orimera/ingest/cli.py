@@ -22,6 +22,9 @@ from pathlib import Path
 from typing import Any
 
 from orimera.db import Database, apply_pending, provision_workspace
+from orimera.identity.proposer import propose_matches
+from orimera.identity.repository import IdentityRepository
+from orimera.identity.signals import ContextSignals
 from orimera.ingest.batch import IntakeBatch
 from orimera.ingest.ledger import Ledger
 from orimera.ingest.pipeline import PhotoIngestPipeline
@@ -230,11 +233,27 @@ def _cmd_ingest(args: argparse.Namespace, stream: Any) -> int:
                     failed=len(report.failed),
                 )
             )
+        # New photographs against people who are already named. The other direction, a newly
+        # named person against photographs that are already here, is `orimera-identity propose`:
+        # naming somebody is not an ingest and nothing would run this afterwards.
+        proposals = propose_matches(
+            IdentityRepository(repository.connection, repository.workspace_id),
+            ContextSignals.read(repository.connection, repository.workspace_id),
+            run_id=Ledger.start_run(
+                repository, trigger="ingest", batch_id=report.batch_id
+            ).run_id,
+        )
+
         _print_report(report, stream)
         print(
             f"  scenes      {len(scenes.groups)} groups, {len(scenes.proposals)} place "
             f"proposals awaiting confirmation, {scenes.ungrouped} captures with no timestamp "
             "left ungrouped",
+            file=stream,
+        )
+        print(
+            f"  continuity  {len(proposals.surfaced)} questions awaiting an answer from "
+            f"{proposals.anchors} named people and {proposals.candidates} unlinked detections",
             file=stream,
         )
         if report.batch_id is not None:

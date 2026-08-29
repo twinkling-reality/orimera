@@ -41,7 +41,10 @@ ALL_SQL = "\n".join(MIGRATIONS[version] for version in sorted(MIGRATIONS))
 
 def test_the_migrations_are_numbered_and_ordered():
     files = list(migrations())
-    assert [m.version for m in files] == ["0001", "0002", "0003", "0004", "0005", "0006", "0007"]
+    assert [m.version for m in files] == [
+        f"{number:04d}" for number in range(1, len(files) + 1)
+    ], [m.version for m in files]
+    assert len(files) >= 8, "a migration went missing from the directory"
 
 
 @pytest.mark.parametrize("migration", list(migrations()), ids=lambda m: m.version)

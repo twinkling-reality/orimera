@@ -40,13 +40,53 @@ from orimera.evidence import EvidenceAddress
 from orimera.evidence.region import PPM, Rect
 
 __all__ = [
+    "BASIS_VOCABULARY",
+    "PRODUCIBLE_MODALITIES",
     "REGION_GRID",
     "TIME_BUCKET_NS",
     "USER_STATEMENT_BASIS",
     "basis_digest",
+    "normalise_modalities",
     "occurrence_identity_key",
     "region_bucket",
 ]
+
+#: The closed basis vocabulary from decision id-4. Migration 0008 puts these identical six
+#: strings in a CHECK on ``identity_rejection.basis_modalities`` and on
+#: ``match_proposal.new_modality``, so a seventh added here and not there is refused by the
+#: database on its first write rather than accepted and discovered later. That is R4's lesson
+#: applied to a second vocabulary: one nothing enforces is held up by whoever edits it next.
+BASIS_VOCABULARY: Final = frozenset(
+    {"face", "voice", "gait", "context_place", "context_cooccurrence", "user_text"}
+)
+
+#: The three that have a producer. ``face``, ``voice`` and ``gait`` stay in the vocabulary above
+#: because a rejection recorded under one must remain READABLE if one ever exists; they are
+#: absent here because nothing may WRITE one. There is no face model and the decision that would
+#: permit a face embedding belongs to a human and has not been made; the corpus is photographs so
+#: there is no audio for voice; gait needs video. Nothing here settles any of that.
+PRODUCIBLE_MODALITIES: Final = frozenset(
+    {"context_place", "context_cooccurrence", "user_text"}
+)
+
+
+def normalise_modalities(modalities: Sequence[str]) -> tuple[str, ...]:
+    """Sorted, distinct, every member from the closed vocabulary, or refuse.
+
+    Sorted and distinct because the re-proposal rule is a subset test over a stored array, and
+    two spellings of one set would compare unequal, fail to suppress, and ask the user a question
+    they have already answered.
+    """
+    ordered = tuple(sorted(set(modalities)))
+    if not ordered:
+        raise ValueError("a proposal has a basis or it is not a proposal; modalities was empty")
+    outside = [name for name in ordered if name not in BASIS_VOCABULARY]
+    if outside:
+        raise ValueError(
+            f"{outside} is not in the id-4 basis vocabulary {sorted(BASIS_VOCABULARY)}. "
+            "Migration 0008 refuses it at the database too."
+        )
+    return ordered
 
 #: 250 ms, per the domain model. Constant for a photograph corpus; present so the video path
 #: needs no second implementation.
@@ -119,4 +159,10 @@ def basis_digest(
 #: The basis of a decision the account holder made by looking at their own photograph. There is
 #: no extractor and there is no model: the signal is a person saying so, which is the only signal
 #: this system treats as knowledge rather than as a guess.
+#:
+#: ``user_statement`` is deliberately NOT a member of ``BASIS_VOCABULARY``. That vocabulary names
+#: the machine signals a proposal can be built from, and a person looking at their own photograph
+#: is not one of them: it is the absence of one. The corresponding
+#: ``identity_rejection.basis_modalities`` is NULL rather than a list, which is what makes such a
+#: rejection suppress everything afterwards instead of nothing.
 USER_STATEMENT_BASIS: Final = basis_digest(["user_statement"])

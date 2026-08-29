@@ -24,13 +24,21 @@ import math
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Final
 
 from orimera.ingest.ledger import Ledger
 from orimera.ingest.repository import IngestRepository
 from orimera.ingest.stages import ARTIFACT_NAMESPACE, stage
 
 __all__ = ["SceneGroup", "SceneReport", "group_captures", "run_scene_grouping"]
+
+
+#: The ``derived_artifact.kind`` this module writes its clustering under. Named rather than
+#: repeated, because ``orimera.identity.signals`` reads the same string from a layer that may not
+#: import this one, and a literal duplicated across a boundary nothing checks is a literal that
+#: drifts. ``tests/test_match_proposals.py`` is the only place that can see both and it asserts
+#: they are equal.
+SCENE_GROUP_KIND: Final = "scene_group"
 
 
 @dataclass
@@ -178,7 +186,7 @@ def run_scene_grouping(
     Idempotent: the derived rows carry deterministic ids computed from the member capture set
     and the stage parameters, so a second run over an unchanged corpus writes nothing.
     """
-    spec = stage("scene_group")
+    spec = stage(SCENE_GROUP_KIND)
     owns_ledger = ledger is None
     if ledger is None:
         ledger = Ledger.start_run(repository, trigger="ingest")
@@ -202,7 +210,7 @@ def run_scene_grouping(
                 )
                 if repository.upsert_derived_artifact(
                     derived_id=group_id,
-                    kind="scene_group",
+                    kind=SCENE_GROUP_KIND,
                     depends_on=[
                         {"kind": "capture", "id": str(capture_id)}
                         for capture_id in group.capture_ids
@@ -259,7 +267,7 @@ def _place_proposal(
         "row": {
             "derived_id": derived_id,
             "kind": "place_proposal",
-            "depends_on": [{"kind": "scene_group", "id": str(group_id)}]
+            "depends_on": [{"kind": SCENE_GROUP_KIND, "id": str(group_id)}]
             + [{"kind": "capture", "id": str(c)} for c in group.capture_ids],
             "dep_index": [f"scene_group:{group_id}"] + [f"capture:{c}" for c in group.capture_ids],
             "source_ids": group.capture_ids,

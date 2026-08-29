@@ -23,16 +23,21 @@ def entity_rows(connection: psycopg.Connection, workspace: uuid.UUID) -> list[En
     """Every live entity, with the captures it is confirmed in and the claims about it.
 
     Capture ids rather than island ids, because an island is a layout decision the client owns.
-    ``open_question_count`` counts proposals still awaiting an answer, which is zero today
-    because nothing proposes automatically yet, and is a real count rather than a placeholder.
+    ``open_question_count`` counts proposals still AWAITING AN ANSWER, from
+    ``pending_match_proposal``. It cannot count ``outcome = 'surfaced'``: outcome records what
+    the producer decided, so counting it would count answered proposals forever and the ambient
+    counter would read the same number for the rest of time. The view is the same one
+    ``/identity/confirm`` checks against, so the count on screen and the check on the write
+    cannot disagree.
     """
     rows = connection.execute(
         "select e.entity_id, e.class, e.display_name, e.merged_into, "
         "  count(distinct l.occurrence_id) as occurrence_count, "
         "  array_remove(array_agg(distinct o.capture_id), null) as capture_ids, "
         "  min(c.started_at) as first_seen, max(c.started_at) as last_seen, "
-        "  (select count(*) from match_proposal m where m.workspace_id = e.workspace_id "
-        "     and m.entity_id = e.entity_id and m.outcome = 'surfaced') as open_questions "
+        "  (select count(*) from pending_match_proposal m "
+        "     where m.workspace_id = e.workspace_id and m.entity_id = e.entity_id) "
+        "     as open_questions "
         "from entity e "
         "left join entity_link l on l.entity_id = e.entity_id and l.state = 'confirmed' "
         "left join occurrence o on o.occurrence_id = l.occurrence_id "

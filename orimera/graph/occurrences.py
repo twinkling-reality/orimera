@@ -54,10 +54,15 @@ def proposal_rows(connection: psycopg.Connection, workspace: uuid.UUID) -> list[
     Suppressed proposals are returned rather than filtered out, with the flag set. The client
     needs to know not to offer one as though it were fresh, and hiding it entirely would make
     "why is it not asking me about this" unanswerable.
+
+    ``new_modality`` is what this proposal carries that the user has not already refused for the
+    pair, and it is what lets an interface say why it is asking again rather than appearing to
+    nag. It is NULL when nothing about the pair was refused before, which is the ordinary case
+    and not an absent value.
     """
     rows = connection.execute(
         "select m.proposal_id, m.occurrence_id, m.entity_id, m.rank, m.outcome, m.basis, "
-        "  o.span_ids "
+        "  m.new_modality, o.span_ids "
         "from match_proposal m join occurrence o on o.occurrence_id = m.occurrence_id "
         "where m.workspace_id = %s "
         "order by m.occurrence_id, m.rank",
@@ -71,6 +76,7 @@ def proposal_rows(connection: psycopg.Connection, workspace: uuid.UUID) -> list[
             rank=int(row["rank"]),
             outcome=row["outcome"],
             basis=row["basis"],
+            new_modality=row["new_modality"],
             suppressed_by_rejection=row["outcome"] == "suppressed_by_rejection",
             support_span_ids=list(row["span_ids"]),
         )

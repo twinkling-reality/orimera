@@ -97,6 +97,10 @@ class ProposalRow(BaseModel):
     rank: int
     outcome: str
     basis: dict[str, Any]
+    #: What this proposal carries that the user has not already refused for this pair. NULL when
+    #: nothing about the pair was refused before, which is the ordinary case rather than a
+    #: missing value. Decision id-4 requires an interface asking again to say what is new.
+    new_modality: str | None
     suppressed_by_rejection: bool
     #: The spans the proposed occurrence rests on, so a confirmation surface can show them.
     support_span_ids: list[uuid.UUID]

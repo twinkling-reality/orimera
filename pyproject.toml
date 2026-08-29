@@ -73,6 +73,10 @@ orimera-preflight = "orimera.models.preflight:main"
 # `uv run orimera-corpus`. Writes the synthetic corpus and the ground truth manifest that goes
 # with it. Deterministic from its seed, so a rebuild followed by an ingest recomputes nothing.
 orimera-corpus = "orimera.corpus.__main__:main"
+# `uv run orimera-identity propose --workspace <uuid>`. Asks the corpus what it recognises, from
+# context and never from biometrics. Separate from the ingest command because the moment a
+# proposal becomes possible is when somebody is NAMED, and no ingest follows that.
+orimera-identity = "orimera.identity.cli:main"
 
 [dependency-groups]
 dev = [
