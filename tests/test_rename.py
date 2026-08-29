@@ -63,7 +63,7 @@ def named(repository, photo_dir, tmp_path):
 
 
 def _display_name(identity: IdentityRepository, entity_id: uuid.UUID) -> str | None:
-    entity = identity.entity(entity_id)
+    entity = identity.entities.by_id(entity_id)
     assert entity is not None
     return entity.display_name
 
@@ -197,3 +197,58 @@ def test_the_new_name_may_not_be_written_by_anything_but_the_user(named):
                 f"attack:{uuid.uuid4()}",
             ),
         )
+
+
+def test_a_rename_is_one_transaction(named):
+    """Both writes land under one transaction id, so no reader sees the person unnamed.
+
+    The module docstring of ``orimera.identity.naming`` measures the gap: between the assertion
+    insert and the cache write, ``entity.display_name`` reads None. Inside one transaction that
+    state is unobservable; outside one it is a real state another session can read, and what
+    they would see is somebody losing their name for the width of a statement.
+
+    ``xmin`` is the system column holding the transaction that wrote the tuple, so equality is
+    literally "these two rows were written by the same transaction". Split the two writes and
+    the entity's xmin is the later of the two.
+    """
+    identity, writer, entity_id, actor = named
+    renamed = rename_entity(
+        identity, writer, entity_id=entity_id, display_name="Julie R.", actor=actor
+    )
+    row = identity.connection.execute(
+        "select (select xmin::text from entity where entity_id = %s) as entity_xmin, "
+        "(select xmin::text from assertion where assertion_id = %s) as assertion_xmin",
+        (entity_id, renamed.assertion_id),
+    ).fetchone()
+    assert row["entity_xmin"] == row["assertion_xmin"], (
+        "the claim and the cache write landed in different transactions, so between them the "
+        "entity had no name and another reader could have seen it"
+    )
+
+
+def test_a_rename_marks_the_artifacts_that_named_the_person_stale(named):
+    """A generated caption saying "Julie" has to be recomputed when Julie becomes Julie R.
+
+    New coverage rather than a re-spelling. This file mentioned neither ``derived_artifact`` nor
+    ``stale`` before, and the two staleness tests in ``test_identity.py`` go through
+    ``confirm_link`` and ``revoke_link``, so the ``entity:<uuid>`` key that ``rename_entity``
+    used to build by hand had never been compared against the one everything else produces.
+    """
+    identity, writer, entity_id, actor = named
+    derived_id = uuid.uuid4()
+    identity.connection.execute(
+        "insert into derived_artifact (derived_id, workspace_id, kind, depends_on, dep_index, "
+        "source_ids, payload, stale) values (%s, %s, 'episode_summary', '[]'::jsonb, "
+        "%s::text[], '{}'::uuid[], '{\"title\": \"A day with Julie\"}'::jsonb, false)",
+        (derived_id, identity.workspace_id, [f"entity:{entity_id}"]),
+    )
+
+    rename_entity(identity, writer, entity_id=entity_id, display_name="Julie R.", actor=actor)
+
+    row = identity.connection.execute(
+        "select stale from derived_artifact where derived_id = %s", (derived_id,)
+    ).fetchone()
+    assert row["stale"], (
+        "the rename left a derived artifact that names this entity marked fresh, so the old "
+        "name survives inside whatever was generated from it"
+    )

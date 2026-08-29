@@ -219,7 +219,7 @@ def test_naming_one_person_produces_a_question_about_the_other_capture(corpus):
     assert report.candidates == 1
     assert len(report.surfaced) == 1, report
 
-    pending = identity.pending_proposal(
+    pending = identity.proposals.pending(
         occurrence_id=occurrences[1],
         entity_id=_entity_of(identity, occurrences[0]),
     )
@@ -228,7 +228,7 @@ def test_naming_one_person_produces_a_question_about_the_other_capture(corpus):
 
 
 def _entity_of(identity: IdentityRepository, occurrence_id: uuid.UUID) -> uuid.UUID:
-    link = identity.link_for_occurrence(occurrence_id)
+    link = identity.links.for_occurrence(occurrence_id)
     assert link is not None
     return link.entity_id
 
@@ -256,7 +256,7 @@ def test_rejecting_a_proposal_suppresses_the_same_basis_and_not_a_different_one(
     identity, _ = _propose(repository, run_id)
     entity_id = _entity_of(identity, occurrences[0])
 
-    pending = identity.pending_proposal(occurrence_id=occurrences[1], entity_id=entity_id)
+    pending = identity.proposals.pending(occurrence_id=occurrences[1], entity_id=entity_id)
     assert pending is not None
     reject_link(
         identity,
@@ -267,9 +267,9 @@ def test_rejecting_a_proposal_suppresses_the_same_basis_and_not_a_different_one(
         basis_modalities=pending["basis"]["modalities"],
     )
 
-    occurrence = identity.occurrence(occurrences[1])
+    occurrence = identity.occurrences.by_id(occurrences[1])
     assert occurrence is not None
-    suppressed, new_modality = identity.rejection_covering(
+    suppressed, new_modality = identity.rejections.covering(
         scope="occurrence_entity",
         key_a=occurrence.identity_key,
         key_b=entity_id.bytes,
@@ -279,7 +279,7 @@ def test_rejecting_a_proposal_suppresses_the_same_basis_and_not_a_different_one(
     assert new_modality is None
 
     # A genuinely different signal set is still permitted to ask, and says what is new.
-    permitted, fresh = identity.rejection_covering(
+    permitted, fresh = identity.rejections.covering(
         scope="occurrence_entity",
         key_a=occurrence.identity_key,
         key_b=entity_id.bytes,
@@ -302,10 +302,10 @@ def test_a_user_who_was_shown_nothing_suppresses_everything(corpus):
     identity = IdentityRepository(repository.connection, repository.workspace_id)
 
     reject_link(identity, occurrence_id=occurrences[1], entity_id=entity_id, actor=actor)
-    occurrence = identity.occurrence(occurrences[1])
+    occurrence = identity.occurrences.by_id(occurrences[1])
     assert occurrence is not None
     for modalities in (("context_place",), ("context_cooccurrence", "context_place", "user_text")):
-        suppressed, _ = identity.rejection_covering(
+        suppressed, _ = identity.rejections.covering(
             scope="occurrence_entity",
             key_a=occurrence.identity_key,
             key_b=entity_id.bytes,
@@ -342,7 +342,7 @@ def test_confirming_withdraws_every_live_rejection_for_the_pair(corpus):
     actor = uuid.uuid4()
     entity_id = _name_first(repository, occurrences[0], actor)
     identity, _ = _propose(repository, run_id)
-    pending = identity.pending_proposal(occurrence_id=occurrences[1], entity_id=entity_id)
+    pending = identity.proposals.pending(occurrence_id=occurrences[1], entity_id=entity_id)
     assert pending is not None
     reject_link(
         identity,
@@ -518,7 +518,7 @@ def test_a_rejected_proposal_reads_as_suppressed_even_though_its_row_still_says_
     actor = uuid.uuid4()
     entity_id = _name_first(repository, occurrences[0], actor)
     identity, _ = _propose(repository, run_id)
-    pending = identity.pending_proposal(occurrence_id=occurrences[1], entity_id=entity_id)
+    pending = identity.proposals.pending(occurrence_id=occurrences[1], entity_id=entity_id)
     assert pending is not None
     reject_link(
         identity,

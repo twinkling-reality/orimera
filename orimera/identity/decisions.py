@@ -27,8 +27,8 @@ again, which is the opposite failure and just as bad.
 any kind. Identity is established by the account holder pointing at a photograph and saying who
 that is. Automatic proposal from non-biometric signals (time proximity, scene grouping, place,
 co-occurrence) is the next rung and would write ``match_proposal`` rows through
-:meth:`orimera.identity.repository.IdentityRepository.record_proposal`; face embeddings are a
-separate decision with legal weight and open item P-1 has not been answered.
+:meth:`orimera.identity.proposals.Proposals.record`; face embeddings are a separate decision with
+legal weight and open item P-1 has not been answered.
 """
 
 from __future__ import annotations
@@ -47,7 +47,6 @@ from orimera.identity.subjects import (
     NamedPerson,
     NeverSame,
     UnknownSubject,
-    dependency_keys,
     require_entity,
     require_occurrence,
 )
@@ -82,7 +81,7 @@ def name_occurrence(
     person is identified because a person said so. Four rows in one transaction, in an order
     that is not interchangeable:
 
-    1. An entity, unnamed. There is no argument for a name on ``create_entity``.
+    1. An entity, unnamed. There is no argument for a name on ``entities.create``.
     2. A ``kind='user'`` assertion under ``name_is``, citing the occurrence's own evidence span
        and naming ``actor`` as the person who said it.
     3. ``entity.display_name``, which the trigger permits only because step 2 exists.
@@ -96,7 +95,7 @@ def name_occurrence(
         raise IdentityError("a name is a thing somebody said; the empty string is not one")
 
     occurrence = require_occurrence(repository, occurrence_id)
-    existing = repository.link_for_occurrence(occurrence_id)
+    existing = repository.links.for_occurrence(occurrence_id)
     if existing is not None:
         raise AlreadyIdentified(
             f"occurrence {occurrence_id} is already confirmed as entity {existing.entity_id}. "
@@ -105,7 +104,7 @@ def name_occurrence(
         )
 
     with repository.transaction():
-        entity_id = repository.create_entity(entity_class=occurrence.occurrence_class)
+        entity_id = repository.entities.create(entity_class=occurrence.occurrence_class)
         assertion_id = assertions.insert(
             kind="user",
             predicate_key="name_is",
@@ -119,8 +118,8 @@ def name_occurrence(
             emit_key=f"identity:name:{entity_id}",
         )
         assert assertion_id is not None, "a fresh entity id cannot collide on emit_key"
-        repository.set_display_name(entity_id, display_name)
-        link_id = repository.insert_link(
+        repository.entities.set_name_cache(entity_id, display_name)
+        link_id = repository.links.insert(
             occurrence_id=occurrence_id,
             entity_id=entity_id,
             state="confirmed",
@@ -128,7 +127,7 @@ def name_occurrence(
             basis_digest=USER_STATEMENT_BASIS,
             decided_by=actor,
         )
-        created = repository.record_event(
+        created = repository.events.record(
             "entity_created",
             actor=actor,
             payload={
@@ -138,7 +137,7 @@ def name_occurrence(
                 "assertion_id": str(assertion_id),
             },
         )
-        confirmed = repository.record_event(
+        confirmed = repository.events.record(
             "link_confirmed",
             actor=actor,
             payload={
@@ -148,9 +147,7 @@ def name_occurrence(
                 "method": _USER_CONFIRM,
             },
         )
-        repository.mark_derived_stale(
-            dependency_keys(entity=entity_id, occurrence=occurrence_id)
-        )
+        repository.recomputation.mark_stale(entity=entity_id, occurrence=occurrence_id)
     return NamedPerson(
         entity_id=entity_id,
         link_id=link_id,
@@ -175,11 +172,11 @@ def confirm_link(
     """
     occurrence = require_occurrence(repository, occurrence_id)
     entity = require_entity(repository, entity_id)
-    target = repository.resolve_entity(entity.entity_id)
+    target = repository.entities.resolve(entity.entity_id)
 
-    existing = repository.link_for_occurrence(occurrence_id)
+    existing = repository.links.for_occurrence(occurrence_id)
     if existing is not None:
-        if repository.resolve_entity(existing.entity_id) == target:
+        if repository.entities.resolve(existing.entity_id) == target:
             return existing.link_id
         raise AlreadyIdentified(
             f"occurrence {occurrence_id} is already confirmed as entity {existing.entity_id}, "
@@ -191,17 +188,17 @@ def confirm_link(
         # is a change of mind about the PAIR, and a machine rejection left live would suppress
         # future proposals for a link the account holder has now confirmed. The ids are recorded
         # on the event so undo restores exactly these and not whatever is live at the time.
-        revoked = repository.revoke_all_rejections(
+        revoked = repository.rejections.revoke_all(
             scope=OCCURRENCE_ENTITY,
             key_a=occurrence.identity_key,
             key_b=target.bytes,
         )
-        proposed = repository.link_for_occurrence(
+        proposed = repository.links.for_occurrence(
             occurrence_id, states=("proposed", "auto_provisional")
         )
         if proposed is not None:
-            repository.set_link_state(proposed.link_id, "revoked")
-        link_id = repository.insert_link(
+            repository.links.set_state(proposed.link_id, "revoked")
+        link_id = repository.links.insert(
             occurrence_id=occurrence_id,
             entity_id=target,
             state="confirmed",
@@ -209,7 +206,7 @@ def confirm_link(
             basis_digest=USER_STATEMENT_BASIS,
             decided_by=actor,
         )
-        repository.record_event(
+        repository.events.record(
             "link_confirmed",
             actor=actor,
             payload={
@@ -221,7 +218,7 @@ def confirm_link(
                 "revoked_rejections": [str(value) for value in revoked],
             },
         )
-        repository.mark_derived_stale(dependency_keys(entity=target, occurrence=occurrence_id))
+        repository.recomputation.mark_stale(entity=target, occurrence=occurrence_id)
     return link_id
 
 
@@ -249,22 +246,22 @@ def reject_link(
     """
     occurrence = require_occurrence(repository, occurrence_id)
     entity = require_entity(repository, entity_id)
-    target = repository.resolve_entity(entity.entity_id)
+    target = repository.entities.resolve(entity.entity_id)
 
-    confirmed = repository.link_for_occurrence(occurrence_id)
-    if confirmed is not None and repository.resolve_entity(confirmed.entity_id) == target:
+    confirmed = repository.links.for_occurrence(occurrence_id)
+    if confirmed is not None and repository.entities.resolve(confirmed.entity_id) == target:
         raise AlreadyIdentified(
             f"occurrence {occurrence_id} is confirmed as entity {target}. Rejecting a confirmed "
             "link is a withdrawal of something the user already said: use revoke_link."
         )
 
     with repository.transaction():
-        proposed = repository.link_for_occurrence(
+        proposed = repository.links.for_occurrence(
             occurrence_id, states=("proposed", "auto_provisional")
         )
-        if proposed is not None and repository.resolve_entity(proposed.entity_id) == target:
-            repository.set_link_state(proposed.link_id, "rejected")
-        rejection_id = repository.record_rejection(
+        if proposed is not None and repository.entities.resolve(proposed.entity_id) == target:
+            repository.links.set_state(proposed.link_id, "rejected")
+        rejection_id = repository.rejections.record(
             scope=OCCURRENCE_ENTITY,
             key_a=occurrence.identity_key,
             key_b=target.bytes,
@@ -272,7 +269,7 @@ def reject_link(
             rejected_by=actor,
             basis_modalities=basis_modalities,
         )
-        repository.record_event(
+        repository.events.record(
             "link_rejected",
             actor=actor,
             payload={
@@ -285,7 +282,7 @@ def reject_link(
                 "link_id": str(proposed.link_id) if proposed else None,
             },
         )
-        repository.mark_derived_stale(dependency_keys(entity=target, occurrence=occurrence_id))
+        repository.recomputation.mark_stale(entity=target, occurrence=occurrence_id)
     return rejection_id
 
 
@@ -304,21 +301,21 @@ def revoke_link(
     inside :func:`split_entity`.
     """
     occurrence = require_occurrence(repository, occurrence_id)
-    link = repository.link_for_occurrence(occurrence_id)
+    link = repository.links.for_occurrence(occurrence_id)
     if link is None:
         raise UnknownSubject(f"occurrence {occurrence_id} has no confirmed link to revoke")
 
     with repository.transaction():
-        repository.set_link_state(link.link_id, "revoked")
+        repository.links.set_state(link.link_id, "revoked")
         if remember:
-            repository.record_rejection(
+            repository.rejections.record(
                 scope=OCCURRENCE_ENTITY,
                 key_a=occurrence.identity_key,
                 key_b=link.entity_id.bytes,
                 basis_digest=USER_STATEMENT_BASIS,
                 rejected_by=actor,
             )
-        event_id = repository.record_event(
+        event_id = repository.events.record(
             "link_revoked",
             actor=actor,
             payload={
@@ -328,8 +325,8 @@ def revoke_link(
                 "remembered": remember,
             },
         )
-        repository.mark_derived_stale(
-            dependency_keys(entity=link.entity_id, occurrence=occurrence_id)
+        repository.recomputation.mark_stale(
+            entity=link.entity_id, occurrence=occurrence_id
         )
     return event_id
 
@@ -368,21 +365,21 @@ def merge_entities(
                 "surviving record unnamed. Merge the other way round, so the name somebody "
                 "chose is the one that remains."
             )
-        if repository.is_never_same(source, target):
+        if repository.never_same.holds(source, target):
             raise NeverSame(
                 f"entities {source} and {target} were split apart by a user decision. "
                 "Merging them would silently reverse it; undo the split instead."
             )
 
-    resolved_target = repository.resolve_entity(target)
+    resolved_target = repository.entities.resolve(target)
     payload_links = {
-        str(source): [str(link.link_id) for link in repository.links_of(source)]
+        str(source): [str(link.link_id) for link in repository.links.of_entity(source)]
         for source in sources
     }
     with repository.transaction():
         for source in sources:
-            repository.set_merged_into(source, resolved_target)
-        event_id = repository.record_event(
+            repository.entities.set_merged_into(source, resolved_target)
+        event_id = repository.events.record(
             "entities_merged",
             actor=actor,
             payload={
@@ -391,9 +388,7 @@ def merge_entities(
                 "links": payload_links,
             },
         )
-        repository.mark_derived_stale(
-            dependency_keys(entity=[*sources, resolved_target])
-        )
+        repository.recomputation.mark_stale(entity=[*sources, resolved_target])
     return event_id
 
 
@@ -419,7 +414,7 @@ def split_entity(
         raise IdentityError("a split with no occurrences moves nothing")
     require_entity(repository, entity_id)
 
-    links = {link.occurrence_id: link for link in repository.links_of(entity_id)}
+    links = {link.occurrence_id: link for link in repository.links.of_entity(entity_id)}
     missing = [str(o) for o in occurrence_ids if o not in links]
     if missing:
         raise UnknownSubject(
@@ -432,15 +427,15 @@ def split_entity(
             "rename, not a split"
         )
 
-    entity = repository.entity(entity_id)
+    entity = repository.entities.by_id(entity_id)
     assert entity is not None
     with repository.transaction():
-        new_entity_id = repository.create_entity(entity_class=entity.entity_class)
+        new_entity_id = repository.entities.create(entity_class=entity.entity_class)
         moved: list[dict[str, str]] = []
         for occurrence_id in occurrence_ids:
             old = links[occurrence_id]
-            repository.set_link_state(old.link_id, "revoked")
-            link_id = repository.insert_link(
+            repository.links.set_state(old.link_id, "revoked")
+            link_id = repository.links.insert(
                 occurrence_id=occurrence_id,
                 entity_id=new_entity_id,
                 state="confirmed",
@@ -455,7 +450,7 @@ def split_entity(
                     "link_id": str(link_id),
                 }
             )
-        event_id = repository.record_event(
+        event_id = repository.events.record(
             "entity_split",
             actor=actor,
             payload={
@@ -469,8 +464,8 @@ def split_entity(
                 ],
             },
         )
-        repository.record_never_same(entity_id, new_entity_id, created_by_event=event_id)
-        repository.mark_derived_stale(
-            dependency_keys(entity=[entity_id, new_entity_id], occurrence=occurrence_ids)
+        repository.never_same.record(entity_id, new_entity_id, created_by_event=event_id)
+        repository.recomputation.mark_stale(
+            entity=[entity_id, new_entity_id], occurrence=occurrence_ids
         )
     return event_id

@@ -17,10 +17,11 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from typing import Any
 
 from orimera.errors import OrimeraError
-from orimera.identity.repository import EntityRow, IdentityRepository, OccurrenceRow
+from orimera.identity.entities import EntityRow
+from orimera.identity.occurrences import OccurrenceRow
+from orimera.identity.repository import IdentityRepository
 
 __all__ = [
     "ENTITY_ENTITY",
@@ -31,18 +32,20 @@ __all__ = [
     "NeverSame",
     "NotUndoable",
     "UnknownSubject",
-    "dependency_keys",
     "require_entity",
     "require_occurrence",
 ]
 
-#: The scope every occurrence-to-entity rejection is filed under. The other scope,
-#: ``entity_entity``, records a refused merge.
+#: The scope every occurrence-to-entity rejection is filed under. Every
+#: :meth:`orimera.identity.rejections.Rejections.record` call in this package passes it.
 OCCURRENCE_ENTITY: str = "occurrence_entity"
-ENTITY_ENTITY: str = "entity_entity"
 
-#: The only method a confirmed link may carry, per ``confirmed_needs_a_human``.
-_USER_CONFIRM = "user_confirm"
+#: The other value ``identity_rejection.scope`` may hold, per the CHECK at 0001_spine.sql:602.
+#: Nothing writes it and this is not an omission: a refused merge is recorded in ``never_same``,
+#: which a later merge is checked against, and a rejection row would record the refusal without
+#: constraining anything. Kept as the name of the value the column permits, so the constant and
+#: the constraint do not drift apart.
+ENTITY_ENTITY: str = "entity_entity"
 
 
 class IdentityError(OrimeraError):
@@ -86,32 +89,17 @@ class NamedPerson:
     event_ids: tuple[uuid.UUID, ...]
 
 
-def dependency_keys(**subjects: Any) -> list[str]:
-    """The ``dep_index`` strings for the things a decision touched.
-
-    ``derived_artifact.dep_index`` is the flattened ``'kind:<uuid>'`` form with a GIN index over
-    it, so invalidation is a query rather than a list somebody has to remember to update.
-    """
-    keys: list[str] = []
-    for kind, value in subjects.items():
-        if value is None:
-            continue
-        values = value if isinstance(value, (list, tuple, set)) else [value]
-        keys.extend(f"{kind}:{item}" for item in values)
-    return keys
-
-
 def require_occurrence(
     repository: IdentityRepository, occurrence_id: uuid.UUID
 ) -> OccurrenceRow:
-    occurrence = repository.occurrence(occurrence_id)
+    occurrence = repository.occurrences.by_id(occurrence_id)
     if occurrence is None:
         raise UnknownSubject(f"no occurrence {occurrence_id} in this workspace")
     return occurrence
 
 
 def require_entity(repository: IdentityRepository, entity_id: uuid.UUID) -> EntityRow:
-    entity = repository.entity(entity_id)
+    entity = repository.entities.by_id(entity_id)
     if entity is None or entity.deleted_at is not None:
         raise UnknownSubject(f"no entity {entity_id} in this workspace")
     return entity

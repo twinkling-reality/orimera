@@ -12,7 +12,7 @@ Measured against the schema as it stands:
 
     named Julie                                  display_name = 'Julie'
     ONE WRITE: insert the new naming assertion   display_name = None
-    set_display_name('Julie R.')                 display_name = 'Julie R.'
+    entities.set_name_cache('Julie R.')          display_name = 'Julie R.'
 
 Three consequences the code below depends on, each measured rather than reasoned:
 
@@ -76,8 +76,8 @@ def rename_entity(
     actor: uuid.UUID,
 ) -> RenamedEntity:
     """The account holder corrects a name they gave. One transaction, two writes."""
-    target = repository.resolve_entity(entity_id)
-    entity = repository.entity(target)
+    target = repository.entities.resolve(entity_id)
+    entity = repository.entities.by_id(target)
     if entity is None:
         raise LookupError(f"no entity {entity_id}")
 
@@ -112,9 +112,9 @@ def rename_entity(
 
         # NOT optional and NOT conditional. See the module docstring: the insert above has
         # already nulled the column via the retirement of the claim it superseded.
-        repository.set_display_name(target, display_name)
+        repository.entities.set_name_cache(target, display_name)
 
-        event_id = repository.record_event(
+        event_id = repository.events.record(
             "entity_renamed",
             actor=actor,
             payload={
@@ -124,7 +124,7 @@ def rename_entity(
                 "superseded": str(previous["assertion_id"]) if previous else None,
             },
         )
-        repository.mark_derived_stale([f"entity:{target}"])
+        repository.recomputation.mark_stale(entity=target)
 
     return RenamedEntity(
         entity_id=target,

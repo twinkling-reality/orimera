@@ -12,6 +12,16 @@ believes their change was reversed and it was not.
 **Every handler reads the event's payload and nothing else.** Not the current state, and not the
 shape of the code. An undo computed from the present would be a guess about what the past was,
 and it would be most confidently wrong about the oldest events.
+
+**Every handler returns the SUBJECTS it touched, not the dependency strings for them.** Identity
+builds the ``'entity:<uuid>'`` form in exactly one function, ``_dep_index`` in
+:mod:`orimera.identity.recomputation`, and a handler that built the string itself would be a
+second place in this package where the format lives. The column is not identity's to own:
+``derived_artifact.dep_index`` is WRITTEN by
+:meth:`orimera.ingest.repository.IngestRepository.upsert_derived_artifact`, out of strings
+:mod:`orimera.ingest.scenes` composes, and recomputation only reads it, in a
+``dep_index && %s::text[]`` predicate. So the format already lives on both sides of that
+boundary, which is the reason for holding identity's side of it to one function rather than six.
 """
 
 from __future__ import annotations
@@ -26,11 +36,14 @@ from orimera.identity.subjects import (
     OCCURRENCE_ENTITY,
     NotUndoable,
     UnknownSubject,
-    dependency_keys,
     require_occurrence,
 )
 
-__all__ = ["UNDO_HANDLERS", "undo"]
+__all__ = ["UNDO_HANDLERS", "Touched", "undo"]
+
+#: What a handler reports back: the subjects of the decision it reversed, in the keywords
+#: :meth:`orimera.identity.recomputation.Recomputation.mark_stale` takes.
+Touched = dict[str, uuid.UUID | list[uuid.UUID]]
 
 
 def undo(repository: IdentityRepository, *, event_id: uuid.UUID, actor: uuid.UUID) -> uuid.UUID:
@@ -42,10 +55,10 @@ def undo(repository: IdentityRepository, *, event_id: uuid.UUID, actor: uuid.UUI
     of a person means deleting them, which is a deletion cascade with tombstones rather than a
     state change.
     """
-    event = repository.event(event_id)
+    event = repository.events.by_id(event_id)
     if event is None:
         raise UnknownSubject(f"no identity event {event_id} in this workspace")
-    if repository.undo_of(event_id) is not None:
+    if repository.events.undo_of(event_id) is not None:
         raise NotUndoable(f"event {event_id} has already been undone")
     if event["type"] == "event_undone":
         raise NotUndoable(
@@ -63,100 +76,99 @@ def undo(repository: IdentityRepository, *, event_id: uuid.UUID, actor: uuid.UUI
 
     with repository.transaction():
         touched = handler(repository, payload, actor)
-        undone = repository.record_event(
+        undone = repository.events.record(
             "event_undone",
             actor=actor,
             payload={"undid": str(event_id), "type": event["type"]},
             undoes=event_id,
         )
-        repository.mark_derived_stale(touched)
+        repository.recomputation.mark_stale(**touched)
     return undone
 
 
 def _undo_confirm(
     repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
-) -> list[str]:
-    repository.set_link_state(uuid.UUID(payload["link_id"]), "revoked")
+) -> Touched:
+    repository.links.set_state(uuid.UUID(payload["link_id"]), "revoked")
     superseded = payload.get("superseded_proposal")
     if superseded:
         # The proposal this confirmation replaced goes back to being a proposal, which is what
         # the state was before the user answered.
-        repository.set_link_state(uuid.UUID(superseded), "proposed")
+        repository.links.set_state(uuid.UUID(superseded), "proposed")
     # Exactly the rejections this confirmation withdrew, by id, and not "every rejection for the
     # pair". Un-revoking by pair would revive ones that were already withdrawn before the
     # confirm, and an undo that restores more than the action removed is not an undo. The list is
     # absent on events recorded before confirming withdrew anything but the user's own no, which
     # is why it is read with a default rather than indexed.
-    repository.revive_rejections(
+    repository.rejections.revive(
         [uuid.UUID(value) for value in payload.get("revoked_rejections") or []]
     )
-    return dependency_keys(
-        entity=uuid.UUID(payload["entity_id"]), occurrence=uuid.UUID(payload["occurrence_id"])
-    )
+    return {
+        "entity": uuid.UUID(payload["entity_id"]),
+        "occurrence": uuid.UUID(payload["occurrence_id"]),
+    }
 
 
 def _undo_reject(
     repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
-) -> list[str]:
-    repository.revoke_rejection(
+) -> Touched:
+    repository.rejections.revoke(
         scope=OCCURRENCE_ENTITY,
         key_a=bytes.fromhex(payload["identity_key"]),
         key_b=uuid.UUID(payload["entity_id"]).bytes,
         basis_digest=bytes.fromhex(payload["basis_digest"]),
     )
     if payload.get("link_id"):
-        repository.set_link_state(uuid.UUID(payload["link_id"]), "proposed")
-    return dependency_keys(
-        entity=uuid.UUID(payload["entity_id"]), occurrence=uuid.UUID(payload["occurrence_id"])
-    )
+        repository.links.set_state(uuid.UUID(payload["link_id"]), "proposed")
+    return {
+        "entity": uuid.UUID(payload["entity_id"]),
+        "occurrence": uuid.UUID(payload["occurrence_id"]),
+    }
 
 
 def _undo_revoke(
     repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
-) -> list[str]:
+) -> Touched:
     occurrence_id = uuid.UUID(payload["occurrence_id"])
     entity_id = uuid.UUID(payload["entity_id"])
     if payload.get("remembered"):
         occurrence = require_occurrence(repository, occurrence_id)
-        repository.revoke_rejection(
+        repository.rejections.revoke(
             scope=OCCURRENCE_ENTITY,
             key_a=occurrence.identity_key,
             key_b=entity_id.bytes,
             basis_digest=USER_STATEMENT_BASIS,
         )
-    repository.set_link_state(uuid.UUID(payload["link_id"]), "confirmed")
-    return dependency_keys(entity=entity_id, occurrence=occurrence_id)
+    repository.links.set_state(uuid.UUID(payload["link_id"]), "confirmed")
+    return {"entity": entity_id, "occurrence": occurrence_id}
 
 
 def _undo_merge(
     repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
-) -> list[str]:
+) -> Touched:
     sources = [uuid.UUID(source) for source in payload["from"]]
     for source in sources:
-        repository.set_merged_into(source, None)
-    return dependency_keys(entity=[*sources, uuid.UUID(payload["into"])])
+        repository.entities.set_merged_into(source, None)
+    return {"entity": [*sources, uuid.UUID(payload["into"])]}
 
 
 def _undo_split(
     repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
-) -> list[str]:
+) -> Touched:
     entity_id = uuid.UUID(payload["entity_id"])
     new_entity_id = uuid.UUID(payload["into"])
-    repository.forget_never_same(entity_id, new_entity_id)
+    repository.never_same.forget(entity_id, new_entity_id)
     occurrences = []
     for moved in payload["moved"]:
-        repository.set_link_state(uuid.UUID(moved["link_id"]), "revoked")
-        repository.set_link_state(uuid.UUID(moved["revoked_link_id"]), "confirmed")
+        repository.links.set_state(uuid.UUID(moved["link_id"]), "revoked")
+        repository.links.set_state(uuid.UUID(moved["revoked_link_id"]), "confirmed")
         occurrences.append(uuid.UUID(moved["occurrence_id"]))
-    return dependency_keys(entity=[entity_id, new_entity_id], occurrence=occurrences)
+    return {"entity": [entity_id, new_entity_id], "occurrence": occurrences}
 
 
-#: Every event type this module writes, and the inverse of each. A type absent from here is
-#: refused by name rather than silently doing nothing, which is why `undo` looks it up instead
-#: of branching.
 def _undo_rename(
     repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
-) -> list[str]:
+) -> Touched:
     """Put back the name the rename retired, by saying it again rather than by rewriting.
 
     The retired assertion is not reactivated. ``tg_assertion_no_in_place_rewrite`` permits a
@@ -181,8 +193,8 @@ def _undo_rename(
             retracted_by=actor,
             reason="the rename that made this claim was undone",
         )
-        repository.set_display_name(entity_id, None)
-        return dependency_keys(entity=entity_id)
+        repository.entities.set_name_cache(entity_id, None)
+        return {"entity": entity_id}
 
     restored = repository.connection.execute(
         "select object_value #>> '{}' as name from assertion where assertion_id = %s",
@@ -196,9 +208,12 @@ def _undo_rename(
             display_name=restored["name"],
             actor=actor,
         )
-    return dependency_keys(entity=entity_id)
+    return {"entity": entity_id}
 
 
+#: Every event type this module writes, and the inverse of each. A type absent from here is
+#: refused by name rather than silently doing nothing, which is why `undo` looks it up instead
+#: of branching.
 UNDO_HANDLERS = {
     "entity_renamed": _undo_rename,
     "link_confirmed": _undo_confirm,
