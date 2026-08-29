@@ -9,6 +9,24 @@
 - Supersedes: nothing
 - Related: [architecture-overview.md](../architecture-overview.md) section 1.1
 
+## CORRECTED 2026-08-29: the Spline exception was opened and closed
+
+**DECISION, CORRECTED, and now back where it started.** For one day this ADR carried a reversal
+permitting `@splinetool/runtime` for the Companion, on the grounds that glTF cannot carry what makes
+an authored Spline scene good: the exporter lists "States, Events, and Interactivity" as
+unsupported, so an exported body has no eye tracking and no expression states.
+
+That was true and it is still true. It stopped mattering because the Companion is no longer an
+authored character. Four forms were built and compared in place against the real Atlas, and the one
+chosen is a field of motes: the Atlas's own substance, drawn in 2D, needing no second engine and no
+imported scene. The robot lost on a product argument rather than a rendering one. It has a face,
+and in a system that proposes rather than asserts, a face makes claims the graph has not earned.
+
+So the ban stands as originally written, the `@splinetool/*` dependency is removed, and the
+`spline-runtime-is-one-file-wide` rule that fenced the exception is deleted with it. This entry is
+kept rather than erased because the reasoning is the useful part: if a future Companion ever wants
+authored interactivity, this is the road that was walked and why it was walked back.
+
 ## Context
 
 Two independent research streams designed the front end against two incompatible engines, and neither
