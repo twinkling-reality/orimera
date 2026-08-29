@@ -52,6 +52,13 @@ So the rule here is:
 3.  Exactly one distinct candidate is the answer. Zero is a failed call. **Two or more is
     refused**, because picking one would be inventing the provenance of a fact.
 
+The scan is only reached when the body is not itself one JSON document. A reply that parses
+cleanly as JSON and is an array or a scalar is refused before the scan runs: that is not an
+answer wrapped in prose, it is the wrong type, and reaching inside it for the object it happens
+to contain would accept a shape the request never asked for. The distinction is exact rather
+than usual, because ``json.loads`` succeeds on the whole body only when there is nothing else in
+it, so no body the scanner exists for can reach this refusal.
+
 Refusal costs a retry. A guess costs a memory that never happened, attributed to nobody.
 
 ``validate_against_schema`` is the other half of the reader. Sending
@@ -290,7 +297,29 @@ def extract_json_object(content: str) -> dict[str, Any]:
     them. Neither position is evidence of which is the answer, so the call is refused. Identical
     candidates are not ambiguous and collapse to one, because every reading of the body yields
     the same value.
+
+    Raises ``SchemaViolationError`` when the whole body parses as a single JSON document that is
+    not an object. That reply is not an answer wrapped in scratch work: it parsed cleanly and was
+    the wrong type, so there is nothing inside it to extract. The bodies the scan exists for are
+    unaffected, because neither prose in front of an object nor a fenced object parses as one
+    document.
     """
+    try:
+        whole = json.loads(content)
+    except json.JSONDecodeError:
+        pass
+    else:
+        if not isinstance(whole, dict):
+            raise SchemaViolationError(
+                "the whole response body parses as JSON and is a top-level "
+                f"{'array' if isinstance(whole, list) else 'scalar'} rather than an object. "
+                "Nothing is taken from inside it: the reply parsed cleanly and was simply not "
+                "the requested type, so unwrapping it would hand the caller a value the endpoint "
+                "never said was the answer. Strict mode needs a top-level object. Body was "
+                f"{content[:300]!r}",
+                errors=("<root>: the reply is not of type 'object'",),
+            )
+
     candidates = json_object_candidates(content)
     if not candidates:
         raise StructuredOutputError(

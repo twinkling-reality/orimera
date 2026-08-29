@@ -58,6 +58,7 @@ from orimera.models.errors import (
     ModelError,
     ModelUnavailableError,
     NoFallbackError,
+    SchemaViolationError,
     StructuredOutputError,
     TransportError,
     TruncatedResponseError,
@@ -688,7 +689,10 @@ class ModelClient:
         name = str(declared.get("name") or "response")
         try:
             parsed = extract_json_object(answer)
-        except AmbiguousStructuredOutputError:
+        except (AmbiguousStructuredOutputError, SchemaViolationError):
+            # Both already say precisely what went wrong. Rewrapping either as "not JSON and
+            # contains no JSON object" would be false of a body that parsed perfectly, and it
+            # would send a reader looking for a transport fault instead of a shape one.
             raise
         except StructuredOutputError as exc:
             raise StructuredOutputError(

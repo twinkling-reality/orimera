@@ -192,6 +192,48 @@ def test_a_hand_written_schema_that_is_not_legal_json_schema_is_refused_before_i
         response_format_for_schema({"type": "obeject", "properties": {}}, "broken")
 
 
+def test_a_top_level_array_is_refused_rather_than_reached_into():
+    """The reply parsed cleanly and was the wrong type. There is nothing in it to extract.
+
+    The scanner exists for a body that is an object surrounded by prose or a fence, and it finds
+    the object inside ``[{...}]`` for the same reason. What comes out is schema-valid, so every
+    later check passes it, and nothing anywhere refused a reply that did not match the schema
+    that was sent.
+
+    Reaching inside the array would be the same guess the scanner was rewritten to stop making:
+    nothing in the body says the first element is the answer.
+    """
+    with pytest.raises(SchemaViolationError, match="array"):
+        extract_json_object('[{"scene_description": "A waterfall in a forest."}]')
+
+
+def test_a_top_level_scalar_is_refused_as_the_wrong_type_and_not_as_unparseable():
+    """A quoted string is valid JSON, so "contains no JSON object" points at the wrong bug."""
+    with pytest.raises(SchemaViolationError, match="scalar"):
+        extract_json_object('"a waterfall"')
+
+
+def test_an_object_that_contains_an_array_is_untouched():
+    """The other side of the rule. The array has to be at the top level for this to fire.
+
+    A body that is one JSON object is exactly what was asked for, whatever it holds inside, and
+    rule 2 of this module still governs what is nested within an answer.
+    """
+    body = '{"scene_description": "x", "objects": [{"label": "cube"}]}'
+    assert extract_json_object(body)["objects"] == [{"label": "cube"}]
+
+
+def test_an_object_after_prose_is_still_extracted_when_the_body_holds_an_array_too():
+    """The check must key on "the whole body is one JSON document", not on "an array appears".
+
+    Prose in front of an object means the body does not parse as JSON at all, so the new refusal
+    cannot fire and the scanner runs exactly as before. A rule that looked for a bracket instead
+    would refuse this and break the case the scanner exists for.
+    """
+    body = 'I looked at the [image] and found: {"scene_description": "A waterfall."}'
+    assert extract_json_object(body)["scene_description"] == "A waterfall."
+
+
 def test_a_schema_that_constrains_nothing_is_refused_before_it_is_sent():
     """Legal JSON Schema is not the same as JSON Schema that checks anything.
 
