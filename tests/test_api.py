@@ -17,6 +17,7 @@ thinking about who may call it is not possible here; the suite goes red.
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
 import uuid
 
@@ -322,6 +323,32 @@ def test_readiness_reports_each_check_separately(deployment):
     assert body["checks"]["model_manifest"]["ok"]
     # And it says what it does not prove, rather than letting a green tick imply it.
     assert "still exists in the live catalog" in body["checks"]["model_manifest"]["does_not_prove"]
+
+
+def test_the_readiness_database_check_claims_only_what_a_fresh_connect_proves(deployment):
+    """This string leaves the process. It used to name a component the deployment does not have.
+
+    ``/readyz`` served "the database is reachable and the connection pool is not full" to an
+    operator over HTTP, and the docstring above it said the same. There is no connection pool:
+    ``orimera/db/session.py`` calls ``psycopg.connect`` per session and ``psycopg_pool`` is in
+    neither ``pyproject.toml`` nor ``uv.lock``. An operator reading that acted on a check of
+    something that does not exist, and missed the thing it does check, which is that the server
+    had a free connection SLOT. Slots are what this deployment can run out of: one API process
+    can demand one backend per in-flight request against 97 usable on a default cluster.
+
+    The assertion is tied to the dependency rather than to a form of words on purpose. If a pool
+    is ever added, this fails and asks for the sentence to be revisited, which is the right
+    moment: a pool that hands back a connection without ``reset all`` carries the previous
+    borrower's workspace, measured, and that is a cross-tenant read rather than a wording bug.
+    """
+    assert importlib.util.find_spec("psycopg_pool") is None, (
+        "psycopg_pool is installed. /readyz reports a free connection slot because every "
+        "connection is opened fresh; revisit that sentence, orimera/db/session.py and "
+        "docs/deployment.md section 5.4 before relaxing this"
+    )
+    proves = deployment.client.get("/readyz").json()["checks"]["database"]["proves"]
+    assert "pool" not in proves.lower(), proves
+    assert "free connection slot" in proves, proves
 
 
 def test_readiness_says_what_this_instance_is_running_without(deployment):

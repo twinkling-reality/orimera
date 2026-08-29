@@ -30,6 +30,7 @@ import psycopg
 import pytest
 from orimera.db.migrate import provision_workspace
 from orimera.db.roles import EXECUTOR_ROLE, RUNTIME_ROLE, provision_runtime_role
+from orimera.db.session import Database
 from psycopg.rows import dict_row
 
 from pg_harness import migrated_schema
@@ -248,3 +249,39 @@ def test_a_session_with_no_workspace_declared_reads_nothing(scoped):
     assert connection.execute("select current_workspace() as w").fetchone()["w"] is None
     for table in ("capture", "evidence_span", "embedding", "assertion"):
         assert _count(connection, table) == 0, table
+
+
+def test_unscoped_reads_nothing_even_straight_after_a_scoped_session(scoped):
+    """``Database.unscoped``'s docstring, asserted rather than assumed, as a non-superuser.
+
+    It says "a caller that wanted workspace data and reached for this would get an empty result
+    rather than another workspace's rows". That sentence is true because every session in this
+    codebase is its own backend: ``psycopg.connect`` per call, no pool anywhere. It is the
+    sentence a naive pool falsifies, and that was measured rather than reasoned about.
+    ``psycopg_pool``'s default reset does nothing when the transaction status is IDLE, and under
+    the autocommit ``session()`` deliberately chooses every returned connection IS idle, so
+    nothing is reset: probed as a non-superuser against these same forced policies, a borrower
+    that declared no workspace read the previous borrower's rows, and ``assert_workspace_context``
+    PASSED for a workspace it had never named.
+
+    So this asserts both halves in one run: the backends differ, and the unscoped one sees
+    nothing. A pool without ``reset all`` on return turns the first assertion false and the
+    second into a cross-tenant read.
+    """
+    from tests_support_api import scratch_database
+
+    base = scratch_database(scoped.scratch).url
+    database = Database(url=f"{base}&user={RUNTIME_ROLE}")
+
+    with database.session(scoped.workspace_a) as scoped_connection:
+        scoped_pid = scoped_connection.execute("select pg_backend_pid() as pid").fetchone()["pid"]
+        assert _count(scoped_connection, "capture") == 1
+
+    with database.unscoped() as bare:
+        assert bare.execute("select pg_backend_pid() as pid").fetchone()["pid"] != scoped_pid, (
+            "unscoped() reused the scoped session's backend, so this deployment has grown a "
+            "pool and the workspace setting travels with it"
+        )
+        assert bare.execute("select current_workspace() as w").fetchone()["w"] is None
+        for table in ("capture", "evidence_span", "embedding", "assertion"):
+            assert _count(bare, table) == 0, table

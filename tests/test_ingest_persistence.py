@@ -44,7 +44,7 @@ from orimera.store.local import LocalContentAddressedStore
 from orimera.store.resolve import address_from_span_row, resolve_original_bytes
 from psycopg.types.json import Jsonb
 
-from conftest import DEFAULT_PAYLOAD, CountingVisionModel, write_photo
+from conftest import DEFAULT_PAYLOAD, CountingVisionModel, bomb_png, write_photo
 
 # No module-level postgres marker. tests/conftest.py marks each test by the fixtures it
 # actually requests, so the handful here that need no server stay runnable without one.
@@ -348,6 +348,88 @@ def test_a_region_address_crops_the_upright_original(ingested):
     cropped = resolve_region_image(address, store)
     assert cropped.size[0] > 0 and cropped.size[1] > 0
     assert cropped.size[0] < 160  # a region, not the whole photograph
+
+
+def test_the_region_crop_refuses_an_original_over_the_pixel_budget(tmp_path):
+    """``resolve_region_image`` is the second decode path, and it must inherit the same bound.
+
+    It is reached from ``GET /evidence/{span_id}/region``, a synchronous route on the same
+    threadpool as the upload, and one call at the budget costs half a gigabyte. It used to open
+    and load the original itself. That was not unprotected, because importing anything under
+    ``orimera.ingest`` assigns ``Image.MAX_IMAGE_PIXELS`` process-wide, but process state is not
+    a bound: reset the warning filters and a frame in Pillow's warn-only band decodes in full.
+    So this asserts the explicit comparison, by its exception type and by its message, and it
+    goes red if the call goes back to a bare ``Image.open``.
+
+    No database. The bytes are put in a store directly, because a photograph over the budget
+    cannot be ingested by definition and so cannot be reached through the ``ingested`` fixture.
+    """
+    from orimera.evidence.address import EvidenceAddress
+    from orimera.evidence.blob import BlobId
+    from orimera.ingest.decode import MAX_PIXELS
+    from PIL import Image
+
+    width, height = 20_000, MAX_PIXELS // 20_000 + 100
+    pixels = width * height
+    assert MAX_PIXELS < pixels < 2 * MAX_PIXELS, "Pillow only WARNS in this band"
+
+    store = LocalContentAddressedStore(tmp_path / "store")
+    data = bomb_png(width, height)
+    store.put_bytes(data)
+    address = EvidenceAddress.photograph(BlobId.of_bytes(data))
+
+    with pytest.raises(Image.DecompressionBombError) as raised:
+        resolve_region_image(address, store)
+    assert str(pixels) in str(raised.value), raised.value
+
+
+def _image_open_call_sites() -> list[str]:
+    """Every ``Image.open(...)`` call under ``orimera/``, as ``module:function``.
+
+    An AST walk rather than a grep, so the prose in a docstring that talks *about* ``Image.open``
+    is not counted as a call to it. Attributed to the innermost enclosing function, and a call at
+    module scope says so.
+    """
+    package = pathlib.Path(pipeline_module.__file__).parent.parent
+    sites: list[str] = []
+    for path in sorted(package.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        enclosing: dict[ast.AST, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                for inner in ast.walk(node):
+                    enclosing[inner] = node.name
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "open"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "Image"
+            ):
+                where = enclosing.get(node, "<module scope>")
+                sites.append(f"{path.relative_to(package.parent).as_posix()}:{where}")
+    return sorted(sites)
+
+
+def test_a_photograph_becomes_pixels_in_exactly_one_module():
+    """``decode.py``'s opening sentence, checked rather than asserted.
+
+    The whole module exists because ``Image.MAX_IMAGE_PIXELS`` and the promotion of
+    ``DecompressionBombWarning`` are interpreter-global, so a second decode path anywhere inherits
+    whatever the last import happened to set and nothing else. It was false once:
+    ``ingest/resolve.py`` opened and loaded an original itself, reached from a synchronous route,
+    with no comparison in front of it. A sentence that has been false once is worth a test.
+
+    The sweep is over the whole of ``orimera/`` rather than over the ingest package, because the
+    caller that broke it was in ingest and the next one need not be. ``orimera/corpus`` and
+    ``orimera/reconstruction`` both import Pillow and are allowed to; what they must not do is
+    turn somebody's uploaded bytes into pixels without asking ``decode`` first.
+    """
+    assert _image_open_call_sites() == [
+        "orimera/ingest/decode.py:open_upright",
+        "orimera/ingest/decode.py:probe",
+    ]
 
 
 def test_a_photograph_carries_the_degenerate_interval_and_the_img_track(ingested):

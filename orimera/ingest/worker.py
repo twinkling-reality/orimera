@@ -148,7 +148,8 @@ class DerivativeWorker:
         """Poll until asked to stop, and **survive anything one pass throws**.
 
         Without this guard the thread dies on the first ``OperationalError`` at connect, a
-        database restart or an exhausted connection pool, and it dies in silence: ``start()`` ran
+        database restart or the server's connection slots being exhausted, and it dies in
+        silence: ``start()`` ran
         once from the application lifespan and is a no-op afterwards. From then on every upload
         returns a job id nothing will ever claim, every batch stays open, and every subscriber to
         a formation stream waits out the route's full thirty minute cap for a terminal event that
