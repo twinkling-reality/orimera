@@ -165,6 +165,32 @@ export {
 export { IMPORTANCE_WEIGHTS, deriveImportance, occurrenceNormalizer } from './focus/importance.js';
 
 export type {
+  CompanionPlacement,
+  Materialization,
+  Obstacle,
+  PlacementConfig,
+  PlacementInputs,
+  PlacementResolution,
+  RejectionReason,
+  RejectionTally,
+  ScreenRect,
+} from './companion/placement.js';
+export {
+  DEFAULT_PLACEMENT_CONFIG,
+  REJECTION_REASONS,
+  resolveCompanionPlacement,
+} from './companion/placement.js';
+
+export type {
+  CompanionStation,
+  HomeConfig,
+  HomeReason,
+  StationInputs,
+  StationKind,
+} from './companion/station.js';
+export { DEFAULT_HOME_CONFIG, homePosition, resolveStation } from './companion/station.js';
+
+export type {
   LayoutConfig,
   LayoutInputIsland,
   LayoutMove,
