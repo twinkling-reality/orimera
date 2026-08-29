@@ -274,6 +274,23 @@ the store. So the staging window collapses to one request. Intake is a hash, an 
 orientation transform and a handful of rows; the vision stage is a model call and runs in the
 worker, from a capture id, over bytes already in the one place a deletion reaches.
 
+### Erasing what a deletion asked for
+
+A tombstone blocks every read and every derived write the moment it commits. Removing the bytes
+it named is a separate step, because the object store is not in the database transaction:
+
+```bash
+uv run orimera-purge --workspace <uuid> --data-dir .orimera/local
+```
+
+It connects as `orimera_purge`, through `ORIMERA_PURGE_DATABASE_URL`, and refuses to run without
+it rather than falling back to the writer. That is not ceremony. `blob` is not workspace-scoped,
+so two workspaces that ingest the same photograph share one object, and a purger that could only
+see its own workspace would destroy bytes the other one still cites. Measured, and it is what the
+separate role is for. A job whose bytes something live still holds is **deferred**, not failed,
+and is asked again later; the tombstone is recorded complete only when the bytes are actually
+gone, which is a different question from whether the queue went quiet.
+
 `GET /healthz` touches nothing. `GET /readyz` runs one query and one object-store call, reports
 each check separately, and never calls a model: a check every five minutes over a 46 day unattended
 window is about 13,200 checks, and it must not depend on the prepaid balance.
@@ -320,6 +337,7 @@ single command that starts Orimera end to end.
 | `orimera/identity/` | Occurrence keys, the identity tables, and the user decisions that promote an occurrence to a person |
 | `orimera/selection/` | The one Selection primitive: plan, validation, deterministic execution, evidence packet, answer validation |
 | `orimera/api/` | The HTTP surface, including `POST /intake`. Routes validate and delegate; the only unauthenticated ones are the health probes |
+| `orimera/deletion/` | The purge queue a tombstone fills and the worker that empties it. Destroys objects, marks rows, and holds DELETE on nothing |
 | `pyproject.toml` | Also the backend layering contract, enforced by `uv run lint-imports` |
 | `orimera/canonical.py`, `orimera/errors.py` | Canonical JSON and the one rounding rule; the error taxonomy |
 | `tests/` | 588 tests, 227 of which need a PostgreSQL 18 server. No network, no credentials, no committed binary fixtures |

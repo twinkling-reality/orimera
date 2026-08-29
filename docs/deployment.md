@@ -333,8 +333,23 @@ is done, no claim is made here about range requests being on the browser path.
 | `ORIMERA_API_TOKENS` | Bearer token to workspace grant | No default, because a default would be a credential in a repository |
 | `ORIMERA_READONLY_DATABASE_URL` | The Selection executor's role | Optional, and `/readyz` says so when it is absent |
 | `ORIMERA_DERIVATIVE_WORKER` | Whether this process drains what `POST /intake` queues | Defaults to **on**. Off is for an instance that leaves the queue to somebody else, and `/readyz` reports which it is: a queue nobody drains and a queue drained elsewhere look identical from outside |
+| `ORIMERA_APP_ROLE_PASSWORD`, `ORIMERA_EXECUTOR_ROLE_PASSWORD`, `ORIMERA_PURGE_ROLE_PASSWORD` | Passwords for the three roles `orimera-db` provisions | Optional. Set only when supplied, because a deployment authenticating by certificate or by peer has none, and inventing one would create a credential nobody asked for |
+| `ORIMERA_PURGE_DATABASE_URL` | The connection `orimera-purge` uses | No default and **no fallback to the writer**. The purge role holds a cross-workspace read the runtime role must never have, and the runtime role holds writes the purger must never need. Running as the wrong one either destroys another tenant's photograph or cannot tell that it would |
 
-### 5.1.1 The request body bound, and the part of it a proxy still owns
+### 5.1.1 The three roles, and why the purger has its own
+
+`orimera-db` provisions all three in the one correct order, after the migrations.
+
+| Role | Holds | Why it is separate |
+| --- | --- | --- |
+| `orimera_app` | select, insert, update. No delete anywhere. Select only on `predicate` and `schema_migrations` | Row-level security is inert for an owner, and a runtime that could update the vocabulary could disarm the rule that stops a model writing a person's name |
+| `orimera_ro` | select, and nothing else | The Selection executor runs a plan derived from model output. It must not be able to write whatever happened upstream of it |
+| `orimera_purge` | A **cross-workspace read** of identifiers, content hashes and deletion markers on `capture` and `artifact`; update of `purged_at` and `storage_key`; no delete on any table | `blob` is not workspace-scoped, so two workspaces that ingest the same photograph share one object. A purger that could only see its own workspace answers "destroy these bytes" while another tenant still holds a live capture of them. Measured, and it is why this role exists |
+
+The purge role's UPDATE is still filtered by `ws_isolation`, so it reads across tenants and writes
+within one. That asymmetry is the whole of the grant.
+
+### 5.1.2 The request body bound, and the part of it a proxy still owns
 
 `POST /intake` is multipart, and **the body is received and parsed before any route function and
 before any dependency runs**, so it is parsed before authentication: an anonymous request has
