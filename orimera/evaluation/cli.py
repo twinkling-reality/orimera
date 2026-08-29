@@ -1,8 +1,16 @@
 """``orimera-eval``. Run what can be measured and say plainly what cannot.
 
-It reads through the database and the HTTP application. Every identity write it needs goes
-through the API with a bearer token, so what is exercised is the path a person takes rather than
-a shortcut into the tables. It contains no INSERT of its own.
+It reads through the database and the HTTP application and WRITES NOTHING. There is no INSERT,
+no UPDATE and no DELETE anywhere in this package, ``tests/test_evaluation.py`` scans for one, and
+every number here is computed from rows somebody else put there.
+
+That is a rule rather than an accident of what happens to be implemented. Every metric this
+harness has had to turn down for want of a write needed a CONFIRMED ENTITY, and an entity exists
+only where a person confirmed an occurrence. A harness that confirmed one out of ``MANIFEST.json``
+to make its own number computable would be a machine performing a user-class act, which invariant
+3 forbids and which no flag or dedicated workspace would change. So such a metric is a blocked row
+in ``metrics.py`` carrying the sentence that names what is missing, and it is never bought with a
+shortcut into the tables.
 """
 
 from __future__ import annotations
@@ -13,22 +21,36 @@ import pathlib
 import subprocess
 import sys
 import uuid
-from typing import Any
+from typing import Any, Final
 
 from orimera.api.routes import routable_paths
 from orimera.db.session import Database
 from orimera.evaluation.counts import Count, Sample
+from orimera.evaluation.coverage import what_the_corpus_cannot_support
 from orimera.evaluation.ground_truth import GroundTruth
 from orimera.evaluation.report import render_report
 from orimera.evaluation.scorers import (
     score_authorisation,
+    score_capture_time_windows,
     score_citation_identity,
-    score_filter_sets,
-    score_gate_precision,
     score_provenance_completeness,
 )
 
-__all__ = ["main"]
+__all__ = ["SCORED", "main"]
+
+#: The components this harness can produce a result for, and the whole of them.
+#:
+#: It exists so that "``blocked_on=None`` means the component is runnable", which is what
+#: ``metrics.py`` says of that field, is a checkable claim rather than a comment. A row carrying
+#: no sentence that nothing here scores renders as the line "NOT MEASURED: None", which is
+#: "blocked" and "scored zero" collapsed into one fact. ``_cmd_run`` asserts it filled exactly
+#: these, and ``tests/test_evaluation.py`` asserts the metric table agrees with them.
+SCORED: Final[tuple[str, ...]] = (
+    "M1.cit_id",
+    "M5.provenance_completeness",
+    "M10.authorisation",
+    "M15.capture_time_window_exact_match",
+)
 
 _PUBLIC = {"/healthz", "/readyz", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
 
@@ -77,11 +99,11 @@ def _cmd_run(args: argparse.Namespace, stream: Any) -> int:
         results["M5.provenance_completeness"] = score_provenance_completeness(
             connection, workspace
         )
-        filters, why = score_filter_sets(connection, workspace, truth)
-        results["M6.filter_set_exact_match"] = filters
-        if filters is None:
-            blocked["M6.filter_set_exact_match"] = why
-        results["M9.gate_precision"] = score_gate_precision(connection, workspace)
+        windows, why = score_capture_time_windows(connection, workspace, truth)
+        results["M15.capture_time_window_exact_match"] = windows
+        if windows is None:
+            blocked["M15.capture_time_window_exact_match"] = why
+        coverage = what_the_corpus_cannot_support(connection, workspace, truth)
 
     results["M10.authorisation"] = _score_authorisation_over_http(args)
     if results["M10.authorisation"] is None:
@@ -90,6 +112,7 @@ def _cmd_run(args: argparse.Namespace, stream: Any) -> int:
             "would mean the sweep never made a request"
         )
 
+    assert set(results) == set(SCORED), sorted(set(results) ^ set(SCORED))
     report = render_report(
         results,
         corpus_tag=truth.corpus_tag,
@@ -100,6 +123,7 @@ def _cmd_run(args: argparse.Namespace, stream: Any) -> int:
         frames=len(truth.frames),
         git_commit=_git_commit(),
         blocked=blocked,
+        coverage=coverage,
     )
     print(report, file=stream)
 

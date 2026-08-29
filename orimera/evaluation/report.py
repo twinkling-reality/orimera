@@ -90,7 +90,18 @@ def _section(
         else:
             lines.append(f"    {render(result, synthetic=synthetic, corpus_tag=corpus_tag)}")
         if component.licenses:
-            lines.append(f"    licenses, quoted from section 6: {component.licenses}")
+            # A row that did not run licenses NOTHING, and the tense has to say so. The cell is
+            # section 6's statement of what a RESULT would license, and printed flat under a
+            # "NOT MEASURED" line M9's reads "No external lookup occurred ... across the tested
+            # negatives" beside a row where no negative was ever probed. That is the sentence
+            # this harness exists to refuse, so an unmeasured row prints it in the conditional.
+            if result is None:
+                lines.append(
+                    "    licenses NOTHING, because it did not run. What a result would have "
+                    f"licensed, quoted from section 6: {component.licenses}"
+                )
+            else:
+                lines.append(f"    licenses, quoted from section 6: {component.licenses}")
         if component.withholds:
             lines.append(f"    does NOT license, quoted from section 6: {component.withholds}")
     return "\n".join(lines)
@@ -121,12 +132,20 @@ def render_report(
     frames: int,
     git_commit: str,
     blocked: dict[str, str] | None = None,
+    coverage: tuple[str, ...] = (),
 ) -> str:
-    """The whole report. Fourteen metrics appear whether or not they were measured.
+    """The whole report. Every metric appears whether or not it was measured.
 
     Every metric is listed because a short report reads as a clean one. A metric that could not
     run says what stopped it, in the same table as the ones that did, so the reader counts what
     is missing rather than inferring it from a gap.
+
+    ``coverage`` is the measured half of "what is not covered", from
+    :func:`orimera.evaluation.coverage.what_the_corpus_cannot_support`. The sentences below it in
+    this function are true of any corpus this harness can read; the ones passed in are true of
+    the workspace that was actually measured, and they are separated from the fixed text rather
+    than blended into it so a reader can tell which is which. It defaults to empty so a caller
+    testing the rendering rules does not have to fabricate a coverage claim.
     """
     blocked = blocked or {}
     by_key = {f"{c.metric}.{c.key}": c for c in METRICS}
@@ -164,6 +183,9 @@ WHAT THIS CORPUS IS, and read it before any number below.
   that answers a question is measured. There is no browser harness and no hardware target, so no
   rendering number exists.
 """
+    if coverage:
+        head += "\n  MEASURED AGAINST THIS WORKSPACE, rather than stated in general:\n\n"
+        head += "".join(f"  {line}\n" for line in coverage)
     body = (
         head
         + "\n\nDETERMINISTIC INVARIANTS, enforced by code, expected exact"

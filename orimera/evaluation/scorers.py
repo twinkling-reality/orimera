@@ -1,4 +1,4 @@
-"""The five components that can be scored today, and nothing that cannot.
+"""The four components that can be scored today, and nothing that cannot.
 
 Each one returns a ``Count`` with every case named, because section 3.1 rule 4 asks for failures
 by name with their evidence rather than for an aggregate. A component that cannot run is not
@@ -9,21 +9,30 @@ the same defect this project keeps finding elsewhere.
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
-import re
 import uuid
 from collections.abc import Callable
+from typing import Final
 
 import psycopg
 
 from orimera.evaluation.counts import Count, NamedCase
-from orimera.evaluation.ground_truth import GroundTruth
+from orimera.evaluation.ground_truth import Frame, GroundTruth
+from orimera.selection import (
+    CaptureWindow,
+    EpistemicScope,
+    Intent,
+    Session,
+    execute,
+    parse,
+    validate,
+)
 
 __all__ = [
     "score_authorisation",
+    "score_capture_time_windows",
     "score_citation_identity",
-    "score_filter_sets",
-    "score_gate_precision",
     "score_provenance_completeness",
 ]
 
@@ -117,145 +126,260 @@ def score_provenance_completeness(
     return Count(sum(case.passed for case in cases), len(cases), tuple(cases))
 
 
-def _subject_of(label: str, mapping: dict[str, tuple[str, ...]]) -> str | None:
-    """Which subject a detector's label means, or None when the corpus cannot say.
+#: What turns a closed range of instants into a half-open window. A trip's frames run from its
+#: first instant to its last INCLUSIVE, and every window in this system excludes its end, so a
+#: window meant to hold the whole trip has to end after the last frame rather than on it. One
+#: second is enough because the corpus records instants to the second, and using it rather than
+#: the smallest representable step keeps the boundary readable in a failure message.
+_A_SECOND: Final = dt.timedelta(seconds=1)
 
-    The rule, stated because a matching rule nobody wrote down is a matching rule nobody can
-    argue with: a label means a subject when the label, lowercased, contains one of that
-    subject's phrases as a whole-word run. Containment rather than equality, because a model
-    that says "a small red cube on the platform" is describing the corpus's satchel correctly and
-    refusing to join that would be scoring the model down for being right about pixels.
 
-    **A label that matches two subjects means neither.** Ambiguity has to resolve to nothing, or
-    the mapping manufactures matches: "cube" appears in the appearance words of more than one
-    subject, and letting it count for the first one iterated would make the gold comparison
-    depend on dictionary order. None is the honest answer and it costs a detection, not a
-    correctness claim.
+def _placeable(truth: GroundTruth, ingested: set[str]) -> list[tuple[Frame, dt.datetime]]:
+    """The frames whose instant the manifest can adjudicate, and which are actually here.
+
+    Three conditions and each one drops a frame for a different reason.
+
+    *   **Ingested.** A frame the workspace does not hold cannot be returned by anything, and a
+        gold set over frames that were never ingested scores every window as failing for a
+        reason that is the harness's own.
+    *   **Recoverable from the file.** One device in this corpus writes ``OffsetTimeOriginal``
+        and one does not. A frame from the second carries a wall-clock reading and no way to
+        place it on a timeline, so the manifest cannot say which window it belongs in, and a
+        gold set that included it would be scoring the pipeline's guess at an offset under a
+        name that says filters.
+    *   **Carries an instant.** Belt and braces against a manifest that says recoverable and
+        records nothing; :func:`orimera.evaluation.ground_truth.instant_is_correct` treats that
+        combination as a failure and this must not silently read it as a window boundary.
     """
-    words = re.findall(r"[a-z0-9]+", label.lower())
-    haystack = " " + " ".join(words) + " "
-    matched = {
-        subject
-        for subject, phrases in mapping.items()
-        if any(f" {' '.join(re.findall(r'[a-z0-9]+', phrase.lower()))} " in haystack
-               for phrase in phrases)
-    }
-    return matched.pop() if len(matched) == 1 else None
+    return sorted(
+        (
+            (frame, dt.datetime.fromisoformat(frame.utc_instant))
+            for frame in truth.frames
+            if frame.sha256 in ingested
+            and frame.instant_is_recoverable_from_the_file
+            and frame.utc_instant
+        ),
+        key=lambda pair: (pair[1], pair[0].sha256),
+    )
 
 
-def score_filter_sets(
+def _window_cases(
+    placeable: list[tuple[Frame, dt.datetime]], trips: tuple[str, ...]
+) -> list[tuple[str, list[CaptureWindow]]]:
+    """The windows to ask for, derived from the manifest and from nothing else.
+
+    Fixed by this rule rather than chosen per corpus, because a harness that picked its own
+    boundaries after seeing the data could pick the ones that pass. Per trip holding a placeable
+    frame: the whole trip, its opening half and its closing half, so the two halves must tile the
+    whole exactly. Then three cases about the shape of the interval rather than about a trip:
+
+    *   **The half-open end.** A window ending exactly on a frame's instant must exclude that
+        frame. This is the boundary every interval in this system is half-open at, and it is
+        where an off-by-one in a filter of this shape hides.
+    *   **A gap holding nothing.** It must come back empty rather than with the nearest thing,
+        which is the same demand M6's trap (a) makes of the entity dimension.
+    *   **Two windows.** They are ORed with each other, so the answer is the union and not the
+        intersection, and a compiler that ANDed them would return nothing at all.
+    """
+    cases: list[tuple[str, list[CaptureWindow]]] = []
+    for trip in trips:
+        instants = [instant for frame, instant in placeable if frame.trip == trip]
+        if not instants:
+            continue
+        low, high, middle = instants[0], instants[-1] + _A_SECOND, instants[len(instants) // 2]
+        cases.append((f"{trip}, the whole trip", [CaptureWindow(start=low, end=high)]))
+        if middle > low:
+            cases.append((f"{trip}, its opening half", [CaptureWindow(start=low, end=middle)]))
+        if high > middle:
+            cases.append((f"{trip}, its closing half", [CaptureWindow(start=middle, end=high)]))
+
+    every = [instant for _frame, instant in placeable]
+    first, last = every[0], every[-1]
+    opening = CaptureWindow(start=first, end=every[1])
+    cases.append(("a half-open end excludes the frame sitting on it", [opening]))
+    cases.append(
+        (
+            "a window holding no frame comes back empty",
+            [CaptureWindow(start=last + _A_SECOND, end=last + dt.timedelta(days=1))],
+        )
+    )
+    cases.append(
+        (
+            "two windows are ORed with each other",
+            [opening, CaptureWindow(start=last, end=last + _A_SECOND)],
+        )
+    )
+    return cases
+
+
+def score_capture_time_windows(
     connection: psycopg.Connection, workspace: uuid.UUID, truth: GroundTruth
 ) -> tuple[Count | None, str]:
-    """M6. ANY, ALL and TOGETHER return the exact gold set on every expression tested.
+    """M15. A capture-time window returns the frames the corpus placed inside it.
 
-    **This does not score, and the reason is not the one it used to be.** The old reason was that
-    the corpus named its subjects and the detector named appearances and nothing joined them.
-    That gap is closed: ``MANIFEST.json`` now carries ``subject_labels`` and :func:`_subject_of`
-    resolves one vocabulary into the other. The mapping was necessary and it is not sufficient,
-    and having built it the honest thing is to say what is actually in the way.
+    **The whole path runs.** Each case builds a plan payload, hands it to
+    :func:`orimera.selection.validation.parse`, then to
+    :func:`orimera.selection.validation.validate`, then to
+    :func:`orimera.selection.executor.execute`. That ordering is not a style choice: ``execute``
+    accepts only a ``ValidatedPlan`` and ``validate`` is the only thing that constructs one, so
+    there is no way to reach the executor that skips a stage. A defect anywhere in parse,
+    validation, compilation or the SQL makes a case here fail.
 
-    **A Selection filters on confirmed entity ids.** ``EntitySelector.ids`` is "resolved entity
-    ids only": the surface that produced the plan already turned a name into an id, and ANY, ALL
-    and TOGETHER are statements about entities. The synthetic corpus has occurrences and **no
-    entities at all**, because promotion from an occurrence to a persistent entity requires
-    explicit user confirmation and nothing has confirmed anything. A harness that confirmed them
-    from ground truth would be writing ``user``-class decisions on a person's behalf to make its
-    own number computable, which is invariant 3 read backwards.
+    **Why this dimension and no other.** Capture time is the one dimension of a Selection whose
+    gold set is ground truth rather than the system's own output. The corpus generator WROTE the
+    instants into the files and recorded them in ``MANIFEST.json``; every other dimension is
+    either an entity, which exists only where a person confirmed one, or a property the pipeline
+    derived, and a gold set derived from the system's output measures nothing.
 
-    **And the shape it had could not have failed.** ``got`` was a set comprehension over the rows
-    this function had just read, compared against the manifest. No plan was built, no validator
-    ran and the executor was never called, so a filter defect could not make it fail and a
-    correct filter could not make it pass. What it compared was the detector's vocabulary against
-    the generator's placements, under a name that says filters. Set algebra over the real
-    executor is tested, in ``tests/test_selection.py``, which is where M6's traps live.
+    **What a failure here does not distinguish, and the report says so.** Two things can make a
+    frame miss its window: the filter, or the instant the pipeline stored for it. The evidence on
+    each failing case prints both the manifest's instant and the stored one, so a reader can tell
+    which of the two they are looking at without rerunning anything.
 
-    What is returned instead is a refusal carrying measured numbers rather than a guess, because
-    "blocked" and "scored zero" are different facts and the report holds both.
-    """
-    stored: dict[str, set[str]] = {}
-    for row in connection.execute(
-        "select c.blob_sha256, a.object_value #>> '{}' as label "
-        "from assertion a join predicate p on p.predicate_id = a.predicate_id "
-        "join capture c on c.capture_id::text = a.subject_ref ->> 'id' "
-        "where a.workspace_id = %s and p.key = 'object_present' and a.status = 'active'",
-        (workspace,),
-    ).fetchall():
-        stored.setdefault(bytes(row["blob_sha256"]).hex(), set()).add(row["label"])
+    **Three ways a case is not scored, and none of them is a zero.**
 
-    # Scoped to THIS corpus, because a workspace can hold several and the others carry their own
-    # detections. A workspace-wide emptiness check reads as "objects were detected" while none of
-    # them is in the corpus being scored.
-    in_corpus = {frame.sha256 for frame in truth.frames}
-    stored = {digest: labels for digest, labels in stored.items() if digest in in_corpus}
-    if not stored:
-        # Nothing detected an object in any frame of this corpus, so there is nothing for a
-        # filter to return and the gold set has no counterpart. Scoring it as "0 of 6, all
-        # missing" would report an absent input as a query defect, which is the same mistake as
-        # counting an out-of-scope span as a failed citation.
-        return None, (
-            "no object was detected in any frame of this corpus, so there is nothing for a "
-            "filter to return"
-        )
+    *   The page came back bounded, so the result is a page and not a set.
+    *   The result holds a corpus frame the manifest cannot place on a timeline, so the manifest
+        cannot adjudicate whether it belonged in the window.
+    *   The result holds captures outside this corpus, which is not a failure and not scoreable
+        either: the manifest has no ground truth for them.
 
-    if not truth.subject_labels:
-        return None, (
-            "this corpus's manifest carries no subject-to-label mapping, so the subjects it "
-            f"names, {sorted(truth.subjects)}, cannot be joined to what the pipeline recorded. "
-            "Regenerate the corpus with `orimera-corpus`, which writes one"
-        )
-
-    resolved = {
-        digest: {
-            subject
-            for label in labels
-            if (subject := _subject_of(label, truth.subject_labels)) is not None
-        }
-        for digest, labels in stored.items()
-    }
-    # The measured facts the refusal carries, so it says how far away this is rather than only
-    # that it is away. `ingested` matters on its own: a gold set over eighty frames compared
-    # against a workspace holding eight scores every filter as failing for a reason that is the
-    # harness's own, which is the shape this file exists to avoid.
-    ingested = len(stored)
-    recovered = sum(1 for subjects in resolved.values() if subjects)
-    entities = connection.execute(
-        "select count(*) as n from entity where workspace_id = %s", (workspace,)
-    ).fetchone()
-    return None, (
-        f"a Selection filters on confirmed entity ids and this workspace has {int(entities['n'])} "
-        f"of them. {ingested} of the corpus's {len(truth.frames)} frames are ingested and the "
-        f"manifest's subject-to-label mapping resolves a subject in {recovered} of them, so the "
-        "join between the two vocabularies is no longer what is missing. What is missing is a "
-        "confirmed entity per subject, and confirming them from ground truth would be this "
-        "harness writing user decisions on a person's behalf to make its own number computable. "
-        "Set algebra over the real executor is tested in tests/test_selection.py"
-    )
-
-
-def score_gate_precision(connection: psycopg.Connection, workspace: uuid.UUID) -> Count:
-    """M9. No external lookup occurred for any private entity or historical question.
-
-    Measured as: no ``external``-class assertion exists in the workspace. On this build that is
-    trivially true because no external lookup path is implemented, and the report says so rather
-    than presenting a vacuous pass as a defended one. It becomes a real measurement the day one
-    is, and it fails immediately if a lookup ever writes without a gate.
+    The first two make a case unscoreable and are counted into a named case of their own. The
+    third is counted and reported and does not stop a case scoring, because a capture the
+    manifest never described cannot be evidence for or against a claim about the manifest. It is
+    counted once per capture rather than once per window it appeared in: the windows overlap, so
+    the two numbers differ and only the first is the one the sentence claims.
     """
     rows = connection.execute(
-        "select count(*) as n from assertion where workspace_id = %s and kind = 'external'",
+        "select blob_sha256, started_at from capture "
+        "where workspace_id = %s and deleted_at is null",
         (workspace,),
-    ).fetchone()
-    invocations = int(rows["n"])
-    return Count(
-        1 if invocations == 0 else 0,
-        1,
-        (
+    ).fetchall()
+    stored = {bytes(row["blob_sha256"]).hex(): row["started_at"] for row in rows}
+    in_corpus = {frame.sha256 for frame in truth.frames}
+    placeable = _placeable(truth, set(stored))
+    if len(placeable) < 2:
+        return None, (
+            f"{len(placeable)} of this corpus's {len(truth.frames)} frames are both ingested in "
+            "this workspace and carry an instant the manifest can place on a timeline, and two "
+            "are needed before a window has a boundary to be half-open at"
+        )
+
+    by_instant = {frame.sha256: instant for frame, instant in placeable}
+    unplaceable = in_corpus - set(by_instant)
+    cases: list[NamedCase] = []
+    unscoreable: list[str] = []
+    outside: set[str] = set()
+    for name, windows in _window_cases(placeable, truth.trips):
+        plan = parse(
+            {
+                "intent": str(Intent.CAPTURES),
+                "epistemic": str(EpistemicScope.CONFIRMED),
+                "time": [
+                    {"start": window.start.isoformat(), "end": window.end.isoformat()}
+                    for window in windows
+                ],
+            }
+        )
+        # `may_include_proposals` is False because this plan does not ask for proposals and a
+        # session that could not grant them proves it did not lean on them. The actor is required
+        # by `Session` and is read by nothing on this path: `orimera.selection` never touches it,
+        # and this harness performs no write for it to be the author of.
+        validated = validate(
+            connection,
+            plan,
+            Session(workspace_id=workspace, actor=uuid.UUID(int=0), may_include_proposals=False),
+        )
+        result = execute(connection, validated)
+        got = {capture.blob_id.hex for capture in result.captures}
+        # A SET, because the windows overlap by construction: a trip's two halves tile its whole,
+        # so a capture outside the corpus is returned by three of them. Summing the per-window
+        # counts would report (window, capture) pairs under a sentence that says captures.
+        outside |= got - in_corpus
+        got_here = got & in_corpus
+        if result.truncated:
+            unscoreable.append(
+                f"{name}: {result.total_matched} captures match and a page holds "
+                f"{plan.limit}, so the result is a page and not a set"
+            )
+            continue
+        if got_here & unplaceable:
+            unscoreable.append(
+                f"{name}: the window caught {len(got_here & unplaceable)} corpus frame(s) whose "
+                "instant the manifest cannot place, so it cannot adjudicate them"
+            )
+            continue
+        gold = {
+            digest
+            for digest, instant in by_instant.items()
+            if any(window.start <= instant < window.end for window in windows)
+        }
+        cases.append(
             NamedCase(
-                "no external-class claim in the workspace",
-                invocations == 0,
-                "" if invocations == 0 else f"{invocations} external claims were written",
-            ),
-        ),
-    )
+                f"{name} ({len(gold)} frames)",
+                got_here == gold,
+                "" if got_here == gold else _why(gold, got_here, by_instant, stored, truth),
+            )
+        )
+
+    if not cases:
+        return None, (
+            "no window could be compared as a set: " + "; ".join(unscoreable)
+        )
+    scored = Count(sum(case.passed for case in cases), len(cases), tuple(cases))
+    notes = []
+    if unscoreable:
+        notes.append(
+            NamedCase(
+                f"{len(unscoreable)} window(s) were not scored, and why: "
+                + "; ".join(unscoreable),
+                True,
+            )
+        )
+    if outside:
+        # Reported, not dropped, for the same reason M1 reports its out-of-scope spans: a reader
+        # has to be able to see that the workspace holds captures this corpus says nothing about.
+        notes.append(
+            NamedCase(
+                f"{len(outside)} distinct capture(s) returned across these windows are outside "
+                "this corpus and were neither required nor forbidden, because there is no "
+                "ground truth for them",
+                True,
+            )
+        )
+    return Count(scored.k, scored.n, (*notes, *scored.cases)), ""
+
+
+def _why(
+    gold: set[str],
+    got: set[str],
+    by_instant: dict[str, dt.datetime],
+    stored: dict[str, dt.datetime | None],
+    truth: GroundTruth,
+) -> str:
+    """Name the frames that made a window wrong, and print both instants for each.
+
+    Rule 4 wants the case that produced a failure. For this metric that is not just the filename:
+    the reader needs to know whether the frame missed because the filter did not return it or
+    because the pipeline stored a different instant for it than the generator wrote, and those
+    two are told apart by putting the manifest's instant next to the stored one.
+    """
+    names = {frame.sha256: frame.filename for frame in truth.frames}
+
+    def described(digests: set[str]) -> str:
+        return ", ".join(
+            f"{names.get(digest, digest[:12])} "
+            f"(manifest {by_instant[digest].isoformat()}, stored "
+            f"{stored[digest].isoformat() if stored.get(digest) else 'nothing'})"
+            for digest in sorted(digests, key=lambda d: names.get(d, d))
+        )
+
+    parts = []
+    if gold - got:
+        parts.append(f"{len(gold - got)} not returned: {described(gold - got)}")
+    if got - gold:
+        parts.append(f"{len(got - gold)} returned and out of window: {described(got - gold)}")
+    return "; ".join(parts)
 
 
 def score_authorisation(

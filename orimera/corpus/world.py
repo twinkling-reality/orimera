@@ -174,10 +174,14 @@ SUBJECTS: dict[str, str] = {
 #: one entry that is a guess, and it is written down here, in a reviewed diff, rather than
 #: buried in a scorer, for the same reason `orimera/epistemics/vocabulary.py` exists.
 #:
-#: **A mapping that resolves nothing is a detection gap and must not be scored as a query
-#: defect.** ``score_filter_sets`` refuses in that case rather than reporting every filter as
-#: failing, which is the distinction between "blocked" and "scored zero" that the whole
-#: evaluation report is built on. Adding this makes M6 scorable; it does not make it scored.
+#: **What this is for now, which is not what it was added for.** It was added so M6 could be
+#: scored against the corpus, and M6 turned out not to be a corpus metric at all: it filters on
+#: confirmed entity ids and an entity exists only where a person confirmed one. The mapping is
+#: what measures why a manifest-derived filter metric would not have been worth having anyway.
+#: :func:`orimera.evaluation.coverage.what_the_corpus_cannot_support` runs it on every evaluation
+#: and reports, per subject, how much of the generator's own placement a detector recovered. That
+#: is a disclosure and never a score: a low number is a fact about a vocabulary, and reporting it
+#: as a filter defect is the "blocked" and "scored zero" conflation the whole report refuses.
 #:
 #: The appearance words are here because the shapes ARE boxes and prisms: a model looking at a
 #: carmine box and saying "red box" is describing the frame correctly, and refusing to join that
