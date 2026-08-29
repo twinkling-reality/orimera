@@ -2,9 +2,11 @@
 
 Neither setting is optional, and neither is a convenience.
 
-*   **``orimera.workspace_id``.** Twenty tables are under FORCE row-level security with the
-    policy ``workspace_id = current_workspace()``, and ``current_workspace()`` reads exactly
-    this setting. A session that does not declare a workspace therefore reads nothing and
+*   **``orimera.workspace_id``.** 22 tables are under FORCE row-level security keyed on
+    ``current_workspace()``, whose policy is ``workspace_id = current_workspace()`` and which
+    reads exactly this setting. A twenty-third, ``consent_record``, is forced too and keyed on
+    the tenant instead, which is why the number here counts the workspace-keyed ones rather than
+    the forced ones. A session that does not declare a workspace therefore reads nothing and
     writes nothing: every SELECT returns empty and every INSERT fails its WITH CHECK. The
     tombstone and epistemic guards go further and call ``assert_workspace_context()``, which
     raises rather than failing open, because a guard that silently sees no tombstones is worse

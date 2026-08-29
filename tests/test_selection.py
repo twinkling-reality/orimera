@@ -486,8 +486,8 @@ def test_the_free_text_field_cannot_express_an_operator(library, attack):
 
 def test_selecting_is_read_only(library):
     """Stage 6. The executor may not write, whatever a plan upstream of it wanted."""
-    before = library.repository.count("capture")
+    before = library.repository.rows_in_schema("capture")
     library.run(_plan())
-    assert library.repository.count("capture") == before
+    assert library.repository.rows_in_schema("capture") == before
     # And the transaction the executor opened has been closed, so the connection is usable.
-    assert library.repository.count("assertion") > 0
+    assert library.repository.rows_in_schema("assertion") > 0

@@ -96,11 +96,11 @@ def test_a_second_run_writes_no_new_rows(bench):
     pipeline = PhotoIngestPipeline(repository, store, vision=vision)
     pipeline.ingest_directory(photos)
     before = {
-        table: repository.count(table)
+        table: repository.rows_in_schema(table)
         for table in ("blob", "capture", "evidence_span", "artifact", "assertion", "occurrence")
     }
     pipeline.ingest_directory(photos)
-    after = {table: repository.count(table) for table in before}
+    after = {table: repository.rows_in_schema(table) for table in before}
     assert after == before
 
 
@@ -154,9 +154,9 @@ def test_two_files_with_identical_bytes_share_one_capture_and_one_set_of_derivat
     PhotoIngestPipeline(repository, store, vision=vision).ingest_directory(photo_dir)
 
     assert vision.calls == 1
-    assert repository.count("blob") == 1
-    assert repository.count("capture") == 1
-    assert repository.count("artifact") == 3
+    assert repository.rows_in_schema("blob") == 1
+    assert repository.rows_in_schema("capture") == 1
+    assert repository.rows_in_schema("artifact") == 3
 
 
 def test_bumping_a_stage_version_regenerates_only_that_stage(bench, monkeypatch):
@@ -169,7 +169,7 @@ def test_bumping_a_stage_version_regenerates_only_that_stage(bench, monkeypatch)
     pipeline = PhotoIngestPipeline(repository, store, vision=vision)
     pipeline.ingest_directory(photos)
     assert vision.calls == 2
-    artifacts_before = repository.count("artifact")
+    artifacts_before = repository.rows_in_schema("artifact")
 
     # Relative to whatever the registry currently declares. Hardcoding a number here made this
     # test silently vacuous the day the vision stage was bumped to that same number: the "bump"
@@ -181,7 +181,7 @@ def test_bumping_a_stage_version_regenerates_only_that_stage(bench, monkeypatch)
     assert vision.calls == 4, "a version bump must reprocess"
     assert third.model_calls == 2
     # Two new vision artifacts, and nothing else recomputed: intake and rendition are untouched.
-    assert repository.count("artifact") == artifacts_before + 2
+    assert repository.rows_in_schema("artifact") == artifacts_before + 2
 
 
 def test_changing_a_stage_parameter_changes_the_key_without_a_version_bump(bench, monkeypatch):
