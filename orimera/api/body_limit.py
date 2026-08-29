@@ -16,7 +16,7 @@ it, omitting one header walks past the whole thing.
 Counting costs at most one chunk past the limit, not the whole body, which is the objection to
 counting and the reason it is answered by cutting off rather than by draining. A proxy in front
 is still better, because it refuses before the application is involved at all, and
-``docs/deployment.md`` section 5.1.1 says so.
+``docs/deployment.md`` section 5.1.2 says so.
 
 **This runs before authentication and that is the point.** FastAPI receives and parses the body
 before it resolves dependencies, so an unauthenticated request has already had its multipart

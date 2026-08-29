@@ -203,6 +203,17 @@ def workspace_id() -> uuid.UUID:
 #: would empty the vocabulary and every later insert would be refused by a guard doing its job.
 _PRESERVED_TABLES = frozenset({"predicate", "schema_migrations", "stage_registry"})
 
+#: Emptied with DELETE rather than TRUNCATE, because migration 0013 puts a BEFORE TRUNCATE
+#: trigger on both. That trigger is not decoration and this is not a workaround for it: measured
+#: before it existed, `truncate purge_job cascade` succeeded and lost the record of what had not
+#: yet been destroyed while every tombstone still said it had been requested. A test harness is
+#: an administrative context and the owner still holds DELETE, which is the distinction the
+#: trigger is drawing. The runtime and purge roles hold DELETE on nothing, and
+#: `test_purge.py::test_no_runtime_role_can_delete_a_tombstone_or_its_queue` is what holds that.
+#:
+#: purge_job first: it carries the foreign key.
+_APPEND_ONLY_TABLES = ("purge_job", "tombstone")
+
 
 @pytest.fixture(scope="session")
 def spine_schema():
@@ -220,7 +231,8 @@ def _spine_tables(spine_schema):
         "select tablename from pg_tables where schemaname = %s", (scratch,)
     ).fetchall()
     connection.close()
-    names = sorted(row[0] for row in rows if row[0] not in _PRESERVED_TABLES)
+    excluded = _PRESERVED_TABLES.union(_APPEND_ONLY_TABLES)
+    names = sorted(row[0] for row in rows if row[0] not in excluded)
     return names
 
 
@@ -246,6 +258,8 @@ def ingest_spine(spine_schema, _spine_tables, workspace_id):
     primary.connection.execute(
         "truncate table " + ", ".join(f'"{name}"' for name in _spine_tables) + " cascade"
     )
+    for name in _APPEND_ONLY_TABLES:
+        primary.connection.execute(f'delete from "{name}"')
     try:
         yield primary, open_another
     finally:
@@ -299,6 +313,8 @@ def cli_database(spine_schema, _spine_tables, monkeypatch):
         connection.execute(
             "truncate table " + ", ".join(f'"{name}"' for name in _spine_tables) + " cascade"
         )
+        for name in _APPEND_ONLY_TABLES:
+            connection.execute(f'delete from "{name}"')
         for migration in migrations():
             connection.execute(
                 "insert into schema_migrations (version, checksum) values (%s, %s) "

@@ -1,7 +1,7 @@
 """``orimera-db``: bring a database up to the schema and the roles this code expects.
 
-One command, because there is only one correct order and offering a second way to ask is offering
-a way to get it wrong. Migrations first, then the two roles.
+One command, because there is only one correct order and offering a second way to ask is
+offering a way to get it wrong. Migrations first, then the three roles.
 
 **Run it as the SAME role that applies migrations.** ``provision_runtime_role`` ends with
 ``alter default privileges ... grant ... on tables``, and PostgreSQL applies default privileges
@@ -22,13 +22,20 @@ import sys
 from typing import Any, Final
 
 from orimera.db.migrate import apply_pending
-from orimera.db.roles import EXECUTOR_ROLE, RUNTIME_ROLE, provision_runtime_role
+from orimera.db.roles import (
+    EXECUTOR_ROLE,
+    PURGE_ROLE,
+    RUNTIME_ROLE,
+    provision_purge_role,
+    provision_runtime_role,
+)
 from orimera.db.session import Database
 
 __all__ = ["main"]
 
 APP_ROLE_PASSWORD_ENV: Final = "ORIMERA_APP_ROLE_PASSWORD"
 EXECUTOR_ROLE_PASSWORD_ENV: Final = "ORIMERA_EXECUTOR_ROLE_PASSWORD"
+PURGE_ROLE_PASSWORD_ENV: Final = "ORIMERA_PURGE_ROLE_PASSWORD"
 
 
 def provision(stream: Any) -> int:
@@ -49,9 +56,12 @@ def provision(stream: Any) -> int:
             password=os.environ.get(EXECUTOR_ROLE_PASSWORD_ENV),
             read_only=True,
         )
+        provision_purge_role(connection, password=os.environ.get(PURGE_ROLE_PASSWORD_ENV))
     print(
         f"roles: {RUNTIME_ROLE} may select, insert and update and may not delete; "
-        f"{EXECUTOR_ROLE} may select and nothing else",
+        f"{EXECUTOR_ROLE} may select and nothing else; "
+        f"{PURGE_ROLE} may mark bytes purged and may read every workspace's content hashes, "
+        "which is the one question a shared blob makes unanswerable inside one workspace",
         file=stream,
     )
     return 0

@@ -39,9 +39,11 @@ from psycopg import sql
 
 __all__ = [
     "EXECUTOR_ROLE",
+    "PURGE_ROLE",
     "READ_ONLY_TABLES",
     "RUNTIME_ROLE",
     "grant_workspace_partition",
+    "provision_purge_role",
     "provision_runtime_role",
 ]
 
@@ -54,12 +56,51 @@ RUNTIME_ROLE: Final = "orimera_app"
 #: plan derived from model output cannot write whatever happens above it.
 EXECUTOR_ROLE: Final = "orimera_ro"
 
+#: The role the object-store purger connects as. It exists for one privilege nothing else may
+#: have, and the privilege is a READ: see :func:`provision_purge_role`.
+PURGE_ROLE: Final = "orimera_purge"
+
 #: Tables the runtime may read and may not write. See the module docstring for why each.
 READ_ONLY_TABLES: Final = ("predicate", "schema_migrations")
 
 #: The vocabulary is administered, not generated. Without revoking this the role could insert a
 #: predicate row even though it cannot update one.
 _ADMIN_ONLY_SEQUENCES: Final = ("predicate_predicate_id_seq",)
+
+#: What the purger may read, and it reads it across every workspace. Identifiers, content
+#: hashes and deletion markers: enough to answer "does anything still hold these bytes" and
+#: nothing else. A policy cannot restrict columns, so this grant is what does.
+_PURGE_READS: Final = {
+    "capture": ("capture_id", "workspace_id", "blob_sha256", "deleted_at"),
+    "artifact": (
+        "artifact_id",
+        "workspace_id",
+        "content_sha256",
+        "source_blob_sha256",
+        "storage_key",
+        "purged_at",
+    ),
+}
+
+#: Read as well, and with no policy beside it: `blob` is not workspace-scoped and carries no
+#: row-level security at all, so the column grant is the whole of the restriction here. It is
+#: kept out of _PURGE_READS because that dict drives the cross-workspace policy, and a policy on
+#: a table with row-level security disabled would be a statement nothing enforces.
+_PURGE_UNSCOPED_READS: Final = {
+    "blob": ("blob_sha256", "byte_size", "storage_key", "purged_at"),
+}
+
+#: What the purger may write, and it writes only inside its own workspace, because ws_isolation
+#: still applies to UPDATE. Marking bytes gone, and nothing else. `blob` carries no policy
+#: because it is not workspace-scoped; the columns are the whole restriction there.
+_PURGE_WRITES: Final = {
+    "artifact": ("purged_at", "storage_key"),
+    "blob": ("purged_at", "storage_key"),
+}
+
+#: The permissive SELECT policy that gives the purge role its cross-workspace view. Named so it
+#: is legible in `\d capture` rather than being an anonymous second policy nobody expected.
+_CROSS_WORKSPACE_POLICY: Final = "purge_sees_every_holder_of_these_bytes"
 
 #: The same key migration 0001 takes. Roles are cluster-global objects and `create role` and
 #: `alter role` both write pg_authid, so two deployments starting at once get "tuple
@@ -141,6 +182,92 @@ def provision_runtime_role(
             )
         )
 
+
+def provision_purge_role(connection: psycopg.Connection, *, password: str | None = None) -> None:
+    """Create the purger's role, and give it the one privilege nothing else may have.
+
+    **The privilege is a cross-workspace READ, and it is here because the alternative is silent
+    cross-tenant data loss.** ``blob`` is not workspace-scoped: two workspaces that ingest the
+    same photograph share one row and one object in the store, and migration 0001 says so and
+    names reference counting as the eventual fix. The purger has to ask "does anything still hold
+    these exact bytes" before it destroys them, and under row-level security a session scoped to
+    one workspace cannot see another's captures. Measured, as the runtime role, on a probe
+    database: workspace A deletes its capture, workspace B still holds a live capture of the same
+    bytes, and ``purge_releases_bytes`` answers **true**. Destroying them there breaks B's
+    citations and nothing reports it.
+
+    So this role gets a permissive ``for select using (true)`` policy on ``capture`` and
+    ``artifact``, and gets it narrowly:
+
+    *   **SELECT only.** Its UPDATE is still filtered by ``ws_isolation``, so it may mark rows
+        purged only in the workspace it is scoped to. It reads across tenants and writes within
+        one, which is the asymmetry the question actually needs.
+    *   **Column by column.** A policy cannot restrict columns; a grant can. It is given the
+        identifiers, the hashes and the deletion markers, and not ``device_id``, not
+        ``started_at``, and not an artifact's ``idempotency_key``.
+    *   **No DELETE anywhere, on any table.** Erasure of bytes runs through
+        ``orimera.store.privileged_purger``, which cannot be constructed without naming the
+        tombstone that authorises it. Erasure of rows is not something this system does.
+
+    Idempotent, like :func:`provision_runtime_role`, and safe to call at every deployment.
+    """
+    role_name = sql.Identifier(PURGE_ROLE)
+    row = connection.execute("select current_schema()").fetchone()
+    assert row is not None
+    schema = sql.Identifier(row["current_schema"] if isinstance(row, dict) else row[0])
+
+    with connection.transaction():
+        connection.execute("select pg_advisory_xact_lock(%s)", (_ROLE_LOCK_KEY,))
+        exists = connection.execute(
+            "select 1 from pg_roles where rolname = %s", (PURGE_ROLE,)
+        ).fetchone()
+        if exists is None:
+            connection.execute(sql.SQL("create role {} login nobypassrls").format(role_name))
+        else:
+            connection.execute(sql.SQL("alter role {} nobypassrls").format(role_name))
+        if password is not None:
+            connection.execute(
+                sql.SQL("alter role {} password {}").format(role_name, sql.Literal(password))
+            )
+
+        connection.execute(sql.SQL("grant usage on schema {} to {}").format(schema, role_name))
+        for table, columns in (*_PURGE_READS.items(), *_PURGE_UNSCOPED_READS.items()):
+            connection.execute(
+                sql.SQL("grant select ({}) on {} to {}").format(
+                    sql.SQL(", ").join(sql.Identifier(c) for c in columns),
+                    sql.Identifier(table),
+                    role_name,
+                )
+            )
+        for table, columns in _PURGE_WRITES.items():
+            connection.execute(
+                sql.SQL("grant update ({}) on {} to {}").format(
+                    sql.SQL(", ").join(sql.Identifier(c) for c in columns),
+                    sql.Identifier(table),
+                    role_name,
+                )
+            )
+        # The queue and the record it drains. Read and write, scoped by ws_isolation like
+        # everything else: this role has no cross-workspace view of either.
+        for table in ("purge_job", "tombstone"):
+            connection.execute(
+                sql.SQL("grant select, update on {} to {}").format(
+                    sql.Identifier(table), role_name
+                )
+            )
+        for table in _PURGE_READS:
+            connection.execute(
+                sql.SQL("drop policy if exists {} on {}").format(
+                    sql.Identifier(_CROSS_WORKSPACE_POLICY), sql.Identifier(table)
+                )
+            )
+            connection.execute(
+                sql.SQL("create policy {} on {} for select to {} using (true)").format(
+                    sql.Identifier(_CROSS_WORKSPACE_POLICY),
+                    sql.Identifier(table),
+                    role_name,
+                )
+            )
 
 def grant_workspace_partition(connection: psycopg.Connection, partition: str) -> None:
     """Give both runtime roles access to one per-workspace partition, if they exist.
