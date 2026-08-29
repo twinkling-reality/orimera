@@ -24,7 +24,8 @@ from typing import Any
 from orimera.db import Database, apply_pending, provision_workspace
 from orimera.ingest.batch import IntakeBatch
 from orimera.ingest.ledger import Ledger
-from orimera.ingest.pipeline import IngestReport, PhotoIngestPipeline
+from orimera.ingest.pipeline import PhotoIngestPipeline
+from orimera.ingest.report import IngestReport
 from orimera.ingest.repository import IngestRepository
 from orimera.ingest.scenes import run_scene_grouping
 from orimera.ingest.stages import stage

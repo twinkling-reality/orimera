@@ -14,6 +14,13 @@ one rather than being added when it hurts. Re-running the pipeline after changin
 regenerates that stage only. Retries re-bill nothing. Duplicate photographs, which are normal
 in a personal library, compute their derivatives once.
 
+This module is the package root because the registry IS what "stages" means in general: what
+the stages are, and how a derivative produced by one is identified. The four modules beside it
+are the stages themselves, one per key, and they are imported by name rather than re-exported
+from here, so that importing the registry does not drag a database repository in behind it.
+``scene_group`` is declared here and has no module beside it: it runs over the whole corpus
+once the photographs are in, from ``orimera.ingest.scenes``, rather than inside one file's run.
+
 ``version`` is bumped when **output semantics** change: a new model, a changed prompt, a
 changed schema, a changed threshold. It is not bumped for a pure performance change. Every
 semantic parameter is inside ``params``, so a threshold edit that someone forgets to record as

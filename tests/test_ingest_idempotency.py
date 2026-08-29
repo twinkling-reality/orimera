@@ -34,6 +34,7 @@ from orimera.ingest.stages import (
     pipeline_digest,
     vision_stage_params,
 )
+from orimera.ingest.stages import vision as vision_stage
 from orimera.ingest.vision import NebiusVisionModel, prompt_digest
 from orimera.models.manifest import Role
 from orimera.store.local import LocalContentAddressedStore
@@ -239,7 +240,10 @@ def test_a_crashed_run_is_healed_rather_than_duplicated(bench, monkeypatch):
     pipeline = PhotoIngestPipeline(repository, store, vision=vision)
 
     boom = {"fired": False}
-    original = pipeline._observation_rows
+    # Patched on the stage module, which is where the function lives and where the stage looks
+    # it up. Patching the pipeline instead would set an attribute nothing reads, and the run
+    # would quietly succeed while this test claimed to have crashed it.
+    original = vision_stage._observation_rows
 
     def explode(*args, **kwargs):
         if not boom["fired"]:
@@ -247,11 +251,11 @@ def test_a_crashed_run_is_healed_rather_than_duplicated(bench, monkeypatch):
             raise RuntimeError("worker died after the artifact was written")
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(pipeline, "_observation_rows", explode)
+    monkeypatch.setattr(vision_stage, "_observation_rows", explode)
     crashed = pipeline.ingest_directory(photos, limit=1)
     assert crashed.failed
 
-    monkeypatch.setattr(pipeline, "_observation_rows", original)
+    monkeypatch.setattr(vision_stage, "_observation_rows", original)
     healed = pipeline.ingest_directory(photos, limit=1)
     assert not healed.failed
     inference_rows = repository.connection.execute(

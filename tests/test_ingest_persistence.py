@@ -556,10 +556,55 @@ def test_an_explicit_hash_blocklist_refuses_the_write_and_cancels_the_run(ingest
 _STORE_WRITE_METHODS = frozenset({"put_bytes", "put_stream", "put_file"})
 
 
+def _ingest_package_modules() -> list[pathlib.Path]:
+    """Every Python file in the ingest package, RECURSIVELY.
+
+    Recursively, and that word is the whole of this function. The sweep below used to glob one
+    level, which was correct while every stage lived in ``pipeline.py`` and stopped being
+    correct the moment the stages moved into ``stages/``. Measured, with an unguarded
+    ``put_bytes`` planted in a subpackage of ``orimera/ingest/``: the one-level version reported
+    the package clean and passed. That is a coverage check over a set that no longer holds the
+    thing being checked, which is the failure mode the route sweep already had once.
+
+    ``test_the_store_write_sweep_can_see_every_stage`` consumes this same walk and asserts it
+    reaches the stage modules by name, so the sweep cannot go quiet again by code moving away
+    from it.
+    """
+    package = pathlib.Path(pipeline_module.__file__).parent
+    return sorted(package.rglob("*.py"))
+
+
+def _store_write_call_sites() -> list[str]:
+    """Every call to a store write method in the ingest package, as ``path:function``.
+
+    Attributed to the INNERMOST enclosing function, so a write hidden in a closure names the
+    closure. A call at module scope is reported as such rather than dropped: import-time is a
+    time too, and a write that happens before any guard has run is the worst version of this.
+    """
+    package = pathlib.Path(pipeline_module.__file__).parent
+    sites: list[str] = []
+    for path in _ingest_package_modules():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        enclosing: dict[ast.AST, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                for inner in ast.walk(node):
+                    enclosing[inner] = node.name
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in _STORE_WRITE_METHODS
+            ):
+                where = enclosing.get(node, "<module scope>")
+                sites.append(f"{path.relative_to(package).as_posix()}:{where}")
+    return sorted(sites)
+
+
 def test_the_ingest_package_writes_to_the_object_store_in_exactly_one_place():
     """The ordering guarantee is structural, so it is checked structurally.
 
-    Every payload reaches the store through ``_committed_writes``, which flushes only after the
+    Every payload reaches the store through ``committed_writes``, which flushes only after the
     database transaction has committed and therefore only after the tombstone guard inside that
     transaction has passed. A second write anywhere in the ingest package reopens the hole,
     because the store is not transactional: bytes written before a refusal stay written. This
@@ -567,24 +612,40 @@ def test_the_ingest_package_writes_to_the_object_store_in_exactly_one_place():
     identifiers out of Python source, and for the same reason, which is that a rule enforced by
     review is a rule that survives until the reviewer is busy.
     """
-    package = pathlib.Path(pipeline_module.__file__).parent
-    call_sites: list[str] = []
-    for path in sorted(package.glob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.FunctionDef):
-                continue
-            for inner in ast.walk(node):
-                if (
-                    isinstance(inner, ast.Call)
-                    and isinstance(inner.func, ast.Attribute)
-                    and inner.func.attr in _STORE_WRITE_METHODS
-                ):
-                    call_sites.append(f"{path.name}:{node.name}")
-    assert call_sites == ["pipeline.py:_committed_writes"], (
+    assert _store_write_call_sites() == ["pipeline.py:committed_writes"], (
         "the ingest package writes to the object store outside the post-commit flush: "
-        f"{call_sites}. A write that happens before the tombstone guard cannot be rolled back "
-        "by the transaction that refuses it."
+        f"{_store_write_call_sites()}. A write that happens before the tombstone guard cannot "
+        "be rolled back by the transaction that refuses it."
+    )
+
+
+def test_the_store_write_sweep_can_see_every_stage():
+    """The sweep above is a coverage check, so what it covers is asserted rather than assumed.
+
+    A one-level ``glob`` was measured against a planted ``put_bytes`` in a subpackage of
+    ``orimera/ingest/``: it reported the package clean and passed, while the recursive walk
+    named the offending file and function. The stages then moved into ``stages/``, which is
+    exactly where that blind spot was. So this asserts the walk reaches them by name.
+
+    The two tests share ``_ingest_package_modules``. If they did not, this one would be
+    asserting that some files exist rather than that the guard reads them, and a coverage check
+    over a set nobody verified is the thing this is here to prevent.
+    """
+    package = pathlib.Path(pipeline_module.__file__).parent
+    walked = {path.relative_to(package).as_posix() for path in _ingest_package_modules()}
+    required = {
+        "pipeline.py",
+        "stages/__init__.py",
+        "stages/writes.py",
+        "stages/intake.py",
+        "stages/rendition.py",
+        "stages/vision.py",
+        "stages/depth.py",
+    }
+    assert required <= walked, (
+        "the store write sweep no longer reads every stage: "
+        f"{sorted(required - walked)} were not walked. A write in a file the sweep does not "
+        "open is a write the sweep will call clean."
     )
 
 
@@ -725,7 +786,7 @@ def test_a_deterministic_stage_that_changes_its_bytes_emits_an_event_and_keeps_t
     determinism, the stored artifact wins, because citations and replays already point at it,
     and the disagreement is recorded rather than absorbed.
     """
-    from orimera.ingest import pipeline as pipeline_module
+    from orimera.ingest.stages import rendition as rendition_stage
 
     path = write_photo(photo_dir, "a.jpg")
     store = LocalContentAddressedStore(tmp_path / "blobs")
@@ -736,13 +797,16 @@ def test_a_deterministic_stage_that_changes_its_bytes_emits_an_event_and_keeps_t
     ).fetchone()
     original_hash = bytes(original["content_sha256"])
 
-    real_render = pipeline_module.render
+    # Patched on the rendition stage, which is the module that imports ``render`` and the
+    # namespace the call resolves in. Patching it anywhere else leaves the real encoder in
+    # place, the bytes match, and this test passes having proved nothing.
+    real_render = rendition_stage.render
 
     def wobble(upright, spec):
         rendition = real_render(upright, spec)
         return dataclasses.replace(rendition, data=rendition.data + b"\x00")
 
-    monkeypatch.setattr(pipeline_module, "render", wobble)
+    monkeypatch.setattr(rendition_stage, "render", wobble)
     # Remove the stored bytes so the stage recomputes instead of short circuiting on the store.
     from orimera.evidence.blob import BlobId
     from orimera.store.base import PurgeAuthorization, privileged_purger

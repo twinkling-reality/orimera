@@ -21,7 +21,8 @@ from orimera.errors import EpistemicViolation, TombstonedError
 from orimera.identity.keys import occurrence_identity_key
 from orimera.ingest.exif import ExifFacts, extract_exif_facts, normalise_orientation
 from orimera.ingest.ledger import Ledger
-from orimera.ingest.pipeline import IngestOutcome, IngestReport, PhotoIngestPipeline
+from orimera.ingest.pipeline import PhotoIngestPipeline
+from orimera.ingest.report import IngestOutcome, IngestReport
 from orimera.ingest.repository import IngestRepository
 from orimera.ingest.resolve import resolve_region_image
 from orimera.ingest.scenes import SceneGroup, group_captures, run_scene_grouping
