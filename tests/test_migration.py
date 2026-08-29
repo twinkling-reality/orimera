@@ -22,12 +22,15 @@ a claim a model may make and a capture may not carry as a fact.
 
 from __future__ import annotations
 
+import pathlib
 import re
 
 import pytest
 from orimera.migrations import Migration, migrations, verify_applied
 
 from pg_harness import migrated_schema
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 MIGRATIONS = {migration.version: migration.sql for migration in migrations()}
 SQL = MIGRATIONS["0001"]
@@ -375,6 +378,70 @@ def test_row_level_security_is_forced_not_merely_enabled():
     """ENABLE alone is bypassed by the table owner, which makes every policy inert."""
     assert "force  row level security" in SQL
     assert SQL.count("enable row level security") == SQL.count("force  row level security")
+
+
+#: Every file that states in prose how many tables are workspace-isolated. Written out by hand,
+#: because a list built by grepping the tree for the sentence would contain exactly the files
+#: that still carry it and would go quiet on the one that stopped.
+_FILES_STATING_THE_WORKSPACE_POLICY_COUNT = (
+    "orimera/db/session.py",
+    "orimera/ingest/spine/__init__.py",
+    "tests/test_ingest_persistence.py",
+)
+
+#: The sentence those files carry. The number is the capture; the rest is the phrase that says
+#: what the number counts, so a file that changed the subject fails rather than matching.
+_WORKSPACE_POLICY_COUNT_CLAIM = re.compile(
+    r"(\d+) tables are under FORCE row-level security keyed on\s+``current_workspace\(\)``"
+)
+
+
+@pytest.mark.postgres
+def test_the_prose_count_of_workspace_isolated_tables_matches_the_schema():
+    """Three docstrings state a number, and this is where the number comes from.
+
+    The number was twenty, which is the length of the do-block array in 0001, and it was wrong
+    by two for as long as three files repeated it: ``embedding`` is forced a few lines further
+    down in 0001 on its own, and ``intake_batch`` arrives forced in 0003. A count carried in
+    prose drifts every time a migration adds a table, so it is measured against a live schema
+    here rather than remembered in three places.
+
+    The count is of tables keyed on ``current_workspace()`` rather than of forced tables,
+    because those are two different numbers: ``consent_record`` is forced and keyed on the
+    tenant, so it is named below rather than folded into a total that would then mean neither
+    thing. Partitions are excluded for the same reason: ``embedding_ws_*`` is created per
+    workspace, so counting relations would make the number a function of how many workspaces
+    happened to exist when it was taken.
+    """
+    with migrated_schema() as (_psycopg, conn):
+        scratch = conn.execute("select current_schema()").fetchone()[0]
+        forced = conn.execute(
+            "select c.relname, coalesce(p.qual, '') from pg_class c "
+            "join pg_namespace n on n.oid = c.relnamespace "
+            "left join pg_policies p on p.schemaname = n.nspname and p.tablename = c.relname "
+            "where n.nspname = %s and c.relforcerowsecurity and not c.relispartition",
+            (scratch,),
+        ).fetchall()
+
+    workspace_keyed = sorted({name for name, qual in forced if "current_workspace()" in qual})
+    others = sorted({name for name, _ in forced} - set(workspace_keyed))
+    assert others == ["consent_record"], (
+        f"{others} are under FORCE row-level security and not keyed on current_workspace(). "
+        "The count below is of the workspace-keyed tables, so a new table in this list is a "
+        "table the sentence in three docstrings does not describe."
+    )
+    for relative in _FILES_STATING_THE_WORKSPACE_POLICY_COUNT:
+        stated = _WORKSPACE_POLICY_COUNT_CLAIM.findall(
+            (ROOT / relative).read_text(encoding="utf-8")
+        )
+        assert stated, (
+            f"{relative} no longer states how many tables are keyed on current_workspace(), so "
+            "nothing checks the number it used to carry."
+        )
+        assert {int(number) for number in stated} == {len(workspace_keyed)}, (
+            f"{relative} says {stated} and the schema has {len(workspace_keyed)}: "
+            f"{workspace_keyed}"
+        )
 
 
 def test_consent_is_deny_by_default_and_expires():

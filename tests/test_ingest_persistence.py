@@ -708,18 +708,71 @@ def _spine_directory() -> pathlib.Path:
     return pathlib.Path(pipeline_module.__file__).parent / "spine"
 
 
-def _public_spine_functions() -> list[tuple[str, str, list[ast.arg]]]:
-    """Every public module-level function in the spine package, as (module, name, args)."""
-    found = []
-    for path in sorted(_spine_directory().glob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in tree.body:
-            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
-                continue
-            if node.name.startswith("_"):
-                continue
-            found.append((path.name, node.name, node.args.posonlyargs + node.args.args))
+#: A first parameter that is already a declared workspace. Two spellings, because a receiver is
+#: not something a caller writes: ``self`` on ``WorkspaceScope`` itself is a declared workspace,
+#: and ``self`` on anything else in this package is not.
+_SCOPED_FIRST_PARAMETERS = frozenset({"scope: WorkspaceScope", "self: WorkspaceScope"})
+
+
+def _public_spine_functions() -> list[tuple[str, str]]:
+    """Every public function in the spine package, at any depth, as (label, first parameter).
+
+    At any depth is the whole of this. It read ``tree.body``, so it saw module-level functions
+    and nothing else, and a public METHOD on a class in a spine module satisfied a rule written
+    about functions while taking whatever it liked. Measured, with
+    ``def reload(self, connection, artifact_id)`` planted on ``ArtifactRow``: the old sweep
+    reported the package clean. Methods and functions nested inside functions are walked now; a
+    helper that genuinely needs no scope says so with a leading underscore, which is what
+    ``_row``, ``_iso`` and ``_multirange`` already do.
+
+    The first parameter is rendered as ``name: type`` so that a failure prints the signature
+    rather than a bare name. A bound method's receiver is rendered as the class it binds, which
+    is what makes the planted method visible: ``self: ArtifactRow`` is not a scope. A
+    ``classmethod`` receives ``type[...]`` and a ``staticmethod`` receives no receiver at all,
+    so both are rendered as what they actually take.
+    """
+    return [
+        (f"{path.name}:{name}", parameter)
+        for path in sorted(_spine_directory().glob("*.py"))
+        for name, parameter in _functions_under(
+            ast.parse(path.read_text(encoding="utf-8")), prefix="", owner=None
+        )
+    ]
+
+
+def _functions_under(node: ast.AST, prefix: str, owner: str | None) -> list[tuple[str, str]]:
+    """Public functions under one node, named by the classes and functions they are nested in.
+
+    ``owner`` is the class a function is a method of, and it survives an ``if`` or a ``try`` in a
+    class body while a nested function clears it: a function defined inside a method is not
+    itself a method.
+    """
+    found: list[tuple[str, str]] = []
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, ast.ClassDef):
+            found += _functions_under(child, f"{prefix}{child.name}.", child.name)
+        elif isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+            if not child.name.startswith("_"):
+                found.append((f"{prefix}{child.name}", _first_parameter(child, owner)))
+            found += _functions_under(child, f"{prefix}{child.name}.", None)
+        else:
+            found += _functions_under(child, prefix, owner)
     return found
+
+
+def _first_parameter(node: ast.FunctionDef | ast.AsyncFunctionDef, owner: str | None) -> str:
+    """How a caller has to begin the call, as ``name: type``."""
+    arguments = node.args.posonlyargs + node.args.args
+    if not arguments:
+        return "<nothing>"
+    first = arguments[0]
+    decorators = {ast.unparse(decorator) for decorator in node.decorator_list}
+    if owner is not None and "staticmethod" not in decorators:
+        bound = f"type[{owner}]" if "classmethod" in decorators else owner
+        return f"{first.arg}: {bound}"
+    if first.annotation is None:
+        return f"{first.arg}: <unannotated>"
+    return f"{first.arg}: {ast.unparse(first.annotation)}"
 
 
 def _annotations_naming_a_connection() -> list[str]:
@@ -743,13 +796,15 @@ def _annotations_naming_a_connection() -> list[str]:
 
 
 def test_every_spine_function_takes_a_workspace_scope():
-    """Twenty tables refuse to be read or written by a session that named no workspace.
+    """Nothing in the spine package is reachable by a session that named no workspace.
 
-    ``current_workspace()`` is what the row-level security policies compare against, and the
-    tombstone and epistemic guards go further: they call ``assert_workspace_context()`` and raise
-    when it is unset, because a guard that silently sees no tombstones is worse than no guard.
-    So no path into the spine package may begin with a connection that has not declared one, and
-    ``WorkspaceScope`` has no constructor that skips the declaration.
+    22 tables are under FORCE row-level security keyed on ``current_workspace()``, which is what
+    those policies compare against, and the tombstone and epistemic guards go further: they call
+    ``assert_workspace_context()`` and raise when it is unset, because a guard that silently sees
+    no tombstones is worse than no guard. So no path into the spine package may begin with a
+    connection that has not declared one, and ``WorkspaceScope`` has no constructor that skips
+    the declaration. ``test_the_prose_count_of_workspace_isolated_tables_matches_the_schema``
+    is what keeps that 22 a measurement rather than a memory.
 
     This is checked structurally because there is nothing else to check it with. There is no
     ``[tool.mypy]`` and no pyright configuration in ``pyproject.toml``, so the parameter type is
@@ -760,20 +815,20 @@ def test_every_spine_function_takes_a_workspace_scope():
     package is also asserted to name ``psycopg.Connection`` in exactly one file: ``scope.py``,
     which is where a raw connection is turned into a scoped one and therefore the only place the
     type may legitimately appear.
+
+    The first half reaches methods, not only module-level functions, and that is a correction
+    rather than a flourish: a public method on a row class here is a way in whose first
+    parameter is ``self``, and the earlier sweep called the package clean with one planted.
     """
     unscoped = [
-        f"{module}:{name}"
-        for module, name, args in _public_spine_functions()
-        if not args
-        or args[0].arg != "scope"
-        or args[0].annotation is None
-        or ast.unparse(args[0].annotation) != "WorkspaceScope"
+        f"{label} begins with {parameter}"
+        for label, parameter in _public_spine_functions()
+        if parameter not in _SCOPED_FIRST_PARAMETERS
     ]
     assert unscoped == [], (
-        f"{unscoped} do not take a WorkspaceScope as their first parameter. A spine function "
-        "reachable with anything else is a spine function reachable with a connection that "
-        "declared no workspace, and every guarded table would refuse it with an SQLSTATE about "
-        "privileges rather than with a sentence."
+        f"{unscoped}: a spine function reachable with anything but a WorkspaceScope is a spine "
+        "function reachable with a connection that declared no workspace, and every guarded "
+        "table would refuse it with an SQLSTATE about privileges rather than with a sentence."
     )
     assert _annotations_naming_a_connection() == ["scope.py:__init__"], (
         "a psycopg connection is named outside scope.py: "

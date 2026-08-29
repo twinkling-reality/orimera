@@ -72,7 +72,7 @@ from orimera.ingest.spine.artifacts import ArtifactRow
 from orimera.ingest.spine.captures import CaptureRow
 from orimera.ingest.spine.scope import WorkspaceScope
 
-__all__ = ["ArtifactRow", "CaptureRow", "IngestRepository"]
+__all__ = ["IngestRepository"]
 
 
 class IngestRepository:

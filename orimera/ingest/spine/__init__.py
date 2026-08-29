@@ -37,13 +37,18 @@ The modules, and the question each one answers:
 
 **Every public function here takes a** :class:`~orimera.ingest.spine.scope.WorkspaceScope`
 **as its first parameter**, and there is deliberately no way to build one without declaring a
-workspace on the connection it wraps. Twenty tables are under FORCE row-level security keyed on
+workspace on the connection it wraps. 22 tables are under FORCE row-level security keyed on
 ``current_workspace()``, and the tombstone and epistemic guards do not merely read that setting,
 they ``assert_workspace_context()`` and raise when it is absent. A module reachable with a bare
 ``psycopg.Connection`` would be a module reachable with an undeclared one. There is no type
 checker configured for this project, so the rule is held by
 ``test_every_spine_function_takes_a_workspace_scope``, an AST sweep over these files, rather
 than by a signature nobody verifies.
+
+The sweep walks methods and nested functions as well as the top of each file, because a public
+method on one of the row classes here would be a way in whose first parameter is ``self`` rather
+than a scope. It walked module level only until a ``reload(self, connection, ...)`` was planted
+on :class:`~orimera.ingest.spine.artifacts.ArtifactRow` and the sweep called the package clean.
 
 **This package deliberately re-exports nothing.** A caller reaches one facade,
 :class:`~orimera.ingest.repository.IngestRepository`, or it reaches the module that owns the

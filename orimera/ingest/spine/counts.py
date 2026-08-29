@@ -28,12 +28,12 @@ from typing import Final
 
 from orimera.ingest.spine.scope import WorkspaceScope
 
-__all__ = ["COUNTABLE", "rows_in_schema"]
+__all__ = ["rows_in_schema"]
 
 #: The tables this may report on. Not user input, and not a general escape hatch: the name is
 #: interpolated into SQL, so the allowlist is the only thing standing between this and an
 #: injection. ``test_only_an_allowlisted_table_can_be_counted`` is what keeps that true.
-COUNTABLE: Final = frozenset(
+_COUNTABLE: Final = frozenset(
     {
         "artifact",
         "assertion",
@@ -58,7 +58,7 @@ def rows_in_schema(scope: WorkspaceScope, table: str) -> int:
     Takes a scope like everything else in this package, because a scope is how a connection is
     reached here. It does not read ``scope.workspace_id``, and that is the point of the name.
     """
-    if table not in COUNTABLE:
+    if table not in _COUNTABLE:
         raise ValueError(f"not a countable table: {table!r}")
     row = scope.connection.execute(f"select count(*) as n from {table}").fetchone()
     assert row is not None
