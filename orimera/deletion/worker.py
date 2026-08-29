@@ -27,12 +27,22 @@ destroys objects and marks rows. Row deletion is not something this system does:
 ``blob`` stub so a citation into deleted content resolves to "the user deleted this" rather than
 to nothing at all.
 
-**The cross-workspace read is a privilege of the role, not of this code.**
+**The cross-workspace read is a privilege of the role, not of this code, and this asks.**
 ``provision_purge_role`` grants ``orimera_purge`` a permissive SELECT policy on ``capture`` and
 ``artifact``, because ``blob`` is shared between workspaces and a purger that could only see its
-own would destroy another tenant's photograph. Measured, and it is correction 7. A worker
-connected as the ordinary runtime role still runs, and answers a narrower question; that is worth
-knowing rather than crashing over, so it is reported rather than assumed.
+own would destroy another tenant's photograph. ``ORIMERA_PURGE_DATABASE_URL`` is only a name, so
+:func:`orimera.deletion.queue.read_visibility` asks the database which role is connected and
+whether that policy applies to it, and this refuses to destroy anything when it does not.
+Measured with the writer's URL in that variable: one object destroyed, zero skipped, the
+tombstone recorded complete, and another workspace's live photograph gone, with nothing in the
+outcome naming the role or the narrowed view.
+
+**The advisory lock is taken by BOTH sides, and only one of them used to take it.**
+``purge_lock_object`` serialises purger against purger. It did not serialise a purger against an
+ingest, and measured: workspace A's purger asks whether the bytes may go, workspace B commits a
+live capture of the same bytes in the window, and the purger destroys an object B is using, along
+the deduplication path where B writes no bytes at all because they were already there.
+``IngestRepository.lock_stored_object`` is the other side.
 """
 
 from __future__ import annotations
@@ -67,6 +77,17 @@ class PurgeOutcome:
     failed: int = 0
     completed_tombstones: list[uuid.UUID] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    #: The role this pass connected as, read from the database rather than inferred from a
+    #: connection string. Recorded on every outcome, because "which role destroyed these bytes"
+    #: is the first question anybody asks afterwards.
+    role: str | None = None
+    #: Why this pass destroyed nothing, or None when it was allowed to. Set when the connected
+    #: role cannot see the whole destroy question.
+    blocked: str | None = None
+
+    #: Jobs that have used every attempt and are no longer claimed. Counted rather than
+    #: retried, so a permanently broken target is visible instead of hidden behind its own noise.
+    exhausted: int = 0
 
     @property
     def handled(self) -> int:
@@ -85,6 +106,7 @@ class PurgeWorker:
         name: str = "purge",
         poll_seconds: float = _POLL_SECONDS,
         limit_per_pass: int = 500,
+        require_cross_workspace_view: bool = True,
     ) -> None:
         self._database = database
         self._store = store
@@ -92,6 +114,7 @@ class PurgeWorker:
         self._name = name
         self._poll_seconds = poll_seconds
         self._limit = limit_per_pass
+        self._require_cross_workspace_view = require_cross_workspace_view
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._last_error: str | None = None
@@ -109,9 +132,20 @@ class PurgeWorker:
         outcome = PurgeOutcome()
         for workspace_id in sorted(self._workspaces):
             with self._database.session(workspace_id) as connection:
+                visibility = queue.read_visibility(connection)
+                outcome.role = visibility.role
+                # **Asked, not assumed.** The connection string is a name; this is the database
+                # saying which role is behind it and whether that role can see the whole of the
+                # question. Refusing rather than warning, because a narrowed purge is silent:
+                # measured, it destroys an object another workspace holds, records the tombstone
+                # complete, and reports one success.
+                if self._require_cross_workspace_view and visibility.refusal is not None:
+                    outcome.blocked = visibility.refusal
+                    return outcome
                 while outcome.handled < self._limit and not self._stop.is_set():
                     if not self._purge_one(connection, workspace_id, outcome):
                         break
+                outcome.exhausted += _exhausted(connection, workspace_id)
         return outcome
 
     def start(self) -> None:
@@ -164,7 +198,7 @@ class PurgeWorker:
         self, connection: psycopg.Connection, workspace_id: uuid.UUID, outcome: PurgeOutcome
     ) -> bool:
         """Claim, decide, destroy, confirm, record. Returns False when the queue is empty."""
-        target = queue.claim_purge(connection, workspace_id, worker=self._name)
+        target = queue.claim_purge(connection, workspace_id)
         if target is None:
             return False
         try:
@@ -251,3 +285,14 @@ class PurgeWorker:
         )
         if updated.rowcount:
             outcome.completed_tombstones.append(target.tombstone_id)
+
+
+def _exhausted(connection: psycopg.Connection, workspace_id: uuid.UUID) -> int:
+    """Jobs no pass will claim again, because they have used every attempt."""
+    row = connection.execute(
+        "select count(*) as n from purge_job "
+        "where workspace_id = %s and state <> 'done' and attempts >= %s",
+        (workspace_id, queue.MAX_ATTEMPTS),
+    ).fetchone()
+    assert row is not None
+    return int(row["n"])

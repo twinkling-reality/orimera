@@ -55,7 +55,9 @@ def main(argv: list[str] | None = None, stream: Any = None) -> int:
         "--limit",
         type=int,
         default=500,
-        help="How many objects one pass may destroy. The rest stay queued.",
+        help="How many jobs one pass may examine. Not how many objects it destroys: a job "
+        "that defers because something still holds its bytes consumes one too. The rest stay "
+        "queued.",
     )
     args = parser.parse_args(argv)
     out = stream or sys.stdout
@@ -81,7 +83,11 @@ def main(argv: list[str] | None = None, stream: Any = None) -> int:
     )
     outcome = worker.drain()
 
-    print(f"purge over {len(workspaces)} workspace(s)", file=out)
+    if outcome.blocked is not None:
+        print(f"refusing to destroy anything: {outcome.blocked}", file=out)
+        return 2
+
+    print(f"purge over {len(workspaces)} workspace(s) as {outcome.role}", file=out)
     print(f"  destroyed        {outcome.destroyed}", file=out)
     # Not folded into `destroyed`. "The bytes were removed by this pass" and "the bytes were
     # already gone" are different facts, and the second is the ordinary shape of a resumed job.
@@ -91,6 +97,14 @@ def main(argv: list[str] | None = None, stream: Any = None) -> int:
     print(f"  deferred         {outcome.skipped}", file=out)
     print(f"  failed           {outcome.failed}", file=out)
     print(f"  tombstones now complete  {len(outcome.completed_tombstones)}", file=out)
+    if outcome.exhausted:
+        # A target that has been claimed MAX_ATTEMPTS times and never succeeded. Reported rather
+        # than retried for ever, because a queue that hides a broken job behind its own noise is
+        # a deletion nobody knows did not happen.
+        print(
+            f"  ! {outcome.exhausted} job(s) have used every attempt and will not be retried",
+            file=out,
+        )
     for error in outcome.errors[:10]:
         print(f"  ! {error}", file=out)
     return 1 if outcome.failed else 0

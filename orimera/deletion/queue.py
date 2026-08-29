@@ -3,17 +3,31 @@
 The queue is filled by a trigger in the tombstone's own transaction, not by this module and not
 by any caller: migration 0013 section 5 says why. What is here is the reading half.
 
-**``skipped`` is not terminal and that is the whole of correction 3.** A job whose bytes
-something else still holds has not failed and is not done. It goes back, behind everything that
-has not been tried, ordered by when it last was. Terminal ``skipped`` set
-``tombstone.purge_completed_at`` while the photograph was still on disk, because the unique
-constraint refused a second row for the same target and the completion check ignored it.
+**Nothing here is terminal except ``done``, and that took two corrections to get right.**
 
-**There is no reclaim of a dead worker's ``running`` row.** :func:`claim_purge` filters on state
-and ``purge_job_queue_idx`` is partial on the same, so a stranded row is invisible to every query
-here. A reclaim written against this shape would not work and half a reclaim reads as coverage.
-R20 on the defect register says what a real one needs. It is the same gap the derivative queue
-has, and the same answer.
+``skipped`` was the first: a job whose bytes something else still holds has not failed and is not
+done, and terminal ``skipped`` set ``tombstone.purge_completed_at`` while the photograph was
+still on disk, because the unique constraint refused a second row for the same target and the
+completion check ignored it.
+
+``failed`` was the second, and it was the same defect left standing one column over. Measured
+with a store whose delete raised once, a transient outage: two jobs went to ``failed``, three
+later passes with a healthy store did nothing at all, the bytes a user deleted stayed on disk for
+ever, the tombstone never completed, and re-enqueueing the same target raised `UniqueViolation`.
+The only recovery was writing a second tombstone for the same capture, which no interface offers.
+It is now re-claimable, bounded by :data:`MAX_ATTEMPTS` so a permanently broken target reports
+rather than spins.
+
+**And ``running`` is reclaimed, which the derivative queue's is deliberately not.** The
+difference is what a re-run costs. Every step here is idempotent and cheap: the advisory lock
+serialises two purgers on one object, ``purge`` returns False when the object is already absent,
+``mark_purged`` is a conditional UPDATE, and the predicate is re-asked before anything is
+destroyed. So a second worker taking a stranded row does the safe thing by construction. That is
+not true of a derivative job, whose stages can call a model, which is why R20 stays open there
+and is closed here. What a stranded row leaves without this is worse than "work not done":
+measured, a crash between the store unlink and the COMMIT leaves the bytes gone, the ``blob``
+row saying they are live, and a ``storage_key`` pointing at an object that is not there, which
+is the exact inverse of what 0001's stub design exists to produce.
 """
 
 from __future__ import annotations
@@ -26,18 +40,88 @@ from typing import Final
 import psycopg
 
 __all__ = [
+    "CROSS_WORKSPACE_POLICY",
+    "DESTROYABLE_KINDS",
+    "MAX_ATTEMPTS",
     "RETRY_AFTER",
     "PurgeTarget",
+    "Visibility",
     "claim_purge",
     "finish_purge",
     "is_purge_complete",
     "mark_purged",
+    "read_visibility",
 ]
 
-#: How long a skipped job waits before it is tried again. Long enough that a blob another live
-#: capture holds is not re-examined every second, short enough that a deletion completes within
-#: an hour of the last thing releasing it.
+#: How long a job waits before it is tried again, whether it was skipped, failed, or stranded in
+#: ``running`` by a worker that died. Long enough that a blob another live capture holds is not
+#: re-examined every second, short enough that a deletion completes within an hour of the last
+#: thing releasing it.
 RETRY_AFTER: Final = dt.timedelta(minutes=15)
+
+#: How many times a job may be claimed before it stops being re-claimed. A target that fails this
+#: many times is not going to succeed on the next identical attempt, and a queue that retries it
+#: for ever hides it behind its own noise. It stays ``failed`` with its ``last_error``, and
+#: `orimera-purge` reports how many are in that state rather than leaving it to be discovered.
+MAX_ATTEMPTS: Final = 8
+
+#: The kinds this worker knows how to destroy. `purge_job.target_kind` also permits `embedding`
+#: and `text_chunk`, which are rows rather than stored objects and are out of scope for R18; the
+#: column keeps them so the day those are implemented it does not move. Claiming one here means
+#: handing a uuid to `BlobId.from_hex`: measured, that fails the job, and with the retry bound
+#: above it would burn its attempts and leave the tombstone permanently incomplete.
+DESTROYABLE_KINDS: Final = ("blob", "artifact")
+
+
+#: The policy `provision_purge_role` creates. Named here as well as there because this module is
+#: what checks for it, and a name spelled twice with no pin is a check that goes quiet.
+CROSS_WORKSPACE_POLICY: Final = "purge_sees_every_holder_of_these_bytes"
+
+
+@dataclass(frozen=True, slots=True)
+class Visibility:
+    """Which role is connected, and whether it can see the whole of the destroy question.
+
+    ``blob`` is not workspace-scoped, so "does anything still hold these bytes" is a question
+    about every workspace, and a session that can see one answers it wrongly in the direction
+    that destroys somebody else's photograph. Which role is connected is therefore not
+    configuration detail, it is the difference between a correct purge and a silent one.
+    """
+
+    role: str
+    sees_every_workspace: bool
+
+    @property
+    def refusal(self) -> str | None:
+        """Why this connection must not destroy anything, or None when it may."""
+        if self.sees_every_workspace:
+            return None
+        return (
+            f"connected as {self.role!r}, which has no cross-workspace read of `capture` and "
+            "`artifact`. `blob` is shared between workspaces, so this connection would answer "
+            "\"does anything still hold these bytes\" about its own workspace only and destroy "
+            "objects another one is using. Point ORIMERA_PURGE_DATABASE_URL at the "
+            "`orimera_purge` role that `orimera-db` provisions"
+        )
+
+
+def read_visibility(connection: psycopg.Connection) -> Visibility:
+    """Ask the database who is connected and what it can see, rather than trusting a variable.
+
+    ``ORIMERA_PURGE_DATABASE_URL`` is a name. Nothing about it says which role is behind it, and
+    a deployment that pointed it at the writer used to get a silent, narrowed purge: measured,
+    one destroyed object, zero skipped, a tombstone recorded complete, and another workspace's
+    live photograph gone. The docstring said this was reported and nothing reported it.
+    """
+    row = connection.execute(
+        "select current_user as role, "
+        "  (select count(distinct tablename) from pg_policies "
+        "    where policyname = %s and tablename in ('capture', 'artifact') "
+        "      and current_user = any(roles)) as tables",
+        (CROSS_WORKSPACE_POLICY,),
+    ).fetchone()
+    assert row is not None
+    return Visibility(role=str(row["role"]), sees_every_workspace=int(row["tables"]) == 2)
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,12 +146,17 @@ class PurgeTarget:
 
 
 def claim_purge(
-    connection: psycopg.Connection, workspace_id: uuid.UUID, *, worker: str
+    connection: psycopg.Connection, workspace_id: uuid.UUID
 ) -> PurgeTarget | None:
     """Take the next job for this workspace, or None when there is nothing to do.
 
-    Picks up ``skipped`` as well as ``queued``, oldest attempt first and never-attempted before
-    either, which is what makes ``skipped`` a state a job comes back from.
+    Picks up ``queued`` immediately, and ``skipped``, ``failed`` and ``running`` once they have
+    gone quiet for :data:`RETRY_AFTER`, up to :data:`MAX_ATTEMPTS`. Never-attempted first, then
+    oldest attempt, so a fresh deletion is never queued behind a blob something else has been
+    holding for a week.
+
+    ``running`` is in that list, and the module docstring says why it is safe here and not in the
+    derivative queue. ``done`` is the only terminal state.
     """
     row = connection.execute(
         "update purge_job set state = 'running', attempts = attempts + 1, "
@@ -75,13 +164,15 @@ def claim_purge(
         "where purge_id = ("
         "  select pj.purge_id from purge_job pj "
         "   where pj.workspace_id = %s "
+        "     and pj.target_kind = any(%s) "
+        "     and pj.attempts < %s "
         "     and (pj.state = 'queued' "
-        "          or (pj.state = 'skipped' "
+        "          or (pj.state in ('skipped', 'failed', 'running') "
         "              and (pj.attempted_at is null or pj.attempted_at < now() - %s))) "
         "   order by pj.attempted_at nulls first, pj.created_at "
         "   for update skip locked limit 1) "
         "returning purge_id, tombstone_id, workspace_id, target_kind, target_ref, attempts",
-        (workspace_id, RETRY_AFTER),
+        (workspace_id, list(DESTROYABLE_KINDS), MAX_ATTEMPTS, RETRY_AFTER),
     ).fetchone()
     if row is None:
         return None
@@ -136,8 +227,16 @@ def mark_purged(connection: psycopg.Connection, target: PurgeTarget) -> None:
     The order is the whole of it. The store is not in this transaction, so a row marked purged
     before the object is destroyed is a row that lies when the process dies in between, and it
     lies in the direction that stops anything ever trying again. Destroyed first, recorded
-    second: a crash in that window leaves a job that is re-claimed and a `purge` that returns
-    False because the object is already absent, which is why erasure is idempotent.
+    second: a crash in that window leaves the bytes gone and the row still saying they are live,
+    which is the recoverable direction, and it is recovered by :func:`claim_purge` taking the
+    stranded ``running`` row back after :data:`RETRY_AFTER`. ``purge`` then returns False because
+    the object is already absent, which is why erasure is idempotent.
+
+    **This sentence used to claim the row was re-claimed while the same module said no row ever
+    was.** It was not, and the window left a ``blob`` row with ``purged_at`` null and a
+    ``storage_key`` pointing at an object that had been removed: a citation resolving to "here it
+    is" and then raising, instead of to "the user deleted this". The reclaim above is what makes
+    the sentence true.
 
     ``storage_key`` is cleared with the same statement. 0001 keeps the stub row so a citation
     into deleted content resolves to "the user deleted this" rather than to nothing; a stub still

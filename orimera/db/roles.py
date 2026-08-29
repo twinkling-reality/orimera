@@ -98,6 +98,15 @@ _PURGE_WRITES: Final = {
     "blob": ("purged_at", "storage_key"),
 }
 
+#: What the purger may write on the queue and on the tombstone. Exactly the columns the worker
+#: sets and no others: not `effective_at`, which decides whether a tombstone blocks a derivative
+#: at all, not `target_ref`, which decides which object a claimed job destroys, and not
+#: `requested_by`, which is who asked.
+_PURGE_QUEUE_WRITES: Final = {
+    "purge_job": ("state", "attempts", "attempted_at", "last_error", "completed_at"),
+    "tombstone": ("purge_completed_at",),
+}
+
 #: The permissive SELECT policy that gives the purge role its cross-workspace view. Named so it
 #: is legible in `\d capture` rather than being an anonymous second policy nobody expected.
 _CROSS_WORKSPACE_POLICY: Final = "purge_sees_every_holder_of_these_bytes"
@@ -208,6 +217,11 @@ def provision_purge_role(connection: psycopg.Connection, *, password: str | None
     *   **No DELETE anywhere, on any table.** Erasure of bytes runs through
         ``orimera.store.privileged_purger``, which cannot be constructed without naming the
         tombstone that authorises it. Erasure of rows is not something this system does.
+    *   **And its UPDATE on the queue and the tombstone is column by column too.** It was not,
+        and a review measured what a full-table grant bought: this role could push a tombstone's
+        ``effective_at`` a year out, which reopens the leak 0011 closed, and could set
+        ``purge_completed_at`` over a photograph still on disk. Neither table carries an UPDATE
+        trigger, so the grant was the only thing standing there.
 
     Idempotent, like :func:`provision_runtime_role`, and safe to call at every deployment.
     """
@@ -247,12 +261,25 @@ def provision_purge_role(connection: psycopg.Connection, *, password: str | None
                     role_name,
                 )
             )
-        # The queue and the record it drains. Read and write, scoped by ws_isolation like
-        # everything else: this role has no cross-workspace view of either.
+        # The queue and the record it drains. Read whole, write COLUMN BY COLUMN, and the
+        # difference is not tidiness. Measured with a full-table grant, as this role and nothing
+        # else: `update tombstone set effective_at = now() + interval '1 year'` was ALLOWED, and
+        # `tombstone_blocks_derivative` filters `effective_at <= clock_timestamp()`, so the
+        # least-privileged role in the system could reopen the leak 0011 closed. `update
+        # purge_job set state='done'` plus the `blob` grant it legitimately holds was a complete
+        # route to `purge_completed_at` over a photograph still on disk, which is the second of
+        # the two outcomes this whole package exists to prevent. Neither table carries an UPDATE
+        # trigger, so nothing else was in the way.
         for table in ("purge_job", "tombstone"):
             connection.execute(
-                sql.SQL("grant select, update on {} to {}").format(
-                    sql.Identifier(table), role_name
+                sql.SQL("grant select on {} to {}").format(sql.Identifier(table), role_name)
+            )
+        for table, columns in _PURGE_QUEUE_WRITES.items():
+            connection.execute(
+                sql.SQL("grant update ({}) on {} to {}").format(
+                    sql.SQL(", ").join(sql.Identifier(c) for c in columns),
+                    sql.Identifier(table),
+                    role_name,
                 )
             )
         for table in _PURGE_READS:

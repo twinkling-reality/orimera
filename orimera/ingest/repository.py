@@ -168,6 +168,23 @@ class IngestRepository:
 
     # -- media layer --------------------------------------------------------------------
 
+    def lock_stored_object(self, blob_id: BlobId) -> None:
+        """Take the transaction lock over one stored object, keyed on its content hash.
+
+        The same lock ``orimera.deletion`` takes before it asks whether an object may be
+        destroyed and then destroys it. Both sides have to take it or neither is serialised:
+        with only the purger taking it, a purger and an ingest can interleave so that the ingest
+        commits a live capture for bytes the purger is in the middle of removing, and under
+        content addressing that ingest writes nothing to the store because the object was
+        already there. Measured; migration 0015's sibling comment in
+        ``orimera/ingest/stages/intake.py`` has the observed sequence.
+
+        Named for what it locks rather than for who else takes it. The SQL function is called
+        ``purge_lock_object`` because the purger is where it was first needed; renaming a
+        shipped function would be a migration for a word.
+        """
+        self._db.execute("select purge_lock_object(%s)", (blob_id.hex,))
+
     def upsert_blob(
         self, blob_id: BlobId, *, byte_size: int, media_type: str, storage_key: str
     ) -> bool:

@@ -51,6 +51,23 @@ def run(
 
     with ledger.stage(spec, input_blob=blob_id) as recorder:
         with writes.committed_writes() as pending:
+            # THE SAME LOCK THE PURGER TAKES, and taking it here is the whole of what makes it
+            # a lock rather than a formality.
+            #
+            # `orimera/deletion/worker.py` holds `purge_lock_object(<content hash>)` across
+            # asking whether the bytes may go and destroying them. That serialises purger
+            # against purger. It does NOT serialise a purger against an ingest, and measured
+            # without this line: workspace A's purger asks the question, workspace B commits a
+            # live capture of the same bytes in the window, and the purger then destroys an
+            # object B is using. B has no tombstone, has deleted nothing, and its photograph is
+            # gone with nothing reporting it. `blob` is not workspace-scoped, so the natural
+            # path there is the DEDUPLICATION path, where this ingest writes no bytes at all
+            # because they were already present.
+            #
+            # With it, the ingest waits for the purge to commit and then writes the bytes back
+            # through `committed_writes`, which is the correct outcome: a deliberate re-import
+            # gets its own copy.
+            repository.lock_stored_object(blob_id)
             # Queued, not written. The source bytes land in the store only once the whole
             # intake transaction has committed, so a tombstone that fires on ``upsert_span``
             # below leaves the store exactly as it found it.

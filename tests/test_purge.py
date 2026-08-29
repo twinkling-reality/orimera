@@ -16,6 +16,9 @@ against a real database as a real role, and one of the tests below is that measu
 
 from __future__ import annotations
 
+import datetime as dt
+import secrets
+import threading
 import uuid
 
 import psycopg
@@ -25,12 +28,19 @@ from orimera.deletion import queue
 from orimera.deletion.worker import PurgeWorker
 from orimera.evidence.blob import BlobId
 from orimera.ingest.pipeline import PhotoIngestPipeline
+from orimera.ingest.repository import IngestRepository
 from orimera.store.local import LocalContentAddressedStore
 
 from conftest import CountingVisionModel, write_photo
 
-_PURGE_PASSWORD = "purge-role-password-for-tests"
-_APP_PASSWORD = "app-role-password-for-tests"
+# **Generated, never committed.** `provision_runtime_role` and `provision_purge_role` issue
+# `alter role ... password`, and a role is a CLUSTER object: the harness's "the database name must
+# contain test" guard does not reach it. With constants here, every run of this file left the
+# developer's live `orimera_app` and `orimera_purge` roles authenticating with two strings sitting
+# in a public repository. Measured against `pg_authid` by recomputing the SCRAM verifier: they
+# matched. One process, one pair of secrets, and nothing to read afterwards.
+_PURGE_PASSWORD = secrets.token_urlsafe(32)
+_APP_PASSWORD = secrets.token_urlsafe(32)
 
 
 class Purged:
@@ -76,10 +86,16 @@ class Purged:
         )
 
     def tombstone_the_capture(self, capture_id: uuid.UUID) -> uuid.UUID:
-        """Delete a capture the way the product does: mark it, then write the tombstone."""
-        self.repository.connection.execute(
-            "update capture set deleted_at = now() where capture_id = %s", (capture_id,)
-        )
+        """Delete a capture the way the product does, which is one call and nothing else.
+
+        **This helper used to run ``update capture set deleted_at = now()`` first, and that line
+        was the defect.** Nothing in ``orimera/`` ever wrote that column, so the helper was
+        supplying a production step the shipping code did not have, and every test below passed
+        against a flow that did not exist. Measured with the line removed and before migration
+        0015: three jobs queued, zero destroyed, three skipped for ever, and the tombstone never
+        completed. The soft delete is now the tombstone trigger's work, in the tombstone's own
+        transaction, so this is the whole of a deletion.
+        """
         return self.repository.insert_tombstone(
             scope="capture",
             capture_id=capture_id,
@@ -253,8 +269,11 @@ def test_a_purger_that_cannot_see_the_other_tenant_would_destroy_those_bytes(pur
         "insert into capture (workspace_id, blob_sha256) values (%s, %s)",
         (uuid.uuid4(), blob.digest),
     )
-    purged.repository.connection.execute(
-        "update capture set deleted_at = now() where workspace_id = %s", (purged.workspace_id,)
+    purged.repository.insert_tombstone(
+        scope="capture",
+        capture_id=purged.rows("select capture_id from capture where workspace_id = %s",
+                               purged.workspace_id)[0]["capture_id"],
+        requested_by=uuid.uuid4(),
     )
     answers = {}
     for role, password in ((RUNTIME_ROLE, _APP_PASSWORD), (PURGE_ROLE, _PURGE_PASSWORD)):
@@ -267,6 +286,242 @@ def test_a_purger_that_cannot_see_the_other_tenant_would_destroy_those_bytes(pur
         "this one is wrong"
     )
     assert answers[PURGE_ROLE] is False
+
+
+# -- what an adversarial review measured, one test each ---------------------------------------
+
+
+def test_the_whole_deletion_is_one_call_through_the_product(purged):
+    """The finding that mattered most: nothing in `orimera/` ever wrote `capture.deleted_at`.
+
+    `purge_releases_bytes` decides liveness from that column, `insert_tombstone` wrote a row and
+    nothing else, and the test helper supplied the missing step. So the suite was green against a
+    flow that did not exist, and through the product every job deferred for ever. Migration 0015
+    makes the soft delete the tombstone trigger's work, in the tombstone's own transaction.
+    """
+    capture_id = purged.rows("select capture_id from capture")[0]["capture_id"]
+    purged.repository.insert_tombstone(
+        scope="capture", capture_id=capture_id, requested_by=uuid.uuid4()
+    )
+    assert purged.rows("select deleted_at from capture")[0]["deleted_at"] is not None, (
+        "the tombstone did not mark the capture it deletes, so nothing will ever release its "
+        "bytes"
+    )
+    assert purged.worker().drain().destroyed >= 4
+
+
+def test_an_ingest_waits_for_a_purge_of_the_same_object(purged, photo_dir):
+    """The lock has two sides and only one of them used to take it.
+
+    Measured without the ingest side: workspace A's purger asks whether the bytes may go,
+    workspace B commits a live capture of the same bytes inside the window, and the purger
+    destroys an object B is using. B has no tombstone and has deleted nothing. The natural path
+    there is deduplication, where B's ingest writes no bytes at all because the object was
+    already present, so the collision is not even detected.
+
+    A REAL ingest is run here rather than a bare call to the lock helper, because the property is
+    that the intake stage takes it. A test that took the lock itself would pass with the call
+    site removed, which is what a first version of this test did.
+    """
+    from conftest import photo_bytes
+
+    data = photo_bytes(when="2026:08:29 09:00:00")
+    blob = BlobId.of_bytes(data)
+    held = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+
+    def purger_holds() -> None:
+        with purged.database().session(purged.workspace_id) as connection, (
+            connection.transaction()
+        ):
+            connection.execute("select purge_lock_object(%s)", (blob.hex,))
+            held.set()
+            release.wait(20)
+
+    def ingest() -> None:
+        with purged.database().session(purged.workspace_id) as connection:
+            pipeline = PhotoIngestPipeline(
+                IngestRepository(connection, purged.workspace_id), purged.store
+            )
+            pipeline.ingest_intake(data, filename="held.jpg")
+        finished.set()
+
+    holder = threading.Thread(target=purger_holds)
+    ingester = threading.Thread(target=ingest)
+    holder.start()
+    try:
+        assert held.wait(20), "the purger never took the lock"
+        ingester.start()
+        assert not finished.wait(1.0), (
+            "the ingest committed a capture while a purge of the same object was in flight"
+        )
+    finally:
+        release.set()
+        holder.join()
+    assert finished.wait(20), "the ingest never completed after the purge released the lock"
+    ingester.join()
+    assert purged.rows(
+        "select capture_id from capture where blob_sha256 = %s", blob.digest
+    ), "the ingest waited and then did not write"
+
+
+def test_a_purger_that_cannot_see_across_workspaces_refuses_to_destroy_anything(purged):
+    """`ORIMERA_PURGE_DATABASE_URL` is a name and nothing used to check the role behind it.
+
+    Measured with the writer's URL in that variable: one object destroyed, zero skipped, the
+    tombstone recorded complete, another workspace's live photograph gone, and nothing in the
+    outcome naming the role or the narrowed view.
+    """
+    capture_id = purged.rows("select capture_id from capture")[0]["capture_id"]
+    blob = BlobId(bytes(purged.rows("select blob_sha256 from capture")[0]["blob_sha256"]))
+    purged.tombstone_the_capture(capture_id)
+
+    outcome = purged.worker(as_purge_role=False).drain()
+    assert outcome.blocked is not None, "a narrowed purger destroyed bytes and said nothing"
+    assert outcome.destroyed == 0
+    assert purged.store.exists(blob)
+    assert "cross-workspace" in outcome.blocked
+    assert outcome.role is not None and outcome.role != PURGE_ROLE
+
+    # And the right role is allowed through, or the check above would pass on a worker that
+    # refused everybody.
+    allowed = purged.worker().drain()
+    assert allowed.blocked is None
+    assert allowed.role == PURGE_ROLE
+    assert allowed.destroyed >= 1
+
+
+def test_a_job_that_failed_on_a_transient_outage_is_tried_again(purged, monkeypatch):
+    """`failed` was terminal, for exactly the reason correction 3 fixed `skipped`.
+
+    Measured with a store whose delete raised once: two jobs went to `failed`, three later passes
+    with a healthy store did nothing at all, the bytes stayed on disk for ever, the tombstone
+    never completed, and re-enqueueing the same target raised a unique violation. The only
+    recovery was a second tombstone for the same capture, which no interface offers.
+    """
+    capture_id = purged.rows("select capture_id from capture")[0]["capture_id"]
+    purged.tombstone_the_capture(capture_id)
+
+    class Unreachable:
+        """A purger that cannot reach the store. What a transient outage looks like."""
+
+        def purge(self, blob_id):
+            raise OSError("the object store is unreachable")
+
+    monkeypatch.setattr(
+        LocalContentAddressedStore,
+        "_privileged_purger",
+        lambda self, authorization: Unreachable(),
+    )
+    first = purged.worker().drain()
+    assert first.failed >= 1 and first.destroyed == 0, first
+    assert "failed" in {row["state"] for row in purged.rows("select state from purge_job")}
+
+    # A second pass with the store still broken and no cooldown elapsed changes nothing, which
+    # is what the cooldown is for.
+    assert purged.worker().drain().handled == 0
+
+    monkeypatch.undo()
+    monkeypatch.setattr(queue, "RETRY_AFTER", dt.timedelta(0))
+    second = purged.worker().drain()
+    assert second.failed == 0, second.errors
+    assert second.destroyed >= 1
+    assert {row["state"] for row in purged.rows("select state from purge_job")} == {"done"}
+
+
+def test_a_job_stranded_in_running_is_taken_back(purged, monkeypatch):
+    """A crash between the store unlink and the commit leaves a row that lies.
+
+    The bytes are gone, the `blob` row says they are live, and its `storage_key` points at an
+    object that is not there: a citation resolving to "here it is" and then raising, instead of
+    to "the user deleted this". Reclaiming is safe HERE, and the queue's docstring says why: the
+    lock serialises two purgers, `purge` returns False when the object is already absent, and
+    the predicate is re-asked before anything is destroyed.
+    """
+    capture_id = purged.rows("select capture_id from capture")[0]["capture_id"]
+    purged.tombstone_the_capture(capture_id)
+    claimed = queue.claim_purge(purged.repository.connection, purged.workspace_id)
+    assert claimed is not None
+    assert purged.rows(
+        "select state from purge_job where purge_id = %s", claimed.purge_id
+    )[0]["state"] == "running"
+
+    monkeypatch.setattr(queue, "RETRY_AFTER", dt.timedelta(0))
+    outcome = purged.worker().drain()
+    assert outcome.handled >= 4, "the stranded row was invisible to every later pass"
+    assert {row["state"] for row in purged.rows("select state from purge_job")} == {"done"}
+
+
+def test_a_workspace_tombstone_is_not_complete_while_the_workspace_has_bytes(purged):
+    """The enqueue is a snapshot and a workspace scope's object set is not closed at insert time.
+
+    Measured before this: a capture inserted after the tombstone is accepted by the database, its
+    bytes were never enqueued, the one queued job drained, and `purge_completed_at` was set with
+    two objects belonging to the workspace still on disk.
+    """
+    tombstone_id = purged.repository.insert_tombstone(
+        scope="workspace", requested_by=uuid.uuid4(), reason="the user closed their account"
+    )
+    later = BlobId.of_bytes(b"a photograph that arrived after the tombstone")
+    purged.repository.upsert_blob(
+        later, byte_size=1, media_type="image/jpeg", storage_key=purged.store.key_for(later)
+    )
+    purged.repository.connection.execute(
+        "insert into capture (workspace_id, blob_sha256) values (%s, %s)",
+        (purged.workspace_id, later.digest),
+    )
+    purged.worker().drain()
+    assert queue.is_purge_complete(purged.repository.connection, tombstone_id) is False
+    assert purged.rows(
+        "select purge_completed_at from tombstone where tombstone_id = %s", tombstone_id
+    )[0]["purge_completed_at"] is None
+
+
+def test_the_purge_role_cannot_reopen_the_leak_0011_closed(purged):
+    """Its UPDATE is column by column, and a full-table grant bought two escalations.
+
+    `tombstone_blocks_derivative` filters `effective_at <= clock_timestamp()`, so a role that
+    could push that column a year out could make every tombstone stop blocking. And
+    `purge_job.target_ref` decides which object a claimed job destroys. Neither table carries an
+    UPDATE trigger, so the grant was the only thing standing there.
+    """
+    with purged.database(role=PURGE_ROLE, password=_PURGE_PASSWORD).session(
+        purged.workspace_id
+    ) as connection:
+        for statement in (
+            "update tombstone set effective_at = now() + interval '1 year'",
+            "update tombstone set requested_by = gen_random_uuid()",
+            "update purge_job set target_ref = 'deadbeef'",
+            "update purge_job set tombstone_id = gen_random_uuid()",
+        ):
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                connection.execute(statement)
+            connection.execute("rollback")
+        # And the two it legitimately needs.
+        connection.execute("update tombstone set purge_completed_at = now()")
+        connection.execute("update purge_job set state = 'skipped', last_error = 'x'")
+
+
+def test_a_kind_this_worker_cannot_destroy_is_never_claimed(purged):
+    """`purge_job.target_kind` keeps four values and this worker handles two of them.
+
+    Claiming an `embedding` job means handing a uuid to `BlobId.from_hex`. Measured before the
+    filter: the job failed, and with the retry bound it would burn its attempts and leave the
+    tombstone permanently incomplete for a row nothing was ever going to destroy.
+    """
+    capture_id = purged.rows("select capture_id from capture")[0]["capture_id"]
+    tombstone_id = purged.tombstone_the_capture(capture_id)
+    purged.repository.connection.execute(
+        "insert into purge_job (tombstone_id, workspace_id, target_kind, target_ref) "
+        "values (%s, %s, 'embedding', %s)",
+        (tombstone_id, purged.workspace_id, str(uuid.uuid4())),
+    )
+    outcome = purged.worker().drain()
+    assert outcome.failed == 0, outcome.errors
+    assert purged.rows(
+        "select state from purge_job where target_kind = 'embedding'"
+    )[0]["state"] == "queued"
 
 
 # -- corrections 1 and 2: neither predicate may fail open ------------------------------------
