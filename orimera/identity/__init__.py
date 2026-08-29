@@ -43,6 +43,7 @@ from orimera.identity.keys import (
     occurrence_identity_key,
     region_bucket,
 )
+from orimera.identity.naming import ConcurrentRename, RenamedEntity, rename_entity
 from orimera.identity.repository import (
     EntityRow,
     IdentityRepository,
@@ -55,6 +56,7 @@ __all__ = [
     "TIME_BUCKET_NS",
     "USER_STATEMENT_BASIS",
     "AlreadyIdentified",
+    "ConcurrentRename",
     "EntityRow",
     "IdentityError",
     "IdentityRepository",
@@ -63,6 +65,7 @@ __all__ = [
     "NeverSame",
     "NotUndoable",
     "OccurrenceRow",
+    "RenamedEntity",
     "UnknownSubject",
     "basis_digest",
     "confirm_link",
@@ -71,6 +74,7 @@ __all__ = [
     "occurrence_identity_key",
     "region_bucket",
     "reject_link",
+    "rename_entity",
     "revoke_link",
     "split_entity",
     "undo",

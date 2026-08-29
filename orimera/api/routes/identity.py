@@ -32,11 +32,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from orimera.api.dependencies import WorkspaceIdentity
+from orimera.epistemics.assertions import AssertionWriter
 from orimera.identity import (
+    ConcurrentRename,
     confirm_link,
     merge_entities,
     name_occurrence,
     reject_link,
+    rename_entity,
     revoke_link,
     split_entity,
     undo,
@@ -51,6 +54,13 @@ class NameRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     occurrence_id: uuid.UUID
+    display_name: Annotated[str, Field(min_length=1, max_length=200)]
+
+
+class RenameRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entity_id: uuid.UUID
     display_name: Annotated[str, Field(min_length=1, max_length=200)]
 
 
@@ -136,6 +146,37 @@ def _rejection_basis(proposal: dict[str, Any] | None) -> dict[str, Any]:
     return {
         "basis_digest": bytes(proposal["basis_digest"]),
         "basis_modalities": modalities,
+    }
+
+
+@router.post("/rename", summary="The account holder corrects a name they gave.")
+def rename(body: RenameRequest, identity: Identity) -> dict[str, str]:
+    """One transaction, two writes, and the second one is not optional.
+
+    Migration 0006 makes ``name_is`` supersede, so the new claim retires the old one inside the
+    insert, and 0002's cache trigger nulls ``entity.display_name`` on that retirement because the
+    replacement row does not exist yet. ``rename_entity`` writes the cache back in the same
+    transaction; a caller that wrote only the assertion would leave the person unnamed.
+    """
+    try:
+        renamed = rename_entity(
+            identity.repository,
+            AssertionWriter(identity.connection, identity.session.workspace_id),
+            entity_id=body.entity_id,
+            display_name=body.display_name,
+            actor=identity.session.actor,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ConcurrentRename as exc:
+        # 409 rather than 500. Two people renaming one entity is a conflict with an answer, and
+        # the answer is to look at what the other one wrote.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "entity_id": str(renamed.entity_id),
+        "assertion_id": str(renamed.assertion_id),
+        "superseded": str(renamed.superseded) if renamed.superseded else "",
+        "event_id": str(renamed.event_id),
     }
 
 

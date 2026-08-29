@@ -61,6 +61,9 @@ ROUTE_PROBES: dict[tuple[str, str], dict] = {
     # as the owner is `test_formation_stream.py`, which has a batch to read.
     ("GET", "/formation"): {},
     ("GET", "/formation/{batch_id}"): {},
+    ("POST", "/identity/rename"): {
+        "json": {"entity_id": str(uuid.uuid4()), "display_name": "X"}
+    },
     ("POST", "/identity/name"): {
         "json": {"occurrence_id": str(uuid.uuid4()), "display_name": "X"}
     },

@@ -558,7 +558,7 @@ def undo(repository: IdentityRepository, *, event_id: uuid.UUID, actor: uuid.UUI
         )
 
     with repository.transaction():
-        touched = handler(repository, payload)
+        touched = handler(repository, payload, actor)
         undone = repository.record_event(
             "event_undone",
             actor=actor,
@@ -569,7 +569,9 @@ def undo(repository: IdentityRepository, *, event_id: uuid.UUID, actor: uuid.UUI
     return undone
 
 
-def _undo_confirm(repository: IdentityRepository, payload: dict[str, Any]) -> list[str]:
+def _undo_confirm(
+    repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
+) -> list[str]:
     repository.set_link_state(uuid.UUID(payload["link_id"]), "revoked")
     superseded = payload.get("superseded_proposal")
     if superseded:
@@ -589,7 +591,9 @@ def _undo_confirm(repository: IdentityRepository, payload: dict[str, Any]) -> li
     )
 
 
-def _undo_reject(repository: IdentityRepository, payload: dict[str, Any]) -> list[str]:
+def _undo_reject(
+    repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
+) -> list[str]:
     repository.revoke_rejection(
         scope=OCCURRENCE_ENTITY,
         key_a=bytes.fromhex(payload["identity_key"]),
@@ -603,7 +607,9 @@ def _undo_reject(repository: IdentityRepository, payload: dict[str, Any]) -> lis
     )
 
 
-def _undo_revoke(repository: IdentityRepository, payload: dict[str, Any]) -> list[str]:
+def _undo_revoke(
+    repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
+) -> list[str]:
     occurrence_id = uuid.UUID(payload["occurrence_id"])
     entity_id = uuid.UUID(payload["entity_id"])
     if payload.get("remembered"):
@@ -618,14 +624,18 @@ def _undo_revoke(repository: IdentityRepository, payload: dict[str, Any]) -> lis
     return _dependency_keys(entity=entity_id, occurrence=occurrence_id)
 
 
-def _undo_merge(repository: IdentityRepository, payload: dict[str, Any]) -> list[str]:
+def _undo_merge(
+    repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
+) -> list[str]:
     sources = [uuid.UUID(source) for source in payload["from"]]
     for source in sources:
         repository.set_merged_into(source, None)
     return _dependency_keys(entity=[*sources, uuid.UUID(payload["into"])])
 
 
-def _undo_split(repository: IdentityRepository, payload: dict[str, Any]) -> list[str]:
+def _undo_split(
+    repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
+) -> list[str]:
     entity_id = uuid.UUID(payload["entity_id"])
     new_entity_id = uuid.UUID(payload["into"])
     repository.forget_never_same(entity_id, new_entity_id)
@@ -640,7 +650,53 @@ def _undo_split(repository: IdentityRepository, payload: dict[str, Any]) -> list
 #: Every event type this module writes, and the inverse of each. A type absent from here is
 #: refused by name rather than silently doing nothing, which is why `undo` looks it up instead
 #: of branching.
+def _undo_rename(
+    repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
+) -> list[str]:
+    """Put back the name the rename retired, by saying it again rather than by rewriting.
+
+    The retired assertion is not reactivated. ``tg_assertion_no_in_place_rewrite`` permits a
+    status change, so it could be, and it must not be: two rows would then claim the same name at
+    different times with no ordering between them, and 0006's index would refuse the second
+    anyway. Instead the previous VALUE is asserted afresh, which supersedes the rename forward.
+    An undo is a new decision that restores a state, not a hole in the history.
+
+    An entity whose rename superseded nothing had no active name before, so the undo retracts
+    rather than restores: it puts the entity back to unnamed, which is where it was.
+    """
+    from orimera.identity.naming import rename_entity
+
+    entity_id = uuid.UUID(payload["entity_id"])
+    writer = AssertionWriter(repository.connection, repository.workspace_id)
+    superseded = payload.get("superseded")
+    if superseded is None:
+        # The entity had no active name before the rename, so the undo returns it to unnamed.
+        # Retracting rather than deleting: the claim was made and the record says so.
+        writer.retract(
+            uuid.UUID(payload["assertion_id"]),
+            retracted_by=actor,
+            reason="the rename that made this claim was undone",
+        )
+        repository.set_display_name(entity_id, None)
+        return _dependency_keys(entity=entity_id)
+
+    restored = repository.connection.execute(
+        "select object_value #>> '{}' as name from assertion where assertion_id = %s",
+        (uuid.UUID(superseded),),
+    ).fetchone()
+    if restored is not None and restored["name"]:
+        rename_entity(
+            repository,
+            writer,
+            entity_id=entity_id,
+            display_name=restored["name"],
+            actor=actor,
+        )
+    return _dependency_keys(entity=entity_id)
+
+
 _UNDO_HANDLERS = {
+    "entity_renamed": _undo_rename,
     "link_confirmed": _undo_confirm,
     "link_rejected": _undo_reject,
     "link_revoked": _undo_revoke,
