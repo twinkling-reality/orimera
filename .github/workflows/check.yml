@@ -1,0 +1,85 @@
+name: check
+
+# The verification battery, run the way a machine must run it. The one difference from a local
+# run is ORIMERA_REQUIRE_POSTGRES, which turns "skipped, no server" into a failure: locally a
+# machine with no database is a normal state, and in CI it is a suite that proved nothing.
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded pull request runs, never a push to main: a cancelled main run leaves no
+  # record of whether that commit was ever green.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # The documented target, matched exactly. tests/pg_harness.py refuses a server that
+        # cannot run the schema rather than substituting for it, which is how R11 was found.
+        image: pgvector/pgvector:0.8.6-pg18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install 3.11
+      # A superuser connection, because the harness creates and drops throwaway schemas and
+      # installs extensions. tests/test_row_level_security.py provisions its own non-superuser
+      # roles and asserts they are not superusers before it asserts anything else.
+      - name: create the test database
+        run: psql "$ADMIN_URL" -c 'create database orimera_spine_test'
+        env:
+          ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          PGPASSWORD: postgres
+      - run: uv run ruff check .
+      - run: uv run lint-imports
+      - name: pytest
+        run: uv run pytest
+        env:
+          ORIMERA_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orimera_spine_test
+          # The whole reason this job exists. Without it a broken server silently skips the 19
+          # tests that are the only executable proof of invariant 4.
+          ORIMERA_REQUIRE_POSTGRES: "1"
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # typecheck, the dependency-cruiser contract over 11 packages, and vitest.
+      - run: pnpm check
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Built and not pushed. There is no registry because there is no deployment target, and
+      # naming one here would be deciding something that belongs to a human. What this proves is
+      # that the image builds, which is the half that can rot without anybody noticing.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -51,6 +51,14 @@ dependencies = [
 # which is the same arrangement the vision stage has. A pipeline that could not run without a
 # checkpoint is a pipeline that does not run.
 [project.optional-dependencies]
+# The ASGI server an IMAGE picks. uvicorn stays out of the library's hard dependencies for the
+# reason recorded above, that a deployment may prefer a different server and the library must not
+# force one. An image IS a deployment and has to pick one, and an extra is how it picks one while
+# still being covered by uv.lock. Installing it with `uv pip install` after the sync would work
+# and would not be lock-checked, which is why it is not done that way.
+server = [
+  "uvicorn>=0.30",
+]
 reconstruction = [
   "torch>=2.5",
   "numpy>=1.26",
@@ -77,6 +85,9 @@ orimera-corpus = "orimera.corpus.__main__:main"
 # context and never from biometrics. Separate from the ingest command because the moment a
 # proposal becomes possible is when somebody is NAMED, and no ingest follows that.
 orimera-identity = "orimera.identity.cli:main"
+# `uv run orimera-db`. Brings a database up to the schema and the roles this code expects, in the
+# one correct order. A deployment runs it before the API starts.
+orimera-db = "orimera.db.cli:main"
 
 [dependency-groups]
 dev = [
@@ -165,10 +176,18 @@ include_external_packages = true
 [[tool.importlinter.contracts]]
 name = "The backend is layered, and the core is at the bottom"
 type = "layers"
+# EXHAUSTIVE, and this is the half that makes the layering a rule rather than a habit. A layers
+# contract says nothing at all about a package absent from it: an unlisted one may import the
+# topmost layer and the contract stays green. That is not hypothetical. `orimera.graph` was added
+# to this list by hand after the package already existed, and until it was, nothing stopped it
+# from importing `orimera.api`. With this set, a new top-level package nobody remembered to place
+# breaks the build and names itself.
+exhaustive = true
+containers = ["orimera"]
 layers = [
   # The HTTP surface depends on everything and nothing depends on it. That is the definition of
   # a thin API: routes validate and delegate, so a route has nothing another module could want.
-  "orimera.api",
+  "api",
   # The three top-level workflows, and none of them may import another: ingesting a photograph,
   # answering a question about one, and reading the whole graph back are separate concerns that
   # happen to share a database, and a dependency in any direction would be the first step to the
@@ -176,23 +195,23 @@ layers = [
   # same reason `orimera.corpus` is named at the bottom: a module absent from every contract is a
   # module the layering says nothing about. It sits one step under the API, which is where an
   # upward import is easiest to write and hardest to notice.
-  "orimera.graph | orimera.selection | orimera.ingest",
-  "orimera.identity",
-  "orimera.epistemics",
-  "orimera.db | orimera.models | orimera.store",
+  "graph | selection | ingest",
+  "identity",
+  "epistemics",
+  "db | models | store",
   # Reconstruction is driven by ingest and knows nothing about the evidence spine. It is a
   # layer of its own rather than a sibling of the three above because it must sit BELOW them
   # for the forbidden contract on it to mean anything: a module that may import evidence and
   # chooses not to is a habit, and one that may not is a rule.
-  "orimera.reconstruction",
-  "orimera.evidence | orimera.migrations",
-  "orimera.canonical",
+  "reconstruction",
+  "evidence | migrations",
+  "canonical",
   # The corpus generator sits at the bottom and depends on nothing in this package at all: it
   # draws pictures with Pillow and knows nothing about evidence, storage or the database. Listed
   # here rather than left out, because a module absent from every contract is a module the
   # layering says nothing about, and the point of the corpus is to be the input to the pipeline
   # rather than a participant in it.
-  "orimera.corpus | orimera.errors",
+  "corpus | errors",
 ]
 
 [[tool.importlinter.contracts]]

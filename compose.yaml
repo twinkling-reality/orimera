@@ -1,0 +1,69 @@
+# A local composition, target agnostic on purpose. Nothing here names a cloud, a region, a domain
+# or an account: every such value is an environment variable with a stated fill-in, because the
+# deployment target is a human decision that has not been made.
+#
+# `docs/deployment.md` is the document this file implements. Read it before changing anything
+# here, in particular section 6 on the two health signals and the wording rules in invariant 10.
+
+name: orimera
+
+services:
+  postgres:
+    # The documented target, matched exactly: PostgreSQL 18 with pgvector 0.8.6, which is what
+    # `tests/pg_harness.py` refuses to run without. A different tag here means the suite is
+    # verifying a schema the deployment does not run.
+    image: pgvector/pgvector:0.8.6-pg18
+    environment:
+      POSTGRES_DB: orimera
+      POSTGRES_USER: orimera
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD; there is no default}
+    volumes:
+      # PostgreSQL 18 moved PGDATA and the image's VOLUME with it. Mounting the old
+      # /var/lib/postgresql/data would give a volume the server does not write to, and the
+      # symptom is a database that is empty after every restart.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orimera -d orimera"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Runs once, to completion, before the API starts. Migrations and role grants are one command
+  # because there is one correct order; see orimera/db/cli.py.
+  migrate:
+    build: .
+    command: ["orimera-db"]
+    environment:
+      ORIMERA_DATABASE_URL: postgresql://orimera:${POSTGRES_PASSWORD}@postgres:5432/orimera
+      ORIMERA_APP_ROLE_PASSWORD: ${ORIMERA_APP_ROLE_PASSWORD:-}
+      ORIMERA_EXECUTOR_ROLE_PASSWORD: ${ORIMERA_EXECUTOR_ROLE_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build: .
+    environment:
+      ORIMERA_DATABASE_URL: postgresql://orimera:${POSTGRES_PASSWORD}@postgres:5432/orimera
+      # Set this and /readyz stops warning that the Selection executor runs as the write role.
+      # Left unset the API still works; it reports what it is running without, which is the
+      # point of the warning rather than a nag.
+      ORIMERA_READONLY_DATABASE_URL: ${ORIMERA_READONLY_DATABASE_URL:-}
+      # No default. `load_token_directory` raises when it is unset, and an API that started with
+      # an empty token directory would accept nobody while looking healthy.
+      ORIMERA_API_TOKENS: ${ORIMERA_API_TOKENS:?set ORIMERA_API_TOKENS; there is no default}
+      ORIMERA_DATA_DIR: /var/lib/orimera
+    volumes:
+      - media:/var/lib/orimera
+    ports:
+      - "${ORIMERA_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  # The content-addressed store. Append-only by policy: nothing in the runtime deletes from it,
+  # and erasure runs through a separately authorised purger. Not immutable, not WORM, not
+  # tamper-proof: a docker volume supports none of those and claiming them would be an overclaim.
+  media:
