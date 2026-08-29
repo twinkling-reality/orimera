@@ -378,23 +378,79 @@ two unrelated UI elements. A five-person read test, half a day. The research did
 
 ### 4.2 Spatial placement
 
-The Companion is placed on a horizontal arc around the subject point (the focused anchor, or a point
-ahead of the camera if there is none), at a radius scaled to the subject distance. Candidates are
-rejected if they fall outside the horizontal field of view minus a margin, project too near screen
-centre (never block the reticle), project into the panel rectangle, fail a visibility raycast, sit
-too close to the camera, or land inside the collision proxy. Survivors are scored for preferring the
-side opposite the panel, a middle depth between camera and subject, a middle screen height, and
-minimum angular change from the last placement.
+The Companion has two stations. It rests at **home**, a fixed offset in the camera's own basis, off
+the shoulder opposite the panel and slightly below the eye line. When a turn is about a specific
+anchor the user can already see, it goes on an **errand**: it detaches, travels out to stand beside
+that anchor, and returns home when the turn ends.
 
-Materialization: assemble from motes on first appearance; glide for a small relocation; **dissolve
-and reassemble for a large one, never fly across the user's view**, because a traverse is both an
-optic-flow cost and an attention theft for its whole duration. If no candidate survives, the
-Companion does not appear in 3D at all: the panel opens alone and the tether terminates in a small
-edge glyph. Honest degradation rather than a bad placement.
+**DECISION, CORRECTED 2026-08-28.** An earlier version of this section decided that the Companion
+never sits near the user, on the grounds that continuous following reads as a pet, generates
+constant peripheral motion, and makes the world feel like it has an escort rather than an
+inhabitant. That reasoning is correct about a companion which only ever hovers at the shoulder, and
+it is retained in full for the resting pose. It was wrong as a blanket rule, and the cost it imposed
+was not small: a Companion that exists only out in the world is one the user routinely cannot find,
+and the tether was left carrying that entire failure by itself. The reversal is deliberately narrow.
+Home is a resting station and not a leash. The Companion still relocates only on discrete events,
+and it still never trails the camera continuously during traversal.
 
-**DECISION: the Companion never follows the user continuously.** It relocates only on discrete
-events. Continuous following reads as a pet, generates constant peripheral motion, and makes the
-world feel like it has an escort rather than an inhabitant.
+What the errand buys is the reason to build it this way at all. An agent that crosses to the thing
+it is asking about is pointing at something inside the user's own memory, which is the product's
+central premise performed rather than described.
+
+**Errand placement is a solver, never a parent transform.** The Companion is placed on a horizontal
+arc around the subject point (the focused anchor, or a point ahead of the camera if there is none),
+at a radius scaled to the subject distance. Candidates are rejected if they fall outside the
+horizontal field of view minus a margin, project too near screen centre (never block the reticle),
+project into the panel rectangle, fail a visibility raycast, sit too close to the camera, or land
+inside the collision proxy. Survivors are scored for preferring the side opposite the panel, a
+middle depth between camera and subject, a middle screen height, and minimum angular change from the
+last placement.
+
+**The travel rule is unchanged, and it is what keeps the errand legal.** Assemble from motes on
+first appearance; glide for a small relocation; **dissolve and reassemble for a large one, never fly
+across the user's view**, because a traverse is both an optic-flow cost and an attention theft for
+its whole duration. An errand is not a traverse: it moves away along the direction the user is
+already looking, toward a thing already on screen. Radial motion, not lateral. That distinction is
+enforced rather than trusted. A destination whose sideways sweep from home exceeds the configured
+limit is not travelled to at all, and a move that would cross the view dissolves and reassembles
+regardless of how short it is.
+
+**Every failure to travel falls back to home with a reason attached, and the reason is rendered.**
+The five are: no subject to point at, the subject is off screen, the sweep would be too wide,
+reduced motion is set, and no arc candidate survived. A silent fallback is indistinguishable on
+screen from a deliberate stay, which leaves the interface either inventing an explanation or
+offering none. Where no candidate survives the Companion does not appear in 3D at all: the panel
+opens alone and the tether terminates in a small edge glyph. Honest degradation rather than a bad
+placement.
+
+**Attention is orientation.** Even at home it yaws to face the subject it is asking about, because
+core orientation is the only channel the form has (4.1) and a Companion square to the camera while
+asking about something off to one side is saying nothing with it. Under `prefers-reduced-motion` it
+never travels, and the pointing the movement would have carried becomes a mandatory caption, which
+is the accessibility rule applied rather than an exemption from it.
+
+Implemented in `web/packages/atlas-core/src/companion/placement.ts` (the arc solver) and
+`station.ts` (home, errand, and the travel gate). The guarantees above are under test in
+`test/companion-placement.test.ts` and `test/companion-station.test.ts`.
+
+#### CORRECTED 2026-08-28: options are answerable by number, in both modes
+
+**DECISION, CORRECTED.** 2.2 makes the panel READ ONLY in `traverse`, and the reason given is
+sound as far as it goes: the pointer is locked, so there is nothing to click with. The conclusion
+drawn from it was wrong. It left the user with only one way to answer anything, which was to
+release the mouse, leave the world, click, and re-enter with a fresh engagement gesture, for every
+question.
+
+Choice-set options now carry a number and are selectable by the matching digit key, which works
+identically whether the pointer is locked or free. A user can be walking through a region, be asked
+something, press `2`, and keep walking. The panel is still not CLICKABLE in `traverse`, because
+that remains impossible rather than merely undesirable.
+
+Two properties this must keep. An unavailable option's key does nothing at all rather than falling
+through to the next available option, because a key that silently selects something adjacent
+commits a claim nobody chose. And the escapes are deliberately unnumbered: they are not answers to
+the question, and giving them digits would put "skip" one keystroke away from an assertion about a
+person.
 
 ### 4.3 The dialogue system
 
