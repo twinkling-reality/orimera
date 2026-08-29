@@ -37,7 +37,7 @@ export type { CameraState, ControlsConfig, InputMode } from './controls.js';
 export { DEFAULT_CONTROLS, FirstPersonControls } from './controls.js';
 
 export type { AnchorMotes, AnchorMotesOptions } from './anchor-motes.js';
-export { createAnchorMotes } from './anchor-motes.js';
+export { MOTE_FRAGMENT_GLSL, createAnchorMotes, moteAnchorIndices } from './anchor-motes.js';
 
 export type { OverlayCounts, OverlayFrame } from './anchor-overlay.js';
 export { AnchorOverlay } from './anchor-overlay.js';

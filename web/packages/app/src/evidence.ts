@@ -19,23 +19,34 @@
  * looks like that.
  */
 
-import type { EvidenceHandle, OrimeraClient } from '@orimera/graph-client';
+import type { EvidenceHandle } from '@orimera/graph-client';
 import { ApiError } from '@orimera/graph-client';
 
 /** How many originals are held at once. Each is a few megabytes of decoded photograph. */
 const MAX_HELD = 24;
+
+/**
+ * What this cache needs, which is one method rather than the whole client.
+ *
+ * `OrimeraClient` satisfies it structurally, so nothing at the call site changes. Narrowing it
+ * means a test of the caching and eviction rules needs a function returning a blob rather than a
+ * transport, and it means this module cannot quietly grow a second reason to hold a client.
+ */
+export interface EvidenceSource {
+  evidenceBytes(handle: EvidenceHandle): Promise<Blob>;
+}
 
 export type OpenedEvidence =
   | { readonly ok: true; readonly url: string; readonly type: string }
   | { readonly ok: false; readonly reason: string };
 
 export class EvidenceCache {
-  readonly #client: OrimeraClient;
+  readonly #source: EvidenceSource;
   /** Insertion-ordered, which is what makes the eviction below least-recently-opened. */
   readonly #held = new Map<EvidenceHandle, { url: string; type: string }>();
 
-  constructor(client: OrimeraClient) {
-    this.#client = client;
+  constructor(source: EvidenceSource) {
+    this.#source = source;
   }
 
   async open(handle: EvidenceHandle): Promise<OpenedEvidence> {
@@ -50,7 +61,7 @@ export class EvidenceCache {
 
     let blob: Blob;
     try {
-      blob = await this.#client.evidenceBytes(handle);
+      blob = await this.#source.evidenceBytes(handle);
     } catch (error) {
       return { ok: false, reason: describe(error) };
     }

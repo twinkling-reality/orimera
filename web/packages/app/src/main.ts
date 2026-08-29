@@ -26,12 +26,13 @@ import { mountAtlas, type MountedAtlas } from './atlas.js';
 import { credentials, developmentToken } from './config.js';
 import { EvidenceCache } from './evidence.js';
 import { toUpdateProposal } from './proposal.js';
-import { buildScene } from './scene.js';
+import { NO_GEOMETRY_RUNG, buildScene } from './scene.js';
 import { openSession, type Session } from './session.js';
 import { buildConfirm } from './ui/confirm.js';
 import { buildDetail } from './ui/detail.js';
 import { el, replace } from './ui/dom.js';
 import { buildLibrary } from './ui/library.js';
+import { buildStatus } from './ui/status.js';
 
 const shell = document.getElementById('shell');
 const canvas = document.getElementById('atlas');
@@ -165,7 +166,19 @@ async function mount(): Promise<void> {
   // the rail. The stage is the hole it shows through and the parent the anchor overlay writes
   // its nodes into, which is a different job from being the canvas.
   const stage = el('div', { class: 'stage' });
-  replace(shell!, [library.root, stage, detail.root, confirm.root, statusBar(current, built)]);
+  replace(shell!, [
+    library.root,
+    stage,
+    detail.root,
+    confirm.root,
+    buildStatus({
+      snapshot: current,
+      regionCount: built.scene.islands.length,
+      rung: NO_GEOMETRY_RUNG,
+      omittedRegionCount: built.omitted.length,
+      undrawable: built.undrawable,
+    }),
+  ]);
 
   library.render(current, search, selected);
   detail.showNothing();
@@ -267,52 +280,4 @@ function syntheticEntityFor(occurrence: OccurrenceRecord) {
     history: [],
     mergedInto: null,
   };
-}
-
-/**
- * The standing caption and what the world is made of.
- *
- * interaction-model.md 6.2 fixes the caption and says it is never dismissible. It is the
- * user-facing half of the coordinate rule: an island's position in the Atlas carries no
- * real-world meaning, so the interface says so permanently rather than in a tooltip.
- */
-function statusBar(current: GraphSnapshot, built: ReturnType<typeof buildScene>): HTMLElement {
-  const bar = el('footer', { class: 'status' });
-  bar.append(
-    el('p', {
-      class: 'standing-caption',
-      text: 'Positions show how these memories relate, not where they happened.',
-    }),
-    el('p', {
-      class: 'status-facts',
-      text:
-        `${built.scene.islands.length} regions, ` +
-        `${current.occurrences.length} detections, ` +
-        `${current.entities.length} identified, ` +
-        `state version ${current.stateVersion}`,
-    }),
-    // The rung is displayed, not hidden. Rung 4 is evidence laid out by time and proximity, with
-    // no geometry, and saying so is the honesty feature rather than an apology.
-    el('p', {
-      class: 'status-rung',
-      text: 'Rung 4: no geometry was reconstructed. Every citation still opens its original.',
-    }),
-  );
-  if (built.omitted.length > 0) {
-    bar.append(
-      el('p', {
-        class: 'status-warning',
-        text: `${built.omitted.length} regions are not shown: the layout solver is specified for five.`,
-      }),
-    );
-  }
-  for (const [kind, count] of built.undrawable) {
-    bar.append(
-      el('p', {
-        class: 'status-warning',
-        text: `${count} ${kind} detections have no shape in the Atlas and are not drawn.`,
-      }),
-    );
-  }
-  return bar;
 }

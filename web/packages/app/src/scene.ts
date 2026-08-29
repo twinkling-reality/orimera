@@ -68,7 +68,7 @@ import type {
  * Named rather than written inline so that the day a point map exists, the thing that has to
  * change is one lookup and not a scattering of literal fours.
  */
-const NO_GEOMETRY_RUNG: ReconstructionRung = 4;
+export const NO_GEOMETRY_RUNG: ReconstructionRung = 4;
 
 /** Local units. The disc the anchors of one island are seeded on. */
 const ANCHOR_DISC_SPACING = 1.6;

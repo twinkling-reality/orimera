@@ -100,7 +100,7 @@ void main(void) {
 }
 `;
 
-const FRAGMENT_GLSL = /* glsl */ `
+export const MOTE_FRAGMENT_GLSL = /* glsl */ `
 precision highp float;
 
 varying vec4 vColor;
@@ -128,17 +128,31 @@ interface ShaderDesc {
   fragmentGLSL?: string;
 }
 
-export function createAnchorMotes(options: AnchorMotesOptions): AnchorMotes {
-  const { device, table } = options;
-
-  // Person anchors are excluded here rather than filtered later. See the module comment.
+/**
+ * Which anchors get a mote. Separated from the mesh so the rule can be tested without a GPU.
+ *
+ * A person is excluded, and that exclusion is the whole reason this is a named function rather
+ * than three lines inside a constructor: putting a person in this cloud would put a person into
+ * world geometry, and a rule that can only be checked by creating a graphics device is a rule
+ * that does not get checked.
+ *
+ * `rendersAsPresenceMarker` is asked and never second-guessed. It lives in atlas-core as a
+ * predicate over the anchor's kind precisely so it cannot be set false for a person by mistake.
+ */
+export function moteAnchorIndices(table: AnchorTable): Int32Array {
   const indices: number[] = [];
   for (let i = 0; i < table.count; i += 1) {
     const anchor = table.anchors[i];
     if (anchor === undefined || rendersAsPresenceMarker(anchor)) continue;
     indices.push(i);
   }
-  const anchorIndices = Int32Array.from(indices);
+  return Int32Array.from(indices);
+}
+
+export function createAnchorMotes(options: AnchorMotesOptions): AnchorMotes {
+  const { device, table } = options;
+
+  const anchorIndices = moteAnchorIndices(table);
   const count = anchorIndices.length;
 
   const format = new pc.VertexFormat(device, [
@@ -189,7 +203,7 @@ export function createAnchorMotes(options: AnchorMotesOptions): AnchorMotes {
     uniqueName: 'orimera-anchor-motes',
     attributes: { ...ATTRIBUTES },
     vertexGLSL: VERTEX_GLSL,
-    fragmentGLSL: FRAGMENT_GLSL,
+    fragmentGLSL: MOTE_FRAGMENT_GLSL,
   } as ShaderDesc);
   material.blendType = pc.BLEND_NORMAL;
   material.depthWrite = false;
