@@ -117,6 +117,75 @@ const WITH_UNGROUPED: GraphPayload = {
   ],
 };
 
+describe('the two zeroes that stopped being zeroes', () => {
+  /** The payload above, with one pending proposal about Julie. */
+  const withProposal: GraphPayload = {
+    ...PAYLOAD,
+    entities: PAYLOAD.entities.map((row, index) =>
+      index === 0 ? { ...row, open_question_count: 1 } : row,
+    ),
+    proposals: [
+      {
+        proposal_id: 'p1',
+        occurrence_id: 'o2',
+        entity_id: 'e1',
+        rank: 0,
+        outcome: 'surfaced',
+        basis: {
+          modalities: ['context_cooccurrence', 'context_place'],
+          extractor_versions: { context_signals: '1' },
+        },
+        new_modality: 'context_place',
+        suppressed_by_rejection: false,
+        support_span_ids: ['s2'],
+      },
+    ],
+  };
+
+  it('marks an entity with a pending question as needs_review, outranking its name', () => {
+    // A named person with an open question is precisely what the review queue is for. Losing the
+    // `user_asserted` badge while the question stands costs nothing: the provenance triad still
+    // shows that a person has spoken about this entity.
+    const snapshot = adaptSnapshot(withProposal);
+    const julie = snapshot.entities.find((entity) => entity.entityId === 'e1');
+    expect(julie?.displayName).toBe('Julie');
+    expect(julie?.status).toBe('needs_review');
+    expect(julie?.openQuestionCount).toBe(1);
+  });
+
+  it('keeps merged_away ahead of needs_review', () => {
+    // An alias redirect is not something to review. It is somewhere else to look.
+    const merged: GraphPayload = {
+      ...withProposal,
+      entities: withProposal.entities.map((row) =>
+        row.entity_id === 'e2' ? { ...row, open_question_count: 3 } : row,
+      ),
+    };
+    const snapshot = adaptSnapshot(merged);
+    expect(snapshot.entities.find((e) => e.entityId === 'e2')?.status).toBe('merged_away');
+  });
+
+  it('bands a proposal by how many signals agree, not by its score', () => {
+    // Two independent signals agreeing is a countable fact. A band read off an uncalibrated
+    // weighted sum would be a guess dressed as a measurement, and no evaluation has run.
+    const snapshot = adaptSnapshot(withProposal);
+    const proposal = snapshot.matchProposals[0];
+    expect(proposal?.basisModalities).toEqual(['context_cooccurrence', 'context_place']);
+    expect(proposal?.confidence).toBe('medium');
+    expect(proposal?.newModality).toBe('context_place');
+  });
+
+  it('leaves an entity with no pending question alone', () => {
+    // The guard against the rule widening. Every entity in the base payload has no open
+    // question, so nothing here may become needs_review.
+    const snapshot = adaptSnapshot(PAYLOAD);
+    expect(snapshot.entities.map((entity) => entity.status)).toEqual([
+      'user_asserted',
+      'merged_away',
+    ]);
+  });
+});
+
 describe('the snapshot adapter states what the server cannot answer', () => {
   const snapshot = adaptSnapshot(PAYLOAD, (captureId) => `island:${captureId}` as never);
 

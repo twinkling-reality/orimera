@@ -101,6 +101,8 @@ export interface GraphPayload {
     readonly rank: number;
     readonly outcome: string;
     readonly basis: Readonly<Record<string, unknown>>;
+    /** The modality this proposal carries that the user has not already refused for the pair. */
+    readonly new_modality: string | null;
     readonly suppressed_by_rejection: boolean;
     readonly support_span_ids: readonly string[];
   }[];
@@ -265,8 +267,9 @@ export class OrimeraClient {
  *
  *   - `confidence`: null on every entity and 'low' on every occurrence link. A confirmed link is
  *     a human decision and has no confidence, it has support, which is exactly what the read
- *     model's own comment says. Nothing here is inference-backed yet because nothing proposes
- *     automatically, so there is no band to report.
+ *     model's own comment says. A match proposal DOES carry a band now, and it is a count rather
+ *     than a score: how many independent signals agree. A band derived from an uncalibrated
+ *     weighted sum would be a guess wearing a band's clothes, and no calibration data exists.
  *   - `citingAnswerCount`: 0, and it means 'no answer is stored anywhere', not "no answer cites
  *     this". The field exists because a tier 3 confirmation must state how many answers lose
  *     their citation. Until answers are stored, a tier 3 confirmation cannot state it, and the
@@ -278,8 +281,13 @@ export class OrimeraClient {
  *     approximate. A name is only ever written by an active `kind='user'` assertion, so an
  *     entity with one is `user_asserted`. An entity with `merged_into` set is `merged_away`.
  *     Everything else is `inferred_only`: it exists because a detector saw something and no
- *     person has spoken about it. `needs_review` is deliberately not produced, because it would
- *     mean 'a proposal is waiting' and nothing proposes automatically yet.
+ *     person has spoken about it. `needs_review` outranks both and means one thing: a proposal
+ *     about this entity is pending, from `pending_match_proposal` on the server, which is a
+ *     question the user has not answered rather than one that was ever asked. It is the review
+ *     queue's only filter, so an entity is in the queue exactly when a question about it is
+ *     waiting. It loses to `merged_away`, because an alias redirect is not something to review,
+ *     and it beats `user_asserted`, because a named person with an open question is precisely
+ *     what the queue is for; the provenance triad still shows that a person has spoken.
  */
 export function adaptSnapshot(
   payload: GraphPayload,
@@ -291,7 +299,7 @@ export function adaptSnapshot(
       entityId: row.entity_id as EntityIdRef,
       kind: row.entity_class as EntityRecord['kind'],
       displayName: row.display_name,
-      status: entityStatus(row.merged_into, row.display_name),
+      status: entityStatus(row.merged_into, row.display_name, row.open_question_count),
       occurrenceCount: row.occurrence_count,
       islandIds: row.capture_ids.map(toIsland),
       firstSeenMs: toMs(row.first_seen),
@@ -335,11 +343,17 @@ export function adaptSnapshot(
       occurrenceIds: [row.occurrence_id as OccurrenceRecord['occurrenceId']],
       anchorIds: [row.occurrence_id as AnchorIdRef],
       islandIds: [],
-      confidence: 'low',
+      // A COUNT, not a score. "Two independent signals agree" is a countable fact about the
+      // basis; a band read off an uncalibrated weighted sum would be a guess dressed as a
+      // measurement, and there is no calibration data because no evaluation has run.
+      confidence: bandFromModalityCount(readModalities(row.basis).length),
       basisModalities: readModalities(row.basis),
       evidence: row.support_span_ids as readonly EvidenceHandle[],
       suppressedByRejection: row.suppressed_by_rejection,
-      newModality: null,
+      // What this proposal carries that the user has not already refused for the pair, computed
+      // by the producer that knows. Null when nothing about the pair was refused before, which
+      // is the ordinary case rather than a missing value.
+      newModality: row.new_modality,
     }),
   );
 
@@ -459,6 +473,20 @@ function readModalities(
 }
 
 /**
+ * The band a proposal is shown under, from how many independent signals corroborate it.
+ *
+ * Deliberately not derived from the score. `score` is `raw_score` in the epistemic sense: never
+ * rendered, never a threshold that decides a factual claim, and produced by weights that no
+ * evaluation has validated. How many signals agree is a fact that can be counted, and counting
+ * is the strongest honest statement available until there is calibration data.
+ */
+function bandFromModalityCount(count: number): 'low' | 'medium' | 'high' {
+  if (count >= 3) return 'high';
+  if (count === 2) return 'medium';
+  return 'low';
+}
+
+/**
  * How a stored entity presents in the index's Status facet.
  *
  * `user_asserted` rather than `confirmed` for a named entity, and the distinction is the
@@ -468,8 +496,10 @@ function readModalities(
 function entityStatus(
   mergedInto: string | null,
   displayName: string | null,
+  openQuestionCount: number,
 ): EntityRecord['status'] {
   if (mergedInto !== null) return 'merged_away';
+  if (openQuestionCount > 0) return 'needs_review';
   if (displayName !== null) return 'user_asserted';
   return 'inferred_only';
 }
