@@ -18,12 +18,13 @@ Checked on 2026-08-28 by running the commands in [Setup and running](#setup-and-
 
 **Working, and verified by execution.** The evidence spine, the content-addressed store, the
 photograph ingest pipeline and the Nebius Token Factory model client are implemented and covered by
-588 backend tests, all passing. 227 of those apply the schema migration to a live PostgreSQL 18
+842 backend tests, all passing. 382 of those apply the schema migration to a live PostgreSQL 18
 server with pgvector, the only executable proof that a model cannot write a person's name into
 canonical state. Ingest runs end to end over a directory of photographs and is idempotent: a second
 pass recomputes nothing and issues no model calls. The HTTP API serves health, graph, selection,
-identity and evidence routes. The browser packages pass `pnpm check`: a typecheck of every package,
-an import-boundary contract, and 289 tests. The renderer was chosen on measurement, against the
+identity, evidence and intake routes, and an upload's intake stage runs in the request while its
+model stages are queued by capture id. The browser packages pass `pnpm check`: a typecheck of every
+package, an import-boundary contract, and 366 tests. The renderer was chosen on measurement, against the
 earlier lean (PlayCanvas Engine 2.21.4,
 [docs/adr/0003-renderer-selection.md](docs/adr/0003-renderer-selection.md)). Real calls to NVIDIA
 Nemotron and to Tavily were made and archived on 2026-08-27.
@@ -188,7 +189,7 @@ credits: the model client is exercised through a scripted HTTP transport, and te
 generated rather than committed, so the content of every test image is known exactly.
 
 ```bash
-uv run pytest                       # 588 tests; 227 skip without a database
+uv run pytest                       # 842 tests; 382 skip without a database
 uv run ruff check .                 # lints backend, tests and scripts
 uv run lint-imports                 # the backend layering contract, three rules
 uv run orimera-preflight            # checks every manifest id against the live catalog
@@ -201,7 +202,7 @@ uv run scripts/verify_platform.py      # the runtime verification harness, needs
 
 ### The tests that need a database
 
-**PostgreSQL is the only data layer.** 227 of the 588 backend tests need a real server, and they
+**PostgreSQL is the only data layer.** 382 of the 842 backend tests need a real server, and they
 are the executable proof of everything the database carries: that a model cannot write a name into
 canonical state, that one workspace cannot read another's rows, that a tombstoned address refuses
 the write, and that the whole ingest path works. A default run prints a reminder naming the files
@@ -304,7 +305,7 @@ pnpm check                   # typecheck, then the import-boundary contract, the
 ```
 
 `pnpm check` runs three gates that catch different failure modes: `tsc --build` across every
-package, a dependency-cruiser contract over the forbidden cross-package imports, and 289 vitest
+package, a dependency-cruiser contract over the forbidden cross-package imports, and 366 vitest
 tests. The boundary rules have each been probed with a deliberate violation, so they are known to
 fire rather than assumed to.
 
@@ -340,7 +341,7 @@ single command that starts Orimera end to end.
 | `orimera/deletion/` | The purge queue a tombstone fills and the worker that empties it. Destroys objects, marks rows, and holds DELETE on nothing |
 | `pyproject.toml` | Also the backend layering contract, enforced by `uv run lint-imports` |
 | `orimera/canonical.py`, `orimera/errors.py` | Canonical JSON and the one rounding rule; the error taxonomy |
-| `tests/` | 588 tests, 227 of which need a PostgreSQL 18 server. No network, no credentials, no committed binary fixtures |
+| `tests/` | 842 tests, 382 of which need a PostgreSQL 18 server. No network, no credentials, no committed binary fixtures |
 | `scripts/` | The standalone runtime verification harnesses, kept byte-identical so their evidence stays reproducible |
 | `web/packages/atlas-core/` | Scene graph, island frames, focus resolution, layout solver. No React, no DOM, no renderer |
 | `web/packages/atlas-react/` | Renderer bindings, anchor overlay, HUD, comfort settings |
