@@ -34,21 +34,22 @@ refuses a caption filed as a capture-supported fact and refuses any name at all 
 
 from __future__ import annotations
 
-import io
 import uuid
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
 from orimera.canonical import sha256_digest
 from orimera.errors import TombstonedError
 from orimera.evidence import EvidenceAddress
 from orimera.evidence.blob import BlobId
 from orimera.ingest.batch import IntakeBatch
-from orimera.ingest.exif import extract_exif_facts
+from orimera.ingest.decode import UNREADABLE, open_upright
+from orimera.ingest.exif import ExifFacts
 from orimera.ingest.ledger import Ledger, StageRecorder
 from orimera.ingest.report import IngestOutcome, IngestReport
 from orimera.ingest.repository import IngestRepository
@@ -70,6 +71,23 @@ from orimera.store.base import ContentAddressedStore
 __all__ = ["SUPPORTED_SUFFIXES", "PhotoIngestPipeline"]
 
 SUPPORTED_SUFFIXES: Final = frozenset({".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff"})
+
+
+@dataclass(frozen=True, slots=True)
+class _Prepared:
+    """What intake produced and what the derivative stages need to run from it.
+
+    Reassembled from the database and the store when the two halves run in different processes,
+    which is the property that lets the queue hold a capture id: every field here is either a
+    content address, an identifier, or something recomputed from the original bytes.
+    """
+
+    blob_id: BlobId
+    capture_id: uuid.UUID
+    image_span_id: uuid.UUID
+    intake: StageResult
+    upright: Image.Image
+    facts: ExifFacts
 
 
 class PhotoIngestPipeline:
@@ -272,14 +290,125 @@ class PhotoIngestPipeline:
             report.outcomes.append(self.ingest_file(path, batch_id=report.batch_id))
         return report
 
-    # -- one file -----------------------------------------------------------------------
+    # -- one photograph, in one piece or in two -------------------------------------------
 
     def ingest_file(
         self, path: str | Path, *, batch_id: uuid.UUID | None = None
     ) -> IngestOutcome:
-        """Ingest one photograph. Never raises for a bad file: the outcome carries the error."""
+        """Ingest one photograph, every stage, in this thread. Never raises for a bad file."""
         source = Path(path)
         outcome = IngestOutcome(path=source)
+        with self._recorded_run(outcome, batch_id=batch_id) as ledger:
+            prepared = self._intake(source.read_bytes(), ledger, outcome)
+            self._derivatives(prepared, ledger, outcome)
+        return outcome
+
+    def ingest_intake(
+        self, data: bytes, *, filename: str, batch_id: uuid.UUID | None = None
+    ) -> IngestOutcome:
+        """Run the intake stage alone, from bytes already in hand. The request thread's half.
+
+        **Why this exists as its own entry point**, because the alternative looks cheaper and
+        is not. An upload has to put the bytes somewhere before the pipeline hashes them, and
+        anywhere outside the content-addressed store is outside every tombstone guard and
+        outside the purger: a deletion arriving while a file sits in a spool directory or in a
+        queue payload cascades to rows and to store objects and reaches neither. Invariant 8
+        says deletion cascades, so the staging window has to collapse rather than be swept.
+
+        It collapses to one request because intake is cheap: a hash, an EXIF read, an
+        orientation transform and a handful of rows, tens of milliseconds on an ordinary
+        photograph. What is expensive is the vision stage, which is a model call, and that is
+        what :meth:`ingest_derivatives` does from a capture id afterwards.
+
+        **The store write still happens after the transaction that ran the tombstone guard
+        commits**, because this goes through the same ``committed_writes`` every other caller
+        does. Writing to the store on arrival, which is the obvious way to put uploaded bytes
+        somewhere guarded, would undo exactly that: the rows of a refused import roll back and
+        the purged bytes stay on disk. ``tests/test_ingest_persistence.py`` is what holds it.
+
+        ``filename`` is what the client called the file, and it is carried for the report and
+        for nothing else. It never reaches an evidence address, which is a content hash, a
+        track key and a time interval, and never a name a client chose.
+        """
+        outcome = IngestOutcome(path=Path(filename))
+        with self._recorded_run(outcome, batch_id=batch_id) as ledger:
+            self._intake(data, ledger, outcome)
+        return outcome
+
+    def ingest_derivatives(
+        self, capture_id: uuid.UUID, *, batch_id: uuid.UUID | None = None
+    ) -> IngestOutcome:
+        """Run rendition, vision and depth for a capture whose intake has already committed.
+
+        The worker's half, and the reason the queue can hold an identifier rather than bytes.
+        The bytes are read back out of the content-addressed store, which is the one place a
+        deletion reaches, so nothing is staged anywhere in between.
+
+        A capture the user deleted between the two halves is refused here and the run is
+        **cancelled rather than failed**, because nothing went wrong. Migration 0011 refuses the
+        derivative rows independently, so a tombstone landing after this check still stops the
+        artifact and, through ``committed_writes``, the bytes with it. This check is the one
+        that makes the ordinary case ordinary: it costs one indexed read and it means the worker
+        does not decode a photograph it is not allowed to keep.
+        """
+        outcome = IngestOutcome(path=Path(str(capture_id)))
+        outcome.capture_id = capture_id
+        with self._recorded_run(outcome, batch_id=batch_id) as ledger:
+            capture = self._repository.capture(capture_id)
+            if capture is None:
+                raise LookupError(f"this workspace has no capture {capture_id}")
+            if capture.deleted_at is not None:
+                # Cancelled, not failed, and the type is what makes that true: `_recorded_run`
+                # branches on it. A deletion recorded as a failure is a run something retries,
+                # against content the user asked to have removed.
+                raise TombstonedError(
+                    f"capture {capture_id} was deleted before its derivative stages ran"
+                )
+            blob_id = capture.blob_id
+            outcome.blob_id = blob_id
+            self._repository.refuse_ingest_if_tombstoned(EvidenceAddress.photograph(blob_id))
+            ledger.attach_capture(capture_id)
+
+            intake = self._repository.find_artifact(intake_stage.key_for(blob_id))
+            if intake is None or intake.content_sha256 is None:
+                raise LookupError(
+                    f"capture {capture_id} has no committed intake artifact, so there is nothing "
+                    "to derive from. Ingest the photograph rather than resuming it."
+                )
+            upright, facts = _decode(self._store.get(blob_id))
+            self._derivatives(
+                _Prepared(
+                    blob_id=blob_id,
+                    capture_id=capture_id,
+                    image_span_id=self._repository.upsert_span(
+                        EvidenceAddress.photograph(blob_id)
+                    ),
+                    intake=StageResult(
+                        artifact_id=intake.artifact_id,
+                        content_sha256=intake.content_sha256,
+                        idempotency_key=intake.idempotency_key,
+                        reused=True,
+                    ),
+                    upright=upright,
+                    facts=facts,
+                ),
+                ledger,
+                outcome,
+            )
+        return outcome
+
+    @contextmanager
+    def _recorded_run(
+        self, outcome: IngestOutcome, *, batch_id: uuid.UUID | None
+    ) -> Iterator[Ledger]:
+        """Open a run, and close it with what happened rather than with what was attempted.
+
+        The three outcomes are not interchangeable. ``cancelled`` is a tombstone: the user
+        deleted something and the pipeline stopped, which is the system working. ``failed`` is
+        anything else. ``succeeded`` is neither. A run recorded as failed when it was cancelled
+        would put a deletion in the same bucket as a corrupt file, and the retry policy for
+        those two is opposite: a tombstoned address is terminal and is never retried.
+        """
         ledger = Ledger.start_run(
             self._repository,
             trigger="ingest",
@@ -288,22 +417,18 @@ class PhotoIngestPipeline:
         )
         outcome.run_id = ledger.run_id
         try:
-            self._run(source, ledger, outcome)
+            yield ledger
         except TombstonedError as exc:
-            # Terminal by design. A tombstoned address is not retried, and the run is cancelled
-            # rather than failed, because nothing went wrong: the user deleted something.
             outcome.error = f"tombstoned: {exc}"
+            outcome.tombstoned = True
             ledger.finish("cancelled")
-            return outcome
         except Exception as exc:
             outcome.error = f"{type(exc).__name__}: {exc}"
             ledger.finish("failed")
-            return outcome
-        ledger.finish("succeeded")
-        return outcome
+        else:
+            ledger.finish("succeeded")
 
-    def _run(self, source: Path, ledger: Ledger, outcome: IngestOutcome) -> None:
-        data = source.read_bytes()
+    def _intake(self, data: bytes, ledger: Ledger, outcome: IngestOutcome) -> _Prepared:
         blob_id = BlobId.of_bytes(data)
         outcome.blob_id = blob_id
         # First, before the decode, before the object store, before a single row: is this
@@ -312,29 +437,37 @@ class PhotoIngestPipeline:
         # before the check would survive the cancellation and purged content would be back on
         # disk. Nothing below this line writes anything the check has not already permitted.
         self._repository.refuse_ingest_if_tombstoned(EvidenceAddress.photograph(blob_id))
-        try:
-            with Image.open(io.BytesIO(data)) as opened:
-                opened.load()
-                upright, facts = extract_exif_facts(opened)
-        except (UnidentifiedImageError, OSError) as exc:
-            raise ValueError(f"not a readable image: {exc}") from exc
+        upright, facts = _decode(data)
 
         intake, capture_id, image_span_id = intake_stage.run(
             self, blob_id, data, upright.size, facts, ledger, outcome
         )
         ledger.attach_capture(capture_id)
         outcome.capture_id = capture_id
+        return _Prepared(
+            blob_id=blob_id,
+            capture_id=capture_id,
+            image_span_id=image_span_id,
+            intake=intake,
+            upright=upright,
+            facts=facts,
+        )
 
-        rendition = rendition_stage.run(self, blob_id, upright, intake, ledger, outcome)
+    def _derivatives(
+        self, prepared: _Prepared, ledger: Ledger, outcome: IngestOutcome
+    ) -> None:
+        rendition = rendition_stage.run(
+            self, prepared.blob_id, prepared.upright, prepared.intake, ledger, outcome
+        )
         vision_stage.run(
             self,
             self._vision,
             self._binding_for(STAGES["vision"]),
-            blob_id,
+            prepared.blob_id,
             rendition,
-            capture_id,
-            image_span_id,
-            facts,
+            prepared.capture_id,
+            prepared.image_span_id,
+            prepared.facts,
             ledger,
             outcome,
         )
@@ -345,14 +478,22 @@ class PhotoIngestPipeline:
             self,
             self._depth,
             self._binding_for(STAGES["depth"]),
-            blob_id,
-            upright,
-            capture_id,
-            image_span_id,
-            intake,
+            prepared.blob_id,
+            prepared.upright,
+            prepared.capture_id,
+            prepared.image_span_id,
+            prepared.intake,
             ledger,
             outcome,
         )
+
+
+def _decode(data: bytes) -> tuple[Image.Image, ExifFacts]:
+    """The pipeline's own refusal wording over :func:`orimera.ingest.decode.open_upright`."""
+    try:
+        return open_upright(data)
+    except UNREADABLE as exc:
+        raise ValueError(f"not a readable image: {exc}") from exc
 
 
 def _iter_images(directory: Path, *, recursive: bool) -> Iterator[Path]:

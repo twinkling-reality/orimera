@@ -36,6 +36,10 @@ dependencies = [
   "pillow>=12.3.0",
   "psycopg[binary]>=3.2",
   "pydantic>=2.9",
+  # `POST /intake` is multipart, and Starlette parses multipart only when this is installed. It
+  # is a hard dependency rather than an extra because the route is part of the surface: an
+  # instance that could not accept an upload would serve a documented endpoint that raises.
+  "python-multipart>=0.0.20",
 ]
 
 # Reconstruction, and why it is optional rather than a dependency.

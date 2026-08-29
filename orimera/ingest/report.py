@@ -35,6 +35,12 @@ class IngestOutcome:
     input_tokens: int = 0
     output_tokens: int = 0
     error: str | None = None
+    #: True when the run stopped because the user had deleted these bytes. A separate fact from
+    #: ``error``, which it also sets: "the user deleted this" and "this broke" are different
+    #: things and only one of them is worth retrying. The ledger has recorded the distinction
+    #: since 0001, as ``cancelled`` against ``failed``, and this is the same distinction on the
+    #: way back out so a caller does not have to read the message to recover it.
+    tombstoned: bool = False
 
     @property
     def unchanged(self) -> bool:

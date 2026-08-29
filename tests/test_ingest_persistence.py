@@ -556,32 +556,49 @@ def test_an_explicit_hash_blocklist_refuses_the_write_and_cancels_the_run(ingest
 _STORE_WRITE_METHODS = frozenset({"put_bytes", "put_stream", "put_file"})
 
 
-def _ingest_package_modules() -> list[pathlib.Path]:
-    """Every Python file in the ingest package, RECURSIVELY.
+def _swept_packages() -> list[pathlib.Path]:
+    """The packages a store write could plausibly be written into.
 
-    Recursively, and that word is the whole of this function. The sweep below used to glob one
+    ``orimera.ingest`` because that is where the pipeline lives, and ``orimera.api`` because
+    ``POST /intake`` handles uploaded bytes in a request thread. The route is the one place in
+    the codebase where somebody holds a photograph and a store at the same moment, and the
+    obvious thing to do with them, write the bytes to the store on arrival so they are inside a
+    tombstone guard, is precisely the regression of defect 4. A sweep that stopped at the ingest
+    package would have called that clean.
+    """
+    ingest = pathlib.Path(pipeline_module.__file__).parent
+    return [ingest, ingest.parent / "api"]
+
+
+def _ingest_package_modules() -> list[pathlib.Path]:
+    """Every Python file in the swept packages, RECURSIVELY.
+
+    Recursively, and that word is half of this function. The sweep below used to glob one
     level, which was correct while every stage lived in ``pipeline.py`` and stopped being
     correct the moment the stages moved into ``stages/``. Measured, with an unguarded
     ``put_bytes`` planted in a subpackage of ``orimera/ingest/``: the one-level version reported
     the package clean and passed. That is a coverage check over a set that no longer holds the
     thing being checked, which is the failure mode the route sweep already had once.
 
+    The other half is :func:`_swept_packages`, which is the same lesson pointing at package
+    boundaries rather than at directory depth.
+
     ``test_the_store_write_sweep_can_see_every_stage`` consumes this same walk and asserts it
-    reaches the stage modules by name, so the sweep cannot go quiet again by code moving away
-    from it.
+    reaches the stage modules and the upload route by name, so the sweep cannot go quiet again
+    by code moving away from it.
     """
-    package = pathlib.Path(pipeline_module.__file__).parent
-    return sorted(package.rglob("*.py"))
+    return sorted(
+        path for package in _swept_packages() for path in package.rglob("*.py")
+    )
 
 
 def _store_write_call_sites() -> list[str]:
-    """Every call to a store write method in the ingest package, as ``path:function``.
+    """Every call to a store write method in the swept packages, as ``path:function``.
 
     Attributed to the INNERMOST enclosing function, so a write hidden in a closure names the
     closure. A call at module scope is reported as such rather than dropped: import-time is a
     time too, and a write that happens before any guard has run is the worst version of this.
     """
-    package = pathlib.Path(pipeline_module.__file__).parent
     sites: list[str] = []
     for path in _ingest_package_modules():
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -597,11 +614,19 @@ def _store_write_call_sites() -> list[str]:
                 and node.func.attr in _STORE_WRITE_METHODS
             ):
                 where = enclosing.get(node, "<module scope>")
-                sites.append(f"{path.relative_to(package).as_posix()}:{where}")
+                sites.append(f"{_label(path):s}:{where}")
     return sorted(sites)
 
 
-def test_the_ingest_package_writes_to_the_object_store_in_exactly_one_place():
+def _label(path: pathlib.Path) -> str:
+    """A path relative to whichever swept package holds it, so a site names itself."""
+    for package in _swept_packages():
+        if path.is_relative_to(package):
+            return f"{package.name}/{path.relative_to(package).as_posix()}"
+    raise AssertionError(f"{path} is in no swept package")
+
+
+def test_the_swept_packages_write_to_the_object_store_in_exactly_one_place():
     """The ordering guarantee is structural, so it is checked structurally.
 
     Every payload reaches the store through ``committed_writes``, which flushes only after the
@@ -612,8 +637,8 @@ def test_the_ingest_package_writes_to_the_object_store_in_exactly_one_place():
     identifiers out of Python source, and for the same reason, which is that a rule enforced by
     review is a rule that survives until the reviewer is busy.
     """
-    assert _store_write_call_sites() == ["pipeline.py:committed_writes"], (
-        "the ingest package writes to the object store outside the post-commit flush: "
+    assert _store_write_call_sites() == ["ingest/pipeline.py:committed_writes"], (
+        "a swept package writes to the object store outside the post-commit flush: "
         f"{_store_write_call_sites()}. A write that happens before the tombstone guard cannot "
         "be rolled back by the transaction that refuses it."
     )
@@ -631,16 +656,19 @@ def test_the_store_write_sweep_can_see_every_stage():
     asserting that some files exist rather than that the guard reads them, and a coverage check
     over a set nobody verified is the thing this is here to prevent.
     """
-    package = pathlib.Path(pipeline_module.__file__).parent
-    walked = {path.relative_to(package).as_posix() for path in _ingest_package_modules()}
+    walked = {_label(path) for path in _ingest_package_modules()}
     required = {
-        "pipeline.py",
-        "stages/__init__.py",
-        "stages/writes.py",
-        "stages/intake.py",
-        "stages/rendition.py",
-        "stages/vision.py",
-        "stages/depth.py",
+        "ingest/pipeline.py",
+        "ingest/worker.py",
+        "ingest/derivative_queue.py",
+        "ingest/stages/__init__.py",
+        "ingest/stages/writes.py",
+        "ingest/stages/intake.py",
+        "ingest/stages/rendition.py",
+        "ingest/stages/vision.py",
+        "ingest/stages/depth.py",
+        # The route that holds uploaded bytes and a store in the same function.
+        "api/routes/intake.py",
     }
     assert required <= walked, (
         "the store write sweep no longer reads every stage: "

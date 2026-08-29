@@ -187,6 +187,24 @@ class IngestRepository:
         ).fetchone()
         return self._capture_row(row) if row else None
 
+    def capture(self, capture_id: uuid.UUID) -> CaptureRow | None:
+        """One capture by id, deleted or not, or None when this workspace has no such row.
+
+        **Deliberately not filtered on ``deleted_at``**, unlike :meth:`live_capture_for_blob`.
+        The caller here is a worker resuming from a queued id, and "this capture does not exist"
+        and "the user deleted this capture" are two different facts that lead to two different
+        run outcomes: one is a fault worth reporting and the other is the deletion path working.
+        Filtering here would collapse them into a lookup miss, and the run would be recorded as
+        failed and retried against content somebody asked to have removed. ``deleted_at`` is on
+        the row this returns, so the decision is made where the outcomes differ.
+        """
+        row = self._db.execute(
+            "select capture_id, blob_sha256, device_id, started_at, deleted_at from capture "
+            "where workspace_id = %s and capture_id = %s",
+            (self.workspace_id, capture_id),
+        ).fetchone()
+        return self._capture_row(row) if row else None
+
     @staticmethod
     def _capture_row(row: Mapping[str, Any]) -> CaptureRow:
         return CaptureRow(

@@ -936,6 +936,7 @@ dependencies = [
     { name = "pillow" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
+    { name = "python-multipart" },
 ]
 
 [package.optional-dependencies]
@@ -972,6 +973,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.9" },
+    { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "scipy", marker = "extra == 'reconstruction'", specifier = ">=1.11" },
     { name = "torch", marker = "extra == 'reconstruction'", specifier = ">=2.5" },
     { name = "utils3d-moge", marker = "extra == 'reconstruction'", git = "https://github.com/EasternJournalist/utils3d-moge.git?rev=62f09d58509485564e24d5d9f6aac9ee9ebc0c37" },

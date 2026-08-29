@@ -19,7 +19,18 @@ from orimera.ingest.report import IngestOutcome
 from orimera.ingest.stages import idempotency_key, input_digest_of, stage
 from orimera.ingest.stages.writes import StageResult, StageWrites
 
-__all__ = ["run"]
+__all__ = ["key_for", "run"]
+
+
+def key_for(blob_id: BlobId) -> str:
+    """This stage's idempotency key for these bytes, computed in exactly one place.
+
+    The pipeline recovers a committed intake artifact by this key when the derivative stages run
+    in a different process from the one that admitted the photograph. Two copies of the
+    expression would be two things that can drift, and the symptom of drift is a worker that
+    reports a photograph as never intaken while its artifact row sits in the table.
+    """
+    return idempotency_key(blob_id, stage("intake"), input_digest_of([]))
 
 
 def run(
@@ -34,7 +45,7 @@ def run(
     """Returns the intake artifact, the capture it registered, and the whole-image span id."""
     spec = stage("intake")
     input_digest = input_digest_of([])
-    key = idempotency_key(blob_id, spec, input_digest)
+    key = key_for(blob_id)
     probe_bytes = canonical_json(facts.as_probe_json())
     repository = writes.repository
 

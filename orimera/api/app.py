@@ -19,6 +19,17 @@ one. Three of the mappings are decisions rather than conventions:
 **The startup check.** The application verifies at boot that the schema it is about to query is
 the schema its migration files describe, and refuses to start otherwise. An edited migration is a
 silent schema fork, and the failure it produces later is a wrong answer rather than an error.
+
+**The derivative worker.** ``POST /intake`` runs the intake stage in the request thread and
+queues the model stages by capture id, so an instance serving that route needs something draining
+the queue. It runs on a daemon thread here, started with the application and stopped with it,
+because a demonstration instance is one process. Whether it runs at all is configuration: an
+instance can serve the API with the queue drained somewhere else, and that instance says so
+through ``/readyz`` rather than looking identical to one whose worker is wedged.
+
+**The body limit.** :mod:`orimera.api.body_limit` refuses an over-large declared body before any
+route sees it, which is the only place it can be refused before a multipart parser has already
+written it to disk.
 """
 
 from __future__ import annotations
@@ -31,7 +42,16 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from orimera.api.authorisation import TokenNotAccepted
-from orimera.api.routes import evidence, formation, graph, health, identity, selection
+from orimera.api.body_limit import BodyLimit
+from orimera.api.routes import (
+    evidence,
+    formation,
+    graph,
+    health,
+    identity,
+    intake,
+    selection,
+)
 from orimera.api.services import Services, build_services
 from orimera.db.migrate import verify_schema
 from orimera.errors import (
@@ -68,9 +88,24 @@ def _problem(status: int, code: str, detail: str) -> JSONResponse:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Refuse to serve a schema this code does not recognise."""
-    verify_schema(app.state.services.database)
-    yield
+    """Refuse to serve a schema this code does not recognise, then start what drains the queue.
+
+    In that order, and the order is the point. A worker started against a schema this code does
+    not recognise would begin writing before the check that exists to stop it, and what that
+    produces is a wrong artifact rather than a refusal to boot.
+    """
+    services: Services = app.state.services
+    if app.state.verify_schema_at_boot:
+        verify_schema(services.database)
+    worker = services.build_derivative_worker()
+    app.state.derivative_worker = worker
+    if worker is not None:
+        worker.start()
+    try:
+        yield
+    finally:
+        if worker is not None:
+            worker.stop()
 
 
 def create_app(services: Services | None = None, *, verify: bool = True) -> FastAPI:
@@ -78,15 +113,20 @@ def create_app(services: Services | None = None, *, verify: bool = True) -> Fast
 
     ``verify=False`` skips the boot-time schema check, and exists for the tests that build an app
     against a throwaway schema the migration runner has not recorded. Nothing in a deployment
-    should pass it.
+    should pass it. It skips **only** that check: the lifespan still runs, because it also owns
+    the derivative worker and those are two decisions rather than one. Whether the worker runs is
+    a property of the services, and it is off for a hand-constructed one.
     """
     app = FastAPI(
         title="Orimera",
         summary="A personal world memory model. Every historical claim resolves to its source.",
         version="0.1.0",
-        lifespan=_lifespan if verify else None,
+        lifespan=_lifespan,
     )
     app.state.services = services or build_services()
+    app.state.verify_schema_at_boot = verify
+    # Pure ASGI and outermost, so it runs before routing and before any body is read.
+    app.add_middleware(BodyLimit)
 
     app.include_router(health.router)
     app.include_router(graph.router)
@@ -94,6 +134,7 @@ def create_app(services: Services | None = None, *, verify: bool = True) -> Fast
     app.include_router(identity.router)
     app.include_router(evidence.router)
     app.include_router(formation.router)
+    app.include_router(intake.router)
 
     @app.exception_handler(TokenNotAccepted)
     async def _unauthenticated(_request: Request, exc: TokenNotAccepted) -> JSONResponse:

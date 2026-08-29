@@ -62,6 +62,10 @@ ROUTE_PROBES: dict[tuple[str, str], dict] = {
     # as the owner is `test_formation_stream.py`, which has a batch to read.
     ("GET", "/formation"): {},
     ("GET", "/formation/{batch_id}"): {},
+    # Multipart, because that is what the route takes, and a part the route refuses on its
+    # name, because the sweep asks only who may reach the endpoint. What it does with a
+    # photograph is `test_intake_upload.py`, which has a store and a schema to check against.
+    ("POST", "/intake"): {"files": {"files": ("probe.txt", b"probe", "text/plain")}},
     ("POST", "/identity/rename"): {
         "json": {"entity_id": str(uuid.uuid4()), "display_name": "X"}
     },

@@ -72,6 +72,17 @@ class TokenDirectory:
     def __len__(self) -> int:
         return len(self.sessions)
 
+    @property
+    def workspaces(self) -> frozenset[uuid.UUID]:
+        """Every workspace some configured token can reach.
+
+        This is what a background worker is given, and giving it a value rather than a
+        dependency is what keeps the layering true: ``orimera.ingest`` sits under
+        ``orimera.api``, so a worker that imported this module to ask the question would invert
+        the contract and ``uv run lint-imports`` would say so.
+        """
+        return frozenset(session.workspace_id for session in self.sessions.values())
+
     def session_for(self, presented: str | None) -> Session:
         """Resolve a bearer token, in constant time, or refuse.
 
