@@ -452,28 +452,33 @@ class IngestRepository:
         superseded, so old citations, old anchor resolutions and old Assembly Replays stay
         intact.
         """
-        cursor = self._db.execute(
-            "insert into artifact (artifact_id, workspace_id, kind, source_blob_sha256, "
-            "stage_key, stage_version, params_digest, input_digest, idempotency_key, "
-            "content_sha256, storage_key, byte_size, produced_by_event) "
-            "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
-            "on conflict (workspace_id, idempotency_key) do nothing",
-            (
-                artifact_id,
-                self.workspace_id,
-                kind,
-                source_blob.digest,
-                stage_key,
-                stage_version,
-                params_digest,
-                input_digest,
-                idempotency_key,
-                content_sha256,
-                storage_key,
-                byte_size,
-                produced_by_event,
-            ),
-        )
+        # TERMINAL, like every other write the tombstone guards cover. Migration 0011 refuses a
+        # derivative of tombstoned bytes, and without this translation the refusal surfaces as an
+        # ordinary integrity error: the run is recorded as FAILED, and a failed run is one a
+        # worker retries, which is an unbounded loop against a photograph the user deleted.
+        with terminal_if_tombstoned():
+            cursor = self._db.execute(
+                "insert into artifact (artifact_id, workspace_id, kind, source_blob_sha256, "
+                "stage_key, stage_version, params_digest, input_digest, idempotency_key, "
+                "content_sha256, storage_key, byte_size, produced_by_event) "
+                "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "on conflict (workspace_id, idempotency_key) do nothing",
+                (
+                    artifact_id,
+                    self.workspace_id,
+                    kind,
+                    source_blob.digest,
+                    stage_key,
+                    stage_version,
+                    params_digest,
+                    input_digest,
+                    idempotency_key,
+                    content_sha256,
+                    storage_key,
+                    byte_size,
+                    produced_by_event,
+                ),
+            )
         return cursor.rowcount > 0
 
     def mark_artifact_needs_repair(self, artifact_id: uuid.UUID) -> None:

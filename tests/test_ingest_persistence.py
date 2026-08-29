@@ -661,7 +661,9 @@ def _commit_a_workspace_tombstone_from_another_connection(ingest_spine) -> None:
     other.insert_tombstone(scope="workspace", requested_by=uuid.uuid4(), reason="mid-run")
 
 
-def _race_a_tombstone(ingest_spine, tmp_path, photo_dir, monkeypatch, *, intercept: str):
+def _race_a_tombstone(
+    ingest_spine, tmp_path, photo_dir, monkeypatch, *, intercept: str, on_call: int = 1
+):
     """Run one ingest with a real tombstone committed just before ``intercept`` writes.
 
     Nothing here simulates the guard. The interception commits a real tombstone on a real second
@@ -677,9 +679,15 @@ def _race_a_tombstone(ingest_spine, tmp_path, photo_dir, monkeypatch, *, interce
 
     real = getattr(repository, intercept)
     fired = []
+    calls = []
 
     def interception(*args, **kwargs):
-        if not fired:
+        calls.append(True)
+        # ``on_call`` exists because a method the pipeline uses in several stages cannot be
+        # raced at a chosen stage by intercepting its first call. `find_artifact` is called by
+        # intake's own artifact write before intake has committed, so racing there tests the
+        # intake guard again rather than the stage after it.
+        if len(calls) == on_call and not fired:
             fired.append(True)
             _commit_a_workspace_tombstone_from_another_connection(ingest_spine)
         return real(*args, **kwargs)
@@ -727,7 +735,9 @@ def test_a_tombstone_racing_the_vision_stage_cancels_the_run_and_writes_no_occur
 
     The capture row surviving is honest rather than ideal. A workspace tombstone means delete
     everything, and sweeping what was already committed is the job of the purge worker, which
-    does not exist yet: ``purge_job`` is a table with no implementation.
+    does not exist yet: ``purge_job`` is a table with no implementation. What DOES hold since
+    migration 0011 is that nothing new is derived from tombstoned bytes; see
+    ``test_no_derivative_is_written_for_tombstoned_bytes``.
     """
     repository, _store = _race_a_tombstone(
         ingest_spine, tmp_path, photo_dir, monkeypatch, intercept="insert_occurrence"
@@ -835,3 +845,73 @@ def test_a_deterministic_stage_that_changes_its_bytes_emits_an_event_and_keeps_t
     # now, not the integer SQLite stored one in.
     assert kept[0]["needs_repair"] is True
     assert first.run_id != second.run_id
+
+
+def test_no_derivative_is_written_for_tombstoned_bytes(
+    tmp_path, photo_dir, ingest_spine, monkeypatch
+):
+    """R7, closed at the point where it leaked.
+
+    The recorded defect: "Racing a deletion into the window between intake commit and the
+    rendition stage leaves three objects committed, including a fresh 768px render of the
+    tombstoned photograph." Nine tables carried a tombstone guard and ``artifact`` was not one of
+    them, so the next stage wrote a derivative of a photograph the user had just deleted.
+
+    Measured before migration 0011: the rendition row and its bytes were committed. After it, the
+    artifact insert is refused inside the writing transaction, and because
+    ``committed_writes`` flushes bytes only after that transaction commits, refusing the row
+    refuses the bytes with it.
+
+    What this does NOT close is the derivative written BEFORE the tombstone arrived. That is the
+    purge queue, and it is still unimplemented.
+    """
+    # The THIRD call, which is the rendition stage's own look-up: intake's artifact write calls
+    # it twice before the intake transaction commits, and racing either of those tests the span
+    # guard rather than this one.
+    repository, _store = _race_a_tombstone(
+        ingest_spine, tmp_path, photo_dir, monkeypatch, intercept="find_artifact", on_call=3
+    )
+    renditions = repository.connection.execute(
+        "select count(*) as n from artifact where stage_key = 'rendition'"
+    ).fetchone()["n"]
+    assert renditions == 0, "a rendition of tombstoned bytes was written"
+
+
+def test_the_artifact_guard_refuses_directly_and_not_only_through_the_pipeline(ingest_spine):
+    """The guard is a database rule, so it is probed as one.
+
+    A pipeline that stopped calling ``persist_artifact`` would not make this rule stop holding,
+    and a test that only drove the pipeline could not tell the difference between the rule and
+    the caller's care.
+    """
+    import uuid as _uuid
+
+    from orimera.evidence.blob import BlobId
+
+    repository, _open_another = ingest_spine
+    data = b"bytes that are about to be deleted"
+    blob = BlobId.of_bytes(data)
+    repository.upsert_blob(blob, byte_size=len(data), media_type="image/jpeg", storage_key="k")
+    capture = repository.insert_capture(blob, device_id="probe", started_at=None)
+    repository.insert_tombstone(
+        scope="capture", capture_id=capture.capture_id, requested_by=_uuid.uuid4()
+    )
+    repository.connection.execute(
+        "update capture set deleted_at = now() where capture_id = %s", (capture.capture_id,)
+    )
+
+    with pytest.raises(TombstonedError):
+        repository.insert_artifact(
+            artifact_id=_uuid.uuid4(),
+            kind="rendition",
+            source_blob=blob,
+            stage_key="rendition",
+            stage_version=1,
+            params_digest=bytes(32),
+            input_digest=bytes(32),
+            idempotency_key="probe",
+            content_sha256=bytes(32),
+            storage_key="k2",
+            byte_size=1,
+            produced_by_event=None,
+        )
