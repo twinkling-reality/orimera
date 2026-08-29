@@ -65,7 +65,7 @@ def test_a_call_site_cannot_name_a_model(client):
 
 
 def test_fallback_is_selected_on_404(client, manifest, transport):
-    """The deprecation path, exercised here rather than first executed in front of a judge."""
+    """The deprecation path, exercised here rather than first executed in production."""
     binding = manifest[Role.REASONING_CHEAP]
     transport.by_model = {
         binding.primary.model_id: model_not_found(binding.primary.model_id),

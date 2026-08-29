@@ -15,8 +15,9 @@ import httpx
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = ROOT / ".orimera" / "experiments" / "web-lookup"
 
-# A public landmark that appears in the demo corpus. Nothing private is sent.
-PUBLIC_ENTITY_QUERY = "Seljalandsfoss waterfall Iceland visitor access and conditions"
+# A well-known public landmark, standing in for the class of public entity a
+# corpus photograph can contain. Nothing private is sent.
+PUBLIC_ENTITY_QUERY = "Eiffel Tower Paris visitor access and conditions"
 
 
 def main():

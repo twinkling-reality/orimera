@@ -77,8 +77,8 @@ class Library:
     ================  =======  ==========  =================================================
     together.jpg      A and B  Gullfoss    the only capture where the two share a photograph
     alone_a.jpg       A        Gullfoss    A without B, same place
-    alone_b.jpg       B        Reykjavik   B without A, a different place and a later day
-    empty.jpg         none     Reykjavik   nobody, so ANY over {A, B} must exclude it
+    alone_b.jpg       B        Lisbon   B without A, a different place and a later day
+    empty.jpg         none     Lisbon   nobody, so ANY over {A, B} must exclude it
     ================  =======  ==========  =================================================
 
     That table is the gold set for every case below, and it is small enough to check by eye,
@@ -119,8 +119,8 @@ def library(tmp_path, photo_dir, repository):
     plates = [
         ("together", 2, "Gullfoss", "2026:03:04 10:00:00", "Two people beside a waterfall."),
         ("alone_a", 1, "Gullfoss", "2026:03:04 11:00:00", "One person beside a waterfall."),
-        ("alone_b", 1, "Reykjavik", "2026:05:20 09:00:00", "One person on a city street."),
-        ("empty", 0, "Reykjavik", "2026:05:20 09:30:00", "A harbour with boats and no people."),
+        ("alone_b", 1, "Lisbon", "2026:05:20 09:00:00", "One person on a city street."),
+        ("empty", 0, "Lisbon", "2026:05:20 09:30:00", "A harbour with boats and no people."),
     ]
     for name, people, place, when, caption in plates:
         vision = CountingVisionModel(payload=_payload(people=people, place=place, caption=caption))
@@ -167,7 +167,7 @@ def library(tmp_path, photo_dir, repository):
         label = "Gullfoss" if row["capture_id"] in {
             built.captures["together"],
             built.captures["alone_a"],
-        } else "Reykjavik"
+        } else "Lisbon"
         if label in built.entities:
             confirm_link(
                 built.identity,
@@ -223,10 +223,10 @@ def test_all_returns_the_scope_even_where_they_never_share_a_photograph(library)
 def test_together_over_a_pair_that_never_shares_a_photograph_returns_empty(library):
     """M6 trap (c), "the single highest-value trap in the suite".
 
-    A and the place Reykjavik are both present in the library and never in one photograph.
+    A and the place Lisbon are both present in the library and never in one photograph.
     TOGETHER must return empty while ALL over the same pair returns the region.
     """
-    pair = [library.entities["A"], library.entities["Reykjavik"]]
+    pair = [library.entities["A"], library.entities["Lisbon"]]
     together = _plan(entities=EntitySelector(ids=pair, mode=EntityMode.TOGETHER))
     every = _plan(entities=EntitySelector(ids=pair, mode=EntityMode.ALL))
     assert library.matched(together) == set()
@@ -308,7 +308,7 @@ def test_a_time_window_is_half_open(library):
 
 
 def test_place_narrows_to_the_captures_confirmed_at_it(library):
-    plan = _plan(place=PlaceSelector(ids=[library.entities["Reykjavik"]]))
+    plan = _plan(place=PlaceSelector(ids=[library.entities["Lisbon"]]))
     assert library.matched(plan) == {"alone_b", "empty"}
 
 

@@ -17,9 +17,8 @@ reasoning are in [product-specification.md](product-specification.md) section 2.
 
 **Evaluating the project.** [product-specification.md](product-specification.md) sections 1 to 4 for
 what the product is and what the demonstration shows, then section 11 for the known limitations,
-then [runtime-verification.md](runtime-verification.md) for what the platform actually did when it
-was called, and [hackathon-compliance.md](hackathon-compliance.md) for the submission requirements
-and how they are met.
+and then [runtime-verification.md](runtime-verification.md) for what the platform actually did when
+it was called.
 
 **Running or extending it.** [architecture-overview.md](architecture-overview.md) sections 1 to 3 for
 system shape, the platform split and the deployment topology; then
@@ -55,9 +54,9 @@ questions in both.
 | **Evaluation** | | |
 | [evaluation-methodology.md](evaluation-methodology.md) | Gold corpus adapted to a photograph corpus, metrics with their measurement procedures, the honesty constraint, learning evaluation, adversarial suite | DECISION and ASSUMPTION, labelled |
 | **Project** | | |
-| [hackathon-compliance.md](hackathon-compliance.md) | Timeline, eligibility, the hard platform requirement, deliverables, judging criteria, credits, submission checklist and re-verification schedule | VERIFIED 2026-08-27 |
-| [demo-runbook.md](demo-runbook.md) | What can be demonstrated today, the three minute sequence beat by beat, what is pre-seeded versus computed live, the hosted demonstration and its reset, the failure modes with a fallback for each, and the pre-recording checklist | Mixed, buildability audited 2026-08-28 |
-| [sponsor-feedback.md](sponsor-feedback.md) | Feedback on Token Factory, AI Cloud, the NVIDIA models and Tavily, each finding carrying the response or the primary source that evidences it, ending with a prioritised list | Mixed, runtime observations 2026-08-27 |
+| [demo-runbook.md](demo-runbook.md) | What can be demonstrated today and what cannot, audited against the build rather than against the plan, with the remaining gaps named | Mixed, buildability audited 2026-08-28 |
+| [demo-integrity.md](demo-integrity.md) | What is pre-seeded versus computed live and the prohibitions that follow, the hosted topology and its per-visitor reset, unattended operation, the failure modes with a fallback for each, and the pre-demonstration checklist | Mixed, DECISION with OPEN items inline |
+| [platform-findings.md](platform-findings.md) | Findings on Token Factory, AI Cloud, the NVIDIA models and Tavily, each carrying the execution or the primary source that evidences it, ending with a prioritised list | Mixed. Sections 1 to 3 executed 2026-08-27, section 4 documentation-verified 2026-08-28 |
 
 ### Decision records
 
@@ -66,7 +65,6 @@ and their consequences, so that a later reader can tell a considered choice from
 
 | Record | Decision | Status |
 | --- | --- | --- |
-| [adr/0001-track-selection.md](adr/0001-track-selection.md) | Track choice, and the award stacking constraint that follows from it | ACCEPTED |
 | [adr/0002-model-routing.md](adr/0002-model-routing.md) | NVIDIA text Nemotron as the reasoning core, with a non-NVIDIA vision sensor | ACCEPTED |
 | [adr/0003-renderer-selection.md](adr/0003-renderer-selection.md) | Renderer bake-off, resolved on matched-resolution measurement. PlayCanvas wins on 1% low frame pacing and covers both reconstruction rungs natively | ACCEPTED: PlayCanvas |
 | [adr/0004-exif-orientation-normalisation.md](adr/0004-exif-orientation-normalisation.md) | Normalise EXIF orientation once at ingest so every downstream stage works from upright pixels, and record that the transform happened | ACCEPTED |
@@ -83,8 +81,8 @@ on conflict.
 The evidence spine is implemented rather than only specified: migration
 `orimera/migrations/0001_spine.sql` and the `orimera/evidence/` modules, with tests. Building it
 found errors in the committed design, and those are corrected in place and marked **CORRECTED**
-rather than left for the next reader to trip over. The suite is 415 tests, 85 of which require a
-live PostgreSQL instance and skip without one. Those 85 now run against the documented target,
+rather than left for the next reader to trip over. The suite is 588 tests, 227 of which require a
+live PostgreSQL instance and skip without one. All 588 pass against the documented target,
 PostgreSQL 18 with pgvector, with nothing substituted for either, so the SQL-level guarantees are
 executed rather than described. The SQLite mirror the ingest path used to write is deleted:
 there is one schema.

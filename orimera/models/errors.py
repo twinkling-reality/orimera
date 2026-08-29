@@ -44,8 +44,8 @@ class ManifestError(ModelError, ValueError):
 class PreflightError(ModelError):
     """A manifest identifier is absent from the live catalog, or no longer fits its role.
 
-    Raised by the preflight so a deprecation is a loud build failure rather than a quiet
-    404 in front of a judge six weeks later.
+    Raised by the preflight so a deprecation is a loud build failure rather than a quiet 404 in
+    production weeks later.
     """
 
 

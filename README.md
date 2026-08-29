@@ -10,7 +10,7 @@ Claims resolve to captured bytes, never to derived geometry. **Reconstruction qu
 never participates in the truth guarantee.** A region rendered from thin coverage tells the truth
 exactly as reliably as a photoreal one, because neither of them is what the answer cites.
 
-Built for the Nebius x NVIDIA Global AI Hackathon, Best Apps and Agents track.
+Originally built for the Nebius x NVIDIA Global AI Hackathon.
 
 ## Project status
 
@@ -18,28 +18,28 @@ Checked on 2026-08-28 by running the commands in [Setup and running](#setup-and-
 
 **Working, and verified by execution.** The evidence spine, the content-addressed store, the
 photograph ingest pipeline and the Nebius Token Factory model client are implemented and covered by
-430 backend tests, all passing. Nineteen of those apply the schema migration to a live PostgreSQL
-server, the only executable proof that a model cannot write a person's name into canonical state.
-Ingest runs end to end over a directory of photographs and is idempotent: a second pass recomputes
-nothing and issues no model calls. The browser packages pass `pnpm check`: a typecheck of every
-package, an import-boundary contract over 148 modules, and 225 tests. The renderer was chosen on
-measurement, against the earlier lean (PlayCanvas Engine 2.21.4,
+588 backend tests, all passing. 227 of those apply the schema migration to a live PostgreSQL 18
+server with pgvector, the only executable proof that a model cannot write a person's name into
+canonical state. Ingest runs end to end over a directory of photographs and is idempotent: a second
+pass recomputes nothing and issues no model calls. The HTTP API serves health, graph, selection,
+identity and evidence routes. The browser packages pass `pnpm check`: a typecheck of every package,
+an import-boundary contract, and 289 tests. The renderer was chosen on measurement, against the
+earlier lean (PlayCanvas Engine 2.21.4,
 [docs/adr/0003-renderer-selection.md](docs/adr/0003-renderer-selection.md)). Real calls to NVIDIA
 Nemotron and to Tavily were made and archived on 2026-08-27.
 
-**Specified, not yet running as a product.** The Atlas scene graph, the Companion dialogue runtime
-and the World Index exist as tested libraries, but they run on fixture data: the graph client's
-transport is still a stub, so no browser surface reads real state. Query planning and answer
-composition are specified in
-[docs/adr/0005-unified-selection-model.md](docs/adr/0005-unified-selection-model.md) and not built.
-MoGe is the chosen reconstruction method and is not integrated. There is no HTTP service joining the
-two halves.
+**Built, but not yet assembled into a product.** Query planning and answer composition are
+implemented in `orimera/selection/` and the graph client now reads the API over a real transport
+rather than a stub. What does not exist is the assembled application: the Atlas scene graph, the
+Companion dialogue runtime and the World Index are tested libraries that no shipped surface yet
+joins to the API, so there is still no single command that starts Orimera end to end. MoGe is the
+chosen reconstruction method and is not integrated.
 
 **Deliberately not claimed.** No personal photograph library has been ingested, so nothing about
 reconstruction quality, identity or retrieval has been measured on real material. No accuracy or
 recall figure for cross-capture identity exists, and none will appear until one is measured. Nothing
-is deployed. The migration has run only against PostgreSQL 14, with two declared substitutions for
-the PostgreSQL 18 features it targets, so its SQL-level guarantees are that much short of proven.
+is deployed. No reconstruction has been produced from a real capture, so the ladder's upper rungs
+are specified rather than demonstrated.
 
 The settled product-level limitations are in section 11 of
 [docs/product-specification.md](docs/product-specification.md).
@@ -188,7 +188,7 @@ credits: the model client is exercised through a scripted HTTP transport, and te
 generated rather than committed, so the content of every test image is known exactly.
 
 ```bash
-uv run pytest                       # 330 pass, 85 skip without a database
+uv run pytest                       # 588 tests; 227 skip without a database
 uv run ruff check .                 # lints backend, tests and scripts
 uv run lint-imports                 # the backend layering contract, three rules
 uv run orimera-preflight            # checks every manifest id against the live catalog
@@ -201,7 +201,7 @@ uv run scripts/verify_platform.py      # the runtime verification harness, needs
 
 ### The tests that need a database
 
-**PostgreSQL is the only data layer.** 85 of the 415 backend tests need a real server, and they
+**PostgreSQL is the only data layer.** 227 of the 588 backend tests need a real server, and they
 are the executable proof of everything the database carries: that a model cannot write a name into
 canonical state, that one workspace cannot read another's rows, that a tombstoned address refuses
 the write, and that the whole ingest path works. A default run prints a reminder naming the files
@@ -252,8 +252,8 @@ off and silent is worse than one that is absent:
   every other endpoint works.
 
 `GET /healthz` touches nothing. `GET /readyz` runs one query and one object-store call, reports
-each check separately, and never calls a model: a check every five minutes for the judging window
-is about 13,200 checks, and it must not depend on the prepaid balance.
+each check separately, and never calls a model: a check every five minutes over a 46 day unattended
+window is about 13,200 checks, and it must not depend on the prepaid balance.
 
 ### Web
 
@@ -264,7 +264,7 @@ pnpm check                   # typecheck, then the import-boundary contract, the
 ```
 
 `pnpm check` runs three gates that catch different failure modes: `tsc --build` across every
-package, a dependency-cruiser contract over the forbidden cross-package imports, and 225 vitest
+package, a dependency-cruiser contract over the forbidden cross-package imports, and 289 vitest
 tests. The boundary rules have each been probed with a deliberate violation, so they are known to
 fire rather than assumed to.
 
@@ -278,8 +278,9 @@ Fixtures are gitignored. Regenerate them rather than committing them.
 
 ### What runs today
 
-Every command above runs now. **There is no HTTP server and no assembled Atlas application yet**,
-so there is currently no single command that starts Orimera end to end.
+Every command above runs now. The HTTP API serves, and the backend and browser packages each build
+and test on their own, but **there is no assembled Atlas application yet**, so there is currently no
+single command that starts Orimera end to end.
 [Project status](#project-status) has the rest of the picture.
 
 ## Repository layout
@@ -298,7 +299,7 @@ so there is currently no single command that starts Orimera end to end.
 | `orimera/api/` | The HTTP surface. Routes validate and delegate; the only unauthenticated ones are the health probes |
 | `pyproject.toml` | Also the backend layering contract, enforced by `uv run lint-imports` |
 | `orimera/canonical.py`, `orimera/errors.py` | Canonical JSON and the one rounding rule; the error taxonomy |
-| `tests/` | 415 tests, 85 of which need a PostgreSQL 18 server. No network, no credentials, no committed binary fixtures |
+| `tests/` | 588 tests, 227 of which need a PostgreSQL 18 server. No network, no credentials, no committed binary fixtures |
 | `scripts/` | The standalone runtime verification harnesses, kept byte-identical so their evidence stays reproducible |
 | `web/packages/atlas-core/` | Scene graph, island frames, focus resolution, layout solver. No React, no DOM, no renderer |
 | `web/packages/atlas-react/` | Renderer bindings, anchor overlay, HUD, comfort settings |

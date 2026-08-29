@@ -8,7 +8,7 @@ Everything here exists because of something that was measured, not assumed:
     failure a different model can fix. A 429, a 500 or a timeout is the same model having a bad
     moment, and switching models in response would hide a platform incident behind a quality
     regression that nobody would ever attribute correctly. The fallback path is exercised by
-    ``tests/test_models_client.py`` rather than first executed in front of a judge.
+    ``tests/test_models_client.py`` rather than first executed in production.
 *   **``max_tokens`` has a floor.** The reasoning models spend 150 to 215 tokens thinking before
     writing anything, on every call, and it cannot be disabled. Under the floor, the endpoint
     returns HTTP 200 with ``finish_reason: "length"`` and an empty answer. That looks exactly

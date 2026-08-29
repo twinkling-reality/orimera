@@ -1,7 +1,8 @@
 # Model and service selection
 
 Status: mixed. Every claim below carries exactly one label. Retrieval date for all VERIFIED claims is
-**2026-08-27**.
+**2026-08-27**, except the two deprecation notices cited in section 3, which were re-read on
+**2026-08-28** and carry that date inline.
 
 Label key, matching `docs/README.md`:
 **VERIFIED** (primary source URL plus retrieval date) / **DECISION** (records the rejected
@@ -73,10 +74,10 @@ Source: https://docs.nebius.com/compute/resources/quotas-limits
 
 **DECISION.** The API process and PostgreSQL run on a plain `cpu-d3` Compute VM with a restart policy
 and a Network SSD volume. Rejected alternative: put both on Nebius Serverless AI endpoints, which
-scores marginally better against the track's Serverless Endpoints guidance. Rejected because
-Serverless AI is **VERIFIED** as Preview with "no Service Level provided for the Service" and "does
-not provide automatic retry, recovery, or redundancy mechanisms", endpoint lifetime is documented as
-"hours to days", and the demo must survive unattended from 2026-10-30 to at least 2026-12-15.
+follows the platform's own Serverless Endpoints guidance more closely. Rejected because Serverless
+AI is **VERIFIED** as Preview with "no Service Level provided for the Service" and "does not provide
+automatic retry, recovery, or redundancy mechanisms", endpoint lifetime is documented as "hours to
+days", and the demo must survive unattended for roughly 46 days.
 Serverless AI applies Compute pricing, so the cost is identical either way and the reliability is not.
 Sources: https://docs.nebius.com/legal/specific-terms/serverless-ai ,
 https://docs.nebius.com/serverless/overview , https://docs.nebius.com/serverless/pricing-quotas
@@ -130,7 +131,7 @@ URL. **Neither means the model has been invoked.** Region is informational only 
 | Reasoning fallback, identical price and role | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` | $0.06 / $0.24 | 262K | eu-north1 | nvidia-open-model-license | catalog | `nvidia/Nemotron-3_5-Lightning` |
 | Manual escalation ceiling, not routed to by default | `nvidia/Nemotron-3-Ultra-550b-a55b` | $1.00 / $3.00 | 1024K | us-central1 | openmdw-1.1 | catalog | n/a, not in the default route |
 | Vision sensor over photographs | `openbmb/MiniCPM-V-4_5` | $0.658 / $1.11 | **32K** | eu-north1 | Apache 2.0 | catalog | `MiniMaxAI/MiniMax-M3` |
-| Vision sensor fallback, and Nebius' own recommended replacement for the removed NVIDIA vision models | `MiniMaxAI/MiniMax-M3` | $0.30 / $1.20 | 1049K | us-central1 | "MiniMax-M3", **unverified** | catalog | `openbmb/MiniCPM-V-4_5` |
+| Vision sensor fallback, and Nebius' own recommended replacement for the removed `nvidia/Cosmos3-Super-Reasoner` | `MiniMaxAI/MiniMax-M3` | $0.30 / $1.20 | 1049K | us-central1 | "MiniMax-M3", **unverified** | catalog | `openbmb/MiniCPM-V-4_5` |
 | Structured extraction, only if Nemotron schema conformance fails | `Qwen/Qwen3-235B-A22B-Instruct-2507` | $0.20 / $0.60 | 262K | eu-north1 | Apache 2.0 | catalog | `deepseek-ai/DeepSeek-V4-Flash-0731` |
 | Text embeddings | `Qwen/Qwen3-Embedding-8B` | $0.01 / $0.00 | 41K | eu-north1 | Apache 2.0 | catalog | **none on Token Factory, see 2.4** |
 | Reranking | `Qwen/Qwen3-Embedding-8B` on `POST /v1/rerank` | $0.01 / $0.00 | 41K | eu-north1 | Apache 2.0 | **no**, endpoint verified, model compatibility unverified | RRF over a tsvector arm and a vector arm computed in SQL |
@@ -199,10 +200,10 @@ runtime. The embedding role does not. Its declared fallback, `nvidia/Nemotron-3-
 failover.
 
 **OPEN.** Whether to pre-build the self-hosted embedding path as a warm standby, accept a
-single-point dependency for the judging window, or precompute and freeze all embeddings before
-submission so the demo never calls the embedding endpoint at all. The third option is the cheapest
-and probably correct, but it has not been designed and it interacts with whether new captures can be
-ingested during judging.
+single-point dependency for the unattended deployment window, or precompute and freeze all embeddings
+before deployment so the demo never calls the embedding endpoint at all. The third option is the
+cheapest and probably correct, but it has not been designed and it interacts with whether new
+captures can be ingested once the deployment is running.
 
 ### 2.5 Non-model services
 
@@ -214,9 +215,8 @@ ingested during judging.
 
 **DECISION.** The asset origin stays on Nebius Object Storage. Rejected alternative: Cloudflare R2,
 whose free egress would save roughly $2 to $10 across the project. Rejected because keeping the origin
-on Nebius keeps the platform-compliance sentence literally true, which is worth more than $10 under an
-equally-weighted Technological Implementation criterion. A Cloudflare cache in front of the Nebius
-origin is fine and is recommended for judges outside Europe.
+on Nebius keeps the platform constraint in section 7 literally true, which is worth more than $10. A
+Cloudflare cache in front of the Nebius origin is fine and is recommended for users outside Europe.
 
 **VERIFIED.** Tavily "may use portions of query data to improve future responses" and shares query
 data with third-party search index providers where its own index cannot retrieve content, advising
@@ -244,29 +244,46 @@ Nebius removes ten models. Verbatim from the notice, with Nebius' own recommende
 | `Qwen/Qwen3-Next-80B-A3B-Thinking` | `Qwen/Qwen3.5-397B-A17B` |
 | `deepseek-ai/DeepSeek-V4-Flash` | `deepseek-ai/DeepSeek-V4-Flash-0731` |
 
-Source: https://docs.tokenfactory.nebius.com/august-2026-deprecation-notice (retrieved 2026-08-27)
+Source: https://docs.tokenfactory.nebius.com/august-2026-deprecation-notice (retrieved 2026-08-27,
+re-verified against the notice 2026-08-28: the same ten models, the same replacement column, and the
+notice states the change affects Serverless only and leaves Dedicated Endpoints unaffected)
 
 **VERIFIED.** The two NVIDIA models removed, `nvidia/Nemotron-3-Nano-Omni` and
 `nvidia/Cosmos3-Super-Reasoner`, are the only two NVIDIA models in the catalog that declare an
 `image` use case. **After 2026-08-31 there is no NVIDIA vision or multimodal model on Token Factory
-Serverless.** Nebius' own recommended replacement for both is the non-NVIDIA `MiniMaxAI/MiniMax-M3`,
-which is Nebius stating the same conclusion in its own words.
+Serverless.**
+
+**CORRECTED 2026-08-28.** An earlier draft of this section said Nebius recommends
+`MiniMaxAI/MiniMax-M3` as the replacement for both removed NVIDIA vision models. It does not, and the
+notice is sharper than that. `nvidia/Cosmos3-Super-Reasoner` is mapped to the non-NVIDIA
+`MiniMaxAI/MiniMax-M3`, while `nvidia/Nemotron-3-Nano-Omni` is mapped to
+`nvidia/Nemotron-3_5-Lightning`, which is NVIDIA but declares no `image` use case (section 4).
+**Neither recommended replacement keeps both the vendor and the modality**, which is the conclusion
+above stated inside Nebius' own mapping.
+Source: https://docs.tokenfactory.nebius.com/august-2026-deprecation-notice (retrieved 2026-08-28)
 
 **Nothing in section 2 depends on a removed model.** Every Token Factory identifier in the matrix,
 primary and fallback alike, survives 2026-08-31. This is a design constraint that was applied before
 the matrix was written, not a coincidence, and it is why the reasoning core is a text Nemotron and
 the vision sensor is not NVIDIA. The rejected alternatives are recorded in `adr/0002-model-routing.md`.
 
-**VERIFIED, second round, for cadence.** Nebius removed 11 models on 2026-06-22: `-fast` flavors of
-DeepSeek V3.2, MiniMax M2.5, Kimi K2.5, gpt-oss-120b, Qwen3 Thinking and Qwen3.5, plus
-`PrimeIntellect/INTELLECT-3` and `zai-org/GLM-5`.
-Source: https://docs.tokenfactory.nebius.com/june-2026-deprecation-notice
+**VERIFIED, second round, for cadence. CORRECTED 2026-08-28.** Nebius removed 11 models on
+2026-06-22: seven `-fast` identifiers (`deepseek-ai/DeepSeek-V3.2-fast`,
+`MiniMaxAI/MiniMax-M2.5-fast`, `moonshotai/Kimi-K2.5-fast`, `openai/gpt-oss-120b-fast`,
+`Qwen/Qwen3-235B-A22B-Thinking-2507-fast`, `Qwen/Qwen3-Next-80B-A3B-Thinking-fast`,
+`Qwen/Qwen3.5-397B-A17B-fast`) plus four base identifiers (`deepseek-ai/DeepSeek-V3.2`,
+`moonshotai/Kimi-K2.5`, `PrimeIntellect/INTELLECT-3`, `zai-org/GLM-5`). An earlier draft listed six
+`-fast` flavors and two base models, which is eight, not 11. Unlike the August notice, the June
+notice carries **no per-model recommended-replacement column**: it points readers at Dedicated
+Endpoints and states that Token Factory does not automatically reroute requests from a deprecated
+model.
+Source: https://docs.tokenfactory.nebius.com/june-2026-deprecation-notice (retrieved 2026-08-28)
 
-**VERIFIED.** The entire `-fast` flavor family was killed in June, yet the inference overview page
-still documents it as a live feature ("To use the Fast flavor, append `-fast` to the model name") and
-zero `-fast` identifiers remain in the live catalog. Related staleness: the vision-capabilities
-examples page still shows `Qwen/Qwen2-VL-72B-Instruct` and `meta-llama/Meta-Llama-3.1-70B-Instruct`,
-neither of which exists in the catalog.
+**VERIFIED.** All seven `-fast` identifiers were removed in June and zero `-fast` identifiers remain
+in the live catalog, yet the inference overview page still documents the flavor as a live feature
+("To use the Fast flavor, append `-fast` to the model name"). Related staleness: the
+vision-capabilities examples page still shows `Qwen/Qwen2-VL-72B-Instruct` and
+`meta-llama/Meta-Llama-3.1-70B-Instruct`, neither of which exists in the catalog.
 **DECISION.** Treat only `models_info` and `openapi.json` as authoritative. Never copy a model
 identifier out of a documentation example.
 
@@ -344,9 +361,9 @@ compare against user-confirmed ground truth. If Lightning holds, the system stay
 
 ### 5.2 Why the default route is not Ultra, with the arithmetic
 
-The track guidance says "Reach for Nemotron 3 Ultra when you need serious reasoning, and let Nano or
-Super handle the fast, everyday calls". This section is the honest answer to why the routing table
-does not do that.
+Guidance published for the Nemotron line says "Reach for Nemotron 3 Ultra when you need serious
+reasoning, and let Nano or Super handle the fast, everyday calls". This section is the honest answer
+to why the routing table does not do that.
 
 **ASSUMPTION**, and every number below inherits it: a representative turn is **8,000 input tokens and
 800 output tokens**. The input is long because each turn carries an evidence packet plus prior entity
@@ -363,7 +380,7 @@ Prices are **VERIFIED** per million tokens from the catalog JSON, retrieved 2026
 | `nvidia/Nemotron-3-Ultra-550b-a55b` | $1.00 / $3.00 | $0.008000 | $0.002400 | **$0.010400** | $3.1200 | **15.48x** |
 
 Routing an identical turn to Ultra instead of Lightning costs **15.48 times as much**. Against the
-roughly $50 of Token Factory credits the project expects, that is about **74,400 Lightning turns
+roughly $50 of Token Factory budget the project expects, that is about **74,400 Lightning turns
 versus about 4,800 Ultra turns**. The absolute amounts are small either way, which is exactly why the
 discipline has to be an argument rather than a budget: nothing stops the project routing to Ultra
 except the absence of a reason.
@@ -371,7 +388,7 @@ except the absence of a reason.
 **DECISION.** Ultra stays in the manifest as an available escalation and is not in any default route.
 It is used only when a measurement shows Lightning and Super both failing a specific task, and the
 measurement is recorded next to the routing change. Rejected alternative: default to Ultra for
-"serious reasoning" as the track guidance suggests. Rejected because Ultra's advantage over Lightning
+"serious reasoning" as that guidance suggests. Rejected because Ultra's advantage over Lightning
 on this project's tasks has never been measured, and paying 15.48x for an unmeasured advantage is the
 kind of claim the project has committed not to make. Note that the routing table also gives Ultra
 nothing it is uniquely good at: Lightning already carries the same 1024K context.
@@ -420,17 +437,18 @@ in section 7.
 
 ---
 
-## 6. Deprecation during the judging window
+## 6. Deprecation during an unattended deployment
 
 **VERIFIED.** Two deprecation rounds in roughly ten weeks: 11 models removed 2026-06-22, 10 more
-2026-08-31. **VERIFIED.** The demo must run unattended from 2026-10-30 to at least 2026-12-15, about
-46 days, because judging does not begin until December.
+2026-08-31. **DECISION.** The hosted demo must run unattended for about 46 days after feature freeze,
+with nobody watching it and no opportunity to ship a fix.
 
 **ASSUMPTION**, high plausibility, and the one assumption here that cannot be validated in advance:
 at that cadence there is a material chance of another deprecation round landing between feature
-freeze and the end of judging. A judge opening the demo on 2026-12-10 could hit a hard 404-class
-failure on a removed model identifier with nobody watching. This risk was not visible in any single
-research stream. It falls out of putting the deprecation cadence next to the judging calendar.
+freeze and the end of the unattended window. A user opening the demo six weeks after freeze could hit
+a hard 404-class failure on a removed model identifier with nobody watching. This risk was not
+visible in any single research stream. It falls out of putting the deprecation cadence next to the
+deployment calendar.
 
 **DECISION.** Four mitigations, all structural, because the risk cannot be prevented.
 
@@ -447,14 +465,14 @@ research stream. It falls out of putting the deprecation cadence next to the jud
    in the manifest, selected automatically on a 404-class error. CI runs the fallback path on every
    build by forcing the primary identifier to fail, so the fallback is known-good rather than
    theoretical. A fallback that has never executed is not a mitigation.
-4. **Catalog diff in the weekly check.** The weekly uptime check through 2026-12-15 diffs the live
-   catalog against the manifest and alerts on any referenced identifier disappearing, rather than
-   only pinging `/healthz`. A `/healthz` that returns 200 while the reasoning model has been removed
-   is exactly the failure this is for.
+4. **Catalog diff in the weekly check.** The weekly uptime check, which runs for the whole
+   unattended window, diffs the live catalog against the manifest and alerts on any referenced
+   identifier disappearing, rather than only pinging `/healthz`. A `/healthz` that returns 200 while
+   the reasoning model has been removed is exactly the failure this is for.
 
-**Degradation, not death.** With the fallbacks in place a deprecation during judging degrades answer
+**Degradation, not death.** With the fallbacks in place a deprecation mid-window degrades answer
 quality silently instead of killing the demo. That is the honest description of the outcome and the
-one to use in the submission.
+one to use in the README and the documentation.
 
 **Known gap.** The embedding role has no same-tier fallback (section 2.4), so mitigations 1, 2 and 4
 apply to it but mitigation 3 does not. This is unresolved and it is the weakest point in the plan.
@@ -470,13 +488,12 @@ reasoning core is on the OpenMDW-1.1 model rather than on one of the models the 
 
 ## 7. What may and may not be claimed about NVIDIA model use
 
-**VERIFIED, hackathon requirement, verbatim.** "All submissions must run on either Nebius Token
+**VERIFIED, platform constraint, verbatim.** The architecture was built around a stated constraint
+on where the project runs and what it must use: "All submissions must run on either Nebius Token
 Factory or Nebius AI Cloud and use at least one NVIDIA open source model. Everything else is up to
 you." Source: https://nebiusglobalaihackathon.devpost.com/
-
-**VERIFIED, judging criterion, verbatim.** Technological Implementation is scored as "how effectively
-does it use Nebius Token Factory or AI Cloud model(s), and NVIDIA Nemotron as part of the solution?"
-Source: https://nebiusglobalaihackathon.devpost.com/rules
+This is the constraint that puts inference on Nebius and an NVIDIA open model in the reasoning role,
+and the alternatives weighed against it are recorded in `adr/0002-model-routing.md`.
 
 **SATISFIED by execution on 2026-08-27.** A real chat completion against
 `nvidia/Nemotron-3_5-Lightning` returned HTTP 200 with the model identifier echoed in the response
@@ -522,7 +539,7 @@ fields that matter.
 ## 8. Deferred, with the reason
 
 **DECISION.** The following are out of the plan. They are deferred with a stated reason, not quietly
-dropped, and nothing in the submission will imply they exist.
+dropped, and nothing in the README, the documentation or any marketing surface will imply they exist.
 
 | Deferred | Reason |
 | --- | --- |
@@ -551,7 +568,7 @@ theatre if the Qwen embedder is measurably better for retrieval. Undecided.
 | --- | --- | --- |
 | 1 | No model identifier has been invoked. Section 7 | One archived chat completion against `nvidia/Nemotron-3_5-Lightning`, blocked on credentials (Q1) |
 | 2 | Whether `use_cases` or `type` is authoritative in the catalog. Section 4 | One `image_url` call to `MiniMaxAI/MiniMax-M3`, with `openbmb/MiniCPM-V-4_5` as the control |
-| 3 | The embedding role has no same-tier runtime fallback. Sections 2.4 and 6 | A decision between a warm self-hosted standby, an accepted single point of failure, or freezing all embeddings before submission |
+| 3 | The embedding role has no same-tier runtime fallback. Sections 2.4 and 6 | A decision between a warm self-hosted standby, an accepted single point of failure, or freezing all embeddings before deployment |
 | 4 | Whether to self-host `nvidia/Nemotron-3-Embed-1B-BF16` as a second NVIDIA asset. Section 8 | A retrieval-quality comparison against `Qwen/Qwen3-Embedding-8B`, plus a deployment cost estimate |
 | 5 | Whether `/v1/rerank` accepts `Qwen/Qwen3-Embedding-8B`. Section 2.1 | One call. The endpoint is verified to exist, the model pairing is not |
 | 6 | Renderer choice, PlayCanvas versus three.js. Section 1.3 | Bake-off X-R1 by end of week 3. Recorded here only because it sits on the browser boundary |
@@ -560,7 +577,8 @@ theatre if the Qwen embedder is measurably better for retrieval. Undecided.
 
 ## Related documents
 
-- `docs/hackathon-compliance.md` for the verbatim platform requirement and judging criteria.
+- Section 7 of this document for the verbatim platform constraint and for what may and may not be
+  claimed about NVIDIA model use.
 - `docs/adr/0002-model-routing.md` for the decision to use an NVIDIA text reasoning core with a
   non-NVIDIA vision sensor, and the alternatives rejected.
 - `docs/runtime-verification.md` for what the platform actually does when called, which overrides

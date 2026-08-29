@@ -48,14 +48,14 @@ def make_client(manifest, transport, *, cache=None, budget=None):
 def test_cache_hit_avoids_a_second_call(manifest, transport):
     """Invariant 6: re-running ingest must not re-bill."""
     cache = InMemoryResponseCache()
-    transport.default = ok(chat_body("Reykjavik"))
+    transport.default = ok(chat_body("Lisbon"))
     client = make_client(manifest, transport, cache=cache)
 
     first = client.chat(Role.REASONING_CHEAP, MESSAGES, prompt_version="v1")
     second = client.chat(Role.REASONING_CHEAP, MESSAGES, prompt_version="v1")
 
     assert transport.call_count == 1, "the second call went to the network"
-    assert first.answer == second.answer == "Reykjavik"
+    assert first.answer == second.answer == "Lisbon"
     assert first.cache_hit is False
     assert second.cache_hit is True
     assert second.usage.usd == Decimal(0)

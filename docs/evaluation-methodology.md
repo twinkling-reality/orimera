@@ -47,12 +47,12 @@ is dropped, not simulated. Section 1.3 lists them by name.
 ### 1.1 What OGC-1 is
 
 **DECISION.** OGC-1 (Orimera Gold Corpus v1) is a frozen, content-addressed subset of a personal
-photograph library from one Iceland trip, plus one separately captured dense indoor scene used only
-for reconstruction.
+photograph library from a single multi-day trip, plus one separately captured dense indoor scene
+used only for reconstruction.
 
 | Component | Content | Role in evaluation |
 | --- | --- | --- |
-| **OGC-1/travel** | A curated subset of an existing personal Iceland photograph library. Four recurring consented people across several outdoor and indoor locations, recurring objects, and at least one photographed public entity (a named landmark, sign, or plaque) | Source of every identity, continuity, citation, filter, query and abstention metric |
+| **OGC-1/travel** | A curated subset of an existing personal travel photograph library. Four recurring consented people across several outdoor and indoor locations, recurring objects, and at least one photographed public entity (a named landmark, sign, or plaque) | Source of every identity, continuity, citation, filter, query and abstention metric |
 | **OGC-1/room** | One planned dense capture of a single indoor place, shot to spec for structure from motion | Source of reconstruction latency (M12b) and browser rendering (M14) numbers only |
 
 **DECISION.** OGC-1/room is scored for pipeline cost and render performance, never for truth.
@@ -80,7 +80,7 @@ metric denominator in this document is fixed.
 | --- | --- | --- |
 | **Appearance-change positive** | One person photographed on separate days in visibly different outerwear, headwear, and light | The positive case identity must get right. n=1, reported as a named case with the actual score, never as a percentage |
 | **Lookalike negative, same frame** | Two different people appearing **in the same photograph** who must never merge into one entity | Unfalsifiable by construction: merging them asserts one identity occupies two positions in a single instant, which the harness detects with no human adjudication. This is the cheapest strong negative available |
-| **Place hard negative** | Two visually similar but distinct locations (two comparable waterfalls, two black-sand beaches) with an explicit `NOT_SAME` link | Photograph-native and, in a landscape corpus, harder than the person case |
+| **Place hard negative** | Two visually similar but distinct locations (two comparable waterfalls, two stretches of similar coastline) with an explicit `NOT_SAME` link | Photograph-native and, in a landscape corpus, harder than the person case |
 | **Object hard negative** | Two similar instances of the same object class, one recurring and one one-off, with an explicit `NOT_SAME` link | Tests that recurrence is evidence-driven and not class-driven |
 | **Public entity** | One photographed landmark or plaque resolvable by an external lookup | The only legitimate trigger for M9. Every other entity in the corpus is a negative for M9 |
 
@@ -90,7 +90,7 @@ person is never synthesized, and no photograph is composited to manufacture a ne
 alternative (generate a confusable face and insert it) would make every identity number
 uninterpretable.
 
-**OPEN.** Whether the existing Iceland library contains a same-frame pair of the two most confusable
+**OPEN.** Whether the existing library contains a same-frame pair of the two most confusable
 people. The library is already shot, so this cannot be arranged, only discovered. Settled by: an
 inventory pass over the library before annotation begins, which is the first task in corpus work.
 
@@ -168,8 +168,9 @@ is a live model call, the denominator of the factual-support metric moves betwee
 becomes uninterpretable.
 
 **DECISION.** Consent artifacts never enter the public repository. Only consent record IDs and hashes
-are committed. Written per-person consent must cover retention, derived embeddings, publication in a
-public demo video, and withdrawal. Nothing in this document, in the label files, or in any reported
+are committed. Written per-person consent must cover retention, derived embeddings, publication in
+public demonstration material, and withdrawal. Nothing in this document, in the label files, or in
+any reported
 number identifies a real person by name.
 
 **OPEN.** Annotation effort. The research estimated 19 to 22 person-hours for twelve layers over ten
@@ -343,8 +344,8 @@ here, so face, appearance, co-occurrence, place and time are the entire signal s
 identity pilot on OGC-1/travel, after which a bar is set from observed behaviour or the product falls
 back to proposal-only.
 
-**ASSUMPTION.** Heavy outerwear, hoods, hats and sunglasses across a cold-weather trip place this
-corpus close to the cloth-changing and cross-domain regime rather than the same-domain one. The
+**ASSUMPTION.** Heavy outerwear, hoods, hats and sunglasses throughout the trip place this corpus
+close to the cloth-changing and cross-domain regime rather than the same-domain one. The
 relevant measured anchors are cross-domain person re-identification at **52.4% rank-1 / 30.5% mAP**
 for `osnet_ain_x1_0` on Market1501 to DukeMTMC
 (https://raw.githubusercontent.com/KaiyangZhou/deep-person-reid/master/docs/MODEL_ZOO.md), 2026
@@ -559,7 +560,7 @@ their regions with every number, because the vision sensor is out of region from
 and region alongside every number.
 
 **DECISION: no pass bar on either.** This is a research finding, not an acceptance target. The only
-real bar is that the judge demo path must not depend on it.
+real bar is that the demonstration path must not depend on it.
 
 **ASSUMPTION.** A sampled image costs roughly 1,500 input tokens on the vision model. The entire cost
 model rests on this and nobody has measured it. Settled by: one real call reading `usage.prompt_tokens`,
@@ -635,8 +636,8 @@ with.
 1. **Never write a bare percentage.** Every number carries `n` and a 95% Wilson interval.
    "34/35 = 97%" reads as a product claim; "34/35, 95% CI [85.8%, 99.9%]" reads as what it is. The
    report generator emits this automatically so a human cannot forget.
-2. **The corpus name and version travel with every number**, into the README, the video, the
-   submission page, and every slide. `CIT-ID on OGC-1@<hash> (n=52): 52/52`.
+2. **The corpus name and version travel with every number**, into the README, the documentation,
+   and every external surface where a figure appears. `CIT-ID on OGC-1@<hash> (n=52): 52/52`.
 3. **Publish what the corpus does not cover** (1.7), verbatim, next to the results.
 4. **Report every failure by name with a link to the source photograph.** Five named failures with
    clickable evidence are more credible and more useful than any aggregate.
@@ -650,7 +651,7 @@ with.
 8. **Ship the means to disbelieve the report**: the harness, the corpus manifest hashes, `make eval`,
    the derived labels and a regeneration script. Publish nothing of the people in the corpus beyond
    what consent covers.
-9. **Banned words** in the README, the video, and any submission text: "state of the art", "high
+9. **Banned words** in the README, the documentation, and any external text: "state of the art", "high
    accuracy", "reliable", "production ready", "solves", "understands", "private", "on-device",
    "end-to-end encrypted", "anonymous", "GDPR compliant", "fully deleted", "secure". Allowed: "on
    OGC-1", "we measured", "we did not test", "we do not know".
@@ -971,4 +972,3 @@ Every URL retrieved 2026-08-27.
 | Prompt injection is inherent; mitigations are not a complete fix; multimodal injection flagged | https://genai.owasp.org/llmrisk/llm01-prompt-injection/ |
 | PostgreSQL owners and BYPASSRLS roles bypass row-level security unless FORCE is set | https://www.postgresql.org/docs/18/ddl-rowsecurity.html |
 | Label Studio is Apache-2.0 | https://raw.githubusercontent.com/HumanSignal/label-studio/develop/LICENSE |
-| Submission 2026-10-30, judging 2026-12-01 to 12-15 | https://nebiusglobalaihackathon.devpost.com/rules |

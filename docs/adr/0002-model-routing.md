@@ -4,18 +4,17 @@
 - Date: 2026-08-27
 - Deciders: Orimera build
 - Supersedes: nothing
-- Related: `docs/model-and-service-selection.md`, `docs/adr/0001-track-selection.md`
+- Related: `docs/model-and-service-selection.md`
 
 ## Context
 
 Two facts fix the shape of this decision and neither is negotiable.
 
-**VERIFIED.** The hackathon requires, verbatim: "All submissions must run on either Nebius Token
-Factory or Nebius AI Cloud and use at least one NVIDIA open source model. Everything else is up to
-you." The Technological Implementation criterion asks "how effectively does it use Nebius Token
-Factory or AI Cloud model(s), and NVIDIA Nemotron as part of the solution?"
-Sources: https://nebiusglobalaihackathon.devpost.com/ ,
-https://nebiusglobalaihackathon.devpost.com/rules (retrieved 2026-08-27)
+**VERIFIED.** The project is built under a platform constraint it did not choose, stated verbatim by
+the programme it was written for: "All submissions must run on either Nebius Token Factory or Nebius
+AI Cloud and use at least one NVIDIA open source model. Everything else is up to you." The
+architecture is designed around that constraint, and every routing decision below inherits it.
+Source: https://nebiusglobalaihackathon.devpost.com/rules (retrieved 2026-08-27)
 
 **VERIFIED.** On 2026-08-31 Nebius removes ten models from Token Factory Serverless, including both
 NVIDIA models that declare an `image` use case: `nvidia/Nemotron-3-Nano-Omni` and
@@ -50,25 +49,27 @@ fallback. All identifiers survive 2026-08-31.
 **B. Build on `nvidia/Nemotron-3-Nano-Omni` via a Dedicated Endpoint.**
 The deprecation is **VERIFIED** as Serverless only; Dedicated Endpoints are explicitly unaffected.
 Omni would therefore remain reachable after 2026-08-31, and it would let one NVIDIA model do both the
-sensing and the reasoning, which is the cleanest possible compliance story.
+sensing and the reasoning, collapsing two model roles, two integration surfaces and two fallback
+ladders into one.
 
 **C. Self-host an NVIDIA multimodal model on Nebius AI Cloud.**
 Run the Omni weights in a container on a GPU instance. **VERIFIED** that the NVFP4 checkpoint is
 20.9 GB and the FP8 checkpoint 32.8 GB, so either fits on a single L40S (and NVFP4 stays within about
 one point of BF16 across nine multimodal benchmarks). This keeps an NVIDIA model doing the vision
-work and adds a direct Nebius AI Cloud model-usage story, which the judging criterion names.
+work and moves that work off Token Factory Serverless, where no NVIDIA vision model survives.
 
-**D. Use a non-NVIDIA model for everything and satisfy the requirement with a token NVIDIA call.**
-Listed for completeness. Rejected on the same honesty grounds as ADR-0001: a call that exists only to
-tick a box is the kind of claim this project has committed not to make.
+**D. Rejected: use a non-NVIDIA model for everything and satisfy the requirement with a token NVIDIA
+call.** Listed for completeness and rejected in the same breath, because this project does not
+describe itself as doing something the running system does not actually do, and a call that exists
+only to tick a box is exactly that kind of claim.
 
 ## Decision
 
 **Option A.**
 
-- **Reasoning core, and the NVIDIA compliance asset:** `nvidia/Nemotron-3_5-Lightning`, Token Factory
-  Serverless, $0.06 / $0.24 per million tokens, 1024K context, eu-north1, OpenMDW v1.1 per the
-  catalog.
+- **Reasoning core, and the NVIDIA model the platform constraint requires:**
+  `nvidia/Nemotron-3_5-Lightning`, Token Factory Serverless, $0.06 / $0.24 per million tokens, 1024K
+  context, eu-north1, OpenMDW v1.1 per the catalog.
 - **Declared fallback for that role:** `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`, identical price,
   262K context, also NVIDIA.
 - **Escalation tier, only on measured failure:** `nvidia/nemotron-3-super-120b-a12b`, also NVIDIA.
@@ -102,10 +103,10 @@ Arithmetic. **VERIFIED**: `gpu-l40s-a` `1gpu-8vcpu-32gb` in eu-north1 costs
 `1.35 + (8 x 0.012) + (32 x 0.0032) = $1.548/hr` on demand.
 Source: https://docs.nebius.com/compute/resources/pricing
 
-A model server must be up whenever a judge might open the demo, and the demo must survive unattended
-from 2026-10-30 to at least 2026-12-15, about 46 days. That is `46 x 24 x $1.548 = $1,709` for the
-judging window alone, against a full-corpus inference pass on Token Factory of about **$0.41** and a
-projected whole-project Token Factory spend of **$10 to $25**.
+A model server must be up whenever anyone might open the demo, and the deployment must survive
+unattended from 2026-10-30 to at least 2026-12-15, about 46 days. That is
+`46 x 24 x $1.548 = $1,709` for that unattended window alone, against a full-corpus inference pass on
+Token Factory of about **$0.41** and a projected whole-project Token Factory spend of **$10 to $25**.
 
 Two supporting reasons:
 
@@ -119,14 +120,12 @@ Two supporting reasons:
 
 ### Why the division satisfies the requirement
 
-The requirement is "use at least one NVIDIA open source model", and the criterion names Nemotron
-specifically. The reasoning core is an NVIDIA Nemotron, and it is not a peripheral call: it produces
-**every** cross-scene continuity decision, every entity link, and every sentence the user reads. Every
-branch of the routing table is NVIDIA, including the declared runtime fallback
-(`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`) and the escalation tier
-(`nvidia/nemotron-3-super-120b-a12b`), so the NVIDIA property survives a deprecation-triggered
-failover rather than depending on the happy path. That is a stronger reading of "uses NVIDIA
-Nemotron" than a system where the NVIDIA model runs only when nothing has gone wrong.
+The requirement is "use at least one NVIDIA open source model". The reasoning core is an NVIDIA
+Nemotron, and it is not a peripheral call: it produces **every** cross-scene continuity decision,
+every entity link, and every sentence the user reads. Every branch of the routing table is NVIDIA,
+including the declared runtime fallback (`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`) and the escalation
+tier (`nvidia/nemotron-3-super-120b-a12b`), so the property holds after a deprecation-triggered
+failover and not only on the happy path.
 
 ### Why the division is defensible rather than a compromise
 
@@ -153,19 +152,14 @@ vision model were still available on Serverless.
 
 ## Consequences
 
-- **The NVIDIA compliance story now rests on a single path.** The research had identified self-hosted
-  NVIDIA ASR on Nebius AI Cloud as a second, independent NVIDIA asset that would also have
-  demonstrated AI Cloud model usage. That asset is gone with the audio pillar. This is a genuine loss
-  and the submission should not paper over it.
-- **OPEN.** Whether to recover a second NVIDIA asset by self-hosting
-  `nvidia/Nemotron-3-Embed-1B-BF16` (OpenMDW-1.1) as the text embedder in place of
-  `Qwen/Qwen3-Embedding-8B`. It would also close the fallback gap for the embedding role. It has not
-  been costed and it must not be adopted as compliance theatre if the Qwen embedder is measurably
-  better for retrieval.
-- **The demo video must be accurate about the split.** The submission requires a video covering Token
-  Factory and NVIDIA model usage. It should say that vision extraction runs on a non-NVIDIA model and
-  that all reasoning runs on Nemotron, because a judge who reads the manifest will find that out
-  anyway, and being told first is worth more than the sentence saved.
+- **All NVIDIA usage now runs through one surface, Token Factory Serverless.** The research had
+  identified self-hosted NVIDIA ASR on Nebius AI Cloud as a second, independent path that also
+  exercised AI Cloud. That path is gone with the audio pillar, so a Serverless-wide outage or a
+  further deprecation has no second surface behind it. This is a genuine loss and is recorded as one.
+- **OPEN.** Whether to self-host `nvidia/Nemotron-3-Embed-1B-BF16` (OpenMDW-1.1) as the text embedder
+  in place of `Qwen/Qwen3-Embedding-8B`. It would close the fallback gap for the embedding role. It
+  has not been costed, and it must not displace `Qwen/Qwen3-Embedding-8B` for any reason other than
+  measured retrieval quality.
 - **CLOSED on 2026-08-27.** One successful chat completion against
   `nvidia/Nemotron-3_5-Lightning` is archived with its echoed `model` field, so the project may now
   describe this routing in the present tense. See `docs/runtime-verification.md` section 1 and
@@ -181,11 +175,11 @@ vision model were still available on Serverless.
   surviving text Nemotron carries the catalog's "JSON mode" tag, and the live OpenAPI spec's own
   `response_format` description contradicts the documentation page on `json_schema` support. If
   structured output fails on Lightning, extraction moves to `Qwen/Qwen3-235B-A22B-Instruct-2507` and
-  the NVIDIA model's role narrows to prose reasoning that a second model structures. That is still
-  compliant, and it is a weaker story. Validation: 20 identical nested-schema requests with
-  `strict: true`, then the same 20 through `extra_body.guided_json`.
+  the NVIDIA model's role narrows to prose reasoning that a second model structures. That widens the
+  routing surface to two models for a task the plan budgets for one. Validation: 20 identical
+  nested-schema requests with `strict: true`, then the same 20 through `extra_body.guided_json`.
 - **Ultra is not in the default route.** `nvidia/Nemotron-3-Ultra-550b-a55b` costs 15.48 times as
   much as Lightning for an identical 8,000-in / 800-out turn, and Lightning already carries the same
-  1024K context. Track guidance suggests reaching for Ultra for serious reasoning; this project will
-  do so only when a measurement justifies it, and will record the measurement next to the change.
-  Arithmetic in `docs/model-and-service-selection.md` section 5.2.
+  1024K context. This project will escalate to Ultra only when a measurement justifies it, and will
+  record the measurement next to the change. Arithmetic in `docs/model-and-service-selection.md`
+  section 5.2.

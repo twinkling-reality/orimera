@@ -69,7 +69,7 @@ export function buildMethod(): HTMLElement {
       'A system that names people correctly slightly more often than a coin flip should not be naming people. So it does not. It will tell you it thinks two photographs might be the same person, and it will use that hunch to arrange things and light things up, but the hunch cannot appear in a sentence until you say yes. The name comes from you or it does not exist.',
     ),
     para(
-      'I also have not measured how often Orimera gets that hunch right, so there is no accuracy number for it anywhere: not here, not in the demo, not in the submission. When I measure it, it goes on this page whatever it says.',
+      'I also have not measured how often Orimera gets that hunch right, so there is no accuracy number for it anywhere: not here, not in the demo, not in the documentation. When I measure it, it goes on this page whatever it says.',
     ),
 
     heading('Why some places let you walk around and others do not'),

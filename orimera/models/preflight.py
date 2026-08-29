@@ -1,9 +1,9 @@
 """Check every manifest identifier against the live catalog, and fail loudly if one is gone.
 
-This is the mechanism that stops a deprecation during the judging window from silently breaking
-the demo. Two rounds of removals landed in roughly ten weeks before this was written, ten and
-eleven models each, and judging does not begin until December. A judge opening the demo could
-otherwise hit a hard 404-class failure with nobody watching.
+This is the mechanism that stops a vendor deprecation from silently breaking a running deployment.
+Two rounds of removals landed in roughly ten weeks before this was written, ten and eleven models
+each, and the next round lands on the vendor's schedule rather than on ours. A user could otherwise
+hit a hard 404-class failure with nobody watching.
 
 Three checks, and each one catches a different real failure:
 
@@ -15,12 +15,12 @@ Three checks, and each one catches a different real failure:
     accept and correctly describe an image, so ``use_cases`` is authoritative and ``type`` is
     not.
 3.  **Price drift.** The catalog price differs from the manifest price. A warning rather than a
-    failure, because a price change breaks the cost report rather than the demo, but silent
+    failure, because a price change breaks the cost report rather than the service, but silent
     price drift is how a cost report becomes fiction.
 
 Run it as ``orimera-preflight``, the console script, or as
 ``python -m orimera.models.preflight``. Exit status 0 clean, 1 on any failure, so CI and the
-weekly uptime check through the judging window can both call it without parsing output.
+weekly uptime check on a running deployment can both call it without parsing output.
 Pass ``--catalog-file`` to check against a saved snapshot, which is how the offline test runs.
 """
 

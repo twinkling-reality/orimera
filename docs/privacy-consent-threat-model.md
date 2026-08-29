@@ -215,8 +215,9 @@ market or putting into service. Art. 2(10) exempts *deployer* obligations of nat
 in a purely personal, non-professional activity.
 Source: https://artificialintelligenceact.eu/article/2/ (retrieved 2026-08-27)
 
-**ANALYSIS.** Art. 2(8) covers a hackathon demo. Art. 2(10) covers the end user. Neither covers the
-provider. A public EU launch is a different project with a compliance budget attached.
+**ANALYSIS.** Art. 2(8) covers pre-market research, testing and demonstration activity of the kind
+this project performs. Art. 2(10) covers the end user. Neither covers the provider. A public EU
+launch is a different project with a compliance budget attached.
 
 **VERIFIED.** Art. 50(1): systems interacting directly with natural persons must make the AI nature
 apparent. Art. 50(2): providers of systems generating synthetic audio, image, video or text must mark
@@ -288,7 +289,7 @@ plus a design duty to make recording visible to bystanders.
   purpose-specific, time-limited release covering biometric derivation, cross-capture linking, and
   public demonstration.
 - Deriving and storing face embeddings for those consenting people.
-- A public demo video featuring only those people.
+- Public demonstration material featuring only those people.
 - Processing on Nebius with zero-data-retention enabled.
 - Art. 2(8) covers this as development and testing prior to placing on the market.
 
@@ -989,7 +990,7 @@ guard defuses it.
 
 ### 9.1 Policy
 
-**The demo video will be public on YouTube.** Everything in this section follows from that.
+**Published demonstration material will be public.** Everything in this section follows from that.
 
 The research ranks a non-consenting person appearing in published demo material as the
 **highest-probability real-world harm in the entire project**, and the only risk with a horizon
@@ -1051,7 +1052,8 @@ privacy workstream per unit of effort.
 - [ ] All metadata stripped (EXIF, XMP, capture-device serial)
 - [ ] Filename contains no personal name, no private location, and no date that identifies a private event
 - [ ] File hash recorded and mapped to the cast list and consent ids
-- [ ] Retention timer set: the demo dataset is deleted at hackathon end plus 30 days by default
+- [ ] Retention timer set: the demonstration dataset is deleted at the end of the demonstration
+      period plus 30 days by default
 
 **Sign-off**
 - [ ] Checked by: ____________  Date: ________  File hash: ____________
@@ -1098,7 +1100,7 @@ chicken-and-egg problem: the entire point of the loop is to identify people who 
 named. R-loose resolves it by persisting biometric identifiers for people who never consented, which is
 precisely the BIPA s.15(b) collection and the GDPR Art. 9(1) processing that section 2 describes.
 
-**What is settled:** for this hackathon corpus the question collapses to nothing, because every person
+**What is settled:** for this demonstration corpus the question collapses to nothing, because every person
 in the corpus has signed. Nothing is blocked today.
 
 **What is not settled:** the rule for anything beyond this corpus. The research recommends R-middle, on
@@ -1135,5 +1137,6 @@ Two consequences of leaving it open, so that nobody is surprised later:
 | 9 | Whether the consequential-query refusal classifier catches the common phrasings without degrading benign queries | ASSUMPTION | Run the question corpus and measure both refusal and false-refusal rates (3.2) |
 | 10 | Whether the tombstone guard actually stops a stale worker retry | ASSUMPTION | Test H1, roughly two hours, and the most likely to find a real bug |
 
-Nothing on this list may be stated as settled in the README, the demo video, the submission, or any
-external material until the named action has been performed and its result committed.
+Nothing on this list may be stated as settled in the README, the documentation, published
+demonstration material, or any external material until the named action has been performed and its
+result committed.

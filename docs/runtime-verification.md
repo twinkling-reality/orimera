@@ -17,7 +17,7 @@ response body echoes `"model": "nvidia/Nemotron-3_5-Lightning"`. The full body a
 headers are archived at `.orimera/experiments/platform/x0a_nvidia_provenance.json`.
 
 Per the project's own stop rule ("do not claim Nano Omni/Ultra use until the real model ID and
-runtime call are verified"), the submission may now truthfully state that it runs NVIDIA Nemotron on
+runtime call are verified"), the project may now truthfully state that it runs NVIDIA Nemotron on
 Nebius Token Factory. Before this file existed, it could not.
 
 ## 2. Catalog preflight passes
@@ -107,15 +107,17 @@ the catalog offers no substitute.
 ## 8. Spend exposure, resolved
 
 **VERIFIED from the billing console.** Token Factory is **prepaid**: "Your API usage is charged to
-your balance", top up is a manual button, and no automatic top up is offered. Payments history shows
-no charges. Current balance $25.00.
+your balance", top up is a manual button, and no automatic top up is offered. The balance is money
+already paid in, and it is the only pool a run can draw on.
 
 Consequence: **Token Factory spend cannot exceed the balance.** The $1,709 figure carried in the
 project's earlier cost analysis was never a Token Factory risk; it was an idle GPU virtual machine on
 Nebius AI Cloud billed per hour. That is a different product and it is not provisioned.
 
 Measured against the balance: the entire photo library costs under a dollar to ingest, and a
-Companion turn at 15K context costs roughly $0.001 on Lightning. $25 is ample.
+Companion turn at 15K context costs roughly $0.001 on Lightning. Both sit far below the prepaid
+balance held for this work, and a runaway loop exhausts that balance rather than producing an
+unbounded bill.
 
 ## 9. Tavily verified, and the past-to-present boundary holds
 
@@ -123,8 +125,9 @@ Companion turn at 15K context costs roughly $0.001 on Lightning. $25 is ample.
 2.26 s with three sourced results and a synthesised answer. Archived at
 `.orimera/experiments/web-lookup/tavily_runtime_call.json`, request payload included.
 
-Account state: **Researcher plan, Free tier, 1,000 monthly credits, "No credit card required",
-pay as you go Disabled.** There is no uncapped spend path on this credential.
+Account state: **pay as you go is Disabled, and the credential draws on a fixed monthly credit
+allowance.** There is no uncapped spend path on this credential: when the allowance is spent, calls
+fail rather than billing on.
 
 The archived request is retained deliberately. It is the evidence that the payload carried public
 entity text only, with no private media, no person, no private location, and no transcript. The
@@ -132,11 +135,12 @@ brief requires proving minimisation rather than asserting it, and the stored req
 
 ### The demonstration beat this unlocks
 
-The test query concerned a public landmark that appears in the demo corpus. The live answer
-included: parking now costs 800 ISK, and access behind the waterfall is sometimes unsafe in winter.
+The test query concerned a public landmark. The live answer included a current visitor cost and a
+seasonal caveat on access, which is exactly the shape of answer the Then and Now beat needs.
 
-The corpus contains a photograph taken behind that same waterfall, in winter. That yields a genuine
-Then and Now pair drawn from real evidence on both sides:
+The corpus contains a photograph taken at a public landmark, so the same call can be made for an
+entity the corpus actually holds. That yields a genuine Then and Now pair drawn from real evidence
+on both sides:
 
 - **Then, from memory:** the original photograph, with its own evidence citation.
 - **Now, from the live web:** current access and cost, with publisher URLs and a retrieval date.
@@ -146,5 +150,6 @@ two panels make separate claims from separate sources, and neither is permitted 
 other.
 
 **ASSUMPTION to validate later:** that the same quality of current-state answer is available for the
-other public entities in the corpus, notably the snowmobile tour operator legible in one photograph.
-Settled by running the same script against those entities once the corpus is on disk.
+other public entities in the corpus, including a business name legible on signage in a photograph
+rather than a landmark named in its own right. Settled by running the same script against those
+entities once the corpus is on disk.

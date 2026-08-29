@@ -5,7 +5,7 @@
   reasoning that existed before the numbers, including a lean that the measurement overturned.
 - Date: 2026-08-27, resolved 2026-08-28
 - Deciders: Orimera build
-- Settled at: the bake-off, ahead of the DP-R deadline
+- Settled at: the bake-off, ahead of the week 3 renderer deadline
 - Supersedes: nothing
 - Related: [architecture-overview.md](../architecture-overview.md) section 1.1
 
@@ -92,7 +92,7 @@ subject to retaining their notices.
 - The entire interaction design would have to be rewritten against PlayCanvas APIs.
 - **VERIFIED:** the PlayCanvas gsplat API is moving fast. `gsplatCustomizeVS` was deprecated in 2.15
   and removed in 2.16; the unified renderer landed in 2.19 in June 2026. Custom shader code will break
-  on upgrade, so the engine version must be pinned and not upgraded during the event.
+  on upgrade, so the engine version must be pinned and not upgraded during the build.
 - The collision advantage may not survive real input. The browser-rendering stream rates the `-K`
   flood-fill as **high risk** on messy room captures; it is demonstrated on a clean cathedral scan.
 
@@ -221,7 +221,7 @@ and `.RAD` treated as a build artifact with SOG or `.spz` kept as the archival f
 rests entirely on authored boundary volumes, which the design needs anyway.
 
 **If Option B wins.** Budget two weeks to rewrite `atlas-core` and `atlas-react`, pin the engine
-version and do not upgrade it during the event, and isolate all custom shader code behind one module
+version and do not upgrade it during the build, and isolate all custom shader code behind one module
 because the gsplat shader API has broken twice in the last six months. The collision toolchain becomes
 available but is not assumed to work until tested against a real Orimera capture.
 
@@ -299,9 +299,9 @@ no frame-rate comparison between the two engines is recorded here.
 4. PlayCanvas would additionally require hand-written WGSL to reach WebGPU later, and would lose
    point size when it got there.
 
-Status remains **PROPOSED** rather than Accepted, because the frame-rate comparison the ADR itself
-demanded has not been run. Publishing a decision while calling it measured would be the kind of
-claim this project exists not to make.
+Status at the time of this update remained **PROPOSED** rather than Accepted, because the frame-rate
+comparison the ADR itself demanded had not yet been run. Publishing a decision while calling it
+measured would have been the kind of claim this project exists not to make.
 
 ---
 
@@ -330,8 +330,8 @@ empty `notes` array, meaning the harness vouches for it.
 1. **The 1% low is nearly double, and it is the metric that matters most here.** Mean frame rate
    describes throughput; the 1% low describes the worst frames a person actually feels as stutter
    while walking through a scene in first person. For a product whose primary interaction is
-   embodied movement through space, and where Design is a quarter of the judging criteria, a 2x
-   improvement in worst-case pacing outweighs a 2x regression in a 200 ms load time.
+   embodied movement through space, a 2x improvement in worst-case pacing outweighs a 2x regression
+   in a 200 ms load time.
 2. **PlayCanvas covers both reconstruction rungs natively.** It renders point clouds now (rung 3,
    MoGe point maps, which is the primary path for a photograph corpus) and it has native Gaussian
    splat support for rung 1, the pre-baked hero scene. three.js needs Spark for splats, which is a

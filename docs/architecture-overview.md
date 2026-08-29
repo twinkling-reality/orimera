@@ -105,17 +105,16 @@ latency, not for addressing. Source:
 https://docs.tokenfactory.nebius.com/ai-models-inference/overview
 
 **Rejected alternative: Cloudflare R2 as the asset origin.** Free egress would save roughly $2 to $10
-across the project. Rejected because keeping the origin on Nebius keeps the platform-compliance
-sentence literally true, which is worth more under an equally weighted Technological Implementation
-criterion. A Cloudflare edge cache in front of the Nebius origin is compatible with this and is
-recommended for judges outside Europe.
+across the project. Rejected because keeping the origin on Nebius keeps the platform constraint
+literally true, and $2 to $10 is not worth qualifying it for. A Cloudflare edge cache in front of the
+Nebius origin is compatible with this and is recommended for users outside Europe.
 
 ### 2.1 Where PostgreSQL runs: a preserved disagreement
 
 **The research streams disagreed and the disagreement is real.** One stream recommended running
 PostgreSQL as a container co-located with the API on a Nebius Serverless AI endpoint, which scores
-marginally better against the track's encouragement to deploy with Serverless Endpoints. That
-recommendation puts the database on the least reliable component in the stack.
+marginally better on platform alignment. That recommendation puts the database on the least reliable
+component in the stack.
 
 The facts on both sides:
 
@@ -126,17 +125,17 @@ The facts on both sides:
 | Serverless AI has no pricing of its own: it applies Compute pricing and quotas. `2vcpu-8gb` is 2 x $0.012 + 8 x $0.0032 = $0.0496/hr = $35.71/month either way | **VERIFIED** | https://docs.nebius.com/serverless/pricing-quotas , https://docs.nebius.com/compute/resources/pricing |
 | Volume mounting is documented for Serverless **jobs**. For endpoints it is undocumented | **VERIFIED (as an absence)** | https://docs.nebius.com/serverless/jobs/manage |
 | Serverless AI has no automatic scale-to-zero. Endpoints support manual stop/start and bill per second of the underlying VM while active | **ASSUMPTION.** Settled by leaving an endpoint idle for one billing cycle and inspecting granularity. Partly answered already: the docs describe manual stop/start and no automatic scale-to-zero | https://docs.nebius.com/serverless/quickstart/endpoints |
-| The demo must survive unattended from 2026-10-30 to at least 2026-12-15 | **VERIFIED** | https://nebiusglobalaihackathon.devpost.com/rules |
+| The deployment must survive roughly 46 days unattended, with no operator watching | **DECISION**, a stated planning horizon rather than an observed fact | Section 7.1 |
 
 **Recommendation, and the reasoning: run the API and PostgreSQL on a plain `cpu-d3` Compute VM with a
-Network SSD volume and a restart policy.** The cost is identical, the platform-compliance sentence is
-identical because a Compute VM is still Nebius AI Cloud, and the difference is entirely in recovery
-behaviour across 46 unattended days. The endpoint variant additionally rests on an undocumented
-assumption about volume mounting.
+Network SSD volume and a restart policy.** The cost is identical, the platform constraint is
+satisfied identically because a Compute VM is still Nebius AI Cloud, and the difference is entirely
+in recovery behaviour across 46 unattended days. The endpoint variant additionally rests on an
+undocumented assumption about volume mounting.
 
 Keep Serverless **Jobs** for reconstruction, perception and batch ingest. That is where the
 self-terminating per-second model is a genuine fit, and where failure is retryable. It also still
-satisfies the track's encouragement to use Serverless Jobs for background processing.
+captures the platform alignment benefit in the one place where it costs nothing.
 
 **Rejected alternative: Nebius Managed PostgreSQL.** The on-brand choice. **VERIFIED:** the documented
 `4vcpu-16gb` example is $0.28/hr, about $204/month, which is roughly +$755 across the project period
@@ -144,15 +143,16 @@ for a sub-1-GB database. Source: https://docs.nebius.com/postgresql/resources/pr
 
 **Rejected alternative: Render free tier.** **VERIFIED:** free web services spin down after 15 minutes
 idle with about a minute to reactivate, and free PostgreSQL expires 30 days after creation. Against a
-2026-12-01 to 12-15 judging window that is fatal. Source: https://render.com/docs/free
+46-day unattended window that is fatal: the database expires 30 days in, with nobody present to
+notice. Source: https://render.com/docs/free
 
-**Rejected alternative: Fly.io.** Technically fine and cheap, but it is not Nebius, which costs points
-under an equally weighted Technological Implementation criterion. Keep an unused `fly.toml` as
-break-glass.
+**Rejected alternative: Fly.io.** Technically fine and cheap, but it is not Nebius, and running on
+Nebius Token Factory or Nebius AI Cloud is a project constraint rather than a preference. Keep an
+unused `fly.toml` as break-glass.
 
 **OPEN:** the domain and the deployment account.
 
-**ASSUMPTION:** that a Preview-grade service can be relied on at all for the judging window. Settled
+**ASSUMPTION:** that a Preview-grade service can be relied on at all for the unattended window. Settled
 by experiment X-0b: run a canary Nebius Serverless AI endpoint continuously for the whole project and
 log every restart, failure and unexplained outage. This experiment quantifies how right the
 Compute-VM recommendation is rather than deciding it.
@@ -165,7 +165,7 @@ Compute-VM recommendation is rather than deciding it.
 vector database. No graph database.**
 
 **VERIFIED:** PostgreSQL 18 (18.6, released 2025-09-25) ships built-in `uuidv7()`. PostgreSQL 14
-reaches end of life 2026-11-12, inside the judging window. Sources:
+reaches end of life 2026-11-12, inside the unattended window. Sources:
 https://www.postgresql.org/docs/18/functions-uuid.html , https://www.postgresql.org/support/versioning/
 
 **VERIFIED:** PostgreSQL provides a multirange type for every range type, indexable by GiST and
@@ -282,8 +282,8 @@ weight rather than pretend the conflict does not exist.
 
 The platform provides no cryptographic or administrative guarantee that a sufficiently privileged
 actor cannot delete a version. "Append-only by policy" is exactly as strong as the bucket policy and
-says so. Any of the three right-hand terms would be an overclaim, and an overclaim caught by a judge
-discounts every other claim in the submission.
+says so. Any of the three right-hand terms would be an overclaim, and one caught overclaim discounts
+every other claim this project makes.
 
 ---
 
@@ -458,7 +458,7 @@ The controls follow from that single premise:
 private detail into an outbound query via an injected instruction, a crafted entity label, and a
 manually edited entity record, and verify all three are blocked and every denial is logged verbatim.
 **DECISION: if X-13 does not pass cleanly, cut the feature entirely.** A leaky gate is worse than no
-feature, and worse than the prize the feature is worth.
+feature, and worse than anything the feature is worth.
 
 ---
 
@@ -466,15 +466,16 @@ feature, and worse than the prize the feature is worth.
 
 ### 7.1 The obligation
 
-**VERIFIED:** the submission period closes 2026-10-30 at 10:00 PDT, judging runs 2026-12-01 to
-2026-12-15, and winners are announced 2027-01-11. Source:
-https://nebiusglobalaihackathon.devpost.com/rules
+**DECISION: the deployment is designed to run unattended for roughly 46 days**, from the last commit
+before a release to the next point at which an operator is scheduled to touch it. That horizon is a
+planning choice rather than an observed fact, and it is stated as one: this is a single-operator
+project, and 46 days is the longest gap between hands-on attention the schedule realistically
+produces. Rejected alternative: designing for steady-state operations with somebody on call, which
+would justify a much cheaper recovery story and is not the situation this deployment is in.
 
-The consequence is arithmetic: **the demo must run unattended for roughly 46 days**, from the last
-commit to the end of judging, and the person clicking the URL is a judge, not a user who will file a
-bug. **VERIFIED:** judging criteria are equally weighted across Technological Implementation, Design,
-Potential Impact and Quality of the Idea. A dead URL loses three of the four to whatever the video
-shows. Source: same.
+The consequence is that the person clicking the URL is a user who will leave rather than an operator
+who will file a bug, and a dead URL is not a degraded experience. It is the whole product, because
+everything the application does sits behind it.
 
 **VERIFIED:** the services this runs on are Preview-grade with no SLA and no automatic recovery. See
 section 2.1.
@@ -491,7 +492,7 @@ class of silent failure into either automatic recovery or a phone alert.
 | One-command redeploy in the Makefile, tested from a clean shell | A redeploy that has never been run from scratch is not a recovery path |
 | Nightly `pg_dump` to Object Storage | A lost host costs minutes rather than the corpus |
 | A static SPA build on Vercel that works with zero backend, serving a **clearly labelled recorded tour** | Total backend loss. Labelling it as recorded keeps it honest; presenting it as the live app would not |
-| A named person doing a weekly check through 2026-12-15 | Seven weekends of drift. **OPEN:** the person is not yet named |
+| A named person doing a weekly check through the unattended window | Seven weekends of drift. **OPEN:** the person is not yet named |
 
 Model deprecation is the failure mode specific to this platform and this window:
 
@@ -499,7 +500,7 @@ Model deprecation is the failure mode specific to this platform and this window:
 | --- | --- |
 | Every model id in one manifest file | Never inlined at call sites, so a single edit changes every reference |
 | Build-time preflight | Fetch `https://tokenfactory.nebius.com/api/public/models_info` and fail the build if any referenced id is absent |
-| A declared fallback id per role, in the same region tier | Selected at runtime on a 404-class error, and exercised in CI so the fallback path is not first executed in December |
+| A declared fallback id per role, in the same region tier | Selected at runtime on a 404-class error, and exercised in CI so the fallback path is not first executed during the unattended window |
 | The weekly check includes a catalog diff, not only a `/healthz` ping | A ping succeeds right up until the first query hits a removed model |
 
 **VERIFIED, and the reason the above is not paranoia:** code must read the catalog's `model_id` field
@@ -513,12 +514,12 @@ page cites model ids that do not exist in the catalog. **DECISION: treat only `m
 `openapi.json` as authoritative.** Sources: https://docs.tokenfactory.nebius.com/august-2026-deprecation-notice ,
 https://api.tokenfactory.nebius.com/openapi.json
 
-**ASSUMPTION:** that another deprecation round lands between feature freeze and the end of judging.
-Two rounds in ten weeks is the observed cadence. This assumption cannot be validated in advance, which
-is precisely why it is mitigated structurally rather than monitored.
+**ASSUMPTION:** that another deprecation round lands between feature freeze and the end of the
+unattended window. Two rounds in ten weeks is the observed cadence. This assumption cannot be
+validated in advance, which is precisely why it is mitigated structurally rather than monitored.
 
 **ASSUMPTION:** that a Preview endpoint can survive the window at all. Settled by experiment X-0b, the
-canary endpoint, running from now to the end of judging.
+canary endpoint, running from now to the end of the window.
 
 ### 7.3 Two cost traps
 

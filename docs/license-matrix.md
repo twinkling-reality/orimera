@@ -10,7 +10,7 @@ already in the research.
 
 This is the highest legal-risk document in the repository. Two of its findings (the NVIDIA license
 distinction in section 2, and the trap list in section 4) are the difference between a valid
-Apache-2.0 submission and an invalid one.
+Apache-2.0 release and an invalid one.
 
 ---
 
@@ -23,7 +23,7 @@ Apache-2.0 submission and an invalid one.
 | **SHIP** | Safe in an Apache-2.0 repository |
 | **SHIP-ATTRIB** | Safe with a live attribution obligation. Do not vendor. Must appear in the credits surface, not only in a file |
 | **USE-ONLY** | May be run but never redistributed, and the use-time terms bind the operator |
-| **SEGREGATE** | Usable only as a clearly separated, separately noticed artifact, disclosed in the README and the submission |
+| **SEGREGATE** | Usable only as a clearly separated, separately noticed artifact, disclosed in the README and the accompanying notices |
 | **BLOCKED** | Do not touch |
 | **DISPUTED** | Primary sources contradict each other. Resolve before use |
 | **UNVERIFIED** | Nobody in the research corpus read the license. Not a verdict, an admission |
@@ -175,7 +175,7 @@ bases.
 | `nvidia/multitalker-parakeet-streaming-0.6b-v1` | Apache-2.0 | nvidia-open-model-license | **No** | <https://huggingface.co/nvidia/multitalker-parakeet-streaming-0.6b-v1> | **SEGREGATE.** Architecturally attractive, excluded per section 6 |
 | Cosmos family: `Cosmos3-Super-Reasoner`, `Cosmos-Reason1-7B`, `Cosmos-Reason2-*`, `Cosmos-Embed1-*`, `C-RADIOv4-H` | `nvidia-cosmos/cosmos-reason1` Apache-2.0; `NVIDIA/Cosmos` NOASSERTION | nvidia-open-model-license; Reason2 additionally **gated** | **No** | <https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/> | **BLOCKED.** Tuned for physical AI, gated, restrictive, and removed from Token Factory Serverless 2026-08-31 |
 | `nvidia/NVIDIA-Nemotron-Parse-v1.2` | Apache-2.0 | nvidia-open-model-license | **No** | <https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2> | SEGREGATE. No role in Orimera |
-| `nvidia/LocateAnything-3B` | per repo | **NVIDIA License**, "academic and non-profit research purposes only", plus a stacked Qwen Research License | **No** | <https://huggingface.co/nvidia/LocateAnything-3B/raw/main/README.md> | **BLOCKED.** A use-time block, not only a shipping block: a hackathon submission is arguably not academic non-profit research |
+| `nvidia/LocateAnything-3B` | per repo | **NVIDIA License**, "academic and non-profit research purposes only", plus a stacked Qwen Research License | **No** | <https://huggingface.co/nvidia/LocateAnything-3B/raw/main/README.md> | **BLOCKED.** A use-time block, not only a shipping block: a publicly released project of this kind is arguably not academic non-profit research |
 | `nvidia/NV-DINOv2`, `nvidia/nv-grounding-dino` | n/a | gated / nvidia-open-model-license | **No** | NGC / HF | **BLOCKED** |
 | `nvidia/difix`, `nvidia/difix_ref` (Difix3D+) | nv-tlabs repo | "NVIDIA License", terms stated as aligned to sd-turbo | **Unverified** | <https://github.com/nv-tlabs/Difix3D> | **UNVERIFIED.** Read in full before any use |
 | Anything under the **NVIDIA Community Model License** | n/a | subscription-gated production use; forbids improving other AI models; forbids OSS licensing | **No** | <https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-community-models-license/> | **BLOCKED** |
@@ -325,7 +325,7 @@ default code paths. Every one of these has a clean alternative that already exis
 | 1 | `pip install insightface` then `FaceAnalysis(name="buffalo_l")` | Silently auto-downloads **non-commercial-research-only** weights. The repo has no LICENSE file and GitHub detects none. This is the most common license violation in hobbyist face-recognition projects | **YuNet (MIT) for detection, dlib 5-point landmarks (public domain) for alignment, SFace (Apache-2.0) or dlib ResNet (public domain) for embeddings.** No gated downloads, no HF token, runs on CPU |
 | 2 | Linking the INRIA `diff-gaussian-rasterization` CUDA kernel | Most 3DGS tutorials and forks import it by default. Its license is non-commercial research only **and viral to derivatives** | **`nerfstudio-project/gsplat`, Apache-2.0.** Enforce it as the only rasterizer |
 | 3 | `dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")` | The first line of nearly every dlib face tutorial. The ibug 300-W dataset license excludes commercial use and the model author states explicitly that the trained model "can't be used in a commercial product" | **`shape_predictor_5_face_landmarks.dat`**, trained on the author's own dataset and covered by his blanket public-domain release |
-| 4 | Ultralytics, YOLO-World or BoxMOT arriving transitively as "just give me detection and tracking" | GPL-3.0 (YOLO-World) and AGPL-3.0 (YOLOE, Ultralytics, BoxMOT). AGPL in a hosted product triggers the network source-disclosure obligation, which would relicense the submission | **Grounding DINO via `transformers` (Apache-2.0)** for detection, **ByteTrack or BoT-SORT with ReID disabled (both MIT)** for tracking |
+| 4 | Ultralytics, YOLO-World or BoxMOT arriving transitively as "just give me detection and tracking" | GPL-3.0 (YOLO-World) and AGPL-3.0 (YOLOE, Ultralytics, BoxMOT). AGPL in a hosted product triggers the network source-disclosure obligation, which would relicense the project | **Grounding DINO via `transformers` (Apache-2.0)** for detection, **ByteTrack or BoT-SORT with ReID disabled (both MIT)** for tracking |
 | 5 | An unpinned NVIDIA tag | `diar_sortformer_4spk-v1` is CC-BY-NC-4.0, `-v2` is disputed, `-v2.1` is the NVIDIA Open Model License. `canary-1b` is CC-BY-NC-4.0 while `canary-1b-v2` is CC-BY-4.0. A floating tag can change the project's license posture with no visible signal | **Pin repo id plus revision SHA in `models.manifest.json`**, and fail CI on `cardData.license` drift |
 | 6 | `facebook/map-anything` instead of `facebook/map-anything-apache` | Identical API, but the plain variant's weights are CC-BY-NC-4.0 | **`facebook/map-anything-apache`**, whose weights are apache-2.0. It is the safest feed-forward option, not the only one |
 | 7 | `pip install crisperwhisper` for verbatim timestamps *(deferred capability)* | v1 is CC-BY-NC-4.0 and 2.0 is a non-commercial research license, despite being timestamp state of the art | **`nvidia/parakeet-tdt-0.6b-v3` (CC-BY-4.0)** or **`nvidia/nemotron-3.5-asr-streaming-0.6b` (OpenMDW-1.1)** |
@@ -415,7 +415,7 @@ licensing blocker into a licensing footnote for the Token Factory calls.
 
 1. **An API-only consumer is instead bound by the hosted endpoint's terms of service, which nobody in
    the research corpus read. OPEN.** The Nebius Token Factory terms of service and acceptable use
-   policy have not been retrieved. Read them before submission.
+   policy have not been retrieved. Read them before deployment.
 2. **The perception pipeline is not API-only.** The plan self-hosts detection, segmentation, face
    embedding and (if ever revived) ASR and diarization in containers on Nebius AI Cloud. **That is
    downloading and running weights.** The API-only escape hatch covers the Token Factory calls and
@@ -431,7 +431,8 @@ licensing blocker into a licensing footnote for the Token Factory calls.
   terms, not shipping around them.
 - **Non-commercial weights bite hardest.** CC-BY-NC-4.0, "non-commercial research purposes only" and
   unlicensed weights are blocked at use time, not only at distribution time. `nvidia/LocateAnything-3B`
-  is the sharpest case: a hackathon submission is arguably not "academic and non-profit research".
+  is the sharpest case: a publicly released project of this kind is arguably not "academic and
+  non-profit research".
 - **CC-BY-4.0 weights are clean for this purpose**, with an attribution obligation that is cheap to
   honour.
 - **OpenMDW-1.1 weights are cleanest**, and require retaining the agreement plus origin notices on
@@ -503,8 +504,8 @@ the mechanics below are recorded as the operating rule and are **not** VERIFIED 
   file.
 - **Outbound.** Orimera's own top-level `LICENSE` must remain the **unmodified** Apache-2.0 text.
   This is not merely hygiene: GitHub only detects the license and renders the Apache-2.0 chip in the
-  repository About section from a recognized filename with unmodified text, and that chip is literally
-  what hackathon submission requirement 6 asks for. Do not append project-specific terms to
+  repository About section from a recognized filename with unmodified text, and that chip is how most
+  readers and automated scanners determine the project's licence. Do not append project-specific terms to
   `LICENSE`; put them in `NOTICE` or `THIRD_PARTY_NOTICES.md`.
 
 **Experiment that settles both, 15 minutes (X-0g):** read the Apache-2.0 text we ship, enumerate

@@ -19,7 +19,7 @@ rather than five curated captures.
 **First, time and place were missing as filter dimensions.** The brief's recurrence thesis is
 carried by "a recurring person, place, object, conversation, or event", and every one of those is an
 entity. But a photograph library has two other axes that are at least as useful and considerably
-more reliable: **when** it was taken and **where**. "The scenes from March to May" and "the Iceland
+more reliable: **when** it was taken and **where**. "The scenes from March to May" and "the Lisbon
 trip" are natural, obvious queries that the specified model could not express.
 
 **Second, four separate paths to the same outcome invites four implementations.** If the Companion

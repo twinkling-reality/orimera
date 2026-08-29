@@ -1,8 +1,8 @@
 """Liveness and readiness, which are two signals and must not be one.
 
-``deployment.md`` section 6 specifies both, and the distinction is not pedantry: the demonstration
-has to survive roughly 46 days unattended, an external probe runs every five minutes, and the two
-questions have different costs and different answers.
+``deployment.md`` section 6 specifies both, and the distinction is not pedantry: a deployment has
+to survive stretches of roughly 46 days unattended, an external probe runs every five minutes, and
+the two questions have different costs and different answers.
 
 *   **Liveness**, ``GET /healthz``, costs nothing beyond the process itself and checks only
     that the process is running and can serve a request. No dependency is touched.
@@ -12,10 +12,10 @@ questions have different costs and different answers.
 Three things readiness must not do, from section 6.3, and each is implemented as an absence
 rather than as a comment:
 
-*   **It must not call a model.** 13,200 checks over the judging window, each spending roughly
-    200 reasoning tokens before producing any output, and worse, health would then go red the
-    day the prepaid balance ran out for a reason that has nothing to do with the service being
-    up. There is no model call anywhere in this module.
+*   **It must not call a model.** 13,200 checks over that unattended stretch, each spending
+    roughly 200 reasoning tokens before producing any output, and worse, health would then go
+    red the day the prepaid balance ran out for a reason that has nothing to do with the service
+    being up. There is no model call anywhere in this module.
 *   **It must not claim more than it checks.** A 200 from ``/healthz`` says the process is
     alive. It does not say the reasoning model still exists in the catalog; that is the
     scheduled ``orimera-preflight`` run, and readiness reports the manifest parsing rather than

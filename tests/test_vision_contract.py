@@ -315,7 +315,7 @@ def test_a_rate_limit_is_not_retried_when_retries_were_not_asked_for(transport):
 
 
 def test_a_withdrawn_primary_fails_over_to_the_declared_fallback(transport):
-    """The deprecation path, exercised here rather than first executed in front of a judge."""
+    """The deprecation path, exercised here rather than first executed in production."""
     binding = load_manifest()[Role.VISION]
     transport.by_model = {
         binding.primary.model_id: model_not_found(binding.primary.model_id),

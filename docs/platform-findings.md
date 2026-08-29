@@ -1,4 +1,4 @@
-# Feedback on Nebius Token Factory, Nebius AI Cloud, NVIDIA models and Tavily
+# Platform findings: Nebius Token Factory, Nebius AI Cloud, NVIDIA models and Tavily
 
 Status: mixed, labelled per finding. Runtime observations were made on **2026-08-27**. Catalog and
 documentation observations were retrieved on **2026-08-27** unless a different date is given.
@@ -30,7 +30,7 @@ checks, and all seven passed on 2026-08-27:
 A separate script, `scripts/verify_web_lookup.py`, made one real Tavily search and kept the request
 payload.
 
-What this feedback does **not** cover: Nebius AI Cloud has not been provisioned. Section 4 is
+What this document does **not** cover: Nebius AI Cloud has not been provisioned. Section 4 is
 documentation-verified only, and it says so at the top.
 
 ---
@@ -51,9 +51,9 @@ never enter canonical state, and the platform honours it.
 
 **Prepaid billing means runaway spend is not possible.** The billing console states plainly that API
 usage is charged to the balance, top-up is a manual button, and no automatic top-up is offered.
-For a hackathon on a $25 credit that is the right default, and it removed an entire category of
-worry. Every other platform surface the project touched needed a spend guard designed around it.
-This one did not.
+For a small prepaid balance that is the right default, and it removed an entire category of worry.
+Every other platform surface the project touched needed a spend guard designed around it. This one
+did not.
 
 **Pricing was accurate.** The per-model `input`/`output` figures in the machine-readable catalog
 matched the published pricing, and `usage` on every response carries `prompt_tokens`,
@@ -229,36 +229,44 @@ absent from the live catalog.
 
 ### F5. Two deprecation rounds in ten weeks, and after 2026-08-31 no NVIDIA multimodal model remains on serverless
 
-**Severity: medium, and this is offered as a heads-up rather than a complaint.**
+**Severity: medium, and this is offered as a heads-up rather than a defect report.**
 
-**Observed.** Nebius removed 11 models from Token Factory Serverless on 2026-06-22 (the entire
-`-fast` flavor family, plus two others), and removes 10 more on 2026-08-31. Both notices are
-published, both name a recommended replacement per model, and that is genuinely better practice than
-most providers manage.
+**Observed.** Nebius removed 11 models from Token Factory Serverless on 2026-06-22 and removes 10
+more on 2026-08-31. Both rounds were published ahead of the removal date, which is better practice
+than most providers manage. The June list is 7 `-fast` identifiers plus 4 others,
+`deepseek-ai/DeepSeek-V3.2`, `moonshotai/Kimi-K2.5`, `PrimeIntellect/INTELLECT-3` and
+`zai-org/GLM-5`. The two notices differ in one respect that matters to a caller: the August notice
+carries a recommended replacement for every model it removes, and the June notice carries no
+replacement column at all, directing readers to Dedicated Endpoints for production workloads
+instead. Sources: https://docs.tokenfactory.nebius.com/june-2026-deprecation-notice ,
+https://docs.tokenfactory.nebius.com/august-2026-deprecation-notice (both retrieved 2026-08-28)
 
 The sharp edge is in the detail. The two NVIDIA models removed on 2026-08-31,
 `nvidia/Nemotron-3-Nano-Omni` and `nvidia/Cosmos3-Super-Reasoner`, are the only two NVIDIA models in
 the catalog declaring an `image` use case. **After 2026-08-31 there is no NVIDIA vision or
-multimodal model on Token Factory Serverless.** Nebius' own recommended replacement for both is the
-non-NVIDIA `MiniMaxAI/MiniMax-M3`, which is the platform stating the same conclusion in its own
-words.
+multimodal model on Token Factory Serverless.** The recommended replacements printed in the notice
+carry that consequence without stating it: the omni-modal `Nemotron-3-Nano-Omni` is replaced by
+`nvidia/Nemotron-3_5-Lightning`, which declares no `image` use case, and `Cosmos3-Super-Reasoner` is
+replaced by the non-NVIDIA `MiniMaxAI/MiniMax-M3`. Neither replacement preserves both the vendor and
+the modality, and the notice does not say so.
+Source: https://docs.tokenfactory.nebius.com/august-2026-deprecation-notice (retrieved 2026-08-28)
 
-**Impact.** This hackathon requires at least one NVIDIA open source model. A team building anything
-image-shaped, starting from the track guidance and the catalog, would naturally reach for
-`Nemotron-3-Nano-Omni`, and would discover four days into the submission window that it is gone and
-that the recommended replacement does not satisfy the NVIDIA requirement. The requirement is still
-satisfiable, by routing reasoning to a text Nemotron and vision elsewhere, which is exactly what
-this project does. But that is a design constraint a team should learn on day one, not on day five.
+**Impact.** Anyone who needs an NVIDIA model and an image path in the same call has no serverless
+option here after 2026-08-31. Someone building anything image-shaped from the catalog would
+naturally reach for `Nemotron-3-Nano-Omni`, and the per-model replacement moves them off the vendor
+or off the modality silently, because a replacement mapping is read as an equivalence. Routing
+reasoning to a text Nemotron and vision to a non-NVIDIA model is a workable answer, and it is what
+this project does, but it is a constraint worth learning when the model is chosen rather than when
+it is removed.
 
 **Suggested fix.** Two things, both cheap:
 
-1. Flag, in the hackathon resources page rather than only in a deprecation notice, that the NVIDIA
-   models available on serverless during the event window are text-only, and that an NVIDIA-model
-   requirement is met through the text path.
-2. Consider freezing serverless deprecations for the duration of an event that requires the platform
-   to be stable, or publishing the deprecation calendar far enough ahead that a nine week project
-   can plan around it. A removal landing between feature freeze and the end of judging is a real
-   risk for every submission, not only this one.
+1. State the modality consequence in the deprecation notice itself, alongside the per-model
+   replacement: after this round the NVIDIA models on serverless are text-only. A replacement table
+   that crosses a vendor boundary or a modality boundary should say which boundary it crossed.
+2. Publish the deprecation calendar far enough ahead that a short project can plan around it. Two
+   rounds in ten weeks is a lot of change to absorb, and a removal landing mid-project is a real
+   risk for any caller pinned to a serverless identifier.
 
 **What this project did:** every role has a declared fallback identifier in the same manifest, the
 client selects it on a 404-class error only, the fallback path is exercised in CI, and a weekly
@@ -313,13 +321,20 @@ freeze embeddings rather than depending on the endpoint at request time.
 
 **Severity: medium, because the failures are silent to a reader.**
 
-**Observed**, as of 2026-08-27:
+**Observed.** Both documentation pages and the catalog were re-read on 2026-08-28, and both
+discrepancies were still present:
 
-- The inference overview page still documents the `-fast` flavor as a live feature, instructing
-  readers to append `-fast` to a model name. Every `-fast` identifier was deleted on 2026-06-22 and
+- The inference overview page still documents the `-fast` flavor as a live feature: "To use the Fast
+  flavor, append `-fast` to the model name". Every `-fast` identifier was deleted on 2026-06-22 and
   zero remain in the live catalog.
+  Sources: https://docs.tokenfactory.nebius.com/ai-models-inference/overview ,
+  https://tokenfactory.nebius.com/api/public/models_info (both retrieved 2026-08-28)
 - The vision-capabilities examples page cites `Qwen/Qwen2-VL-72B-Instruct` and
-  `meta-llama/Meta-Llama-3.1-70B-Instruct`. Neither exists in the catalog.
+  `meta-llama/Meta-Llama-3.1-70B-Instruct` in its code samples. Neither resolves in the catalog,
+  which carries `Qwen/Qwen2.5-VL-72B-Instruct` and `meta-llama/Llama-3.3-70B-Instruct` instead. Both
+  stale identifiers are near-misses for a live one, which is the worst case for a reader skimming.
+  Sources: https://docs.tokenfactory.nebius.com/api-reference/examples/vision-capabilities ,
+  https://tokenfactory.nebius.com/api/public/models_info (both retrieved 2026-08-28)
 
 **Impact.** A developer copying a model identifier out of a documentation example gets a 404-class
 error, and the natural first conclusion is that their credentials or base URL are wrong, not that
@@ -336,52 +351,81 @@ copy a model identifier out of a documentation example.
 
 ## 4. Nebius AI Cloud
 
-**Scope note, stated plainly: AI Cloud has not been provisioned.** No VM, no job, no bucket. Every
-observation in this section is documentation-verified on 2026-08-27, not execution-verified, and it
-is offered as the experience of planning against the documentation rather than of running on the
-platform.
+**Scope note, stated plainly: AI Cloud has not been provisioned.** No VM, no job, no bucket. Nothing
+in this section is execution-verified, and none of it should be read at the same strength as
+sections 2, 3 and 5, which rest on responses the platform actually returned. Every claim below rests
+on a published Nebius documentation page, cited with its URL and the date it was retrieved. Where
+the documentation does not settle a question, the claim is marked OPEN rather than rounded off in
+either direction. This is the experience of planning against the documentation, not of running on
+the platform.
 
 **Object storage does not support Object Lock, Legal Hold, or WORM.** The S3 compatibility page
-states verbatim that write-once-read-many retention policies are not supported. This is documented
-clearly and was easy to find, which is exactly right, and it directly shaped what this product is
-allowed to claim. A memory system's most attractive marketing word is "immutable", and the honest
-version available on this storage is bucket versioning plus content-addressed keys plus a bucket
-policy denying delete to the runtime service account. This project therefore says **"append-only by
-policy"** everywhere, and the words immutable, WORM and tamper-proof do not appear in its product
-copy. Feedback rather than complaint: the clarity of that documentation page is what made the honest
-claim possible. If Object Lock arrives later, it would be worth announcing loudly, because retention
-guarantees are a product feature and not only an infrastructure one.
+states it verbatim: "Write-once-read-many (WORM) retention policies are not supported." This is
+documented clearly and was easy to find, which is exactly right, and it directly shaped what this
+product is allowed to claim. A memory system's most attractive marketing word is "immutable", and
+the honest version available on this storage is bucket versioning plus content-addressed keys plus a
+bucket policy denying delete to the runtime service account. This project therefore says
+**"append-only by policy"** everywhere, and the words immutable, WORM and tamper-proof do not appear
+in its product copy. Worth stating positively: the clarity of that page is what made the honest
+claim possible, because an ambiguous page would have left room to overclaim. If Object Lock arrives
+later, it would be worth announcing loudly, because retention guarantees are a product feature and
+not only an infrastructure one.
+Source: https://docs.nebius.com/object-storage/interfaces/s3-api-compatibility (retrieved 2026-08-28)
 
-**GPU quotas count stopped instances.** A VM counts against quota from creation to deletion,
-running or stopped, so a stopped VM still blocks the next job from starting. This is documented, and
-it is the kind of thing that is much better to read in the quotas page than to discover while
-debugging a job that will not schedule. It is worth surfacing in the compute quickstart too, because
-that is where a new user meets the concept.
+**GPU quotas count stopped instances.** The quotas page states it directly: "A VM and its resources
+count towards the quotas throughout the VM's lifecycle, from its creation to deletion, regardless of
+whether it is running or stopped." So a stopped VM still blocks the next job from starting. This is
+the kind of thing that is much better to read in the quotas page than to discover while debugging a
+job that will not schedule. It is worth surfacing in the compute quickstart too, because that is
+where a new user meets the concept.
+Source: https://docs.nebius.com/compute/resources/quotas-limits (retrieved 2026-08-28)
 
-**Default GPU quotas are regionally uneven in a way that decides architecture.** eu-north1 is the
-only region with a non-zero default L40S quota. us-central1 has no GPU type with a non-zero default
-at all, and the custom-image quota is 0 in every region. That last one is the consequential
-constraint: it means a pipeline ships as containers and never as a baked image, which is a
-reasonable design but is a decision made for the user by a quota default rather than by an
-architectural recommendation. A short note in the docs saying "default to containers, request
-custom-image quota if you need it" would frame it as guidance rather than as an obstacle discovered
-late.
+**Default GPU quotas are regionally uneven in a way that decides architecture.** Across the eight
+regions listed, eu-north1 is the only one with a non-zero default L40S quota, at 2. us-central1 has
+no GPU type with a non-zero default at all, and the custom-image quota is 0 in every region
+("Number of images: 0"). That last one is the consequential constraint: it means a pipeline ships
+as containers and never as a baked image, which is a reasonable design but is a decision made for
+the user by a quota default rather than by an architectural recommendation. A short note in the docs
+saying "default to containers, request custom-image quota if you need it" would frame it as guidance
+rather than as an obstacle discovered late.
+Source: https://docs.nebius.com/compute/resources/quotas-limits (retrieved 2026-08-28)
 
-**Serverless AI is Preview-grade, and the terms say so honestly.** No service level, no automatic
-retry, recovery, or redundancy, and endpoint lifetime documented as hours to days. This project
-needs a demonstration that survives unattended for about 46 days, so it puts the API process and
-database on a plain Compute VM with a restart policy instead. Since Serverless AI applies Compute
-pricing, the cost is identical either way and only the reliability differs. The feedback is that the
-honesty is appreciated and rare. The gap is that the track guidance encourages Serverless Endpoints
-for deployment while the specific terms document the Preview limitations, and a developer reading
-only the first will not find the second. Linking the terms from the track guidance would close it.
+**Serverless AI is Preview-grade, and the terms say so honestly.** The specific terms state "The
+Service is in Preview stage", "There is no Service Level provided for the Service" and "The Service
+does not provide automatic retry, recovery, or redundancy mechanisms", and the serverless overview
+gives an endpoint's "Typical lifetime: Hours to days". This project needs a deployment that survives
+unattended for about 46 days, so it puts the API process and database on a plain Compute VM with a
+restart policy instead. Serverless usage "is billed under Compute VM pricing", so the cost is
+identical either way and only the reliability differs. The honesty of those terms is appreciated and
+rare. The gap is one of placement rather than of candour: the product overview encourages Serverless
+Endpoints for deployment, the Preview limitations live in a separate legal specific-terms document,
+and a developer reading the first will not find the second. Linking the terms from the overview
+would close it.
+Sources: https://docs.nebius.com/legal/specific-terms/serverless-ai ,
+https://docs.nebius.com/serverless/overview , https://docs.nebius.com/serverless/pricing-quotas
+(all retrieved 2026-08-28)
 
-**Managed PostgreSQL is priced for a different workload.** The documented `4vcpu-16gb` example is
-$0.28 per hour, roughly $204 per month. This project's database will not reach 1 GB, so the managed
-option would cost more over the project period than its entire expected inference spend. That is a
-correct price for a production database and the wrong price for a hackathon, and there is no smaller
-tier. A genuinely small managed tier would be the difference between a hackathon project using the
-managed service and a hackathon project running a container.
+**Managed PostgreSQL is priced for a different workload.** The documented worked example is a
+`4vcpu-16gb` cluster at 4 x $0.034 + 16 x $0.009 = $0.28 per hour, roughly $204 per month. This
+project's database will not reach 1 GB, so the managed option would cost more over the project
+period than the entire expected inference spend, and the database therefore runs in a container on
+the same Compute VM as the API. That is a correct price for a production database and the wrong
+shape for a database that fits in a laptop's page cache.
+Source: https://docs.nebius.com/postgresql/resources/pricing (retrieved 2026-08-28)
+
+**OPEN: whether a smaller managed PostgreSQL configuration can be ordered.** The claim that no
+smaller tier exists is not supported by the documentation and is not made here. The pricing page
+prices any cluster by a per-vCPU and per-GB formula and uses `4vcpu-16gb` only as a worked example,
+not as a floor, and the CLI reference for cluster creation requires a resource preset without
+enumerating the permitted values, so the smallest orderable configuration is documented nowhere this
+project could find. **What would settle it:** a published list of supported PostgreSQL resource
+presets, or a single create call accepted or rejected for a preset below `4vcpu-16gb`. The cost
+figure above is unaffected either way, because it is the documented example rather than a claimed
+minimum. The documentation gap is itself the finding: the only sizing signal a reader gets is an
+example shaped like production.
+Sources: https://docs.nebius.com/postgresql/resources/pricing ,
+https://docs.nebius.com/cli/reference/msp/postgresql/v1alpha1/cluster/create (both retrieved
+2026-08-28)
 
 ---
 
@@ -393,11 +437,11 @@ Short, because there is little to report, which is the point.
 with three sourced results and a synthesised answer, on the first request ever made against the
 credential. No SDK, no setup beyond a key.
 
-**The free tier was sufficient.** Researcher plan, free tier, 1,000 monthly credits, no credit card
-required, pay-as-you-go disabled by default. For a project that uses public lookup as a narrow
-opt-in layer rather than as a search engine, that is ample, and the disabled-by-default
-pay-as-you-go setting means there is no uncapped spend path on the credential. That default is the
-right one and other APIs should copy it.
+**Pay-as-you-go is disabled by default.** A key cannot spend past its included allowance until
+someone deliberately turns overage on. For a project that uses public lookup as a narrow opt-in
+layer rather than as a search engine, that means there is no uncapped spend path on the credential
+at all, and no spend guard had to be designed around it. That default is the right one and other
+APIs should copy it.
 
 **The privacy documentation is specific enough to design against.** Tavily states that it may use
 portions of query data to improve future responses and shares query data with third-party index
@@ -443,8 +487,10 @@ What would most improve the developer experience, in the order this project woul
 8. **Add a second serverless embedding model.** One model in a role means one deprecation from an
    unrecoverable position, and embeddings are the least swappable thing in any retrieval system
    (F7).
-9. **Freeze serverless deprecations during a hackathon window, or publish the calendar far enough
-   ahead to plan around.** Two rounds in ten weeks is a lot of change to absorb inside a nine week
-   project (F5).
-10. **Add a small managed PostgreSQL tier.** The current entry point is priced correctly for
-    production and out of reach for everything smaller (section 4).
+9. **Publish the deprecation calendar far enough ahead to plan around, and state the modality
+   consequence in the notice.** Two rounds in ten weeks is a lot of change to absorb inside a short
+   project, and the August round removes the last NVIDIA image path from serverless without saying
+   so anywhere in the notice (F5).
+10. **Document the smallest orderable managed PostgreSQL configuration.** The only sizing signal on
+    the pricing page is a production-shaped worked example, and whether anything smaller can be
+    ordered is currently OPEN (section 4).

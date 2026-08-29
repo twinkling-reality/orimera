@@ -4,7 +4,8 @@ Status: mixed. Every claim carries exactly one label, per the convention in
 [README.md](README.md): **VERIFIED** (primary source URL and retrieval date), **DECISION** (with the
 alternative rejected), **ASSUMPTION** (with the experiment that settles it), **OPEN**.
 
-Retrieval date for every VERIFIED claim on this page: **2026-08-27**.
+Retrieval date for every VERIFIED claim on this page: **2026-08-27**, except the two deprecation
+notices cited in section 8, which were re-read on **2026-08-28** and carry that date inline.
 Promoted from the reconciled research in `.orimera/` (reconciliation date 2026-08-27). Where the
 research recorded a disagreement as unresolved, it is preserved here as unresolved.
 
@@ -102,7 +103,7 @@ ASR container on Nebius AI Cloud, there is nothing to transcribe.
 What deferral means concretely:
 
 - No claim about voices, speech, conversations, transcripts, speaker identity or "what someone said"
-  appears in the product, the demo, the submission video, or any marketing surface.
+  appears in the product, the demo, the README, the documentation, or any marketing surface.
 - The evidence spine keeps a `track` concept so that adding an audio track later is an extension
   rather than a rewrite (D3).
 - The unresolved Sortformer v2 license question (reconciled report C-D1: `cc-by-4.0` versus NVIDIA
@@ -177,15 +178,17 @@ a direct consequence of it. Nothing here is aspirational.
 open-question channel ships, the speech gate does not), glide traversal, and fine grained
 reconstruction telemetry.
 
-### 4.1 The judge path
+### 4.1 The core walkthrough
 
-**DECISION**, adapted from the research's three minute path with the audio dependent steps removed:
+**DECISION**, adapted from the research's end to end path with the audio dependent steps removed.
+The elapsed column indicates the pace a first-time user moves through the loop. It is not a budget
+for any particular recording, and nothing in the product depends on hitting these marks:
 
-| Time | What happens |
+| Elapsed | What happens |
 | --- | --- |
 | 0:00 to 0:20 | Land. The Atlas is already populated with three regions |
 | 0:20 to 0:45 | Walk into a region, focus a person, two other regions light up |
-| 0:45 to 1:10 | A pending continuity candidate appears. The judge confirms or rejects it |
+| 0:45 to 1:10 | A pending continuity candidate appears. The user confirms or rejects it |
 | 1:10 to 1:50 | The Atlas relinks visibly. A cross-region question is typed; the answer returns with citation chips |
 | 1:50 to 2:15 | A chip is clicked; the original photograph opens with the supporting region highlighted, and the world anchor pulses simultaneously |
 | 2:15 to 2:40 | An unanswerable question is asked; the system abstains and says why |
@@ -228,8 +231,8 @@ higher rung than was achieved.
 
 This is an honesty feature with a product payoff. A region that says "this is the path I walked, and
 I cannot show you the other side of the room" is trustworthy in a way that a region silently
-presenting garbage geometry as a room is not. It also makes the fallback survivable in front of
-judges: a rung 3 region is a designed outcome with a label, not a visible failure.
+presenting garbage geometry as a room is not. It also makes the fallback survivable in front of a
+first-time user: a rung 3 region is a designed outcome with a label, not a visible failure.
 
 ### 5.2 Rung wording
 
@@ -333,8 +336,7 @@ Excluded from the product, not merely from the MVP:
 
 - **Always-on or background capture.** Orimera ingests a library the user chose to give it.
 - **Any claim of on-device or local-only processing.** Media goes to third party cloud APIs. The
-  submission says so plainly. This is also why the project targets the Apps and Agents track rather
-  than the Personal AI track (see [adr/0001-track-selection.md](adr/0001-track-selection.md)).
+  README and the documentation say so plainly, and no surface of the project implies otherwise.
 - **Identifying strangers.** See the four guards in 6.3.
 - **Any completion metric.** No streaks, no progress rings, no "N remaining", no urgency. The open
   question counter is allowed to read a non-zero number forever.
@@ -363,25 +365,28 @@ Detail and exact identifiers belong in
 **nothing depends on a model scheduled for removal.**
 
 **VERIFIED.** Nebius removed 11 models from Token Factory Serverless on 2026-06-22 and removes 10
-more on 2026-08-31, and the August notice lists `MiniMaxAI/MiniMax-M3` as Nebius' own recommended
-replacement for both NVIDIA vision models.
+more on 2026-08-31. **CORRECTED 2026-08-28:** the August notice does not name one replacement for
+both NVIDIA vision models. It maps `nvidia/Cosmos3-Super-Reasoner` to `MiniMaxAI/MiniMax-M3` and
+`nvidia/Nemotron-3-Nano-Omni` to `nvidia/Nemotron-3_5-Lightning`, which declares no `image` use case,
+so neither recommendation keeps both the vendor and the modality.
 https://docs.tokenfactory.nebius.com/june-2026-deprecation-notice ,
-https://docs.tokenfactory.nebius.com/august-2026-deprecation-notice
+https://docs.tokenfactory.nebius.com/august-2026-deprecation-notice (both retrieved 2026-08-28)
 
 | Role | Choice | Note |
 | --- | --- | --- |
 | Reasoning, Companion phrasing, cross-region reasoning | NVIDIA text Nemotron: `nvidia/Nemotron-3_5-Lightning`, with `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`, `nvidia/nemotron-3-super-120b-a12b` and `nvidia/Nemotron-3-Ultra-550b-a55b` as the declared alternates | All survive 2026-08-31. Satisfies the NVIDIA open model requirement |
-| Vision sensor over photographs | A non-NVIDIA Token Factory vision model. `MiniMaxAI/MiniMax-M3` is Nebius' named replacement; `openbmb/MiniCPM-V-4_5` is the reconciled report's Apache-2.0 candidate | Selection between the two is deferred to the technology document. **All NVIDIA multimodal models leave Serverless on 2026-08-31 and none may be depended on** |
+| Vision sensor over photographs | A non-NVIDIA Token Factory vision model. `MiniMaxAI/MiniMax-M3` is Nebius' named replacement for the removed `nvidia/Cosmos3-Super-Reasoner`; `openbmb/MiniCPM-V-4_5` is the reconciled report's Apache-2.0 candidate | Selection between the two is deferred to the technology document. **All NVIDIA multimodal models leave Serverless on 2026-08-31 and none may be depended on** |
 | Text embeddings | A Token Factory embedding model | Image embeddings do not exist on Token Factory and must be self-hosted |
 
-**DECISION** on deprecation survival, because the demo must run unattended from 2026-10-30 to at
-least 2026-12-15: every model ID lives in one manifest file and is never inlined at a call site; a
-preflight check fails the build if any referenced ID is absent from the live catalog; every role has a
-declared fallback exercised in CI; and the weekly uptime check includes a catalog diff, not only a
-health ping.
+**DECISION** on deprecation survival, because the hosted demo must run unattended for roughly 46 days
+after feature freeze: every model ID lives in one manifest file and is never inlined at a call site;
+a preflight check fails the build if any referenced ID is absent from the live catalog; every role
+has a declared fallback exercised in CI; and the weekly uptime check includes a catalog diff, not
+only a health ping.
 
 **ASSUMPTION (A-33), high plausibility.** Another deprecation round lands between feature freeze and
-the end of judging. It cannot be validated in advance, only mitigated structurally as above.
+the end of the unattended deployment window. It cannot be validated in advance, only mitigated
+structurally as above.
 
 ---
 
@@ -391,7 +396,7 @@ the end of judging. It cannot be validated in advance, only mitigated structural
 | --- | --- | --- |
 | A-28 | Reconstruction is legible enough that walking inside a region reads as a place. Named in the research as the highest-stakes assumption in the interaction stream | X-1, one day on real captures. If it fails, rung 3 carries the product |
 | A-29 | The pipeline emits real per-stage counters | Two hours of backend inspection. Do this first (5.3) |
-| A-18 | Single-signal cross-capture identity lands at Recall@1 40 to 65%. **Extrapolated, not measured. No recall number may appear in the submission until it is measured** | X-6, one day |
+| A-18 | Single-signal cross-capture identity lands at Recall@1 40 to 65%. **Extrapolated, not measured. No recall number may appear in the README, the documentation or any marketing surface until it is measured** | X-6, one day |
 | A-31 | Evidence references resolve to the exact source asset in the browser | X-3. Simplified but not eliminated by the move to stills |
 | A-14 | Browser rendering budget on the actual demo hardware. Every desktop number in the corpus was extrapolated from different hardware | Measure on the real machine, one hour. Ship a frame-time-driven auto-downgrade so no guessed number is load-bearing |
 
@@ -421,16 +426,16 @@ it points to.
 | # | Limitation | Status | Specified in |
 | --- | --- | --- | --- |
 | L-1 | **Cross-capture identity is proposed, never asserted.** The measured accuracy of open-set face identification and of cloth-changing re-identification does not support autonomous linking, so a proposed link may drive layout, filtering and highlighting but may not support a historical factual claim until the account holder confirms it | DECISION, on VERIFIED measurements | 1.1, 2.4, 6.3 |
-| L-2 | **No accuracy figure for cross-capture identity is published.** Orimera's own recall has not been measured, and no recall or precision number appears in the submission, the demo or any marketing surface until it is | ASSUMPTION A-18, unmeasured | 9 |
+| L-2 | **No accuracy figure for cross-capture identity is published.** Orimera's own recall has not been measured, and no recall or precision number appears in the README, the documentation, the demo or any marketing surface until it is | ASSUMPTION A-18, unmeasured | 9 |
 | L-3 | **Reconstruction quality is uneven and is not guaranteed.** Each region renders at whichever rung of the fallback ladder it earned, and the earned rung is displayed rather than smoothed over. A photograph library shot as travel photography does not naturally contain the dense overlapping coverage rung 1 requires, so a region reaching rung 1 is the exception rather than the expectation | DECISION | 5, 5.1 |
 | L-4 | **Reconstruction is precomputed and never runs in the live demo path.** The demo's pre-ingested state is disclosed on the page itself. A progress bar not driven by real job state, a spinner in front of a cached response, and any query path that special-cases the scripted questions are all out of bounds, and a test asserts the demo questions return identical results with the demo flag off | DECISION | 4.1, 5, 5.3 |
 | L-5 | **Retention is append-only by policy, not immutable.** Nebius Object Storage does not support Object Lock or Legal Hold, so the property rests on bucket versioning, content-addressed keys and a bucket policy denying delete to the runtime service account. The words immutable, WORM and tamper-proof do not appear in product copy | VERIFIED | 6.1 |
 | L-6 | **Nothing is private, local or end to end encrypted.** Media is processed by third party cloud APIs, the project does not inherit its providers' certifications, and it makes no claim of on-device processing, anonymity or regulatory compliance | DECISION | 7, and `privacy-consent-threat-model.md` |
-| L-7 | **There are no voices, conversations or transcripts.** Deferred for two independent reasons: the platform has zero audio capability, and photographs carry no audio track. No claim about speech or speaker identity appears anywhere in the product or the submission | VERIFIED and DECISION | 2.3 |
+| L-7 | **There are no voices, conversations or transcripts.** Deferred for two independent reasons: the platform has zero audio capability, and photographs carry no audio track. No claim about speech or speaker identity appears anywhere in the product, the documentation or any marketing surface | VERIFIED and DECISION | 2.3 |
 | L-8 | **A citation resolves to a whole image, optionally to a normalized region inside it.** It does not resolve to a moment inside a span, because a still photograph has no span to index into. If audio is ever added, this wording changes back at the same time | DECISION | 6.2 |
 | L-9 | **The embedding model has no in-catalog fallback, and vector search is exact rather than indexed.** `Qwen/Qwen3-Embedding-8B` is the only embedding-typed model in the Token Factory catalog, and its 4096-dimensional output is above pgvector's 4000-dimension index ceiling. Exact search is both faster and strictly more correct at personal-library scale, and it is not a design that scales to millions of vectors | VERIFIED | `runtime-verification.md` 7, `domain-and-evidence-model.md` 4.4 |
-| L-10 | **Model availability is a live exposure for the whole judging window.** Nebius removed 11 models from Token Factory Serverless in June 2026 and removes 10 more on 2026-08-31. A further round landing between feature freeze and the end of judging is mitigated structurally, by one model manifest, a preflight check against the live catalog, a declared per-role fallback exercised in CI, and a weekly catalog diff. It is mitigated, not eliminated | ASSUMPTION A-33 | 8 |
-| L-11 | **The hosted demo runs unattended for roughly 46 days**, between the 2026-10-30 submission deadline and the end of judging on 2026-12-15. The Nebius Serverless option is Preview grade, with no service level and no automatic recovery, so the API and database run on a Compute VM with a restart policy, behind an external health check, with a clearly labelled recorded tour on a second host as the fallback. Uptime is engineered for, not guaranteed | DECISION | `architecture-overview.md` 2.1, 7 |
+| L-10 | **Model availability is a live exposure for the whole unattended deployment window.** Nebius removed 11 models from Token Factory Serverless in June 2026 and removes 10 more on 2026-08-31. A further round landing between feature freeze and the end of that window is mitigated structurally, by one model manifest, a preflight check against the live catalog, a declared per-role fallback exercised in CI, and a weekly catalog diff. It is mitigated, not eliminated | ASSUMPTION A-33 | 8 |
+| L-11 | **The hosted demo runs unattended for roughly 46 days**, which is the planning horizon between feature freeze and the end of the deployment window. The Nebius Serverless option is Preview grade, with no service level and no automatic recovery, so the API and database run on a Compute VM with a restart policy, behind an external health check, with a clearly labelled recorded tour on a second host as the fallback. Uptime is engineered for, not guaranteed | DECISION | `architecture-overview.md` 2.1, 7 |
 | L-12 | **Touch devices do not get Atlas traversal.** They enter through the World Index, which is a complete and equivalent path to every function rather than a reduced one, and which is also the keyboard-first path on desktop | DECISION | 4, and `interaction-model.md` 2, 6 |
 
 Two further limitations are named in their own sections rather than compressed into a row: the

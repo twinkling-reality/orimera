@@ -34,13 +34,13 @@ may name a renderer, which is what keeps the ADR's outcome to a two-package blas
 Three mechanisms, because they cover different failure modes and none of them
 covers all three:
 
-1. **`.dependency-cruiser.cjs`** — forbidden module imports and cross-package
+1. **`.dependency-cruiser.cjs`**, forbidden module imports and cross-package
    edges. Every rule has been probed with a deliberate violation; they fire by
    name, and legal imports pass.
-2. **`tsconfig` `lib`** — `atlas-core` and `companion-runtime` compile without
+2. **`tsconfig` `lib`**, `atlas-core` and `companion-runtime` compile without
    `lib.dom`, so `document`, `window` and `HTMLElement` are type errors. A global
    is not an import and no lint rule can catch it.
-3. **The proposal gate in `graph-client`** — a runtime check that rejects any
+3. **The proposal gate in `graph-client`**, a runtime check that rejects any
    mutation whose proposal id is not in the pending set. Deliberately runtime: a
    lint rule protects code that was linted, and this has to protect code that has
    not been written yet.
