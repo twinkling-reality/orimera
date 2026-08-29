@@ -342,7 +342,7 @@ is done, no claim is made here about range requests being on the browser path.
 
 | Variable | Purpose | Consumed by |
 | --- | --- | --- |
-| `ORIMERA_DATABASE_URL` | **The connection string the API, the ingest command and both workers actually open.** No default: `Database.from_env` raises `DatabaseNotConfigured` naming this variable, because a default would connect to something nobody chose | `orimera/db/session.py`, which sets `DATABASE_URL_ENV = "ORIMERA_DATABASE_URL"`. Every connection in the process comes from here. Local socket or loopback, since section 3 puts the database on the same host |
+| `ORIMERA_DATABASE_URL` | **The connection string the API, the ingest command and both workers actually open.** `orimera_app` is the role that belongs behind it, and the composition does not put it there: 5.1.3. No default: `Database.from_env` raises `DatabaseNotConfigured` naming this variable, because a default would connect to something nobody chose | `orimera/db/session.py`, which sets `DATABASE_URL_ENV = "ORIMERA_DATABASE_URL"`. Every connection in the process comes from here. Local socket or loopback, since section 3 puts the database on the same host |
 | `NEBIUS_API_KEY` | Bearer credential for Token Factory | The model client. Named in `models.manifest.json` as `api_key_env`, so even the environment variable name is manifest data rather than a literal in code |
 | `TAVILY_API_KEY` | Credential for the public entity lookup | The lookup path only. The feature is opt in and is on the cut list if its egress gate does not hold |
 | `ORIMERA_TEST_DATABASE_URL` | Points the database backed tests at a live PostgreSQL 18 server | Tests only. Unset means those tests skip, which is why the suite runs without a database |
@@ -378,7 +378,7 @@ destroyed, the tombstone recorded complete, and another workspace's live photogr
 The purge role's UPDATE is still filtered by `ws_isolation`, so it reads across tenants and writes
 within one. That asymmetry is the whole of the grant.
 
-### 5.1.2 The request body bound, and the part of it a proxy still owns
+### 5.1.2 The request body bound, which the application alone owns today
 
 `POST /intake` is multipart, and **the body is received and parsed before any route function and
 before any dependency runs**, so it is parsed before authentication: an anonymous request has
@@ -421,6 +421,36 @@ file parts really are unbounded there, and the route's own `MAX_PART_BYTES` chec
 `orimera/api/routes/intake.py` runs on `upload.file.read(...)`, which is a part already spooled.
 Authentication really is a dependency: `current_session` in `orimera/api/dependencies.py` is
 resolved by `Depends`, and FastAPI resolves dependencies after it has read and parsed the body.
+
+### 5.1.3 Which role belongs behind `ORIMERA_DATABASE_URL`, and which one is there instead
+
+`orimera_app` belongs behind it, for the reason 5.1.1 gives in one line: row-level security is
+inert for an owner. **The composition does not do that.** `compose.yaml` sets
+`POSTGRES_USER: orimera`, which is the bootstrap superuser the image's `initdb` creates, and then
+hands both the API and the worker
+`ORIMERA_DATABASE_URL: postgresql://orimera:${POSTGRES_PASSWORD}@postgres:5432/orimera`. So the
+runtime connects as the owner, and three things follow.
+
+- **The twenty-two `ws_isolation` policies are inert.** `force row level security` makes an ordinary
+  owner subject to a policy; it does not reach a superuser, and PostgreSQL states that a
+  superuser or a role with BYPASSRLS always bypasses row security. What still holds is the
+  trigger half: `assert_workspace_context()` raises for a superuser too, so a WRITE naming the
+  wrong workspace is still refused. Reads are the half with no trigger behind them, so a
+  forgotten `set_config` reads as a cross-workspace SELECT rather than as an empty result.
+- **`Database.unscoped` hides nothing.** Its docstring names the role each half belongs to, and
+  `tests/test_row_level_security.py` asserts both: as `orimera_app` the forced tables read empty,
+  as the owner the same call on the same schema returns the row.
+- **5.4.3's "97 are usable" is a floor, not a ceiling.** `superuser_reserved_connections` reserves
+  slots *for* superusers, so a superuser runtime can take all 100 and leave an administrator
+  unable to connect to the cluster they need in order to fix it.
+
+Nothing in `orimera/api/` or in `orimera/db/session.py` issues a `set role` or looks at
+`RUNTIME_ROLE`, so the connection string is the only thing that decides this. Closing it is a
+compose change and `ORIMERA_APP_ROLE_PASSWORD`, in the order 5.1.1 already fixes: migrate as the
+owner, `orimera-db` provisions the three roles, then point the runtime at `orimera_app`. **It has
+not been done**, and this section exists so that the state is written down rather than inferred
+from a docstring that used to omit it.
+
 
 ### 5.2 What a deployment additionally needs
 
@@ -521,7 +551,8 @@ where they are actually counted.
 #### 5.4.3 Connection slots, which are what actually runs out
 
 `max_connections = 100` and `superuser_reserved_connections = 3` on the documented target, so 97
-are usable. One process holds one backend per in-flight request past its connection dependency,
+are usable by a role that is not a superuser, and 5.1.3 records that the composition's runtime
+role is one, which means it can take the other three as well. One process holds one backend per in-flight request past its connection dependency,
 plus one for the derivative worker and one for the purge worker. **The threadpool does not cap
 this**: 48 streams held 48 backends against a 40-thread pool, measured. So the real ceiling for a
 single-process deployment is about 95 concurrent connection-holding requests, and two API
@@ -546,8 +577,12 @@ at orientation 1. Measured on CPython 3.11.6, Pillow 12.3.0, one fresh process p
 where `T` is the threadpool (40), `D` is the number of decodes running at once and the `+ 1` is
 the in-process derivative worker, which decodes off the request path. The 67 MB per thread is the
 encoded part `_read_and_check` reads into memory before it probes anything
-(`MAX_PART_BYTES + 1`). With nothing bounding `D`, `D` is `T`: 40 x 512 MB is **20 GB of decode
-buffers**, plus 2.7 GB of encoded parts.
+(`MAX_PART_BYTES + 1`). With nothing bounding `D`, `D` is `T`, and the second term is therefore
+41 decodes rather than 40: **20.5 GiB of decode buffers** (20,992 MiB), plus about 2.7 GB of encoded parts.
+The formula is the half that was right. The aggregate under it used to read 20 GB, which both
+dropped the derivative worker the `+ 1` had just been defined as and rounded 40 x 512 MB down
+from 20.5. A section that exists because `decode.py` understated by a third does not get to
+restate its own total by discarding a term.
 
 **A semaphore around the decode was proposed and is not implemented.** It bounds the right thing
 by the wrong mechanism: acquiring it inside a synchronous handler blocks a thread that is already
@@ -875,6 +910,7 @@ has happened at least once with a stopwatch running.
 | D-11 | Whether a preview grade service survives the window at all | The canary endpoint's outage log |
 | D-14 | Nothing limits in-flight requests, so a single process can demand more backends than the cluster has slots. Section 5.4.3 measured 48 concurrent streams holding 48 backends against a 40-thread pool and 97 usable slots | Setting `uvicorn --limit-concurrency`, which is the only lever that counts requests where they are actually held. Not set today, and not urgent at one person watching one upload |
 | D-15 | Section 5.4.2's container-restart consequence is arithmetic over a measured latency and the Dockerfile. No container was built or run to observe it | Running the image, saturating it, and watching whether Docker restarts it |
+| D-16 | The runtime connects as the database owner, who is a superuser, so the twenty-two `ws_isolation` policies are inert in the composition. Section 5.1.3 says what still holds, which is the write triggers, and what does not, which is every read | Setting `ORIMERA_APP_ROLE_PASSWORD` and pointing `ORIMERA_DATABASE_URL` at `orimera_app`, in the order 5.1.1 fixes |
 
 ---
 

@@ -149,11 +149,10 @@ class DerivativeWorker:
 
         Without this guard the thread dies on the first ``OperationalError`` at connect, a
         database restart or the server's connection slots being exhausted, and it dies in
-        silence: ``start()`` ran
-        once from the application lifespan and is a no-op afterwards. From then on every upload
-        returns a job id nothing will ever claim, every batch stays open, and every subscriber to
-        a formation stream waits out the route's full thirty minute cap for a terminal event that
-        is not coming.
+        silence: ``start()`` ran once from the application lifespan and is a no-op afterwards.
+        From then on every upload returns a job id nothing will ever claim, every batch stays
+        open, and every subscriber to a formation stream waits out the route's full thirty
+        minute cap for a terminal event that is not coming.
 
         The failure is recorded on the worker so ``/readyz`` can report it, because a queue
         nobody drains and a queue drained elsewhere must not look identical from outside, and a
