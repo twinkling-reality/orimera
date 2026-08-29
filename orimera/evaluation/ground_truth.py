@@ -15,6 +15,7 @@ success nobody looked at.
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import json
 import pathlib
@@ -110,6 +111,25 @@ class GroundTruth:
         )
 
 
+def _instant(text: str) -> dt.datetime | None:
+    """The instant this text names, or None when it names none.
+
+    The two sides of the comparison below are written by different systems and render the same
+    instant differently: psycopg puts a space between the date and the time and the manifest puts
+    a ``T``, and either may carry any offset. So the text is parsed and the instants compared,
+    because comparing the text compares the renderings.
+
+    A value carrying no offset is refused rather than read as UTC. A wall-clock reading with no
+    zone is exactly what this corpus exists to tell apart from an instant, and assuming one here
+    would be the guess the caller's fourth case is written to catch.
+    """
+    try:
+        parsed = dt.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
 def instant_is_correct(frame: Frame, stored: str | None) -> tuple[bool, str]:
     """Did the pipeline place this frame on a timeline, and was it entitled to?
 
@@ -117,16 +137,21 @@ def instant_is_correct(frame: Frame, stored: str | None) -> tuple[bool, str]:
     carries no recoverable offset, for which the pipeline produced an instant anyway. That is not
     a near miss. It is an invented fact, and scoring it as a pass because the value happened to be
     right would be crediting a guess.
+
+    The first case compares instants rather than text, so a stored instant that is right compares
+    equal however either side spells it. The comparison is made at whole seconds because the
+    manifest records instants to the second and cannot adjudicate anything finer.
     """
     if frame.instant_is_recoverable_from_the_file:
         if stored is None:
             return False, "the file carries a recoverable instant and none was stored"
         if frame.utc_instant is None:
             return False, "the manifest says recoverable and records no instant"
-        return (
-            stored.startswith(frame.utc_instant[:19]),
-            f"stored {stored!r} against {frame.utc_instant!r}",
-        )
+        evidence = f"stored {stored!r} against {frame.utc_instant!r}"
+        was, wanted = _instant(stored), _instant(frame.utc_instant)
+        if was is None or wanted is None:
+            return False, f"{evidence}, and one of the two names no instant"
+        return was.replace(microsecond=0) == wanted.replace(microsecond=0), evidence
     if stored is None:
         return True, ""
     return False, (

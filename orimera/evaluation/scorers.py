@@ -1,4 +1,4 @@
-"""The five components that can be scored today, and nothing that cannot.
+"""The four components that can be scored today, and nothing that cannot.
 
 Each one returns a ``Count`` with every case named, because section 3.1 rule 4 asks for failures
 by name with their evidence rather than for an aggregate. A component that cannot run is not
@@ -33,7 +33,6 @@ __all__ = [
     "score_authorisation",
     "score_capture_time_windows",
     "score_citation_identity",
-    "score_gate_precision",
     "score_provenance_completeness",
 ]
 
@@ -247,7 +246,9 @@ def score_capture_time_windows(
 
     The first two make a case unscoreable and are counted into a named case of their own. The
     third is counted and reported and does not stop a case scoring, because a capture the
-    manifest never described cannot be evidence for or against a claim about the manifest.
+    manifest never described cannot be evidence for or against a claim about the manifest. It is
+    counted once per capture rather than once per window it appeared in: the windows overlap, so
+    the two numbers differ and only the first is the one the sentence claims.
     """
     rows = connection.execute(
         "select blob_sha256, started_at from capture "
@@ -268,7 +269,7 @@ def score_capture_time_windows(
     unplaceable = in_corpus - set(by_instant)
     cases: list[NamedCase] = []
     unscoreable: list[str] = []
-    outside = 0
+    outside: set[str] = set()
     for name, windows in _window_cases(placeable, truth.trips):
         plan = parse(
             {
@@ -291,7 +292,10 @@ def score_capture_time_windows(
         )
         result = execute(connection, validated)
         got = {capture.blob_id.hex for capture in result.captures}
-        outside += len(got - in_corpus)
+        # A SET, because the windows overlap by construction: a trip's two halves tile its whole,
+        # so a capture outside the corpus is returned by three of them. Summing the per-window
+        # counts would report (window, capture) pairs under a sentence that says captures.
+        outside |= got - in_corpus
         got_here = got & in_corpus
         if result.truncated:
             unscoreable.append(
@@ -337,9 +341,9 @@ def score_capture_time_windows(
         # has to be able to see that the workspace holds captures this corpus says nothing about.
         notes.append(
             NamedCase(
-                f"{outside} capture(s) returned across these windows are outside this corpus "
-                "and were neither required nor forbidden, because there is no ground truth "
-                "for them",
+                f"{len(outside)} distinct capture(s) returned across these windows are outside "
+                "this corpus and were neither required nor forbidden, because there is no "
+                "ground truth for them",
                 True,
             )
         )
@@ -376,32 +380,6 @@ def _why(
     if got - gold:
         parts.append(f"{len(got - gold)} returned and out of window: {described(got - gold)}")
     return "; ".join(parts)
-
-
-def score_gate_precision(connection: psycopg.Connection, workspace: uuid.UUID) -> Count:
-    """M9. No external lookup occurred for any private entity or historical question.
-
-    Measured as: no ``external``-class assertion exists in the workspace. On this build that is
-    trivially true because no external lookup path is implemented, and the report says so rather
-    than presenting a vacuous pass as a defended one. It becomes a real measurement the day one
-    is, and it fails immediately if a lookup ever writes without a gate.
-    """
-    rows = connection.execute(
-        "select count(*) as n from assertion where workspace_id = %s and kind = 'external'",
-        (workspace,),
-    ).fetchone()
-    invocations = int(rows["n"])
-    return Count(
-        1 if invocations == 0 else 0,
-        1,
-        (
-            NamedCase(
-                "no external-class claim in the workspace",
-                invocations == 0,
-                "" if invocations == 0 else f"{invocations} external claims were written",
-            ),
-        ),
-    )
 
 
 def score_authorisation(

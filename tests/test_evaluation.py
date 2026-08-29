@@ -145,6 +145,42 @@ def test_the_report_says_what_a_result_does_not_license():
     assert "asset URLs are protected. They are not" in report
 
 
+def test_a_row_that_did_not_run_licenses_nothing():
+    """The licence column is a claim, and a row that did not run must not print one flatly.
+
+    M9's gate precision is what this is for. It once ran a scorer counting `external`-class
+    assertions, which nothing in the tree writes, printed "1 of 1", and carried section 6's cell
+    beside it: "No external lookup occurred for any private entity, any historical question, or
+    with opt-in off, across the tested negatives". Not one negative had been probed. The scorer
+    is gone and the row now says what stopped it, but the cell is still printed, so the tense is
+    the last thing standing between a blocked row and a licence it did not earn.
+
+    The withheld column is untouched, because "this does not license X" stays true of a row that
+    produced no result at all.
+    """
+    from orimera.evaluation.cli import SCORED
+
+    report = _report(dict.fromkeys(SCORED, Count(1, 1, (NamedCase("a case", True),))))
+    unmeasured = [
+        c for c in METRICS if f"{c.metric}.{c.key}" not in set(SCORED) and c.licenses
+    ]
+    assert len(unmeasured) > 5, "almost nothing was unmeasured, so nothing was exercised"
+    for component in unmeasured:
+        assert f"licenses, quoted from section 6: {component.licenses}" not in report, (
+            f"{component.metric}.{component.key} did not run and licensed anyway"
+        )
+        assert (
+            "licenses NOTHING, because it did not run. What a result would have licensed, "
+            f"quoted from section 6: {component.licenses}"
+        ) in report, f"{component.metric}.{component.key}"
+        assert f"does NOT license, quoted from section 6: {component.withholds}" in report
+
+    measured = [c for c in METRICS if f"{c.metric}.{c.key}" in set(SCORED) and c.licenses]
+    assert measured, "no measured row carries a licence, so the other half proves nothing"
+    for component in measured:
+        assert f"licenses, quoted from section 6: {component.licenses}" in report
+
+
 # -- the banned vocabulary --------------------------------------------------------------------
 
 
@@ -256,6 +292,48 @@ def test_the_manifest_records_which_frames_can_be_placed_on_a_timeline():
     guessed, why = instant_is_correct(unrecoverable[0], "2026-04-18T09:14:21+00:00")
     assert not guessed and "guessed rather than read" in why
 
+
+def test_a_correct_instant_compares_equal_however_either_side_spells_it():
+    """The comparison is between instants, not between two renderings of them.
+
+    psycopg renders a ``timestamptz`` with a SPACE between the date and the time and the manifest
+    writes the same instant with a ``T``, so a prefix comparison of the two strings never matches
+    and every placeable frame in the corpus scored as a failure. Measured against the live corpus
+    on 2026-08-29: 0 pass and 80 fail before this, 48 pass and 32 fail after, and the 32 are the
+    unplaceable frames the pipeline guessed an instant for, which is the failure this is for.
+
+    The offset is asserted too, because "same instant" is the claim and an instant written at a
+    different offset is the same instant. A value carrying no offset is not one and is refused.
+    """
+    from orimera.evaluation.ground_truth import Frame, instant_is_correct
+
+    frame = Frame(
+        filename="courtyard-spring-000.jpg",
+        sha256="0" * 64,
+        trip="courtyard-spring",
+        place="courtyard",
+        device_model="Synthetic Camera A",
+        display_size=(1600, 1200),
+        utc_instant="2026-04-18T09:14:21+00:00",
+        instant_is_recoverable_from_the_file=True,
+        gps_e7=None,
+        subjects=(),
+    )
+
+    for rendering in (
+        "2026-04-18 09:14:21+00:00",
+        "2026-04-18T09:14:21+00:00",
+        "2026-04-18T11:14:21+02:00",
+        "2026-04-18 09:14:21.000000+00:00",
+    ):
+        passed, why = instant_is_correct(frame, rendering)
+        assert passed, f"{rendering}: {why}"
+
+    off_by_an_hour, why = instant_is_correct(frame, "2026-04-18 10:14:21+00:00")
+    assert not off_by_an_hour, why
+    no_offset, why = instant_is_correct(frame, "2026-04-18 09:14:21")
+    assert not no_offset and "names no instant" in why
+
 # -- M6: the two vocabularies, and what is still in the way ----------------------------------
 
 
@@ -362,6 +440,31 @@ def test_a_row_that_carries_no_sentence_is_a_row_something_scores():
     assert "NOT MEASURED: None" not in report
     # The rest of the table is unmeasured in that call, so the fallback really was exercised.
     assert "NOT MEASURED" in report
+
+
+def test_the_harness_writes_nothing():
+    """``cli.py`` opens by saying this package holds no INSERT, no UPDATE and no DELETE.
+
+    It is the load-bearing sentence of the whole harness. A Selection filters on confirmed entity
+    ids, an entity exists only where a person confirmed an occurrence, and the tempting way to
+    make such a metric computable is for the harness to confirm one out of ``MANIFEST.json``. That
+    is a machine performing a user-class act, invariant 3 forbids it, and no flag or dedicated
+    workspace changes what is being written. So the refusal is scanned rather than asserted in
+    prose: every SQL string this package holds is read, and a write in any of them fails here.
+    """
+    import ast
+    import re
+
+    package = pathlib.Path(__file__).resolve().parents[1] / "orimera" / "evaluation"
+    writes = re.compile(r"\b(insert\s+into|delete\s+from|update\s+\w+\s+set|truncate)\b")
+    modules = sorted(package.glob("*.py"))
+    assert len(modules) > 5, "the scan found almost nothing, so it is scanning the wrong place"
+    for module in modules:
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                found = writes.search(node.value.lower())
+                assert not found, f"{module.name}: {found.group(0)!r} in {node.value[:80]!r}"
 
 
 def test_every_quoted_cell_is_in_section_6_verbatim():
@@ -600,3 +703,47 @@ def test_a_bounded_page_is_reported_rather_than_scored(tmp_path, photo_dir, time
     assert "outside this corpus" in reported
     assert count.n < 9, "the bounded window must be dropped rather than scored"
     assert count.k == count.n, "and dropping it must not turn it into a failure"
+
+
+def test_captures_outside_the_corpus_are_counted_once_each_not_once_per_window(
+    tmp_path, photo_dir, timed_corpus
+):
+    """The sentence says captures, so the number has to be a count of captures.
+
+    The windows overlap by construction: a trip's whole span, its opening half and its closing
+    half all cover the same captures, and two of the three shape cases are drawn over the opening
+    of the first trip. Adding up each window's out-of-corpus count therefore reports (window,
+    capture) PAIRS under a sentence that asserts a count of captures, and the two numbers are not
+    close: on the live corpus workspace the summed figure was 149 against 106 distinct.
+
+    Three captures are ingested inside the morning trip and left out of the manifest. Four of the
+    nine windows return all three, so a sum says twelve and the truth is three.
+    """
+    from orimera.ingest.pipeline import PhotoIngestPipeline
+    from orimera.store.local import LocalContentAddressedStore
+
+    from conftest import CountingVisionModel, write_photo
+
+    repository, _built = timed_corpus
+    store = LocalContentAddressedStore(tmp_path / "stray-blobs")
+    for index in range(3):
+        path = write_photo(
+            photo_dir,
+            f"unlisted-{index}.jpg",
+            when=f"2026:03:04 10:00:{(index + 1) * 10:02d}",
+            offset="+00:00",
+        )
+        outcome = PhotoIngestPipeline(
+            repository, store, vision=CountingVisionModel()
+        ).ingest_file(path)
+        assert outcome.error is None, outcome.error
+
+    count, why = _score_windows(timed_corpus)
+    assert count is not None, why
+    reported = " ".join(case.name for case in count.cases)
+    assert "3 distinct capture(s) returned across these windows are outside this corpus" in (
+        reported
+    ), reported
+    # Nothing was dropped and nothing failed, so the number really is the whole difference
+    # between counting captures and counting appearances.
+    assert count.n == 9 and count.k == 9, [(c.name, c.evidence) for c in count.cases]

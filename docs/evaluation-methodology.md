@@ -432,9 +432,12 @@ therefore have reported the vision stage's recall, against a 100% bar, under a n
 filters. The only gold set that would score the filter is one built from what the pipeline itself
 linked, and a gold set derived from the system's own output is not ground truth.
 
-So the capability is held where it can be: `tests/test_selection.py` runs `parse`, `validate` and
-`execute` over a fixture library, in six named cases covering `ANY`, `ALL` and `TOGETHER` including
-trap (a) and trap (c) by name. What a corpus adds to that is nothing, and the row above says so.
+So the capability is held where it can be: `tests/test_selection.py` covers `ANY`, `ALL` and
+`TOGETHER` over a fixture library in six named cases, including trap (a) and trap (c) by name.
+Five of the six build a `SelectionPlan` directly and run `validate` then `execute` against the
+real executor, which is the set algebra the row is about; the sixth is the arity refusal and runs
+`parse`, because a plan that names one entity under `ALL` has to be refused before it is
+validated. What a corpus adds to that is nothing, and the row above says so.
 The harness recomputes the recall measurement on every run and prints it under "what is not
 covered", so this decision is re-derived from data rather than remembered.
 
@@ -509,6 +512,23 @@ photograph shows rather than about the entity's current state.
 fields. There is no code path in which model-generated text becomes an outbound query string. This is
 required rather than defensive, because anything sent to an external search provider must be treated
 as permanently public.
+
+**DECISION 2026-08-29: gate precision is BLOCKED, not passing, and the scorer that made it pass was
+removed.** The harness scored it by running one `select count(*) from assertion where kind =
+'external'` and reporting "1 of 1". That is not the bar. The bar is zero false invocations across the
+negatives listed above, and not one of those negatives is asked: there is no question path, no opt-in
+flag and no gate to invoke. The count was also taken over rows nothing can write, because no code in
+the tree records an assertion with kind `external`, so it could not have come out any other way on
+any build. A number that cannot fall is not a measurement, which is the same finding that took M6 out
+of the corpus, and it had the worse consequence here of printing a licence that named "the tested
+negatives" beside a row where none had been probed. Payload minimality was already blocked on the
+missing lookup path, so both halves of M9 now say the same true thing.
+
+That last consequence was never M9's alone. Section 6's licence cell states what a RESULT would
+license, and the report printed it flat under every row, including the fourteen that had just
+said they did not run. So an unmeasured row now prints "licenses NOTHING, because it did not
+run", and the cell after it in the conditional. The withheld column is unchanged, because "this
+does not license X" stays true of a row that produced nothing at all.
 
 ### M10. Deletion and authorization correctness
 

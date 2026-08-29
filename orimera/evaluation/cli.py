@@ -1,8 +1,16 @@
 """``orimera-eval``. Run what can be measured and say plainly what cannot.
 
-It reads through the database and the HTTP application. Every identity write it needs goes
-through the API with a bearer token, so what is exercised is the path a person takes rather than
-a shortcut into the tables. It contains no INSERT of its own.
+It reads through the database and the HTTP application and WRITES NOTHING. There is no INSERT,
+no UPDATE and no DELETE anywhere in this package, ``tests/test_evaluation.py`` scans for one, and
+every number here is computed from rows somebody else put there.
+
+That is a rule rather than an accident of what happens to be implemented. Every metric this
+harness has had to turn down for want of a write needed a CONFIRMED ENTITY, and an entity exists
+only where a person confirmed an occurrence. A harness that confirmed one out of ``MANIFEST.json``
+to make its own number computable would be a machine performing a user-class act, which invariant
+3 forbids and which no flag or dedicated workspace would change. So such a metric is a blocked row
+in ``metrics.py`` carrying the sentence that names what is missing, and it is never bought with a
+shortcut into the tables.
 """
 
 from __future__ import annotations
@@ -25,7 +33,6 @@ from orimera.evaluation.scorers import (
     score_authorisation,
     score_capture_time_windows,
     score_citation_identity,
-    score_gate_precision,
     score_provenance_completeness,
 )
 
@@ -41,7 +48,6 @@ __all__ = ["SCORED", "main"]
 SCORED: Final[tuple[str, ...]] = (
     "M1.cit_id",
     "M5.provenance_completeness",
-    "M9.gate_precision",
     "M10.authorisation",
     "M15.capture_time_window_exact_match",
 )
@@ -93,7 +99,6 @@ def _cmd_run(args: argparse.Namespace, stream: Any) -> int:
         results["M5.provenance_completeness"] = score_provenance_completeness(
             connection, workspace
         )
-        results["M9.gate_precision"] = score_gate_precision(connection, workspace)
         windows, why = score_capture_time_windows(connection, workspace, truth)
         results["M15.capture_time_window_exact_match"] = windows
         if windows is None:

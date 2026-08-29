@@ -90,7 +90,18 @@ def _section(
         else:
             lines.append(f"    {render(result, synthetic=synthetic, corpus_tag=corpus_tag)}")
         if component.licenses:
-            lines.append(f"    licenses, quoted from section 6: {component.licenses}")
+            # A row that did not run licenses NOTHING, and the tense has to say so. The cell is
+            # section 6's statement of what a RESULT would license, and printed flat under a
+            # "NOT MEASURED" line M9's reads "No external lookup occurred ... across the tested
+            # negatives" beside a row where no negative was ever probed. That is the sentence
+            # this harness exists to refuse, so an unmeasured row prints it in the conditional.
+            if result is None:
+                lines.append(
+                    "    licenses NOTHING, because it did not run. What a result would have "
+                    f"licensed, quoted from section 6: {component.licenses}"
+                )
+            else:
+                lines.append(f"    licenses, quoted from section 6: {component.licenses}")
         if component.withholds:
             lines.append(f"    does NOT license, quoted from section 6: {component.withholds}")
     return "\n".join(lines)

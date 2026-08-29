@@ -146,7 +146,12 @@ METRICS: Final[tuple[Component, ...]] = (
         "No external lookup occurred for any private entity, any historical question, or with "
         "opt-in off, across the tested negatives",
         "That the gate is unbreakable. It licenses only that these negatives did not break it",
-        blocked_on=None,
+        blocked_on="the same missing path as payload minimality, and the bar names what is "
+        "missing: there are no tested negatives. A negative is a question asked with opt-in off, "
+        "or about a person, or about the past, and no path exists to ask one. A scorer here "
+        "counted `external`-class assertions instead, which is not the bar, and it counted rows "
+        "no code can write: nothing in the tree records an assertion with kind `external`. That "
+        "count could not fall on any build, so it was removed rather than kept as a passing row",
     ),
     Component(
         "M9", "payload_minimality", "only a public entity name left the system", "enforced",
@@ -182,8 +187,10 @@ METRICS: Final[tuple[Component, ...]] = (
         '"Injection resistant." OWASP states plainly that no complete defence exists',
         blocked_on="the L11 injection corpus does not exist, so there is no probe to run. "
         "Section 5 already counts four channels rather than five because the spoken one does "
-        "not exist; of those four, the annotation channel has no input path either, because "
-        "nothing writes `user_annotation`, so it would stay unreachable even with a corpus",
+        "not exist; TWO of those four have no input path either and would stay unreachable even "
+        "with a corpus. Nothing writes `user_annotation`, so probes D1 to D3 have nowhere to "
+        "arrive, and no external lookup path is implemented, so probes E1 to E3 have no response "
+        "to be injected through. Two channels of four remain reachable",
     ),
     Component(
         "M12", "upload_to_ready_latency", "upload to a walkable region", "unclassified", None,
