@@ -98,6 +98,43 @@ def test_the_model_id_is_not_in_the_key(manifest):
     assert request_digest({**base, "model": primary}) == request_digest({**base, "model": fallback})
 
 
+def test_the_request_digest_encoding_is_injective():
+    """No payload can forge the tag another type is encoded under and read its cache entry.
+
+    ``orimera.canonical`` refuses floats, so ``temperature`` is escaped into a tagged mapping on
+    the way to the digest. While a payload mapping went through unwrapped, the float ``0.0`` and
+    the mapping ``{"__float__": "0.0"}`` encoded identically and shared one cache entry, so one
+    request could have been answered with another request's stored response.
+
+    This is the unframed idempotency key of ``orimera.ingest.stages`` a second time, and it gets
+    the same answer: frame the encoding rather than rely on no payload ever spelling the tag.
+
+    The last pair is the one that says the framing is real rather than a longer tag to guess. A
+    payload that spells the new tag encodes one wrapper deeper than the wrapper itself, so there
+    is no depth at which the two meet.
+    """
+    confusable = [
+        {"temperature": 0.0},
+        {"temperature": {"__float__": "0.0"}},
+        {"temperature": "0.0"},
+        {"temperature": [0.0]},
+        {"temperature": {"__repr__": "0.0"}},
+        {"temperature": 0},
+        {"temperature": False},
+        {"temperature": {"__map__": {"__float__": "0.0"}}},
+    ]
+    digests = [request_digest(payload) for payload in confusable]
+    collisions = [
+        payload
+        for payload, digest in zip(confusable, digests, strict=True)
+        if digests.count(digest) > 1
+    ]
+    assert not collisions, (
+        f"two request payloads share one cache digest: {collisions}. The second would be served "
+        "the first one's stored response."
+    )
+
+
 def test_cached_entry_records_which_model_served_it(manifest, transport):
     cache = InMemoryResponseCache()
     transport.default = ok(chat_body("x"))

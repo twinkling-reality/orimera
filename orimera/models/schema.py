@@ -125,6 +125,63 @@ def _harden(node: Any) -> Any:
     return out
 
 
+def _unconstrained_objects(node: Any, path: str = "<root>") -> list[str]:
+    """Every object in ``node`` that would validate any object at all.
+
+    Draft 2020-12 treats a keyword it does not recognise as annotation and ignores it, so
+    ``propertys`` is a legal schema and a validator that accepts everything. The question here is
+    therefore not "is this spelled like a keyword" but "does this object actually constrain".
+
+    Spelling was the other candidate and it is wrong in both directions. It refuses a legal
+    tagged union, because Pydantic emits ``discriminator`` and that is not a Draft 2020-12
+    keyword; it flags every property NAME, because names sit in key position under ``properties``
+    and ``$defs``; and it still passes ``{"type": "object"}``, which is spelled perfectly and
+    accepts every object in existence.
+
+    What it asks for is what strict mode demands and what ``_harden`` already produces:
+    ``properties``, ``additionalProperties: false``, and a ``required`` naming exactly the
+    declared properties. It walks the same keys ``_harden`` walks, so it can never wander into an
+    ``enum`` member, a ``const`` or a ``default``, which are data rather than schemas.
+
+    ``"object" in types`` rather than an equality test is what accepts ``{"type": ["object",
+    "null"]}``, which is how the vision schema declares an absent box and an absent place.
+    """
+    if isinstance(node, list):
+        return [
+            problem
+            for index, item in enumerate(node)
+            for problem in _unconstrained_objects(item, f"{path}[{index}]")
+        ]
+    if not isinstance(node, dict):
+        return []
+
+    problems: list[str] = []
+    declared = node.get("type")
+    types = declared if isinstance(declared, list) else [declared]
+    if "object" in types or "properties" in node:
+        properties = node.get("properties")
+        if not isinstance(properties, dict) or not properties:
+            problems.append(f"{path} declares no properties")
+        elif node.get("additionalProperties") is not False:
+            problems.append(f"{path} does not set additionalProperties to false")
+        elif sorted(node.get("required") or []) != sorted(properties):
+            problems.append(f"{path} does not require every property it declares")
+
+    for key in _MAP_KEYS:
+        subschemas = node.get(key)
+        if isinstance(subschemas, dict):
+            for name, sub in subschemas.items():
+                problems.extend(_unconstrained_objects(sub, f"{path}.{key}.{name}"))
+    for key in _LIST_KEYS:
+        subschemas = node.get(key)
+        if isinstance(subschemas, list):
+            problems.extend(_unconstrained_objects(subschemas, f"{path}.{key}"))
+    for key in _CONTAINER_KEYS:
+        if key in node:
+            problems.extend(_unconstrained_objects(node[key], f"{path}.{key}"))
+    return problems
+
+
 def strict_json_schema(model: type[BaseModel]) -> dict[str, Any]:
     """The strict-mode JSON Schema for a Pydantic model.
 
@@ -149,10 +206,16 @@ def response_format_for_schema(schema: dict[str, Any], name: str) -> dict[str, A
     that walks the document and says so. Hardening it here would hide the mistake that test is
     there to catch.
 
-    The schema is checked against the JSON Schema metaschema before it is sent, because it is
-    now also what the response is validated against locally. A malformed schema that the
-    endpoint happens to tolerate would otherwise turn into a validator that quietly accepts
-    everything, which is the same silent-no-op failure ``guided_json`` already demonstrated.
+    The schema is checked twice before it is sent, because it is now also what the response is
+    validated against locally, and legality is not enough. It has to be legal JSON Schema, and it
+    has to constrain: Draft 2020-12 ignores a keyword it does not recognise, so a misspelled
+    ``properties`` is a legal document and a validator that accepts everything, which is the same
+    silent-no-op failure ``guided_json`` already demonstrated one layer down.
+
+    The constraint rule governs schemas sent to a model endpoint and used to judge the reply. It
+    is not exported and must not be reused for ``predicate.value_schema``, which is a different
+    thing in a different module: those describe one assertion's ``object_value``, most of them
+    scalars, and several would be refused by a rule written for a strict response format.
     """
     try:
         Draft202012Validator.check_schema(schema)
@@ -161,6 +224,16 @@ def response_format_for_schema(schema: dict[str, Any], name: str) -> dict[str, A
             f"the schema for {name!r} is not a legal JSON Schema and would be sent to the "
             f"endpoint and used to validate the reply: {exc.message}"
         ) from exc
+    vacuous = _unconstrained_objects(schema)
+    if vacuous:
+        raise StructuredOutputError(
+            f"the schema for {name!r} carries an object that constrains nothing, so it would "
+            "validate any object at all and canonical state would be written from an unchecked "
+            "reply. Draft 2020-12 ignores a keyword it does not recognise, so a misspelled "
+            "'properties' is a legal schema and a silently vacuous validator. Strict mode needs "
+            "properties, additionalProperties false, and every property listed in required, at "
+            f"every object: {'; '.join(vacuous)}"
+        )
     return {
         "type": "json_schema",
         "json_schema": {"name": name, "strict": True, "schema": schema},

@@ -22,9 +22,10 @@ so provenance survives even though it does not participate in lookup.
 
 Digest input goes through ``orimera.canonical``, the same canonical JSON the evidence spine uses.
 That module refuses floats outright, which is right for a citation digest and inconvenient here
-because ``temperature`` is a float, so floats are converted to a tagged repr string first. That
-conversion is sound for a cache key, which only needs to be stable within a process family, and
-would not be sound for anything that has to be reproduced by another implementation.
+because ``temperature`` is a float, so floats are converted to a tagged repr string first. The
+tagged form is injective, so no payload can forge a tag and be served another payload's stored
+response, but it is stable only within a process family and would not be sound for anything
+that has to be reproduced by another implementation.
 """
 
 from __future__ import annotations
@@ -57,18 +58,31 @@ _NON_SEMANTIC: Final = frozenset({"model", "stream", "stream_options", "user"})
 
 
 def _digest_safe(value: Any) -> Any:
-    """Make a request payload acceptable to ``orimera.canonical``.
+    """Encode a request payload injectively, in a form ``orimera.canonical`` accepts.
 
     Floats become a tagged string rather than being rejected. ``orimera.canonical`` bans floats
     because a citation digest must serialise identically in every language forever; a cache key
     has no such obligation, and the tag keeps ``0.0`` from colliding with the string ``"0.0"``.
+
+    A payload mapping is tagged for the same reason, and it is the half that was missing. While
+    a mapping passed through unwrapped, the float ``0.0`` and the mapping ``{"__float__":
+    "0.0"}`` both encoded to ``{"__float__": "0.0"}`` and shared one cache entry, so one request
+    could be answered with another request's response. Tagged, the three dict-valued encodings
+    are disjoint single-key namespaces and a payload mapping can only ever reach ``__map__``.
+    A payload that spells the tag itself lands one wrapper deeper, always, so there is no depth
+    at which it catches up.
+
+    Injective over what a request payload can be on the wire, which is what this digest covers.
+    Two mapping keys differing only in type still collapse, because ``str`` is applied to both
+    and JSON has one kind of object name; a payload that reached the endpoint could not have
+    told them apart either.
     """
     if isinstance(value, bool) or value is None or isinstance(value, (int, str)):
         return value
     if isinstance(value, float):
         return {"__float__": repr(value)}
     if isinstance(value, Mapping):
-        return {str(k): _digest_safe(v) for k, v in value.items()}
+        return {"__map__": {str(k): _digest_safe(v) for k, v in value.items()}}
     if isinstance(value, (list, tuple)):
         return [_digest_safe(v) for v in value]
     return {"__repr__": repr(value)}

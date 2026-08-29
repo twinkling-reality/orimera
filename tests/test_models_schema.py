@@ -192,6 +192,59 @@ def test_a_hand_written_schema_that_is_not_legal_json_schema_is_refused_before_i
         response_format_for_schema({"type": "obeject", "properties": {}}, "broken")
 
 
+def test_a_schema_that_constrains_nothing_is_refused_before_it_is_sent():
+    """Legal JSON Schema is not the same as JSON Schema that checks anything.
+
+    Draft 2020-12 treats an unrecognised keyword as annotation and ignores it, so
+    ``propertys`` passes ``check_schema`` and then validates every object in existence.
+    ``{"answer": 1}`` was accepted against this schema, and the schema is also what the reply is
+    validated against locally, so a vacuous one means neither the endpoint nor this module
+    enforces anything while both report success.
+
+    That is the ``guided_json`` silent no-op one layer up, inside the module written to prevent
+    it, which is why the check asks whether the schema constrains rather than whether it is
+    spelled like a keyword.
+    """
+    with pytest.raises(StructuredOutputError, match="constrains nothing"):
+        response_format_for_schema(
+            {"type": "object", "propertys": {"answer": {"type": "string"}}}, "typod_v1"
+        )
+
+
+def test_an_object_with_no_properties_is_refused():
+    """Spelled perfectly, legal, and it accepts every object there is."""
+    with pytest.raises(StructuredOutputError, match="declares no properties"):
+        response_format_for_schema({"type": "object"}, "open_v1")
+
+
+def test_a_vacuous_object_nested_inside_a_sound_one_is_refused():
+    """The outer object constrains, so a check that stopped at the root would pass this."""
+    with pytest.raises(StructuredOutputError, match=r"properties\.detail"):
+        response_format_for_schema(
+            {
+                "type": "object",
+                "properties": {"detail": {"type": "object", "propertys": {}}},
+                "required": ["detail"],
+                "additionalProperties": False,
+            },
+            "nested_v1",
+        )
+
+
+def test_the_schema_the_product_actually_sends_is_still_accepted():
+    """The other side of the rule, on the one hand-written schema in the system.
+
+    ``OBSERVATION_SCHEMA`` carries nullable objects declared as ``{"type": ["object", "null"]}``,
+    which is how an absent box and an absent place proposal are expressed. A rule that asked for
+    ``type == "object"`` rather than ``"object" in type`` would refuse the vision path outright,
+    so this is here to make that mistake fail loudly rather than at the next corpus pass.
+    """
+    from orimera.ingest.vision import OBSERVATION_SCHEMA, OBSERVATION_SCHEMA_NAME
+
+    fmt = response_format_for_schema(OBSERVATION_SCHEMA, OBSERVATION_SCHEMA_NAME)
+    assert fmt["json_schema"]["schema"] is OBSERVATION_SCHEMA
+
+
 def test_the_response_format_carries_the_schema_the_validator_will_use():
     fmt = response_format_for(Observation)
     assert fmt["json_schema"]["strict"] is True
