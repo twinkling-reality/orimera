@@ -37,6 +37,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Final
 
+import psycopg
+
 from orimera.db.session import Database
 from orimera.ingest import derivative_queue
 from orimera.ingest.batch import IntakeBatch
@@ -94,23 +96,37 @@ class DerivativeWorker:
         self._poll_seconds = poll_seconds
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._last_error: str | None = None
+        self._failed_passes = 0
 
     # -- driving it ---------------------------------------------------------------------
 
     def drain(self) -> list[JobOutcome]:
-        """Claim and run every job that is queued right now, then return. Never raises.
+        """Claim and run every job that is queued right now, then return.
 
-        This is the whole of the worker's work, factored out of the loop so that a test drives
-        it directly rather than starting a thread and waiting. A thread that has to be waited on
-        is a test that is slow when it passes and flaky when it does not.
+        **This can raise, and the loop below is what makes that survivable.** A failure inside a
+        job is recorded on the job row and does not propagate; a failure opening the connection
+        does, because there is no row to record it on and nothing has been claimed. Saying "never
+        raises" here and leaving the connect outside the guard is the shape that kills a daemon
+        thread in silence.
+
+        This is the whole of the worker's work, factored out of the loop so that a test drives it
+        directly rather than starting a thread and waiting. A thread that has to be waited on is
+        a test that is slow when it passes and flaky when it does not.
         """
         outcomes: list[JobOutcome] = []
         for workspace_id in sorted(self._workspaces):
-            while not self._stop.is_set():
-                outcome = self._claim_one(workspace_id)
-                if outcome is None:
-                    break
-                outcomes.append(outcome)
+            # ONE connection per workspace per drain, not one per job. Postgres forks a backend
+            # per connection, and this loop runs every couple of seconds against every workspace
+            # for the life of the process, alongside a connection per request and one held for
+            # up to thirty minutes by every open formation stream.
+            with self._database.session(workspace_id) as connection:
+                repository = IngestRepository(connection, workspace_id)
+                while not self._stop.is_set():
+                    outcome = self._claim_one(connection, repository)
+                    if outcome is None:
+                        break
+                    outcomes.append(outcome)
         return outcomes
 
     def start(self) -> None:
@@ -129,53 +145,99 @@ class DerivativeWorker:
             thread.join(timeout=timeout)
 
     def _loop(self) -> None:
+        """Poll until asked to stop, and **survive anything one pass throws**.
+
+        Without this guard the thread dies on the first ``OperationalError`` at connect, a
+        database restart or an exhausted connection pool, and it dies in silence: ``start()`` ran
+        once from the application lifespan and is a no-op afterwards. From then on every upload
+        returns a job id nothing will ever claim, every batch stays open, and every subscriber to
+        a formation stream waits out the route's full thirty minute cap for a terminal event that
+        is not coming.
+
+        The failure is recorded on the worker so ``/readyz`` can report it, because a queue
+        nobody drains and a queue drained elsewhere must not look identical from outside, and a
+        wedged thread is the third case that used to look like both.
+        """
         while not self._stop.is_set():
-            self.drain()
+            try:
+                self.drain()
+                self._last_error = None
+            except Exception as exc:
+                self._last_error = f"{type(exc).__name__}: {exc}"
+                self._failed_passes += 1
             # Waiting on the event rather than sleeping, so stop() is immediate rather than up
             # to one poll interval late. A shutdown that takes two seconds per worker is a
             # deployment that looks hung.
             self._stop.wait(self._poll_seconds)
 
+    # -- what /readyz asks -----------------------------------------------------------------
+
+    @property
+    def alive(self) -> bool:
+        """True when the poll thread is running. The question ``/readyz`` has to be able to ask.
+
+        ``Services.runs_derivative_worker`` says only that a worker was asked for. Reporting
+        configuration where liveness belongs is how a wedged thread reads as a healthy instance.
+        """
+        thread = self._thread
+        return thread is not None and thread.is_alive()
+
+    @property
+    def last_error(self) -> str | None:
+        """The last poll that failed, or None when the last one did not."""
+        return self._last_error
+
+    @property
+    def failed_passes(self) -> int:
+        """How many polls have failed since the worker started. A count, never a guess."""
+        return self._failed_passes
+
     # -- one job ------------------------------------------------------------------------
 
-    def _claim_one(self, workspace_id: uuid.UUID) -> JobOutcome | None:
+    def _claim_one(
+        self, connection: psycopg.Connection, repository: IngestRepository
+    ) -> JobOutcome | None:
         """Claim one job and run it. Returns None when the queue for this workspace is empty.
 
         A failure inside the job is recorded on the job row and on the batch, and does not
-        propagate: a worker that dies on one bad photograph stops draining every other upload in
-        the instance, which is a much worse failure than the one it is reacting to.
+        propagate: a worker that died on one bad photograph would stop draining every other
+        upload in the instance, which is a much worse failure than the one it is reacting to.
         """
-        with self._database.session(workspace_id) as connection:
-            repository = IngestRepository(connection, workspace_id)
-            claimed = derivative_queue.claim(connection, workspace_id, worker=self._name)
-            if claimed is None:
-                return None
-            outcome = JobOutcome(job_id=claimed.job_id, batch_id=claimed.batch_id)
-            try:
-                self._run_job(repository, claimed, outcome)
-            except Exception as exc:
-                outcome.errors.append(f"{type(exc).__name__}: {exc}")
-                derivative_queue.finish(
-                    connection,
-                    workspace_id,
-                    job_id=claimed.job_id,
-                    state="failed",
-                    error="; ".join(outcome.errors)[:2000],
-                )
-                self._close_batch(repository, claimed.batch_id, outcome)
-                return outcome
+        workspace_id = repository.workspace_id
+        claimed = derivative_queue.claim(connection, workspace_id, worker=self._name)
+        if claimed is None:
+            return None
+        outcome = JobOutcome(job_id=claimed.job_id, batch_id=claimed.batch_id)
+        try:
+            self._run_job(repository, claimed, outcome)
+        except Exception as exc:
+            outcome.errors.append(f"{type(exc).__name__}: {exc}")
             derivative_queue.finish(
                 connection,
                 workspace_id,
                 job_id=claimed.job_id,
-                # Every capture refused because the user deleted it is not a failure: it is the
-                # deletion path working. A job that was entirely deletions is cancelled, which
-                # is a third fact and the column already has a word for it.
-                state=self._job_state(outcome),
-                error="; ".join(outcome.errors)[:2000] or None,
+                state="failed",
+                error="; ".join(outcome.errors)[:2000],
             )
-            self._close_batch(repository, claimed.batch_id, outcome)
+            # **failed, and not what the per-capture counts happen to say.** The counts describe
+            # the captures this job reached; a raise outside that loop, in the corpus-wide pass
+            # or before the loop began, leaves them at zero or at whatever it got to, and
+            # `outcome_for(0, 0)` is "succeeded". A batch that closed succeeded after a job
+            # failed would tell the person watching that their upload finished cleanly.
+            self._close_batch(repository, claimed.batch_id, outcome, status="failed")
             return outcome
+        derivative_queue.finish(
+            connection,
+            workspace_id,
+            job_id=claimed.job_id,
+            # Every capture refused because the user deleted it is not a failure: it is the
+            # deletion path working. A job that was entirely deletions is cancelled, which
+            # is a third fact and the column already has a word for it.
+            state=self._job_state(outcome),
+            error="; ".join(outcome.errors)[:2000] or None,
+        )
+        self._close_batch(repository, claimed.batch_id, outcome)
+        return outcome
 
     def _run_job(
         self,
@@ -212,9 +274,17 @@ class DerivativeWorker:
 
     @staticmethod
     def _close_batch(
-        repository: IngestRepository, batch_id: uuid.UUID | None, outcome: JobOutcome
+        repository: IngestRepository,
+        batch_id: uuid.UUID | None,
+        outcome: JobOutcome,
+        *,
+        status: str | None = None,
     ) -> None:
         """Close the watched intake with what happened, which is what ends the stream.
+
+        ``status`` overrides the counts, and exists for the one case they cannot describe: a job
+        that raised outside the per-capture loop, where the counts are whatever the loop reached
+        before the raise, or zero, and ``outcome_for(0, 0)`` is "succeeded".
 
         A capture the user deleted mid-flight counts as neither succeeded nor failed here: it
         was withdrawn. Counting it as a failure would put a red state in front of somebody who
@@ -225,5 +295,6 @@ class DerivativeWorker:
         if batch_id is None:
             return
         IntakeBatch(repository=repository, batch_id=batch_id).close(
-            IntakeBatch.outcome_for(succeeded=outcome.succeeded, failed=outcome.failed)
+            status
+            or IntakeBatch.outcome_for(succeeded=outcome.succeeded, failed=outcome.failed)
         )

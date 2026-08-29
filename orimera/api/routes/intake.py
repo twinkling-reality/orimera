@@ -169,16 +169,28 @@ def intake(
             if index >= MAX_PARTS:
                 refused.append(_refusal(name, "too_many_parts", f"at most {MAX_PARTS} per upload"))
                 continue
-            problem = _read_and_check(upload, name)
-            if isinstance(problem, RefusedPart):
-                refused.append(problem)
+            checked = _read_and_check(upload, name)
+            if isinstance(checked, RefusedPart):
+                refused.append(checked)
                 continue
-            outcome = pipeline.ingest_intake(problem, filename=name, batch_id=batch.batch_id)
+            outcome = pipeline.ingest_intake(checked, filename=name, batch_id=batch.batch_id)
             _record(outcome, name, accepted, refused, capture_ids)
+        except Exception as exc:
+            # **One part may never abandon the others.** By the time a later part raises, the
+            # earlier ones have committed: their captures exist, their intake artifacts exist,
+            # and their bytes are in the store. An exception escaping this loop would skip
+            # `declare_size` and `enqueue` below, leaving those photographs with no derivative
+            # job, a batch stuck open, and a 500 carrying no batch id for the client to watch or
+            # retry against. Nothing reconciles that, so the loop refuses the part instead.
+            #
+            # Broad on purpose. `_read_and_check` already names every refusal it can recognise;
+            # what reaches here is by definition a shape nobody anticipated, and the response to
+            # an unanticipated shape must not be to lose the work that already succeeded.
+            refused.append(_refusal(name, "failed", f"{type(exc).__name__}: {exc}"))
         finally:
-            # The parser spooled this part to a temporary file. Closing it removes that file,
-            # and doing it here rather than at the end of the request means one part's worth of
-            # temporary space is held at a time rather than the whole upload's.
+            # The parser spooled this part before this function was entered, so closing here
+            # does not bound the peak: it releases each part's temporary space as soon as the
+            # part has been read, rather than holding all of it until the response is sent.
             upload.file.close()
 
     batch.declare_size(len(accepted))
@@ -226,9 +238,15 @@ def _read_and_check(upload: UploadFile, name: str) -> bytes | RefusedPart:
         return _refusal(
             name, "not_an_image", "no image format this pipeline reads was found in these bytes"
         )
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         # These do say something useful and carry no repr: a truncated file, a broken data
         # stream, a decoder that ran out of input.
+        #
+        # ``ValueError`` because **Pillow dispatches on magic bytes and not on the file name**.
+        # A thirty-byte part named ``a.jpg`` beginning ``P6\n999...`` reaches ``PpmImagePlugin``
+        # and raises ``ValueError: Token too long in file header``, which is neither
+        # ``UnidentifiedImageError`` nor ``OSError``. Measured, and before this it was a 500 that
+        # abandoned every part already ingested in the same request.
         return _refusal(name, "not_an_image", str(exc))
     if width <= 0 or height <= 0:
         return _refusal(name, "not_an_image", f"the header declares a {width}x{height} frame")

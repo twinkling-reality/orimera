@@ -42,7 +42,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from orimera.api.authorisation import TokenNotAccepted
-from orimera.api.body_limit import BodyLimit
+from orimera.api.body_limit import BodyLimit, BodyTooLarge
 from orimera.api.routes import (
     evidence,
     formation,
@@ -135,6 +135,12 @@ def create_app(services: Services | None = None, *, verify: bool = True) -> Fast
     app.include_router(evidence.router)
     app.include_router(formation.router)
     app.include_router(intake.router)
+
+    @app.exception_handler(BodyTooLarge)
+    async def _too_large(_request: Request, exc: BodyTooLarge) -> JSONResponse:
+        # Raised out of the wrapped `receive` while the body was still arriving, which is the
+        # only place a request that declared no length can be stopped before it is all on disk.
+        return _problem(413, "body_too_large", exc.detail)
 
     @app.exception_handler(TokenNotAccepted)
     async def _unauthenticated(_request: Request, exc: TokenNotAccepted) -> JSONResponse:

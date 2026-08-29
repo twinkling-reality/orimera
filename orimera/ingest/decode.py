@@ -20,15 +20,28 @@ which nothing can reset, and the filter stays because it is what makes Pillow's 
 one a caller sees when it fires first. ``tests/test_intake_upload.py`` resets the filters and
 feeds a bomb, so the claim is checked rather than asserted.
 
-**The budget is deliberately below Pillow's default.** 89478485 pixels is roughly 8000x11000
-and costs about 1 GB of RSS to decode as RGB. :data:`MAX_PIXELS` is the largest frame this
-pipeline expects to see with room to spare, and a photograph over it is refused with the pixel
-count in the message rather than decoded.
+**The budget is below Pillow's default, and the direction matters.** Assigning
+``Image.MAX_IMAGE_PIXELS`` raises or lowers Pillow's own ceiling process-wide, so a number above
+its default silently makes every caller in the process more permissive than Pillow intended,
+including the corpus renderer and the command line. 89478485 is Pillow's default;
+:data:`MAX_PIXELS` is below it.
 
-**What this does not bound.** The number of bytes. A file can be small and decode enormous,
-which is what a decompression bomb is, and it can be enormous and decode to nothing. The byte
-bound belongs to whoever is reading the bytes: the upload route bounds a part, and the command
-line reads files a person chose off their own disk.
+**The number is an arithmetic about memory, not a claim about cameras.** Pillow decodes to a
+byte per channel, so a frame costs `3 x pixels` as RGB, and the orientation transform in
+``extract_exif_facts`` allocates a second buffer of the same size. At 64 megapixels that is
+about 192 MB decoded and about 384 MB at peak, in a request thread. A larger frame, a stitched
+panorama or a medium-format original, is refused with its own pixel count in the message and the
+number here is one line to raise deliberately.
+
+**What is NOT bounded, said plainly.** This bounds one decode. A synchronous route runs in the
+ASGI server's threadpool, so the aggregate is that bound times the number of threads, and
+nothing here limits how many decode at once. Bounding that means a semaphore and a decision
+about how many concurrent uploads an instance serves, which is a deployment's to make.
+
+**And it does not bound the number of bytes.** A file can be small and decode enormous, which is
+what a decompression bomb is, and it can be enormous and decode to nothing. The byte bound
+belongs to whoever is reading the bytes: the upload route bounds a part, and the command line
+reads files a person chose off their own disk.
 """
 
 from __future__ import annotations
@@ -43,9 +56,10 @@ from orimera.ingest.exif import ExifFacts, extract_exif_facts
 
 __all__ = ["MAX_PIXELS", "UNREADABLE", "open_upright", "probe"]
 
-#: The largest frame this pipeline will decode, in pixels. 12000 x 12000 is well past any
-#: consumer camera and well under the memory a machine serving requests can spare.
-MAX_PIXELS: Final = 144_000_000
+#: The largest frame this pipeline will decode, in pixels. 64 megapixels: past every phone and
+#: every consumer camera, below Pillow's own 89478485 default so that assigning it below tightens
+#: rather than loosens, and about 384 MB at peak to decode and turn upright.
+MAX_PIXELS: Final = 64_000_000
 
 Image.MAX_IMAGE_PIXELS = MAX_PIXELS
 warnings.simplefilter("error", Image.DecompressionBombWarning)
@@ -57,11 +71,19 @@ warnings.simplefilter("error", Image.DecompressionBombWarning)
 #: it past and the refusal arrives as an unclassified failure with no pixel count in it.
 #: ``DecompressionBombWarning`` is here because the filter above turns it into a raise, and a
 #: warning promoted to an error is not an ``OSError`` either.
+#:
+#: ``ValueError`` is here because **Pillow dispatches on magic bytes, not on the file name**, so
+#: bytes named ``a.jpg`` reach whichever plugin their first bytes match, and a plugin failing on
+#: its own header does not raise ``UnidentifiedImageError``. Measured: a thirty-byte part named
+#: ``a.jpg`` beginning ``P6\n99999999999999999999 1\n255\n`` reaches ``PpmImagePlugin`` and
+#: raises ``ValueError: Token too long in file header``. That is still "these bytes are not a
+#: photograph", and a handler that let it past turned a refusal into a 500.
 UNREADABLE: Final = (
     UnidentifiedImageError,
     Image.DecompressionBombError,
     Image.DecompressionBombWarning,
     OSError,
+    ValueError,
 )
 
 

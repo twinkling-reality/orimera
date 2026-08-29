@@ -20,9 +20,11 @@ from __future__ import annotations
 
 import json
 import struct
+import time
 import uuid
 import warnings
 import zlib
+from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,6 +35,7 @@ from orimera.api.services import Services
 from orimera.evidence.blob import BlobId
 from orimera.ingest import derivative_queue
 from orimera.ingest.decode import MAX_PIXELS
+from orimera.ingest.pipeline import PhotoIngestPipeline
 from orimera.ingest.worker import DerivativeWorker
 from orimera.store.base import PurgeAuthorization, privileged_purger
 from orimera.store.local import LocalContentAddressedStore
@@ -215,6 +218,15 @@ def test_the_formation_stream_carries_the_upload_from_received_to_its_outcome(up
 
 
 def test_1_an_anonymous_upload_is_refused_before_the_route_runs(upload):
+    """Nothing is written, and this test says nothing about what was read.
+
+    Worth being exact, because the name could be read as more than it holds. FastAPI receives and
+    parses the body **before** it resolves dependencies, so an anonymous request has already had
+    its parts spooled to temporary files by the time the bearer token is looked at. Nothing
+    reaches the store, the database or a batch, which is what this asserts. What bounds the
+    reading is `BodyLimit`, which counts the body as it arrives and is upstream of all of it, and
+    it is tested separately.
+    """
     response = upload.client.post("/intake", files=[("files", ("a.jpg", photo_bytes()))])
     assert response.status_code == 401
     assert upload.rows("select batch_id from intake_batch") == []
@@ -294,11 +306,48 @@ def test_7_the_pixel_budget_survives_a_process_that_reset_the_warning_filters(up
     is the one this asserts, after resetting the filters, because that is the situation a
     library being helpful puts the process in.
     """
-    warnings.resetwarnings()
     width, height = 20_000, MAX_PIXELS // 20_000 + 100
     assert MAX_PIXELS < width * height < 2 * MAX_PIXELS
-    body = upload.post([("files", ("a.png", _bomb_png(width, height), "image/png"))]).json()
+    # Scoped. `resetwarnings` is process-wide and `decode` installs its promotion at import, so
+    # leaving it reset would silently remove that promotion for every test module that runs
+    # after this one, and the loss would be invisible because the explicit comparison covers the
+    # same band. A test that quietly weakens a later test is the shape this file is written
+    # against.
+    with warnings.catch_warnings():
+        warnings.resetwarnings()
+        body = upload.post([("files", ("a.png", _bomb_png(width, height), "image/png"))]).json()
     assert body["refused"][0]["reason"] == "too_many_pixels"
+
+
+def test_the_pixel_budget_is_below_pillows_own_default(upload):
+    """Assigning ``Image.MAX_IMAGE_PIXELS`` moves Pillow's ceiling for the whole process.
+
+    Above its default, that makes every caller in the interpreter more permissive than Pillow
+    intended, including the corpus renderer and the command line, and the module docstring would
+    be claiming the opposite of what the constant does.
+    """
+    from PIL import Image
+
+    assert MAX_PIXELS < 89_478_485
+    assert Image.MAX_IMAGE_PIXELS == MAX_PIXELS
+
+
+def test_the_pipeline_calls_a_plugin_failure_what_it_is(upload):
+    """The same magic-bytes case on the path that does not go through the route.
+
+    ``orimera-ingest`` and the derivative worker reach ``decode.open_upright`` without the
+    route's own refusal table in front of them, so ``UNREADABLE`` is what decides whether a
+    plugin's own exception is "this is not a photograph" or an unclassified failure. The outcome
+    is recorded either way; what changes is whether the person reading it is told their file is
+    not an image or told "Token too long in file header".
+    """
+    pipeline = PhotoIngestPipeline(upload.repository, upload.store)
+    outcome = pipeline.ingest_intake(
+        b"P6\n99999999999999999999 1\n255\n", filename="a.jpg"
+    )
+    assert outcome.error is not None
+    assert outcome.error.startswith("ValueError: not a readable image:"), outcome.error
+    assert upload.rows("select blob_sha256 from blob") == []
 
 
 def test_8_bytes_the_user_has_deleted_are_refused_and_no_byte_reaches_the_store(upload):
@@ -371,9 +420,113 @@ def test_an_over_large_declared_body_is_refused_before_any_route_sees_it(upload)
     )
 
 
+def test_a_body_with_no_declared_length_is_bounded_by_counting_it(upload, monkeypatch):
+    """The header check alone is walked past by omitting the header.
+
+    A chunked request declares no length, so `Content-Length` says nothing and the multipart
+    parser spools every part to a temporary file before any route or any dependency runs. The
+    body is counted as it arrives instead and cut off the moment the running total crosses the
+    limit, so the overshoot is one chunk rather than the whole body.
+
+    The body sent here is a **valid** multipart stream that never ends. An invalid one is
+    refused by the parser with a 400 long before any limit is reached, which would make this
+    test pass with the counting removed.
+    """
+    limit = 256 * 1024
+    monkeypatch.setattr("orimera.api.body_limit.MAX_BODY_BYTES", limit)
+    app = create_app(upload.client.app.state.services, verify=False)
+
+    def endless():
+        yield (
+            b"--b\r\n"
+            b'Content-Disposition: form-data; name="files"; filename="a.jpg"\r\n'
+            b"Content-Type: image/jpeg\r\n\r\n"
+        )
+        for _ in range(64):
+            yield b"x" * (32 * 1024)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/intake",
+            content=endless(),
+            headers={
+                "Authorization": f"Bearer {_TOKEN}",
+                "Content-Type": "multipart/form-data; boundary=b",
+            },
+        )
+    assert response.status_code == 413, response.text
+    assert response.json()["code"] == "body_too_large"
+    assert upload.rows("select batch_id from intake_batch") == []
+
+
 def test_a_body_within_the_bound_reaches_the_route(upload):
     """Otherwise the test above would pass on middleware that refused everything."""
     assert upload.one().status_code == 202
+
+
+def test_a_part_whose_magic_names_another_plugin_cannot_abandon_the_ones_before_it(upload):
+    """Pillow dispatches on magic bytes, not on the file name, and the plugin it reaches raises
+    whatever it likes.
+
+    Measured: thirty bytes named ``a.jpg`` beginning ``P6\n999...`` reach ``PpmImagePlugin``,
+    which raises ``ValueError: Token too long in file header``. That is neither
+    ``UnidentifiedImageError`` nor ``OSError``, so before this it escaped the route: a 500,
+    carrying no batch id, leaving every photograph already ingested in the same request with a
+    committed capture, committed bytes, no derivative job, and a batch stuck open with a NULL
+    declared size. Nothing reconciles that.
+    """
+    good = photo_bytes()
+    body = upload.post(
+        [
+            ("files", ("first.jpg", good)),
+            ("files", ("bomb.jpg", b"P6\n99999999999999999999 1\n255\n")),
+            ("files", ("third.jpg", photo_bytes(when="2026:08:28 10:00:00"))),
+        ]
+    )
+    assert body.status_code == 202, body.text
+    payload = body.json()
+    assert [part["filename"] for part in payload["accepted"]] == ["first.jpg", "third.jpg"]
+    assert payload["refused"][0]["reason"] == "not_an_image"
+    # The three things a raise out of the loop would have skipped.
+    assert payload["queued_job_id"] is not None
+    batch = upload.rows(
+        "select declared_size, status from intake_batch where batch_id = %s",
+        uuid.UUID(payload["batch_id"]),
+    )[0]
+    assert batch["declared_size"] == 2
+    assert upload.drain()[0].succeeded == 2
+
+
+def test_an_unanticipated_failure_in_one_part_is_refused_rather_than_thrown(
+    upload, monkeypatch
+):
+    """The catch-all, tested with something no check could have named.
+
+    `_read_and_check` names every refusal it recognises. What reaches the broad handler is by
+    definition a shape nobody anticipated, and the response to that must not be to lose the work
+    that already succeeded.
+    """
+    calls = {"n": 0}
+    real = PhotoIngestPipeline.ingest_intake
+
+    def sometimes_explodes(self, data, *, filename, batch_id=None):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("something nobody wrote a check for")
+        return real(self, data, filename=filename, batch_id=batch_id)
+
+    monkeypatch.setattr(PhotoIngestPipeline, "ingest_intake", sometimes_explodes)
+    payload = upload.post(
+        [
+            ("files", ("a.jpg", photo_bytes())),
+            ("files", ("b.jpg", photo_bytes(when="2026:08:28 10:00:00"))),
+            ("files", ("c.jpg", photo_bytes(when="2026:08:28 11:00:00"))),
+        ]
+    ).json()
+    assert [part["filename"] for part in payload["accepted"]] == ["a.jpg", "c.jpg"]
+    assert payload["refused"][0]["reason"] == "failed"
+    assert "something nobody wrote a check for" in payload["refused"][0]["detail"]
+    assert payload["queued_job_id"] is not None
 
 
 # -- the queue holds no bytes ----------------------------------------------------------------
@@ -554,6 +707,93 @@ def test_a_capture_soft_deleted_with_no_tombstone_also_cancels(upload):
     assert outcomes[0].cancelled == 1
     assert outcomes[0].failed == 0
     assert upload.rows("select artifact_id from artifact where stage_key = 'rendition'") == []
+
+
+def test_a_job_that_fails_outside_the_capture_loop_closes_its_batch_as_failed(upload, monkeypatch):
+    """`outcome_for(0, 0)` is "succeeded", and that is the trap.
+
+    The per-capture counts describe the captures the loop reached. A raise outside that loop, in
+    the whole-corpus pass or before the loop begins, leaves them at zero, and a batch closed from
+    them would tell the person watching that their upload finished cleanly while the job row says
+    failed. Two records of one event, disagreeing.
+    """
+    body = upload.one().json()
+    monkeypatch.setattr(
+        "orimera.ingest.worker.run_continuity",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("the corpus pass fell over")),
+    )
+    outcomes = upload.drain()
+    assert outcomes[0].succeeded == 1
+    assert "the corpus pass fell over" in " ".join(outcomes[0].errors)
+    assert upload.rows("select state from job")[0]["state"] == "failed"
+    batch = upload.rows(
+        "select status from intake_batch where batch_id = %s", uuid.UUID(body["batch_id"])
+    )[0]
+    assert batch["status"] == "failed", (
+        "the job failed and the batch says the upload finished cleanly"
+    )
+
+
+def test_a_poll_that_raises_does_not_kill_the_worker_thread(upload, monkeypatch):
+    """The thread runs for the life of the process and `start()` is a no-op afterwards.
+
+    One `OperationalError` at connect, a database restart or an exhausted connection pool, used
+    to end it in silence. Every upload after that returns a job id nothing will claim, every
+    batch stays open, and every formation subscriber waits out the stream's thirty minute cap.
+    """
+    worker = DerivativeWorker(
+        upload.database,
+        upload.store,
+        frozenset({upload.workspace_id}),
+        vision=upload.vision,
+        name="test-loop",
+        poll_seconds=0.01,
+    )
+    passes = {"n": 0}
+
+    def explodes_once():
+        passes["n"] += 1
+        if passes["n"] == 1:
+            raise OSError("connection refused")
+        return []
+
+    monkeypatch.setattr(worker, "drain", explodes_once)
+    worker.start()
+    try:
+        deadline = time.monotonic() + 5
+        while passes["n"] < 3 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert passes["n"] >= 3, "the loop stopped after the pass that raised"
+        assert worker.alive
+        assert worker.failed_passes == 1
+        assert worker.last_error is None, "it recovered, and the last error should say so"
+    finally:
+        worker.stop()
+    assert not worker.alive
+
+
+def test_readiness_is_not_ready_when_a_worker_was_asked_for_and_is_not_running(upload):
+    """Liveness, not configuration.
+
+    `Services.runs_derivative_worker` says a worker was asked for. A thread that started and then
+    died says exactly the same thing, and readiness has to be able to tell them apart or a wedged
+    instance reads as a healthy one.
+    """
+    services = replace(upload.client.app.state.services, runs_derivative_worker=True)
+    upload.client.app.state.services = services
+    upload.client.app.state.derivative_worker = None
+    body = upload.client.get("/readyz").json()
+    check = body["checks"]["derivative_worker"]
+    assert check["ok"] is False
+    assert check["running"] is False
+    assert "never finished" in check["proves"]
+
+
+def test_the_depth_caveat_is_absent_when_no_worker_is_running(upload):
+    """Two entries in one warning list must not contradict each other."""
+    notes = " ".join(upload.client.app.state.services.warnings)
+    assert "does not drain" in notes
+    assert "no depth model" not in notes
 
 
 def test_the_worker_never_touches_another_workspace(upload):

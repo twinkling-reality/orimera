@@ -47,6 +47,51 @@ def healthz() -> dict[str, str]:
     return {"status": "alive"}
 
 
+def _worker_check(request: Request, services: Services) -> dict[str, Any]:
+    """Is the thing that finishes an upload actually running.
+
+    **Liveness, not configuration.** ``Services.runs_derivative_worker`` says a worker was asked
+    for; a thread that started and then died on a connection error says the same thing, and from
+    the outside those look identical. What that produces is every upload returning a job id
+    nothing will claim, every batch staying open, and every formation subscriber waiting out the
+    stream's thirty minute cap for a terminal event that is not coming, while readiness says the
+    instance is fine.
+
+    An instance configured NOT to run one is READY, and says so, because draining the queue
+    elsewhere is a real deployment. What is never ready is a worker that was asked for and is
+    not there.
+    """
+    if not services.runs_derivative_worker:
+        return {
+            "ok": True,
+            "running": False,
+            "proves": (
+                "this process was not asked to drain the derivative queue. Something else must, "
+                "or POST /intake accepts uploads whose model stages never run"
+            ),
+        }
+    worker = getattr(request.app.state, "derivative_worker", None)
+    if worker is None or not worker.alive:
+        return {
+            "ok": False,
+            "running": False,
+            "last_error": getattr(worker, "last_error", None),
+            "proves": (
+                "the derivative worker was asked for and its thread is not running. Uploads are "
+                "accepted and never finished"
+            ),
+        }
+    return {
+        "ok": True,
+        "running": True,
+        # A count of polls that raised, from the counter that drove the loop. Never a guess, and
+        # non-zero with the thread alive is a real state: it recovered.
+        "failed_passes": worker.failed_passes,
+        "last_error": worker.last_error,
+        "proves": "the poll thread is alive; nothing about whether the queue is empty",
+    }
+
+
 @router.get("/readyz", summary="Readiness. One query, one object-store call, no model call.")
 def readyz(request: Request, response: Response) -> dict[str, Any]:
     """Report each check separately, and return 503 when any of them fails.
@@ -62,6 +107,7 @@ def readyz(request: Request, response: Response) -> dict[str, Any]:
     checks["schema"] = _schema_check(services)
     checks["object_store"] = _store_check(services)
     checks["model_manifest"] = _manifest_check()
+    checks["derivative_worker"] = _worker_check(request, services)
 
     ready = all(check["ok"] for check in checks.values())
     if not ready:

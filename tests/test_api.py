@@ -297,7 +297,24 @@ def test_liveness_touches_nothing_and_needs_no_credential(deployment):
 def test_readiness_reports_each_check_separately(deployment):
     response = deployment.client.get("/readyz")
     body = response.json()
-    assert set(body["checks"]) == {"database", "schema", "object_store", "model_manifest"}
+    assert set(body["checks"]) == {
+        "database",
+        "schema",
+        "object_store",
+        "model_manifest",
+        "derivative_worker",
+    }
+    # Not asked for, so not running, and READY: draining the queue in another process is a real
+    # deployment. What is never ready is a worker that WAS asked for and is not there, which is
+    # `test_readiness_fails_when_a_worker_was_asked_for_and_is_not_running`.
+    assert body["checks"]["derivative_worker"] == {
+        "ok": True,
+        "running": False,
+        "proves": (
+            "this process was not asked to drain the derivative queue. Something else must, "
+            "or POST /intake accepts uploads whose model stages never run"
+        ),
+    }
     # The schema check compares the recorded migrations against the files, and this application
     # runs against a harness-applied schema that records nothing, so it is expected to fail here.
     assert body["checks"]["database"]["ok"]

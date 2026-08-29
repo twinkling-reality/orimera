@@ -107,12 +107,13 @@ class Services:
                 "credential configured completes them: every stage is keyed by content and "
                 "re-running costs nothing for the stages that already ran."
             )
-        notes.append(
-            "the derivative worker runs no depth model, so an uploaded photograph is a rung 4 "
-            "region until `orimera-ingest --reconstruct` runs over the same corpus. That is a "
-            "real rung with a real experience, and reconstruction quality never participates in "
-            "the truth guarantee."
-        )
+        if self.runs_derivative_worker:
+            notes.append(
+                "the derivative worker runs no depth model, so an uploaded photograph is a rung "
+                "4 region until `orimera-ingest --reconstruct` runs over the same corpus. That "
+                "is a real rung with a real experience, and reconstruction quality never "
+                "participates in the truth guarantee."
+            )
         return tuple(notes)
 
     def build_derivative_worker(self) -> DerivativeWorker | None:
