@@ -54,8 +54,9 @@ class GroundTruth:
     places: tuple[str, ...]
     subjects: tuple[str, ...]
     #: Subject key -> the phrases a detector might use for it. Empty for a manifest written
-    #: before the mapping existed, which is a real state: M6 is then blocked for the reason it
-    #: was blocked before, and says so, rather than scoring the query path against nothing.
+    #: before the mapping existed, which is a real state and not an error: the report then says
+    #: that this corpus cannot describe what a detector recovered, rather than printing a zero.
+    #: Nothing is scored against it. See :mod:`orimera.evaluation.coverage`.
     subject_labels: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @property

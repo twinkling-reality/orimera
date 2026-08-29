@@ -107,7 +107,16 @@ METRICS: Final[tuple[Component, ...]] = (
         "100%",
         "ANY, ALL and TOGETHER filters return the exact gold set on every expression tested",
         "Correct behaviour on filter expressions not in the suite",
-        blocked_on=None,
+        blocked_on="this is a property of the suite and not of a corpus, and it is held there. "
+        "A Selection filters on confirmed entity ids, an entity exists only where a person "
+        "confirmed an occurrence, and a harness that confirmed from ground truth would be "
+        "writing a user's decision to make its own number computable. Set algebra over the real "
+        "executor is covered by six cases in tests/test_selection.py, including trap (c) by "
+        "name. What a corpus run would add is nothing: measured against this workspace, the "
+        "manifest's subject-to-label mapping recovers far less of the generator's own placement "
+        "than a 100% bar needs, so a manifest-derived gold set would report the vision stage's "
+        "recall under a name that says filters. The report prints that measurement under WHAT "
+        "IS NOT COVERED, and M15 is the corpus metric over the dimension that needs no entity",
     ),
     Component(
         "M7", "copresence_windows", "predicted against gold participant sets", "learned",
@@ -152,8 +161,11 @@ METRICS: Final[tuple[Component, ...]] = (
         "Every artifact logged at ingestion was verifiably absent after deletion",
         '"Your data is gone." Backups, exported packages, and anything already published are '
         "outside this test and are disclosed separately",
-        blocked_on="the purge worker is not implemented. `purge_job` is a table nothing reads, "
-        "which is defect R7",
+        blocked_on="nothing in this harness deletes anything, and this number needs a sweep that "
+        "ingests its own content, tombstones it, drains the queue and then looks for the bytes. "
+        "The product side is built: migration 0013 gave `purge_job` a reader, "
+        "`orimera/deletion/worker.py` is the worker and tests/test_purge.py holds it. What is "
+        "missing is a harness that writes, and this one issues no INSERT and no DELETE of its own",
     ),
     Component(
         "M10", "authorisation", "no cross-tenant read on any route", "enforced",
@@ -168,14 +180,19 @@ METRICS: Final[tuple[Component, ...]] = (
         "No probe in the OGC-1 injection corpus produced a policy violation, and K of N were "
         "blocked architecturally",
         '"Injection resistant." OWASP states plainly that no complete defence exists',
-        blocked_on="two of the four channels do not exist. There are no transcripts, and nothing "
-        "writes `user_annotation`, so only the OCR channel is reachable",
+        blocked_on="the L11 injection corpus does not exist, so there is no probe to run. "
+        "Section 5 already counts four channels rather than five because the spoken one does "
+        "not exist; of those four, the annotation channel has no input path either, because "
+        "nothing writes `user_annotation`, so it would stay unreachable even with a corpus",
     ),
     Component(
         "M12", "upload_to_ready_latency", "upload to a walkable region", "unclassified", None,
         None, None,
-        blocked_on="section 6 places this in neither acceptance table, and there is no upload "
-        "endpoint to measure from",
+        blocked_on="section 6 places this in neither acceptance table and M12 itself sets no "
+        "pass bar, so there is nothing here to accept or refuse. `POST /intake` now exists to "
+        "measure from, but the stage trace M12a specifies, ingest_accepted through "
+        "region_published, is recorded nowhere: `pipeline_run` times a whole run and `artifact` "
+        "records only when a row was created",
     ),
     Component(
         "M13", "answer_latency", "first token and resolvable citations", "learned",
@@ -189,5 +206,15 @@ METRICS: Final[tuple[Component, ...]] = (
         "OPEN until measured on real hardware", None,
         "Nothing yet. No rendering number is a target until real hardware is measured",
         blocked_on="no browser harness exists and no hardware target has been chosen",
+    ),
+    Component(
+        "M15", "capture_time_window_exact_match",
+        "a capture-time window returns the frames the corpus placed in it", "enforced", "100%",
+        "Every capture-time window tested returned exactly the corpus frames the generator "
+        "placed inside it, through parse, validate and execute",
+        "Anything about the entity dimension. No filter over a person, an object or a place is "
+        "exercised, and no ANY, ALL or TOGETHER result is measured. A failure here is a filter "
+        "defect or a stored instant that disagrees with the generator, and the case says which",
+        blocked_on=None,
     ),
 )

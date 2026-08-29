@@ -409,6 +409,38 @@ results, here is something similar";
 which must return empty while `ALL` over the same pair returns the region. This is the single
 highest-value trap in the suite, because it is where a filter of this shape silently goes wrong.
 
+**DECISION 2026-08-29: M6 is a property of the suite and is scored there, not against a corpus.**
+It was carried as a corpus metric and could not have been one, and the harness's implementation of
+it was removed rather than left returning nothing.
+
+A Selection filters on **confirmed entity ids**. An entity exists only where a person confirmed an
+occurrence: invariant 3 requires explicit user confirmation for promotion and says model confidence
+is never user confirmation, and the database enforces it, so a corpus has no entities until
+somebody sits down and confirms them. The question of whether the harness could confirm them
+itself, from `MANIFEST.json`, was put to a person and answered no. It would be a machine performing
+a user-class act to make its own number computable, which is the invariant read backwards, and no
+flag or dedicated workspace changes what is being written.
+
+**A second fact decided it independently of the invariant, and it is the one worth recording**,
+because it means a yes would not have bought a usable metric either. Measured read-only against the
+corpus workspace on 2026-08-29, with all 80 frames ingested and every one carrying `object_present`
+assertions over 230 distinct detector labels: the manifest's subject-to-label mapping recovers
+`satchel` in **36** of its 48 gold frames, `thermos` in **9** of 48 and `lantern` in **7** of 48,
+with **zero** false positives in all three. `TOGETHER` over `thermos` and `lantern` has **16** gold
+frames and **0** recoverable. An exact-match score against a manifest-derived gold set would
+therefore have reported the vision stage's recall, against a 100% bar, under a name that says
+filters. The only gold set that would score the filter is one built from what the pipeline itself
+linked, and a gold set derived from the system's own output is not ground truth.
+
+So the capability is held where it can be: `tests/test_selection.py` runs `parse`, `validate` and
+`execute` over a fixture library, in six named cases covering `ANY`, `ALL` and `TOGETHER` including
+trap (a) and trap (c) by name. What a corpus adds to that is nothing, and the row above says so.
+The harness recomputes the recall measurement on every run and prints it under "what is not
+covered", so this decision is re-derived from data rather than remembered.
+
+**What replaces it as a corpus metric is M15**, over capture time, which is the one Selection
+dimension whose gold set is ground truth rather than the system's own output.
+
 ### M7. Co-presence window accuracy
 
 **DECISION.** Redefined from the research's event metric. A "conversation" is an audio object and
@@ -614,6 +646,61 @@ rendering number in the research corpus is extrapolated from hardware the projec
 Settled by: measuring the source-first and splat rungs on the actual development machine and on one
 weak machine, then setting bars from those measurements. Until then, no rendering number is a target,
 only an observation.
+
+---
+
+### M15. Capture-time window exact-match
+
+**DECISION 2026-08-29, added when M6 stopped being a corpus metric.** M6 measured the Selection
+path against a corpus and could not, because every filter it names needs a confirmed entity. This
+measures the same path against the same corpus over the one dimension that needs none.
+
+- **Set exact-match rate**: for each window in a fixed set derived from the manifest, the captures
+  returned, restricted to this corpus, equal the frames the generator placed inside that window.
+  **Pass: 100%.** Like M6 this is set algebra over a known graph, and anything below 100% is a bug.
+
+**Why capture time and no other dimension.** The corpus generator wrote the instants into the image
+files and recorded them in `MANIFEST.json`, so the gold set is ground truth in the strict sense:
+it existed before the pipeline ran and does not depend on anything the pipeline concluded. Every
+other dimension of a Selection is either an entity, which needs a human, or a property the pipeline
+derived, and a gold set derived from the system's own output measures nothing.
+
+**The whole path runs, and that is the point of the metric rather than an implementation note.**
+Each case is a plan payload through `parse`, then `validate`, then `execute`. `execute` accepts
+only a `ValidatedPlan` and `validate` is the only thing that constructs one, so no case can reach
+the query while skipping a stage. This is the property M6's implementation lacked: it compared a
+manifest against a set comprehension over rows it had already read, so no plan was built, the
+executor was never called, and no filter defect could have made it fail.
+
+**The window set, fixed by rule so the harness cannot pick boundaries that pass.** Per trip holding
+a frame the manifest can place: the whole trip, its opening half and its closing half, so the two
+halves must tile the whole. Then three cases about the interval rather than about a trip:
+(a) a window ending exactly on a frame's instant, which must exclude that frame, since every
+interval in this system is half-open at its end;
+(b) a window holding no frame, which must come back empty rather than with the nearest thing, the
+same demand M6's trap (a) makes of the entity dimension;
+(c) two windows in one plan, which are ORed, so a compiler that ANDed them returns nothing.
+
+**Frames the manifest cannot place are excluded from the gold set, and this is load-bearing.** One
+device in the corpus writes `OffsetTimeOriginal` and one does not. A frame from the second carries
+a wall-clock reading with no way to place it on a timeline, so the manifest cannot say which window
+it belongs in. Including it would score the pipeline's *guess* at an offset under a name that says
+filters, which is the exact mistake this metric exists in place of. Measured 2026-08-29: 48 of the
+corpus's 80 frames are placeable, and for the other 32 the pipeline stored an instant that differs
+from the generator's by one hour, which is `instant_is_correct`'s fourth case and belongs to M1's
+timebase rather than here.
+
+**What is not scored, reported rather than counted as a zero.** A window whose true match count
+exceeds one page comes back bounded, and a bounded page is not a set; a window that catches a
+corpus frame the manifest cannot place cannot be adjudicated. Both are reported with their numbers.
+Captures outside this corpus are counted and reported and do not stop a case scoring, because a
+capture the manifest never described is evidence neither for nor against a claim about the
+manifest.
+
+**What a failure does not distinguish, stated because the report must not imply otherwise.** A
+frame can miss its window because the filter is wrong or because the instant stored for it
+disagrees with the generator. Each failing case prints both instants so a reader can tell which,
+but the metric does not separate them and must not be read as though it did.
 
 ---
 
@@ -903,6 +990,7 @@ rather than omitted. A suite that reports only the probes it passes is not an ad
 | M10 deletion | 100% of logged artifacts absent | "Every artifact logged at ingestion was verifiably absent after deletion" | "Your data is gone." Backups, exported packages, and anything already published are outside this test and are disclosed separately |
 | M10 authorization | 0 unauthorized reads | "No cross-tenant read succeeded on any route generated from the router" | That anonymous asset URLs are protected. They are not, and the report says so |
 | M11 attack success rate | 0 violations | "No probe in the OGC-1 injection corpus produced a policy violation, and K of N were blocked architecturally" | "Injection resistant." OWASP states plainly that no complete defence exists |
+| M15 capture-time window exact-match | 100% | "Every capture-time window tested returned exactly the corpus frames the generator placed inside it, through parse, validate and execute" | Anything about the entity dimension. No filter over a person, an object or a place is exercised, and no ANY, ALL or TOGETHER result is measured. A failure here is a filter defect or a stored instant that disagrees with the generator, and the case says which |
 
 ### 6.2 Learned measurements: reported with n and an interval, never as capability claims
 
@@ -918,7 +1006,7 @@ rather than omitted. A suite that reports only the probes it passes is not an ad
 | M7 co-presence windows | named case studies | "Here are the predicted and gold participant sets and intervals for each window" | Any aggregate. Never an F1 over a handful of windows |
 | M8 plan semantic accuracy | >= 0.90 | "K of N plans expressed the question, human-labelled" | Semantic accuracy on question phrasings outside the set |
 | M13 latency | first token p50 <= 1.5 s; answer with resolvable citations p95 <= 8 s | "Measured from [region] against [model IDs] on OGC-1" | Latency under load. The suite is sequential and single-user |
-| M14 frame time | OPEN until measured on real hardware | Nothing yet | Nothing yet. No rendering number is a target until E-7 closes |
+| M14 frame time | OPEN until measured on real hardware | Nothing yet | Nothing yet. No rendering number is a target until real hardware is measured |
 | Learning before/after | reported as counts, significance only at pre-declared checkpoints | "K of N previously incorrect fixture items are now correct, J regressions, n=N" | "The model learned." That needs six or more same-direction discordant pairs before a two-sided exact binomial can even reach p < 0.05 (3.2) |
 
 ### 6.3 The single sentence the MVP is trying to earn
