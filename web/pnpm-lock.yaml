@@ -24,6 +24,28 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.20.1)(lightningcss@1.33.0)
 
+  packages/app:
+    dependencies:
+      '@orimera/atlas-core':
+        specifier: workspace:*
+        version: link:../atlas-core
+      '@orimera/atlas-react':
+        specifier: workspace:*
+        version: link:../atlas-react
+      '@orimera/companion-runtime':
+        specifier: workspace:*
+        version: link:../companion-runtime
+      '@orimera/graph-client':
+        specifier: workspace:*
+        version: link:../graph-client
+      '@orimera/world-index':
+        specifier: workspace:*
+        version: link:../world-index
+    devDependencies:
+      vite:
+        specifier: ^6
+        version: 6.4.3(@types/node@22.20.1)(lightningcss@1.33.0)(tsx@4.23.12)
+
   packages/atlas-core: {}
 
   packages/atlas-react:

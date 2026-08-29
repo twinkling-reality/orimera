@@ -1,0 +1,542 @@
+/*
+ * The authenticated surface.
+ *
+ * Three columns over one canvas: the library rail, the Atlas, and the detail pane. The canvas is
+ * fixed behind everything and is never unmounted, so a layout change is a change of what is over
+ * it rather than a page.
+ *
+ * Colour carries meaning in exactly one place and it is declared here rather than chosen per
+ * component: the four provenance classes must be visually distinguishable wherever they appear
+ * (domain-and-evidence-model.md 2.1, interaction-model.md 6.1), so their tokens are defined once
+ * and every surface reads them.
+ */
+
+:root {
+  --ground: #0b0e15;
+  --panel: rgba(16, 20, 30, 0.82);
+  --edge: rgba(180, 200, 235, 0.14);
+  --ink: #e8edf7;
+  --ink-soft: #a8b3c8;
+  /* Held at 4.5:1 against --panel. This is body copy, so it is a contrast requirement. */
+  --ink-faint: #8590a6;
+  --accent: #7fd4c8;
+
+  /* The four provenance classes. One vocabulary, one palette, everywhere. */
+  --user: #e2c98a;
+  --capture: #9fd0e8;
+  --inference: #9c9fc4;
+  --external: #c9a0d8;
+
+  --radius: 10px;
+  --gap: clamp(0.75rem, 1.4vw, 1.25rem);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--ground);
+  color: var(--ink);
+  font: 400 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#atlas {
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+#shell {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(18rem, 22rem) 1fr minmax(20rem, 28rem);
+  grid-template-rows: 1fr auto;
+  gap: var(--gap);
+  padding: var(--gap);
+}
+
+/*
+ * The stage is the hole the canvas shows through, and the parent the anchor overlay writes into.
+ *
+ * `overflow: hidden` is load bearing rather than tidy. The overlay projects anchor labels from
+ * world space, and an anchor behind the camera or off to one side projects outside the stage. A
+ * label that escaped would sit over the rail or the detail pane, which is a label about the world
+ * appearing on top of the evidence.
+ */
+.stage {
+  position: relative;
+  grid-row: 1;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ the credential gate */
+
+.gate {
+  grid-column: 1 / -1;
+  align-self: center;
+  justify-self: center;
+  max-width: 34rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 2rem;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  backdrop-filter: blur(14px);
+}
+
+.gate h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.gate-note {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 0.88rem;
+}
+
+.gate-failure {
+  margin: 0;
+  color: #f0a0a0;
+  font-size: 0.88rem;
+}
+
+input {
+  padding: 0.6rem 0.75rem;
+  background: rgba(8, 11, 18, 0.7);
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  color: var(--ink);
+  font: inherit;
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--edge);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #06231f;
+  font-weight: 500;
+}
+
+button.ghost {
+  background: none;
+}
+
+/* ------------------------------------------------------------------ the library rail */
+
+.rail,
+.detail,
+.confirm {
+  overflow-y: auto;
+  padding: 1rem;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  backdrop-filter: blur(14px);
+}
+
+.rail {
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.rail-search {
+  width: 100%;
+}
+
+/*
+ * The open-question counter. It never grows a badge, never animates, never pops and never
+ * changes colour, and it is allowed to read the same number forever. There is no completion
+ * metric anywhere in this product (interaction-model.md 5.5), so there is nothing here a
+ * progress ring could be built from.
+ */
+.rail-counter {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+}
+
+.rail-head {
+  margin: 0.6rem 0 0;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.rail-note,
+.rail-empty,
+.rail-more {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--ink-faint);
+  list-style: none;
+}
+
+.rail-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rail-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 4.5rem 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
+  border: 1px solid transparent;
+  background: none;
+  padding: 0.4rem 0.5rem;
+}
+
+.rail-row:hover,
+.rail-row[aria-current='true'] {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--edge);
+}
+
+.rail-kind {
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.rail-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * An honest placeholder is not a name and must never look like one. Italic and dimmed, so
+ * "Unnamed person, 4 occurrences" cannot be misread as something somebody called them.
+ */
+.rail-name.is-placeholder {
+  font-style: italic;
+  color: var(--ink-faint);
+}
+
+/* The three marks. Present or absent, never a shade of confident. */
+.triad {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.mark {
+  width: 1.1rem;
+  height: 1.1rem;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #0b0e15;
+}
+
+.mark-user { background: var(--user); }
+.mark-capture { background: var(--capture); }
+.mark-inference { background: var(--inference); }
+.mark-external { background: var(--external); }
+
+.mark.is-absent {
+  background: none;
+  border: 1px solid var(--edge);
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------------ the detail pane */
+
+.detail {
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.detail-empty,
+.detail-note,
+.detail-lede,
+.detail-sub {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 0.88rem;
+}
+
+.detail-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.detail-section h2,
+.band h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/*
+ * The four bands. Band 4 is never omitted, which is why an empty band is styled rather than
+ * hidden: what the system does not know is information, and a panel that showed only what it
+ * knew would be the panel this one exists instead of.
+ */
+.band {
+  border-left: 2px solid var(--edge);
+  padding-left: 0.7rem;
+  margin-bottom: 0.8rem;
+}
+
+.band-told { border-left-color: var(--user); }
+.band-captures { border-left-color: var(--capture); }
+.band-inferred { border-left-color: var(--inference); }
+.band-unknown { border-left-color: var(--ink-faint); }
+
+.band ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.band-empty {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+.band-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.15rem 0;
+  font-size: 0.9rem;
+}
+
+.band-row.is-pending {
+  background: rgba(127, 212, 200, 0.1);
+  border-radius: 4px;
+}
+
+.row-label { color: var(--ink-soft); }
+.row-confidence,
+.row-method {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------------ citations */
+
+.citations {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.citation {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.citation img {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--edge);
+}
+
+.citation figcaption,
+.citation-failed {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+}
+
+.citation-failed {
+  color: #f0a0a0;
+}
+
+/* ------------------------------------------------------------------ naming */
+
+.name-offer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.name-offer input {
+  flex: 1 1 12rem;
+}
+
+.name-note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+/* ------------------------------------------------------------------ the confirmation surface */
+
+.confirm {
+  position: fixed;
+  right: var(--gap);
+  bottom: 6.5rem;
+  width: min(28rem, calc(100vw - 2 * var(--gap)));
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+}
+
+.confirm[hidden] {
+  display: none;
+}
+
+.confirm h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+/* The user's own words, verbatim and never paraphrased away. */
+.confirm-utterance {
+  margin: 0;
+  padding-left: 0.8rem;
+  border-left: 2px solid var(--user);
+  font-style: italic;
+}
+
+.confirm-effect,
+.confirm-reversible,
+.confirm-radius {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.confirm-refused {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #f0a0a0;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ------------------------------------------------------------------ the status bar */
+
+.status {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.4rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  backdrop-filter: blur(14px);
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+.status p {
+  margin: 0;
+}
+
+/*
+ * Never dismissible. interaction-model.md 6.2 fixes this sentence and there is no control here
+ * that hides it, because the coordinate rule it states is permanent.
+ */
+.standing-caption {
+  color: var(--ink-soft);
+}
+
+.status-warning {
+  color: #e8c08a;
+}
+
+/* ------------------------------------------------------------------ narrow viewports */
+
+/*
+ * On a narrow screen the Atlas is not the entry point: Pointer Lock does not exist on iOS Safari
+ * or Android Chrome, so first-person movement is unavailable and the World Index is the default
+ * entry (interaction-model.md 2.5). The canvas stays mounted and behind, and the rail takes the
+ * screen: the surface does not change, only what is over it.
+ */
+@media (max-width: 60rem) {
+  #shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+
+  .stage {
+    display: none;
+  }
+
+  .detail {
+    grid-row: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -16,6 +16,14 @@ properties of the server rather than of the adapter:
     distribution of the corpus has been measured". So captures are returned and the client
     decides what an island is. A server that shipped an island id would be settling that
     question by accident.
+
+    What IS returned is ``scene_groups``: the time-and-position clustering the ingest pipeline
+    already computed and stored. That is not the same thing as an island and must not be read as
+    one. It is an ingest artifact with its own provenance, the client is free to ignore it, and
+    the field is named after what it is rather than after what the client currently does with it.
+    It is carried on this payload rather than on a second endpoint because a grouping fetched at
+    a different moment from the graph it groups can disagree with it, and the whole value of a
+    snapshot is that its parts were true at one state version.
 *   **Nothing counts citing answers, because no answer is stored.** The field exists in the read
     model because a tier 3 confirmation must state how many existing answers lose their citation,
     and that is a real requirement. It is not answerable yet, and a zero here would read as
@@ -114,6 +122,34 @@ class ProposalRow(BaseModel):
     support_span_ids: list[uuid.UUID]
 
 
+class SceneGroupRow(BaseModel):
+    """One run of captures close in time, and close in space when they carry a position.
+
+    A PROPOSAL about arrangement, not a place and not an entity. ``orimera/ingest/scenes.py``
+    is explicit that a scene-local grouping is not a persistent entity, and nothing here promotes
+    it to one: the group has no name, and the place proposal that may be attached to it is a
+    separate artifact that requires user confirmation.
+
+    ``positioned_member_count`` is carried separately from ``member_count`` because a group whose
+    members mostly had no fix was clustered on time alone, and a centroid computed from three of
+    sixteen photographs is a different kind of number from one computed from all sixteen.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    group_id: uuid.UUID
+    ordinal: int
+    capture_ids: list[uuid.UUID]
+    first_utc: str | None
+    last_utc: str | None
+    member_count: int
+    positioned_member_count: int
+    #: Null when no member carried a position. Not zero: zero is a real radius.
+    radius_m: int | None
+    centroid_lat_e7: int | None
+    centroid_lon_e7: int | None
+
+
 class GraphPayload(BaseModel):
     """One immutable read of the workspace, at one state version."""
 
@@ -123,6 +159,7 @@ class GraphPayload(BaseModel):
     entities: list[EntityRow]
     occurrences: list[OccurrenceRow]
     proposals: list[ProposalRow]
+    scene_groups: list[SceneGroupRow]
     never_same: list[tuple[uuid.UUID, uuid.UUID]]
     deleted_entity_ids: list[uuid.UUID]
 
@@ -135,6 +172,7 @@ def snapshot(connection: ReadOnlyConnection, session: CurrentSession) -> GraphPa
         entities=_entities(connection, workspace),
         occurrences=_occurrences(connection, workspace),
         proposals=_proposals(connection, workspace),
+        scene_groups=_scene_groups(connection, workspace),
         never_same=[
             (row["entity_a"], row["entity_b"])
             for row in connection.execute(
@@ -354,6 +392,60 @@ def _occurrences(connection: psycopg.Connection, workspace: uuid.UUID) -> list[O
         )
         for row in rows
     ]
+
+
+def _scene_groups(connection: psycopg.Connection, workspace: uuid.UUID) -> list[SceneGroupRow]:
+    """The stored clustering, live rows only.
+
+    ``stale`` is filtered rather than reported. A stale grouping is one whose inputs have changed
+    since it was computed, and handing it to a client that would arrange a world out of it would
+    be arranging the world from a fact that is known to be out of date. An empty list is the
+    honest answer when nothing current exists, and it is one the client already handles: with no
+    grouping, every capture stands alone.
+
+    Members are filtered against live captures, so a deleted photograph leaves the group smaller
+    rather than leaving a dangling id the client would have to resolve to nothing.
+    """
+    rows = connection.execute(
+        "select d.derived_id, d.payload from derived_artifact d "
+        "where d.workspace_id = %s and d.kind = 'scene_group' and d.stale = false "
+        "order by (d.payload->>'ordinal')::int",
+        (workspace,),
+    ).fetchall()
+    live = {
+        row["capture_id"]
+        for row in connection.execute(
+            "select capture_id from capture where workspace_id = %s and deleted_at is null",
+            (workspace,),
+        ).fetchall()
+    }
+    groups: list[SceneGroupRow] = []
+    for row in rows:
+        payload = row["payload"] or {}
+        members = [
+            capture_id
+            for capture_id in (uuid.UUID(value) for value in payload.get("capture_ids", []))
+            if capture_id in live
+        ]
+        if not members:
+            continue
+        groups.append(
+            SceneGroupRow(
+                group_id=row["derived_id"],
+                ordinal=int(payload.get("ordinal", 0)),
+                capture_ids=members,
+                first_utc=payload.get("first_utc"),
+                last_utc=payload.get("last_utc"),
+                # Recounted from the live members rather than read from the payload, which
+                # recorded the count at the moment the group was computed.
+                member_count=len(members),
+                positioned_member_count=int(payload.get("positioned_member_count", 0)),
+                radius_m=payload.get("radius_m"),
+                centroid_lat_e7=payload.get("centroid_lat_e7"),
+                centroid_lon_e7=payload.get("centroid_lon_e7"),
+            )
+        )
+    return groups
 
 
 def _proposals(connection: psycopg.Connection, workspace: uuid.UUID) -> list[ProposalRow]:

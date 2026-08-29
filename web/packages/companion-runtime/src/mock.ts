@@ -2,6 +2,7 @@ import type {
   AssertionView,
   EntityRecord,
   GraphSnapshot,
+  IslandRecord,
   MatchProposalView,
   OccurrenceRecord,
 } from '@orimera/graph-client';
@@ -108,11 +109,13 @@ const occurrence = (
   linkState: OccurrenceRecord['linkState'],
   confidence: OccurrenceRecord['confidence'],
   capturedAtMs: number | null,
+  kind: OccurrenceRecord['kind'] = 'person',
 ): OccurrenceRecord =>
   Object.freeze({
     occurrenceId: `occ-${key}`,
     anchorId: `anc-${key}`,
     islandId,
+    kind,
     entityId,
     linkState,
     confidence,
@@ -409,11 +412,46 @@ const base = (
     stateVersion,
     entities: Object.freeze([julie, MIRA, HARBOUR_PLACE, BIKE, GHOST]),
     occurrences,
+    // Derived from the occurrences rather than written out, so the fixture cannot describe an
+    // island that none of its anchors sit in, or omit one that they do.
+    islands: islandsOf(occurrences),
     matchProposals,
     // Written by a previous split. The pool refuses to offer a merge across it, with a reason.
     neverSame: Object.freeze([Object.freeze(['ent-mira', 'ent-julie'] as const)]),
     deletedEntityIds: Object.freeze(['ent-ghost']),
   });
+
+/**
+ * The islands these occurrences imply, exactly.
+ *
+ * The fixture predates islands being on the snapshot, and hand-writing them would create a
+ * second place the fixture states which regions exist. One capture per island here, which is
+ * what this two-photograph fixture is: `positionedCaptureCount` is zero because neither
+ * photograph in it carries a fix, and a spread of null says so rather than claiming a radius.
+ */
+function islandsOf(occurrences: readonly OccurrenceRecord[]): readonly IslandRecord[] {
+  const byIsland = new Map<string, { first: number | null; last: number | null }>();
+  for (const occurrence of occurrences) {
+    const seen = byIsland.get(occurrence.islandId) ?? { first: null, last: null };
+    const at = occurrence.capturedAtMs;
+    byIsland.set(occurrence.islandId, {
+      first: at === null ? seen.first : Math.min(seen.first ?? at, at),
+      last: at === null ? seen.last : Math.max(seen.last ?? at, at),
+    });
+  }
+  return Object.freeze(
+    [...byIsland.entries()].map(([islandId, times]) =>
+      Object.freeze({
+        islandId,
+        captureIds: Object.freeze([islandId]),
+        firstCapturedAtMs: times.first,
+        lastCapturedAtMs: times.last,
+        positionedCaptureCount: 0,
+        spreadMetres: null,
+      }),
+    ),
+  );
+}
 
 /** T1: an unnamed person with three occurrences and no candidate link yet. */
 export const SNAPSHOT_T1: GraphSnapshot = base(11, JULIE_T1, [SUPPRESSED_MATCH], OCCURRENCES);

@@ -406,3 +406,84 @@ def test_the_identity_ledger_is_readable(deployment):
     assert [event["type"] for event in events][-2:] == ["entity_created", "link_confirmed"] or [
         event["type"] for event in events
     ][:2] == ["link_confirmed", "entity_created"]
+
+
+# -- the scene grouping the client turns into islands ---------------------------------------
+
+
+def _group_two_photographs(repository, photo_dir, store):
+    """Ingest a second photograph an hour after the first, then cluster.
+
+    Two photographs at one position an hour apart, which is inside the grouping window, so a
+    correct clusterer returns one group of two and an incorrect one returns two groups of one.
+    """
+    from orimera.ingest.scenes import run_scene_grouping
+
+    pipeline = PhotoIngestPipeline(repository, store, vision=None)
+    outcome = pipeline.ingest_file(
+        write_photo(photo_dir, "b.jpg", when="2026:08:27 11:00:00", gps=(64.3271, -20.1199))
+    )
+    assert outcome.error is None, outcome.error
+    return run_scene_grouping(repository)
+
+
+def test_the_graph_carries_the_grouping_the_client_turns_into_islands(
+    deployment, repository, photo_dir
+):
+    """The server ships a grouping. It does not ship an island, and the difference is the point.
+
+    ADR-0005 leaves what an island IS to the client, so what crosses the wire is named after the
+    ingest artifact it is: a run of captures close in time and, where they had a fix, close in
+    space. The client decides whether that is one region or several.
+    """
+    report = _group_two_photographs(repository, photo_dir, deployment.store)
+    assert len(report.groups) == 1
+
+    payload = deployment.as_owner("GET", "/graph").json()
+    assert len(payload["scene_groups"]) == 1
+    group = payload["scene_groups"][0]
+    assert group["member_count"] == 2
+    assert len(group["capture_ids"]) == 2
+    assert group["first_utc"] < group["last_utc"]
+    # No field on this payload is called an island, at any depth. The check is on the serialised
+    # document rather than on the model, because a field added later to a nested row would be
+    # just as much of a decision taken by accident.
+    assert "island" not in json.dumps(payload).lower()
+
+
+def test_a_deleted_capture_leaves_the_group_smaller_rather_than_dangling(
+    deployment, repository, photo_dir
+):
+    """A group member the client cannot resolve is worse than a group with one fewer member.
+
+    The client places anchors inside the islands it builds from these ids. An id naming a
+    capture that no longer exists would be an island the interface knows the size of and can
+    show nothing in.
+    """
+    _group_two_photographs(repository, photo_dir, deployment.store)
+    before = deployment.as_owner("GET", "/graph").json()["scene_groups"][0]
+    assert before["member_count"] == 2
+
+    repository.connection.execute(
+        "update capture set deleted_at = now() where capture_id = %s",
+        (uuid.UUID(before["capture_ids"][0]),),
+    )
+
+    after = deployment.as_owner("GET", "/graph").json()["scene_groups"][0]
+    assert after["member_count"] == 1
+    assert after["capture_ids"] == before["capture_ids"][1:]
+
+
+def test_a_stale_grouping_is_not_offered_at_all(deployment, repository, photo_dir):
+    """Arranging a world out of a grouping known to be out of date is worse than arranging none.
+
+    An empty list is a state the client already handles: with no grouping, every capture stands
+    alone. A stale one is a state it cannot detect.
+    """
+    _group_two_photographs(repository, photo_dir, deployment.store)
+    assert deployment.as_owner("GET", "/graph").json()["scene_groups"]
+
+    repository.connection.execute(
+        "update derived_artifact set stale = true where kind = 'scene_group'"
+    )
+    assert deployment.as_owner("GET", "/graph").json()["scene_groups"] == []

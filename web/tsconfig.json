@@ -9,6 +9,7 @@
     { "path": "./packages/scene-synth" },
     { "path": "./packages/atlas-three" },
     { "path": "./packages/bakeoff" },
-    { "path": "./packages/landing" }
+    { "path": "./packages/landing" },
+    { "path": "./packages/app" }
   ]
 }

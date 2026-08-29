@@ -13,6 +13,8 @@
     "check": "pnpm run typecheck && pnpm run boundaries && pnpm run test",
     "synth": "tsx packages/scene-synth/src/cli.ts",
     "bakeoff": "pnpm --filter @orimera/bakeoff dev",
+    "app": "pnpm --filter @orimera/app dev",
+    "app:build": "pnpm --filter @orimera/app build",
     "landing": "pnpm --filter @orimera/landing dev",
     "landing:build": "pnpm --filter @orimera/landing build",
     "bakeoff:build": "pnpm --filter @orimera/bakeoff build"

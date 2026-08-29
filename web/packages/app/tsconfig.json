@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "moduleResolution": "Bundler",
+    "module": "ESNext",
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "vite.config.ts"],
+  "references": [
+    { "path": "../graph-client" },
+    { "path": "../atlas-core" },
+    { "path": "../atlas-react" },
+    { "path": "../companion-runtime" },
+    { "path": "../world-index" }
+  ]
+}

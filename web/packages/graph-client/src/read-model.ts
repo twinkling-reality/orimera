@@ -253,16 +253,59 @@ export interface MatchProposalView {
   readonly evidence: readonly EvidenceHandle[];
 }
 
+/**
+ * What kind of thing a detection is (`occurrence_class`).
+ *
+ * Carried on the record rather than derived, because the renderer decides between a presence
+ * marker and world geometry from it: interaction-model.md is explicit that people are citations
+ * rather than reconstructions, and a person rendered as geometry would be a person baked into a
+ * scene. `voice` and `conversation` exist in the schema and have no source material in a
+ * photograph corpus; they are in this union because the column can hold them, and a consumer
+ * that cannot draw one should say so rather than fall through to the wrong shape.
+ */
+export type OccurrenceKind =
+  | 'person'
+  | 'voice'
+  | 'place'
+  | 'object'
+  | 'conversation'
+  | 'event';
+
 /** A detection made addressable. Anonymous by construction: no name field exists here. */
 export interface OccurrenceRecord {
   readonly occurrenceId: OccurrenceIdRef;
   readonly anchorId: AnchorIdRef;
   readonly islandId: IslandIdRef;
+  readonly kind: OccurrenceKind;
   readonly entityId: EntityIdRef | null;
   readonly linkState: LinkState;
   readonly confidence: ConfidenceBand;
   readonly evidence: readonly EvidenceHandle[];
   readonly capturedAtMs: number | null;
+}
+
+/**
+ * One island, as the layout needs it, with what it was made of.
+ *
+ * An island is a PRESENTATION unit and this record says so by carrying nothing that could be
+ * mistaken for an answer. `spreadMetres` is how far apart the member captures with a fix were,
+ * which is a fact about the photographs; it is not the island's size in the Atlas, because an
+ * island's atlas position and radius carry no real-world meaning at all (interaction-model.md
+ * 1.2, risk R-48).
+ *
+ * `positionedCaptureCount` is separate from `captureIds.length` on purpose. A group clustered on
+ * time alone, because none of its members had a fix, is a weaker claim about being one place
+ * than a group where every member agreed on a position, and an interface that showed the two
+ * identically would be flattening that.
+ */
+export interface IslandRecord {
+  readonly islandId: IslandIdRef;
+  readonly captureIds: readonly string[];
+  readonly firstCapturedAtMs: number | null;
+  readonly lastCapturedAtMs: number | null;
+  readonly positionedCaptureCount: number;
+  /** Null when nothing in the group had a position. Not zero: zero is a real spread. */
+  readonly spreadMetres: number | null;
 }
 
 /**
@@ -276,6 +319,14 @@ export interface GraphSnapshot {
   readonly stateVersion: number;
   readonly entities: readonly EntityRecord[];
   readonly occurrences: readonly OccurrenceRecord[];
+  /**
+   * The islands the caller's `islandOf` produced, in layout order.
+   *
+   * Derived by the adapter rather than returned by the server, because what an island IS remains
+   * the client's decision. Present on the snapshot so the layout solver and the index can agree
+   * on one set rather than each deriving its own from the occurrences.
+   */
+  readonly islands: readonly IslandRecord[];
   /** Ranked candidate links awaiting a user decision. Drives the confirm-continuity intent. */
   readonly matchProposals: readonly MatchProposalView[];
   /**

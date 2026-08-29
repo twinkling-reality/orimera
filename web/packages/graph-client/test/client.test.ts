@@ -80,8 +80,41 @@ const PAYLOAD: GraphPayload = {
     },
   ],
   proposals: [],
+  // c1 and c2 were clustered into one scene group. c3 was not, and that is the case that matters:
+  // a photograph the clusterer could not place is still a photograph.
+  scene_groups: [
+    {
+      group_id: 'g1',
+      ordinal: 0,
+      capture_ids: ['c1', 'c2'],
+      first_utc: '2026-03-04T10:00:00+00:00',
+      last_utc: '2026-03-04T11:00:00+00:00',
+      member_count: 2,
+      positioned_member_count: 2,
+      radius_m: 14,
+      centroid_lat_e7: 514512340,
+      centroid_lon_e7: -1234560,
+    },
+  ],
   never_same: [['e1', 'e2']],
   deleted_entity_ids: [],
+};
+
+/** The same payload with an ungrouped capture, for the fallback the grouping cannot cover. */
+const WITH_UNGROUPED: GraphPayload = {
+  ...PAYLOAD,
+  occurrences: [
+    ...PAYLOAD.occurrences,
+    {
+      occurrence_id: 'o3',
+      capture_id: 'c3',
+      occurrence_class: 'object',
+      primary_span_id: 's3',
+      entity_id: null,
+      link_state: null,
+      captured_at: '2026-03-04T09:00:00+00:00',
+    },
+  ],
 };
 
 describe('the snapshot adapter states what the server cannot answer', () => {
@@ -120,6 +153,53 @@ describe('the snapshot adapter states what the server cannot answer', () => {
     // Documented in adaptSnapshot. Asserted so the day answers ARE stored, this fails and
     // somebody has to decide rather than shipping a zero that has stopped being true.
     expect(snapshot.entities[0]!.citingAnswerCount).toBe(0);
+  });
+});
+
+/**
+ * ADR-0005's open question, now answered by measurement rather than left open.
+ *
+ * The corpus is 80 photographs across five visits, which cluster into five scene groups. One
+ * island per capture is 80 islands and `solveLayout` refuses more than five. One island per
+ * group is five. These tests pin the default that follows, and pin that it is still only a
+ * default: the whole point of keeping the function injectable was that this stays an argument.
+ */
+describe('what an island is, decided by the client', () => {
+  it('puts the captures of one scene group in one island', () => {
+    const snapshot = adaptSnapshot(PAYLOAD);
+    expect(snapshot.occurrences[0]!.islandId).toBe('g1');
+    expect(snapshot.occurrences[1]!.islandId).toBe('g1');
+    expect(snapshot.islands).toHaveLength(1);
+    expect(snapshot.islands[0]!.captureIds).toEqual(['c1', 'c2']);
+  });
+
+  it('leaves a capture the grouping did not place standing on its own', () => {
+    const snapshot = adaptSnapshot(WITH_UNGROUPED);
+    expect(snapshot.occurrences[2]!.islandId).toBe('c3');
+    expect(snapshot.islands.map((i) => i.islandId)).toEqual(['c3', 'g1']);
+  });
+
+  it('orders islands by when their photographs were taken, which is the layout ordering key', () => {
+    const snapshot = adaptSnapshot(WITH_UNGROUPED);
+    expect(snapshot.islands[0]!.firstCapturedAtMs).toBeLessThan(
+      snapshot.islands[1]!.firstCapturedAtMs!,
+    );
+  });
+
+  it('carries the spread only for a group whose members actually had a fix', () => {
+    expect(adaptSnapshot(PAYLOAD).islands[0]!.spreadMetres).toBe(14);
+    const unpositioned: GraphPayload = {
+      ...PAYLOAD,
+      scene_groups: [{ ...PAYLOAD.scene_groups[0]!, positioned_member_count: 0, radius_m: null }],
+    };
+    // Null rather than zero. A group clustered on time alone has no measured radius, and zero
+    // would read as "every photograph was taken from the same spot".
+    expect(adaptSnapshot(unpositioned).islands[0]!.spreadMetres).toBeNull();
+  });
+
+  it('still lets the caller decide, which is what the injection point was kept for', () => {
+    const snapshot = adaptSnapshot(PAYLOAD, (captureId) => `island:${captureId}` as never);
+    expect(snapshot.occurrences.map((o) => o.islandId)).toEqual(['island:c1', 'island:c2']);
   });
 });
 

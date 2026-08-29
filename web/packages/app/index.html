@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Orimera</title>
+    <meta
+      name="description"
+      content="A personal world memory model. Every historical claim resolves to its source."
+    />
+    <!--
+      Not indexed. This surface renders somebody's photograph library and every path through it
+      requires a credential; a crawler that reached it would get a 401 and index the refusal.
+    -->
+    <meta name="robots" content="noindex, nofollow" />
+  </head>
+  <body>
+    <!--
+      One canvas, created once and never torn down. The shell moves it between layouts rather
+      than constructing a second one: interaction-model.md 1.1 has no scene loading, no "enter"
+      and no "return", and a canvas that was recreated on a view change would be all three.
+
+      Decorative to assistive technology. Everything the Atlas shows is reachable from the
+      library rail and the detail pane, which is the accessibility route and the default entry on
+      touch, where Pointer Lock does not exist at all.
+    -->
+    <canvas id="atlas" aria-hidden="true"></canvas>
+    <div id="shell"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

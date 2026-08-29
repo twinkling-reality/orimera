@@ -1,0 +1,95 @@
+/**
+ * Opening a citation, which is the promise the whole product reduces to.
+ *
+ * **Bytes, not a URL.** `OrimeraClient.evidenceUrl` exists and this does not use it. The client's
+ * own comment says why: the bearer token is in a header on every other call and an `<img src>`
+ * request would not carry it, so the only ways to make a plain URL work are to put the token in
+ * the query string or to move authentication into a cookie. The first puts somebody's photograph
+ * library behind a value that ends up in a proxy log. The second is a session mechanism this API
+ * does not have. So the bytes are fetched with the header and wrapped in a blob URL.
+ *
+ * **The cache is keyed by the handle and bounded.** A blob URL holds its bytes alive until it is
+ * revoked, so an unbounded cache over a photograph library is a memory leak measured in
+ * megabytes per citation. Least-recently-opened is evicted and revoked, and `dispose` revokes
+ * everything, because a blob URL that outlives the view holding it is a copy of a photograph in
+ * a place the deletion path cannot reach.
+ *
+ * **A failure is reported, never substituted.** A citation that cannot be resolved renders as a
+ * stated failure. A placeholder image in its place would be a claim that the evidence exists and
+ * looks like that.
+ */
+
+import type { EvidenceHandle, OrimeraClient } from '@orimera/graph-client';
+import { ApiError } from '@orimera/graph-client';
+
+/** How many originals are held at once. Each is a few megabytes of decoded photograph. */
+const MAX_HELD = 24;
+
+export type OpenedEvidence =
+  | { readonly ok: true; readonly url: string; readonly type: string }
+  | { readonly ok: false; readonly reason: string };
+
+export class EvidenceCache {
+  readonly #client: OrimeraClient;
+  /** Insertion-ordered, which is what makes the eviction below least-recently-opened. */
+  readonly #held = new Map<EvidenceHandle, { url: string; type: string }>();
+
+  constructor(client: OrimeraClient) {
+    this.#client = client;
+  }
+
+  async open(handle: EvidenceHandle): Promise<OpenedEvidence> {
+    const existing = this.#held.get(handle);
+    if (existing !== undefined) {
+      // Re-inserted so it counts as recently opened. Without this the cache evicts by first use
+      // rather than by last, and the photograph the user keeps returning to is the one that goes.
+      this.#held.delete(handle);
+      this.#held.set(handle, existing);
+      return { ok: true, url: existing.url, type: existing.type };
+    }
+
+    let blob: Blob;
+    try {
+      blob = await this.#client.evidenceBytes(handle);
+    } catch (error) {
+      return { ok: false, reason: describe(error) };
+    }
+
+    const entry = { url: URL.createObjectURL(blob), type: blob.type };
+    this.#held.set(handle, entry);
+    this.#evict();
+    return { ok: true, url: entry.url, type: entry.type };
+  }
+
+  dispose(): void {
+    for (const entry of this.#held.values()) URL.revokeObjectURL(entry.url);
+    this.#held.clear();
+  }
+
+  #evict(): void {
+    while (this.#held.size > MAX_HELD) {
+      const oldest = this.#held.keys().next();
+      if (oldest.done === true) return;
+      const entry = this.#held.get(oldest.value);
+      if (entry !== undefined) URL.revokeObjectURL(entry.url);
+      this.#held.delete(oldest.value);
+    }
+  }
+}
+
+/**
+ * Why a citation did not open, in the words the API used.
+ *
+ * The API answers a failure with a code, and the code is the thing worth reporting: a tombstoned
+ * address and a missing one are different facts and the user is entitled to the difference. 410
+ * in particular means the user deleted it, which is not an error.
+ */
+function describe(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 410) return 'this evidence was deleted';
+    if (error.isNotFound) return 'this evidence is not available to this session';
+    if (error.isUnauthenticated) return 'this session is no longer authenticated';
+    return `${error.code}: ${error.message}`;
+  }
+  return error instanceof Error ? error.message : 'the request failed';
+}

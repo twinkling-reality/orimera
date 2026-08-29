@@ -128,11 +128,16 @@ module.exports = {
       name: 'only-proposal-holders-may-mutate',
       severity: 'error',
       comment:
-        'Mutations are reachable from companion-runtime (which drafts proposals) and world-index ' +
-        '(which confirms them), and from nowhere else.',
+        'Mutations are reachable from companion-runtime (which drafts proposals), world-index ' +
+        '(which confirms them), and ONE named file in the app: packages/app/src/session.ts, ' +
+        'which is the composition root and has to construct the gate before it can hand a commit ' +
+        'function to anything. The exception is a FILE and not a package on purpose. A ' +
+        'package-level exception would let any future module in the app reach the gate directly ' +
+        'and go around the confirmation surface, which is exactly what the runtime check exists ' +
+        'to stop; naming the file means a second importer fails this contract.',
       from: {
         path: String.raw`^packages/`,
-        pathNot: String.raw`^packages/(graph-client|companion-runtime|world-index)/`,
+        pathNot: String.raw`^packages/(graph-client|companion-runtime|world-index)/|^packages/app/src/session\.ts$`,
       },
       to: { path: MUTATIONS },
     },
@@ -213,6 +218,31 @@ module.exports = {
         'does not list landing among the packages allowed to name an engine.',
       from: { path: pkg('landing') },
       to: { path: notPkgRef('landing', 'atlas-core') },
+    },
+
+    // ---- app: the composition root ---------------------------------------------------------
+    {
+      name: 'app-imports-the-product-packages-only',
+      severity: 'error',
+      comment:
+        'The app is the composition root: it is the one place that knows a transport, a scene ' +
+        'graph, a renderer binding, an index and a Companion all exist at once. It may reach ' +
+        'the five product packages and nothing else in the workspace. Not atlas-three, which is ' +
+        'the retained second renderer binding and would be a second engine in the product; not ' +
+        'bakeoff, which is a measurement harness; not scene-synth, which writes files with ' +
+        'node:fs; and not landing, which is the signed-out surface and must keep paying for no ' +
+        'renderer.',
+      from: { path: pkg('app') },
+      to: {
+        path: notPkgRef(
+          'app',
+          'graph-client',
+          'atlas-core',
+          'atlas-react',
+          'companion-runtime',
+          'world-index',
+        ),
+      },
     },
 
     // ---- the synthetic scene generator is a build-time tool --------------------------------

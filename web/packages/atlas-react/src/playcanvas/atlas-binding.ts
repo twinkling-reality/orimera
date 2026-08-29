@@ -17,6 +17,7 @@ import {
   applyViewManifestInto,
   atlasVec3,
   buildAnchorTable,
+  focusDirectly,
   localToAtlas,
   localVec3,
   neutralEmphasis,
@@ -25,6 +26,8 @@ import {
   resolveTiers,
 } from '@orimera/atlas-core';
 import { AnchorOverlay } from './anchor-overlay.js';
+import type { AnchorMotes } from './anchor-motes.js';
+import { createAnchorMotes } from './anchor-motes.js';
 import { FirstPersonControls, type CameraState, type InputMode } from './controls.js';
 import type { PointMap } from './opm.js';
 import type { PointCloud } from './point-cloud.js';
@@ -88,6 +91,14 @@ export class AtlasBinding {
   readonly camera: pc.Entity;
   readonly controls: FirstPersonControls;
   readonly overlay: AnchorOverlay | null;
+  /**
+   * One mote per non-person anchor, in atlas space.
+   *
+   * This is what a region with no reconstructed geometry looks like, and it is not optional:
+   * a point cloud exists only where a point map was supplied, so without this a rung 4 island
+   * renders as nothing at all. Rung 4 is a real rung with a movement model, not an absence.
+   */
+  readonly motes: AnchorMotes;
   readonly table: AnchorTable;
   readonly emphasis: EmphasisBuffers;
   readonly islands: readonly IslandVisual[];
@@ -111,6 +122,7 @@ export class AtlasBinding {
     camera: pc.Entity,
     controls: FirstPersonControls,
     overlay: AnchorOverlay | null,
+    motes: AnchorMotes,
     scene: AtlasScene,
     table: AnchorTable,
     islands: readonly IslandVisual[],
@@ -120,6 +132,7 @@ export class AtlasBinding {
     this.camera = camera;
     this.controls = controls;
     this.overlay = overlay;
+    this.motes = motes;
     this.scene = scene;
     this.table = table;
     this.islands = islands;
@@ -221,7 +234,19 @@ export class AtlasBinding {
     const overlay =
       options.overlay === false ? null : new AnchorOverlay(options.overlayParent);
 
-    return new AtlasBinding(app, camera, controls, overlay, options.scene, table, visuals);
+    // Parented to the ROOT and not to an island entity. `table.atlasPositions` already has the
+    // presentation transform applied, so hanging the cloud under an island would apply the
+    // placement a second time and put every anchor somewhere no anchor is.
+    const motes = createAnchorMotes({ device, table });
+    if (motes.count > 0) {
+      const moteEntity = new pc.Entity('atlas-anchors');
+      moteEntity.addComponent('render', {
+        meshInstances: [new pc.MeshInstance(motes.mesh, motes.material, moteEntity)],
+      });
+      app.root.addChild(moteEntity);
+    }
+
+    return new AtlasBinding(app, camera, controls, overlay, motes, options.scene, table, visuals);
   }
 
   /**
@@ -266,6 +291,29 @@ export class AtlasBinding {
     this.emphasis.anchorLabelable.set(neutral.anchorLabelable);
     this.emphasis.islandEmphasis.set(neutral.islandEmphasis);
     this.emphasis.islandLevel.set(neutral.islandLevel);
+  }
+
+  /**
+   * Put focus on one anchor, because something outside the world pointed at it.
+   *
+   * interaction-model.md 5.2: "Clicking an evidence chip does not leave the Atlas. It opens the
+   * source image inline, docked to the panel, AND SIMULTANEOUSLY THE CORRESPONDING ANCHOR IN THE
+   * WORLD PULSES. The written claim and the spatial world point at the same evidence at the same
+   * time. That simultaneity is the product's central promise made visible in one gesture."
+   *
+   * The aim solver cannot express that, because the camera is not aiming at anything: the user
+   * clicked a citation in a panel. So this is a direct set through atlas-core's `focusDirectly`
+   * rather than a second focus rule written here. It is deliberately NOT a latch: the next frame
+   * of aim resolution takes focus back, which is correct, because the pulse marks a moment and
+   * does not seize the user's attention until they dismiss it.
+   *
+   * An index outside the table is ignored rather than throwing. The caller is translating an
+   * anchor id it received from the graph, and an id the current scene does not contain means the
+   * graph moved under the panel, which is a stale view rather than a fault.
+   */
+  focusAnchor(index: number, nowMs: number = performance.now()): void {
+    if (!Number.isInteger(index) || index < 0 || index >= this.table.count) return;
+    this.focusState = focusDirectly(this.focusState, index, nowMs);
   }
 
   cameraPose(): CameraPose {
@@ -319,6 +367,12 @@ export class AtlasBinding {
       visual.cloud.material.setParameter('uPoint', visual.uPoint);
     }
 
+    // The motes read the same emphasis buffer the manifest writes and the same projection scale
+    // the shells use, so a recomposition moves both in one frame rather than in two.
+    this.motes.uMote[2] = projScale;
+    this.motes.material.setParameter('uMote', this.motes.uMote);
+    this.motes.update(this.emphasis);
+
     const resolution = resolveFocus(
       {
         table: this.table,
@@ -355,6 +409,7 @@ export class AtlasBinding {
   destroy(): void {
     this.controls.destroy();
     this.overlay?.destroy();
+    this.motes.destroy();
     for (const visual of this.islands) visual.cloud.destroy();
     this.app.destroy();
   }
