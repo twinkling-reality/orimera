@@ -22,15 +22,12 @@ from pathlib import Path
 from typing import Any
 
 from orimera.db import Database, apply_pending, provision_workspace
-from orimera.identity.proposer import propose_matches
-from orimera.identity.repository import IdentityRepository
-from orimera.identity.signals import ContextSignals
 from orimera.ingest.batch import IntakeBatch
+from orimera.ingest.continuity import run_continuity
 from orimera.ingest.ledger import Ledger
 from orimera.ingest.pipeline import PhotoIngestPipeline
 from orimera.ingest.report import IngestReport
 from orimera.ingest.repository import IngestRepository
-from orimera.ingest.scenes import run_scene_grouping
 from orimera.ingest.stages import stage
 from orimera.ingest.vision import NebiusVisionModel, VisionModel
 from orimera.store.local import LocalContentAddressedStore
@@ -216,12 +213,12 @@ def _cmd_ingest(args: argparse.Namespace, stream: Any) -> int:
         # stage it is. Left outside, it would run in a batchless run and a visitor watching a
         # region form would see the pipeline stop after entity indexing and then finish with no
         # explanation of what happened in between.
-        scenes = run_scene_grouping(
-            repository,
-            ledger=Ledger.start_run(repository, trigger="ingest", batch_id=report.batch_id)
-            if report.batch_id
-            else None,
-        )
+        #
+        # The same call the derivative worker makes at the end of a queued job, because it is
+        # the same work. It also closes the runs it opens, which neither caller used to do:
+        # measured, every batch left two pipeline_run rows in `running` for ever.
+        continuity = run_continuity(repository, batch_id=report.batch_id)
+        scenes = continuity.scenes
         # Closed here, after every stage the batch contains, so its terminal event is genuinely
         # the last one. Closing it when the photographs finished would put "ready" in the stream
         # ahead of continuity search, and a client that stops on the terminal event, which is
@@ -233,16 +230,11 @@ def _cmd_ingest(args: argparse.Namespace, stream: Any) -> int:
                     failed=len(report.failed),
                 )
             )
-        # New photographs against people who are already named. The other direction, a newly
-        # named person against photographs that are already here, is `orimera-identity propose`:
-        # naming somebody is not an ingest and nothing would run this afterwards.
-        proposals = propose_matches(
-            IdentityRepository(repository.connection, repository.workspace_id),
-            ContextSignals.read(repository.connection, repository.workspace_id),
-            run_id=Ledger.start_run(
-                repository, trigger="ingest", batch_id=report.batch_id
-            ).run_id,
-        )
+        # New photographs against people who are already named, run by `run_continuity` above.
+        # The other direction, a newly named person against photographs that are already here,
+        # is `orimera-identity propose`: naming somebody is not an ingest and nothing would run
+        # this afterwards.
+        proposals = continuity.proposals
 
         _print_report(report, stream)
         print(
@@ -281,7 +273,6 @@ def _cmd_ingest(args: argparse.Namespace, stream: Any) -> int:
 
 
 def _cmd_replay(args: argparse.Namespace, stream: Any) -> int:
-    from orimera.ingest.ledger import Ledger
 
     with _repository(args, stream) as repository:
         ledger = Ledger(repository, uuid.UUID(args.run_id))
