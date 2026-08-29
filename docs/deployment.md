@@ -344,7 +344,19 @@ is done, no claim is made here about range requests being on the browser path.
 | --- | --- | --- |
 | `orimera_app` | select, insert, update. No delete anywhere. Select only on `predicate` and `schema_migrations` | Row-level security is inert for an owner, and a runtime that could update the vocabulary could disarm the rule that stops a model writing a person's name |
 | `orimera_ro` | select, and nothing else | The Selection executor runs a plan derived from model output. It must not be able to write whatever happened upstream of it |
-| `orimera_purge` | A **cross-workspace read** of identifiers, content hashes and deletion markers on `capture` and `artifact`; update of `purged_at` and `storage_key`; no delete on any table | `blob` is not workspace-scoped, so two workspaces that ingest the same photograph share one object. A purger that could only see its own workspace answers "destroy these bytes" while another tenant still holds a live capture of them. Measured, and it is why this role exists |
+| `orimera_purge` | A **cross-workspace read** of identifiers, content hashes and deletion markers on `capture` and `artifact`; update of `purged_at` and `storage_key` on `blob` and `artifact`; update of `state`, `attempts`, `attempted_at`, `last_error` and `completed_at` on `purge_job`; update of `purge_completed_at` on `tombstone`; **no delete on any table** | `blob` is not workspace-scoped, so two workspaces that ingest the same photograph share one object. A purger that could only see its own workspace answers "destroy these bytes" while another tenant still holds a live capture of them. Measured, and it is why this role exists |
+
+Every UPDATE in that row is column by column, and a review measured what the full-table version
+bought: this role could push a tombstone's `effective_at` a year out, which makes it stop blocking
+derivatives and reopens the leak migration 0011 closed, and could set `purge_completed_at` over a
+photograph still on disk. Neither table carries an UPDATE trigger, so the grant was the only thing
+standing there.
+
+**`ORIMERA_PURGE_DATABASE_URL` is checked, not trusted.** It is a connection string and says
+nothing about which role is behind it. `orimera-purge` asks the database for `current_user` and
+whether the cross-workspace policy applies to it, and **refuses to destroy anything** when it does
+not, naming the role. Pointed at the writer, it used to purge silently and narrowly: one object
+destroyed, the tombstone recorded complete, and another workspace's live photograph gone.
 
 The purge role's UPDATE is still filtered by `ws_isolation`, so it reads across tenants and writes
 within one. That asymmetry is the whole of the grant.
