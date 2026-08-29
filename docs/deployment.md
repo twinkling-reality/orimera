@@ -57,9 +57,22 @@ region, no domain, no registry and no host. Every one of those is a decision rat
 and nothing in this repository names one: `tests/test_deployment.py` asserts that no artefact
 carries a hostname or an account identifier, so a value typed in by accident fails the build.
 
-**The image has not been built in this environment.** It is written and its structure is checked
-at the text level; a build was attempted and did not complete, so no measured size is recorded
-here and none is estimated.
+**The image is built and was run. 2026-08-29, 222 MB.** `docker build .` completes, and the built
+image was exercised rather than only weighed:
+
+*   `uvicorn` serves. The container's own `HEALTHCHECK` reaches `/healthz` and gets 200.
+*   `orimera-ingest --help` and `orimera-db --help` both run, which is the claim at the top of the
+    Dockerfile that one image carries three commands.
+*   `POST /intake` accepted a photograph through the container and returned 202, and the
+    derivative worker inside it drained the queue: intake and rendition ran, and vision did not,
+    because no model credential was passed. That is the correct behaviour and the honest half of
+    the test, since a stage reported as done that never ran is the failure this project is
+    written against.
+*   With a connection string naming a role that does not exist, the container **refuses to start**
+    and says which role, rather than starting and failing on the first request. That is section
+    5.3's "fail closed at startup", observed rather than asserted.
+
+The reconstruction extra is still absent from the image, exactly as the Dockerfile's header says.
 
 ---
 
@@ -677,7 +690,7 @@ has happened at least once with a stopwatch running.
 | D-7 | The runtime fallback path has never executed | Force the primary to fail in continuous integration |
 | D-8 | Whether the renderer's asset loader issues range requests is unobserved | Load a scene with the network panel open |
 | D-9 | The cloud account, project, region placement and domain are unchosen | Section 10.4. This is the only thing between the artefacts in section 1 and a running deployment |
-| D-12 | The container image has never been built | Running `docker build .` on a machine that can reach the registry |
+| D-12 | ~~The container image has never been built~~ **CLOSED 2026-08-29.** Built, 222 MB, and run: uvicorn serves, the healthcheck passes, both console scripts run, an upload through it returned 202 and its worker drained the queue, and a bad connection string makes it refuse to start. What is still unobserved is the image running anywhere but this machine | Section 10.4, which is D-9 |
 | D-13 | There is no reverse proxy and no static client host in the composition | Choosing one, which is D-9 |
 | D-10 | Nobody is named for the weekly check through the unattended window | Asking a person |
 | D-11 | Whether a preview grade service survives the window at all | The canary endpoint's outage log |
