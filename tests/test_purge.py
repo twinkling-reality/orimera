@@ -33,6 +33,13 @@ from orimera.store.local import LocalContentAddressedStore
 
 from conftest import CountingVisionModel, write_photo
 
+#: Suffixed, because **a role is a CLUSTER object** and the harness's "the database name must
+#: contain test" guard does not reach one. Provisioning the deployment's own role names here
+#: would leave the developer's live `orimera_app` and `orimera_purge` carrying whatever this file
+#: last chose, in the same cluster the `orimera` database uses.
+_PURGE_ROLE = f"{PURGE_ROLE}_suite"
+_APP_ROLE = f"{RUNTIME_ROLE}_suite"
+
 # **Generated, never committed.** `provision_runtime_role` and `provision_purge_role` issue
 # `alter role ... password`, and a role is a CLUSTER object: the harness's "the database name must
 # contain test" guard does not reach it. With constants here, every run of this file left the
@@ -77,7 +84,7 @@ class Purged:
 
     def worker(self, *, as_purge_role: bool = True) -> PurgeWorker:
         database = (
-            self.database(role=PURGE_ROLE, password=_PURGE_PASSWORD)
+            self.database(role=_PURGE_ROLE, password=_PURGE_PASSWORD)
             if as_purge_role
             else self.database()
         )
@@ -122,8 +129,8 @@ def purged(tmp_path, photo_dir, repository, spine_schema):
     owner = Database(url=f"{base}{'&' if '?' in base else '?'}options={options}")
     with owner.unscoped() as connection:
         connection.execute(f"set search_path to {scratch}, public")
-        provision_runtime_role(connection, role=RUNTIME_ROLE, password=_APP_PASSWORD)
-        provision_purge_role(connection, password=_PURGE_PASSWORD)
+        provision_runtime_role(connection, role=_APP_ROLE, password=_APP_PASSWORD)
+        provision_purge_role(connection, role=_PURGE_ROLE, password=_PURGE_PASSWORD)
     return Purged(repository, store, scratch, psycopg_module, tmp_path)
 
 
@@ -276,16 +283,16 @@ def test_a_purger_that_cannot_see_the_other_tenant_would_destroy_those_bytes(pur
         requested_by=uuid.uuid4(),
     )
     answers = {}
-    for role, password in ((RUNTIME_ROLE, _APP_PASSWORD), (PURGE_ROLE, _PURGE_PASSWORD)):
+    for role, password in ((_APP_ROLE, _APP_PASSWORD), (_PURGE_ROLE, _PURGE_PASSWORD)):
         with purged.database(role=role, password=password).session(purged.workspace_id) as c:
             answers[role] = c.execute(
                 "select purge_releases_bytes(%s) as releases", (blob.digest,)
             ).fetchone()["releases"]
-    assert answers[RUNTIME_ROLE] is True, (
+    assert answers[_APP_ROLE] is True, (
         "the runtime role's view of this question changed; the point of the purge role was that "
         "this one is wrong"
     )
-    assert answers[PURGE_ROLE] is False
+    assert answers[_PURGE_ROLE] is False
 
 
 # -- what an adversarial review measured, one test each ---------------------------------------
@@ -382,13 +389,13 @@ def test_a_purger_that_cannot_see_across_workspaces_refuses_to_destroy_anything(
     assert outcome.destroyed == 0
     assert purged.store.exists(blob)
     assert "cross-workspace" in outcome.blocked
-    assert outcome.role is not None and outcome.role != PURGE_ROLE
+    assert outcome.role is not None and outcome.role != _PURGE_ROLE
 
     # And the right role is allowed through, or the check above would pass on a worker that
     # refused everybody.
     allowed = purged.worker().drain()
     assert allowed.blocked is None
-    assert allowed.role == PURGE_ROLE
+    assert allowed.role == _PURGE_ROLE
     assert allowed.destroyed >= 1
 
 
@@ -486,7 +493,7 @@ def test_the_purge_role_cannot_reopen_the_leak_0011_closed(purged):
     `purge_job.target_ref` decides which object a claimed job destroys. Neither table carries an
     UPDATE trigger, so the grant was the only thing standing there.
     """
-    with purged.database(role=PURGE_ROLE, password=_PURGE_PASSWORD).session(
+    with purged.database(role=_PURGE_ROLE, password=_PURGE_PASSWORD).session(
         purged.workspace_id
     ) as connection:
         for statement in (
@@ -637,7 +644,7 @@ def test_the_truncate_refusal_is_policy_and_not_a_guarantee(purged):
 
 def test_no_runtime_role_can_delete_a_tombstone_or_its_queue(purged):
     """The purger marks rows and destroys objects. It deletes no row, and it holds no DELETE."""
-    for role, password in ((RUNTIME_ROLE, _APP_PASSWORD), (PURGE_ROLE, _PURGE_PASSWORD)):
+    for role, password in ((_APP_ROLE, _APP_PASSWORD), (_PURGE_ROLE, _PURGE_PASSWORD)):
         with purged.database(role=role, password=password).session(purged.workspace_id) as c:
             for table in ("tombstone", "purge_job", "capture", "artifact", "blob"):
                 with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -652,7 +659,7 @@ def test_the_purge_role_reads_hashes_across_workspaces_and_nothing_else(purged):
     and deletion markers, so it can answer "does anything still hold these bytes" and cannot read
     what camera took the photograph or when.
     """
-    with purged.database(role=PURGE_ROLE, password=_PURGE_PASSWORD).session(
+    with purged.database(role=_PURGE_ROLE, password=_PURGE_PASSWORD).session(
         purged.workspace_id
     ) as c:
         c.execute("select capture_id, blob_sha256, deleted_at from capture")

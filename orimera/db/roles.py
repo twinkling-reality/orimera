@@ -192,7 +192,9 @@ def provision_runtime_role(
         )
 
 
-def provision_purge_role(connection: psycopg.Connection, *, password: str | None = None) -> None:
+def provision_purge_role(
+    connection: psycopg.Connection, *, role: str = PURGE_ROLE, password: str | None = None
+) -> None:
     """Create the purger's role, and give it the one privilege nothing else may have.
 
     **The privilege is a cross-workspace READ, and it is here because the alternative is silent
@@ -224,8 +226,13 @@ def provision_purge_role(connection: psycopg.Connection, *, password: str | None
         trigger, so the grant was the only thing standing there.
 
     Idempotent, like :func:`provision_runtime_role`, and safe to call at every deployment.
+
+    ``role`` is a parameter for the same reason it is one there: **a role is a CLUSTER object**,
+    so a test suite that provisioned the deployment's own role names would be reaching outside
+    every database-scoped guard the harness has, and would leave the developer's live roles
+    carrying whatever password the last test run chose. The tests provision suffixed names.
     """
-    role_name = sql.Identifier(PURGE_ROLE)
+    role_name = sql.Identifier(role)
     row = connection.execute("select current_schema()").fetchone()
     assert row is not None
     schema = sql.Identifier(row["current_schema"] if isinstance(row, dict) else row[0])
@@ -233,7 +240,7 @@ def provision_purge_role(connection: psycopg.Connection, *, password: str | None
     with connection.transaction():
         connection.execute("select pg_advisory_xact_lock(%s)", (_ROLE_LOCK_KEY,))
         exists = connection.execute(
-            "select 1 from pg_roles where rolname = %s", (PURGE_ROLE,)
+            "select 1 from pg_roles where rolname = %s", (role,)
         ).fetchone()
         if exists is None:
             connection.execute(sql.SQL("create role {} login nobypassrls").format(role_name))
