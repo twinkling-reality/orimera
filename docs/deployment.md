@@ -32,13 +32,34 @@ The shape of the deployment is decided. The concrete target is not.
 | The domain name | **OPEN**, section 10 |
 | Whether the static client host stays on the default choice | **OPEN**, section 10 |
 | Who performs the weekly check through the unattended window | **OPEN**, section 9 |
-| Whether the health endpoint and the redeploy command exist | **OPEN.** Both are specified here and neither is implemented, section 6 and section 9 |
+| Whether the health endpoint exists | **DECIDED and implemented.** `/healthz` and `/readyz`, section 6 |
+| Whether the redeploy command exists | **OPEN.** Specified in section 9 and not implemented |
 
-**Nothing described below has been provisioned.** The application code in this repository is the
-ingest pipeline, the evidence spine, the model client and the browser packages. There is no HTTP
-service, no container image, no infrastructure definition and no deployment account. Sections 6, 9
-and 10 are specifications written before the thing they specify, and they say so at the point where
-it matters.
+**The artefacts exist. Nothing has been provisioned.** The distinction is the whole of this
+section and it is worth stating precisely, because "there is a Dockerfile" and "there is a
+deployment" are different facts and only the first one is true.
+
+What exists in the repository, and is checked by `tests/test_deployment.py`:
+
+*   `Dockerfile`, one image for all three commands: uvicorn serves the API, `orimera-db` migrates
+    and provisions the two roles, `orimera-ingest` ingests a directory. Non-root, no apt packages,
+    liveness on `/healthz` and never on `/readyz`.
+*   `.dockerignore`, an allowlist rather than a denylist, because `credentials.py` walks up from
+    the working directory looking for a `.env` and a denylist is one forgotten line away from an
+    image that carries a credential.
+*   `compose.yaml`, a local composition against `pgvector/pgvector:0.8.6-pg18`, which is the
+    documented target matched exactly.
+*   `.github/workflows/check.yml`, running ruff, the import contracts, pytest with
+    `ORIMERA_REQUIRE_POSTGRES=1`, the web workspace's `pnpm check`, and an image build.
+
+**What is still open, and it is the part that needs a person.** No cloud account, no project, no
+region, no domain, no registry and no host. Every one of those is a decision rather than a task,
+and nothing in this repository names one: `tests/test_deployment.py` asserts that no artefact
+carries a hostname or an account identifier, so a value typed in by accident fails the build.
+
+**The image has not been built in this environment.** It is written and its structure is checked
+at the text level; a build was attempted and did not complete, so no measured size is recorded
+here and none is estimated.
 
 ---
 
@@ -628,7 +649,7 @@ has happened at least once with a stopwatch running.
 
 | # | Item | Resolved by |
 | --- | --- | --- |
-| D-1 | No HTTP service exists, so the health endpoints in section 6 are unimplemented | Writing the service |
+| D-1 | ~~No HTTP service exists~~ **CLOSED.** The service exists and both health endpoints are implemented. What is NOT asserted anywhere is that `/readyz`'s schema check reports a stale schema rather than a missing one; that has no positive test | Writing one |
 | D-2 | The one command redeploy has never been run from a clean shell | Running it |
 | D-3 | The nightly dump has never been restored | Restoring one and timing it |
 | D-4 | The zero backend static fallback has not been built | Building it and loading it with the API off |
@@ -636,6 +657,8 @@ has happened at least once with a stopwatch running.
 | D-6 | The embedding role has no fallback and no recovery path | Design the precompute and freeze approach, or accept a single point dependency and say so |
 | D-7 | The runtime fallback path has never executed | Force the primary to fail in continuous integration |
 | D-8 | Whether the renderer's asset loader issues range requests is unobserved | Load a scene with the network panel open |
-| D-9 | The cloud account, project, region placement and domain are unchosen | Section 10.4 |
+| D-9 | The cloud account, project, region placement and domain are unchosen | Section 10.4. This is the only thing between the artefacts in section 1 and a running deployment |
+| D-12 | The container image has never been built | Running `docker build .` on a machine that can reach the registry |
+| D-13 | There is no reverse proxy and no static client host in the composition | Choosing one, which is D-9 |
 | D-10 | Nobody is named for the weekly check through the unattended window | Asking a person |
 | D-11 | Whether a preview grade service survives the window at all | The canary endpoint's outage log |
