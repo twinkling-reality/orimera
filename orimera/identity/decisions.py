@@ -1,5 +1,10 @@
 """One user decision, applied as one transaction, recorded so that undo is exact.
 
+Five decisions live here: confirm, reject, revoke, merge and split, plus the naming of an
+occurrence. Their shared vocabulary is in :mod:`orimera.identity.subjects`, their inverses are in
+:mod:`orimera.identity.undo`, and renaming an entity is in :mod:`orimera.identity.naming`. The
+split happened when this file passed 700 lines and was holding three responsibilities at once.
+
 Every function here is a thing a person did. There is no function a model can call, and that is
 structural rather than a matter of discipline: ``confirmed_needs_a_human`` refuses a confirmed
 link without a ``decided_by`` and ``method = 'user_confirm'``, and
@@ -30,110 +35,38 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
-from typing import Any
 
 from orimera.epistemics.assertions import AssertionWriter
-from orimera.errors import OrimeraError
 from orimera.identity.keys import USER_STATEMENT_BASIS
-from orimera.identity.repository import EntityRow, IdentityRepository, OccurrenceRow
+from orimera.identity.repository import IdentityRepository
+from orimera.identity.subjects import (
+    ENTITY_ENTITY,
+    OCCURRENCE_ENTITY,
+    AlreadyIdentified,
+    IdentityError,
+    NamedPerson,
+    NeverSame,
+    UnknownSubject,
+    dependency_keys,
+    require_entity,
+    require_occurrence,
+)
 
+#: Re-exported so that `from orimera.identity.decisions import OCCURRENCE_ENTITY` keeps working
+#: and so the two rejection scopes stay readable beside the decisions that file them.
 __all__ = [
-    "AlreadyIdentified",
-    "IdentityError",
-    "NamedPerson",
-    "NeverSame",
-    "NotUndoable",
-    "UnknownSubject",
+    "ENTITY_ENTITY",
+    "OCCURRENCE_ENTITY",
     "confirm_link",
     "merge_entities",
     "name_occurrence",
     "reject_link",
     "revoke_link",
     "split_entity",
-    "undo",
 ]
-
-#: The scope every occurrence-to-entity rejection is filed under. The other scope,
-#: ``entity_entity``, records a refused merge.
-OCCURRENCE_ENTITY: str = "occurrence_entity"
-ENTITY_ENTITY: str = "entity_entity"
 
 #: The only method a confirmed link may carry, per ``confirmed_needs_a_human``.
 _USER_CONFIRM = "user_confirm"
-
-
-class IdentityError(OrimeraError):
-    """A user decision cannot be applied as asked."""
-
-
-class UnknownSubject(IdentityError):
-    """An occurrence or entity that is not in this workspace.
-
-    Deliberately one error for "does not exist" and "belongs to someone else", because
-    distinguishing them makes the surface an existence oracle. The architecture states the same
-    rule for the query path: nonexistent ids and ids belonging to another tenant return the
-    identical code.
-    """
-
-
-class AlreadyIdentified(IdentityError):
-    """This occurrence is already confirmed to be somebody.
-
-    One confirmed link per occurrence is a partial unique index, not a convention. A second
-    identity for the same person in the same photograph is not a richer record, it is two
-    answers to a question that has one.
-    """
-
-
-class NeverSame(IdentityError):
-    """A split said these two are different people, so they may not be merged."""
-
-
-class NotUndoable(IdentityError):
-    """This event cannot be undone, and the message says why rather than doing nothing."""
-
-
-@dataclass(frozen=True, slots=True)
-class NamedPerson:
-    """What :func:`name_occurrence` created, so a caller need not re-read it."""
-
-    entity_id: uuid.UUID
-    link_id: uuid.UUID
-    assertion_id: uuid.UUID
-    event_ids: tuple[uuid.UUID, ...]
-
-
-def _dependency_keys(**subjects: Any) -> list[str]:
-    """The ``dep_index`` strings for the things a decision touched.
-
-    ``derived_artifact.dep_index`` is the flattened ``'kind:<uuid>'`` form with a GIN index over
-    it, so invalidation is a query rather than a list somebody has to remember to update.
-    """
-    keys: list[str] = []
-    for kind, value in subjects.items():
-        if value is None:
-            continue
-        values = value if isinstance(value, (list, tuple, set)) else [value]
-        keys.extend(f"{kind}:{item}" for item in values)
-    return keys
-
-
-def _require_occurrence(
-    repository: IdentityRepository, occurrence_id: uuid.UUID
-) -> OccurrenceRow:
-    occurrence = repository.occurrence(occurrence_id)
-    if occurrence is None:
-        raise UnknownSubject(f"no occurrence {occurrence_id} in this workspace")
-    return occurrence
-
-
-def _require_entity(repository: IdentityRepository, entity_id: uuid.UUID) -> EntityRow:
-    entity = repository.entity(entity_id)
-    if entity is None or entity.deleted_at is not None:
-        raise UnknownSubject(f"no entity {entity_id} in this workspace")
-    return entity
-
 
 def name_occurrence(
     repository: IdentityRepository,
@@ -162,7 +95,7 @@ def name_occurrence(
     if not display_name:
         raise IdentityError("a name is a thing somebody said; the empty string is not one")
 
-    occurrence = _require_occurrence(repository, occurrence_id)
+    occurrence = require_occurrence(repository, occurrence_id)
     existing = repository.link_for_occurrence(occurrence_id)
     if existing is not None:
         raise AlreadyIdentified(
@@ -216,7 +149,7 @@ def name_occurrence(
             },
         )
         repository.mark_derived_stale(
-            _dependency_keys(entity=entity_id, occurrence=occurrence_id)
+            dependency_keys(entity=entity_id, occurrence=occurrence_id)
         )
     return NamedPerson(
         entity_id=entity_id,
@@ -240,8 +173,8 @@ def confirm_link(
     and then changing their mind is not a re-proposal, and a memory that overruled them would be
     the product arguing with its owner about their own life.
     """
-    occurrence = _require_occurrence(repository, occurrence_id)
-    entity = _require_entity(repository, entity_id)
+    occurrence = require_occurrence(repository, occurrence_id)
+    entity = require_entity(repository, entity_id)
     target = repository.resolve_entity(entity.entity_id)
 
     existing = repository.link_for_occurrence(occurrence_id)
@@ -288,7 +221,7 @@ def confirm_link(
                 "revoked_rejections": [str(value) for value in revoked],
             },
         )
-        repository.mark_derived_stale(_dependency_keys(entity=target, occurrence=occurrence_id))
+        repository.mark_derived_stale(dependency_keys(entity=target, occurrence=occurrence_id))
     return link_id
 
 
@@ -314,8 +247,8 @@ def reject_link(
     because it covers extractor versions, so a version bump would move it and revive every
     rejection.
     """
-    occurrence = _require_occurrence(repository, occurrence_id)
-    entity = _require_entity(repository, entity_id)
+    occurrence = require_occurrence(repository, occurrence_id)
+    entity = require_entity(repository, entity_id)
     target = repository.resolve_entity(entity.entity_id)
 
     confirmed = repository.link_for_occurrence(occurrence_id)
@@ -352,7 +285,7 @@ def reject_link(
                 "link_id": str(proposed.link_id) if proposed else None,
             },
         )
-        repository.mark_derived_stale(_dependency_keys(entity=target, occurrence=occurrence_id))
+        repository.mark_derived_stale(dependency_keys(entity=target, occurrence=occurrence_id))
     return rejection_id
 
 
@@ -370,7 +303,7 @@ def revoke_link(
     listening. Pass False when the revocation is bookkeeping rather than a judgement, as it is
     inside :func:`split_entity`.
     """
-    occurrence = _require_occurrence(repository, occurrence_id)
+    occurrence = require_occurrence(repository, occurrence_id)
     link = repository.link_for_occurrence(occurrence_id)
     if link is None:
         raise UnknownSubject(f"occurrence {occurrence_id} has no confirmed link to revoke")
@@ -396,7 +329,7 @@ def revoke_link(
             },
         )
         repository.mark_derived_stale(
-            _dependency_keys(entity=link.entity_id, occurrence=occurrence_id)
+            dependency_keys(entity=link.entity_id, occurrence=occurrence_id)
         )
     return event_id
 
@@ -418,9 +351,9 @@ def merge_entities(
     """
     if target in sources:
         raise IdentityError("an entity cannot be merged into itself")
-    surviving = _require_entity(repository, target)
+    surviving = require_entity(repository, target)
     for source in sources:
-        absorbed = _require_entity(repository, source)
+        absorbed = require_entity(repository, source)
         # THE SURVIVING RECORD KEEPS ITS NAME, so merging a named record into an unnamed one
         # would leave the survivor unnamed and the name readable only in history. A user who
         # wanted that wanted the merge the other way round.
@@ -459,7 +392,7 @@ def merge_entities(
             },
         )
         repository.mark_derived_stale(
-            _dependency_keys(entity=[*sources, resolved_target])
+            dependency_keys(entity=[*sources, resolved_target])
         )
     return event_id
 
@@ -484,7 +417,7 @@ def split_entity(
     """
     if not occurrence_ids:
         raise IdentityError("a split with no occurrences moves nothing")
-    _require_entity(repository, entity_id)
+    require_entity(repository, entity_id)
 
     links = {link.occurrence_id: link for link in repository.links_of(entity_id)}
     missing = [str(o) for o in occurrence_ids if o not in links]
@@ -538,182 +471,6 @@ def split_entity(
         )
         repository.record_never_same(entity_id, new_entity_id, created_by_event=event_id)
         repository.mark_derived_stale(
-            _dependency_keys(entity=[entity_id, new_entity_id], occurrence=occurrence_ids)
+            dependency_keys(entity=[entity_id, new_entity_id], occurrence=occurrence_ids)
         )
     return event_id
-
-
-def undo(repository: IdentityRepository, *, event_id: uuid.UUID, actor: uuid.UUID) -> uuid.UUID:
-    """Reverse one identity decision, from what the event recorded rather than from a guess.
-
-    Refuses rather than approximates. An event that has already been undone, an undo itself, and
-    ``entity_created`` are all refused with the reason, because each would otherwise produce a
-    result that looks like an undo and is not: undoing an undo is redo, and undoing the creation
-    of a person means deleting them, which is a deletion cascade with tombstones rather than a
-    state change.
-    """
-    event = repository.event(event_id)
-    if event is None:
-        raise UnknownSubject(f"no identity event {event_id} in this workspace")
-    if repository.undo_of(event_id) is not None:
-        raise NotUndoable(f"event {event_id} has already been undone")
-    if event["type"] == "event_undone":
-        raise NotUndoable(
-            "undoing an undo is a redo, which is a separate operation with its own semantics "
-            "rather than this one applied twice"
-        )
-
-    payload = event["payload"]
-    handler = _UNDO_HANDLERS.get(event["type"])
-    if handler is None:
-        raise NotUndoable(
-            f"an event of type {event['type']!r} cannot be undone. Undoing the creation of a "
-            "person is a deletion, which cascades and writes tombstones, not a state change."
-        )
-
-    with repository.transaction():
-        touched = handler(repository, payload, actor)
-        undone = repository.record_event(
-            "event_undone",
-            actor=actor,
-            payload={"undid": str(event_id), "type": event["type"]},
-            undoes=event_id,
-        )
-        repository.mark_derived_stale(touched)
-    return undone
-
-
-def _undo_confirm(
-    repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
-) -> list[str]:
-    repository.set_link_state(uuid.UUID(payload["link_id"]), "revoked")
-    superseded = payload.get("superseded_proposal")
-    if superseded:
-        # The proposal this confirmation replaced goes back to being a proposal, which is what
-        # the state was before the user answered.
-        repository.set_link_state(uuid.UUID(superseded), "proposed")
-    # Exactly the rejections this confirmation withdrew, by id, and not "every rejection for the
-    # pair". Un-revoking by pair would revive ones that were already withdrawn before the
-    # confirm, and an undo that restores more than the action removed is not an undo. The list is
-    # absent on events recorded before confirming withdrew anything but the user's own no, which
-    # is why it is read with a default rather than indexed.
-    repository.revive_rejections(
-        [uuid.UUID(value) for value in payload.get("revoked_rejections") or []]
-    )
-    return _dependency_keys(
-        entity=uuid.UUID(payload["entity_id"]), occurrence=uuid.UUID(payload["occurrence_id"])
-    )
-
-
-def _undo_reject(
-    repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
-) -> list[str]:
-    repository.revoke_rejection(
-        scope=OCCURRENCE_ENTITY,
-        key_a=bytes.fromhex(payload["identity_key"]),
-        key_b=uuid.UUID(payload["entity_id"]).bytes,
-        basis_digest=bytes.fromhex(payload["basis_digest"]),
-    )
-    if payload.get("link_id"):
-        repository.set_link_state(uuid.UUID(payload["link_id"]), "proposed")
-    return _dependency_keys(
-        entity=uuid.UUID(payload["entity_id"]), occurrence=uuid.UUID(payload["occurrence_id"])
-    )
-
-
-def _undo_revoke(
-    repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
-) -> list[str]:
-    occurrence_id = uuid.UUID(payload["occurrence_id"])
-    entity_id = uuid.UUID(payload["entity_id"])
-    if payload.get("remembered"):
-        occurrence = _require_occurrence(repository, occurrence_id)
-        repository.revoke_rejection(
-            scope=OCCURRENCE_ENTITY,
-            key_a=occurrence.identity_key,
-            key_b=entity_id.bytes,
-            basis_digest=USER_STATEMENT_BASIS,
-        )
-    repository.set_link_state(uuid.UUID(payload["link_id"]), "confirmed")
-    return _dependency_keys(entity=entity_id, occurrence=occurrence_id)
-
-
-def _undo_merge(
-    repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
-) -> list[str]:
-    sources = [uuid.UUID(source) for source in payload["from"]]
-    for source in sources:
-        repository.set_merged_into(source, None)
-    return _dependency_keys(entity=[*sources, uuid.UUID(payload["into"])])
-
-
-def _undo_split(
-    repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
-) -> list[str]:
-    entity_id = uuid.UUID(payload["entity_id"])
-    new_entity_id = uuid.UUID(payload["into"])
-    repository.forget_never_same(entity_id, new_entity_id)
-    occurrences = []
-    for moved in payload["moved"]:
-        repository.set_link_state(uuid.UUID(moved["link_id"]), "revoked")
-        repository.set_link_state(uuid.UUID(moved["revoked_link_id"]), "confirmed")
-        occurrences.append(uuid.UUID(moved["occurrence_id"]))
-    return _dependency_keys(entity=[entity_id, new_entity_id], occurrence=occurrences)
-
-
-#: Every event type this module writes, and the inverse of each. A type absent from here is
-#: refused by name rather than silently doing nothing, which is why `undo` looks it up instead
-#: of branching.
-def _undo_rename(
-    repository: IdentityRepository, payload: dict[str, Any], actor: uuid.UUID
-) -> list[str]:
-    """Put back the name the rename retired, by saying it again rather than by rewriting.
-
-    The retired assertion is not reactivated. ``tg_assertion_no_in_place_rewrite`` permits a
-    status change, so it could be, and it must not be: two rows would then claim the same name at
-    different times with no ordering between them, and 0006's index would refuse the second
-    anyway. Instead the previous VALUE is asserted afresh, which supersedes the rename forward.
-    An undo is a new decision that restores a state, not a hole in the history.
-
-    An entity whose rename superseded nothing had no active name before, so the undo retracts
-    rather than restores: it puts the entity back to unnamed, which is where it was.
-    """
-    from orimera.identity.naming import rename_entity
-
-    entity_id = uuid.UUID(payload["entity_id"])
-    writer = AssertionWriter(repository.connection, repository.workspace_id)
-    superseded = payload.get("superseded")
-    if superseded is None:
-        # The entity had no active name before the rename, so the undo returns it to unnamed.
-        # Retracting rather than deleting: the claim was made and the record says so.
-        writer.retract(
-            uuid.UUID(payload["assertion_id"]),
-            retracted_by=actor,
-            reason="the rename that made this claim was undone",
-        )
-        repository.set_display_name(entity_id, None)
-        return _dependency_keys(entity=entity_id)
-
-    restored = repository.connection.execute(
-        "select object_value #>> '{}' as name from assertion where assertion_id = %s",
-        (uuid.UUID(superseded),),
-    ).fetchone()
-    if restored is not None and restored["name"]:
-        rename_entity(
-            repository,
-            writer,
-            entity_id=entity_id,
-            display_name=restored["name"],
-            actor=actor,
-        )
-    return _dependency_keys(entity=entity_id)
-
-
-_UNDO_HANDLERS = {
-    "entity_renamed": _undo_rename,
-    "link_confirmed": _undo_confirm,
-    "link_rejected": _undo_reject,
-    "link_revoked": _undo_revoke,
-    "entities_merged": _undo_merge,
-    "entity_split": _undo_split,
-}

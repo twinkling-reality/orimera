@@ -60,7 +60,7 @@ from orimera.errors import (
     IntegrityError,
     TombstonedError,
 )
-from orimera.identity.decisions import (
+from orimera.identity.subjects import (
     AlreadyIdentified,
     IdentityError,
     NeverSame,

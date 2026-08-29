@@ -5,13 +5,20 @@ occurrence is not a persistent entity, and promotion between them requires expli
 confirmation. Model confidence is never user confirmation, and a rejected match is never
 re-proposed identically.
 
-Three modules, three responsibilities:
+Six modules, and the split between the last three is the one worth knowing:
 
 *   :mod:`orimera.identity.keys` derives the two evidence-shaped keys a decision is recorded
     under, so that rejection memory survives a detector re-run.
 *   :mod:`orimera.identity.repository` reads and writes the identity tables, and nothing else.
+*   :mod:`orimera.identity.subjects` is what every decision shares: what can go wrong, and what a
+    subject has to be for a decision to be about it.
 *   :mod:`orimera.identity.decisions` applies one user decision as one transaction, and records
     what it did in ``identity_event`` so that undo is exact rather than approximate.
+*   :mod:`orimera.identity.undo` is the inverse of each of those, in a handler table rather than
+    a branch, so an event type nobody wrote an inverse for is refused by name instead of quietly
+    doing nothing.
+*   :mod:`orimera.identity.naming` renames an entity, which takes two writes and not one. Read
+    its docstring before changing either of them.
 
 **No embedding of any kind is derived here.** Open item P-1, "when may a biometric embedding
 exist at all", is a human decision that has not been made, and every candidate rule in
@@ -21,19 +28,12 @@ nothing about P-1.
 """
 
 from orimera.identity.decisions import (
-    AlreadyIdentified,
-    IdentityError,
-    NamedPerson,
-    NeverSame,
-    NotUndoable,
-    UnknownSubject,
     confirm_link,
     merge_entities,
     name_occurrence,
     reject_link,
     revoke_link,
     split_entity,
-    undo,
 )
 from orimera.identity.keys import (
     REGION_GRID,
@@ -50,6 +50,15 @@ from orimera.identity.repository import (
     LinkRow,
     OccurrenceRow,
 )
+from orimera.identity.subjects import (
+    AlreadyIdentified,
+    IdentityError,
+    NamedPerson,
+    NeverSame,
+    NotUndoable,
+    UnknownSubject,
+)
+from orimera.identity.undo import undo
 
 __all__ = [
     "REGION_GRID",
