@@ -132,8 +132,22 @@ class EvidencePacket:
         return not self.items
 
     def resolve(self, token: str) -> EvidenceItem | None:
-        """The item a citation token names, or None. The whole of citation verification."""
-        return self._by_token.get(token)
+        """The item a citation token names, or None. The whole of citation verification.
+
+        **Surrounding brackets are stripped, and that is not leniency about what is citable.**
+        The packet renders each photograph as ``[A6EF9VWNT6]`` because brackets are what make the
+        token findable in a wall of text, and a model told to cite "the bracketed token" copies
+        the brackets with it. Measured: the reasoning core cited ``'[BXEGUBQ9V9]'`` for a token
+        that was in the packet, and every clause was discarded for referring to something that
+        does not exist.
+
+        Normalising a formatting variant cannot weaken the guarantee. A token is a fixed
+        alphanumeric code from a per-request random space, so ``[X]`` resolves if and only if
+        ``X`` does; an invented token still resolves to nothing whether it arrives bracketed or
+        bare. What would weaken it is accepting a prefix, a fuzzy match or a near-miss, and none
+        of those is here.
+        """
+        return self._by_token.get(token.strip().strip("[]"))
 
     def value(self, key: str) -> ValueReference | None:
         return self._by_key.get(key)

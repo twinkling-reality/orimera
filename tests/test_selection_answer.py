@@ -496,3 +496,140 @@ def test_the_plan_is_kept_with_the_answer(answered):
     assert outcome.result.total_matched >= 1
     assert outcome.abstention is None
     assert not outcome.deterministic
+
+# -- which model does which job, and why it is not the other way round ------------------------
+
+
+def test_the_composer_asks_the_nvidia_reasoning_core(answered):
+    """The NVIDIA core has to be in a product path, and this is the path it belongs in.
+
+    Measured before this test existed: **nothing in `orimera/` called a reasoning role at all.**
+    Every structured call in the package asked for `structured_extraction`, so the live system
+    was Qwen and MiniMax end to end and Nemotron was exercised only by `scripts/verify_platform.py`.
+
+    `reasoning_cheap`'s rationale in the manifest describes this call and no other: "Every
+    Companion turn and every cross-scene continuity decision. Context length, not parameter
+    count, is the binding constraint on a long shallow reasoning task over an evidence packet."
+    Writing a cited answer from a bounded packet is that task.
+
+    Asserted on the model id the transport actually received, not on the Role constant, because
+    the role is a name and the id is what was called.
+    """
+    packet = answered.packet()
+    good = Answer(
+        clauses=[
+            AnswerClause(
+                text="You were beside a waterfall.",
+                type=ClauseType.HISTORICAL,
+                citations=[packet.items[0].token],
+            )
+        ]
+    )
+    client = answered.client([_answer_body(good)])
+    compose_answer(client, "where was I?", packet)
+    called = answered.transport.models_called
+    assert called == ["nvidia/Nemotron-3_5-Lightning"], called
+
+
+def test_the_planner_asks_the_extraction_role_and_the_measurement_says_why(answered):
+    """The manifest reserves the extraction role for a measured failure. Here is the measurement.
+
+    `structured_extraction`'s rationale: "Not in any default route. Reserved for the case where
+    the reasoning core's json_schema conformance is measured to be unreliable, at which point the
+    NVIDIA core keeps the reasoning role and gives up the extraction role."
+
+    Measured against the live endpoint on this exact prompt and `SelectionPlan`: the reasoning
+    core truncated at 2048 tokens, truncated at 4096, and conformed at 16384, because it spends
+    the difference on inline reasoning that cannot be switched off. Eight times the budget and
+    an order of magnitude more latency to fill in a form is the unreliability the clause
+    describes, so the clause applies and the reasoning core keeps the reasoning instead.
+    """
+    from orimera.selection.question import propose_plan
+
+    plan = SelectionPlan(intent=Intent.CAPTURES, limit=5)
+    client = answered.client(
+        [HttpResponse(status_code=200, text=json.dumps(chat_body(plan.model_dump_json())))]
+    )
+    propose_plan(client, "which photographs?", ())
+    called = answered.transport.models_called
+    assert called == ["Qwen/Qwen3-235B-A22B-Instruct-2507"], called
+
+
+def test_a_citation_still_resolves_when_the_model_keeps_the_brackets(answered):
+    """The packet renders `[A6EF9VWNT6]` and a model told to cite it copies the brackets.
+
+    Measured: the reasoning core cited `'[BXEGUBQ9V9]'` for a token that WAS in the packet, and
+    every clause was discarded for naming something that does not exist. Normalising the bracket
+    form cannot weaken the guarantee, and the second half of this test is what says so: an
+    invented token is still refused whether it arrives bracketed or bare.
+    """
+    packet = answered.packet()
+    real = packet.items[0].token
+    assert packet.resolve(f"[{real}]") is packet.resolve(real) is not None
+    assert packet.resolve("[NOTATOKEN1]") is None
+    assert packet.resolve("NOTATOKEN1") is None
+
+def test_a_plan_that_breaks_a_rule_the_schema_cannot_express_is_repaired_once(answered):
+    """The endpoint enforces the JSON Schema. It cannot enforce a Pydantic model validator.
+
+    Measured on a library holding exactly one named entity: the planner chose mode 'all' over
+    that single id, which `_multi_entity_modes_need_two` refuses and which is unsatisfiable by
+    construction, and the whole question failed with a StructuredOutputError before reaching the
+    executor. The rule is invisible to the endpoint and invisible to the model, so the prompt
+    states it and this repairs it, once.
+    """
+    from orimera.selection.question import propose_plan
+
+    unsatisfiable = {
+        "intent": "entities",
+        "entities": {"ids": [str(uuid.uuid4())], "mode": "all"},
+        "time": [],
+        "place": None,
+        "capture": None,
+        "epistemic": "confirmed",
+        "semantic_query": None,
+        "limit": 10,
+    }
+    good = SelectionPlan(intent=Intent.CAPTURES, limit=5)
+    client = answered.client(
+        [
+            HttpResponse(status_code=200, text=json.dumps(chat_body(json.dumps(unsatisfiable)))),
+            HttpResponse(status_code=200, text=json.dumps(chat_body(good.model_dump_json()))),
+        ]
+    )
+    plan = propose_plan(client, "which photographs?", ())
+    assert plan.intent is Intent.CAPTURES
+    assert answered.transport.call_count == 2, "the refusal was never sent back to the model"
+
+
+def test_a_plan_that_fails_twice_refuses_rather_than_answering_a_different_question(answered):
+    """There is no honest default plan, so the floor here is a refusal and not a fallback.
+
+    An empty plan is legal and means "everything". Returning one after two failures would answer
+    a question the user did not ask and present it as the answer to the one they did, which is
+    worse than telling them it did not work.
+    """
+    from orimera.models.errors import StructuredOutputError
+    from orimera.selection.question import propose_plan
+
+    unsatisfiable = json.dumps(
+        {
+            "intent": "entities",
+            "entities": {"ids": [str(uuid.uuid4())], "mode": "together"},
+            "time": [],
+            "place": None,
+            "capture": None,
+            "epistemic": "confirmed",
+            "semantic_query": None,
+            "limit": 10,
+        }
+    )
+    client = answered.client(
+        [
+            HttpResponse(status_code=200, text=json.dumps(chat_body(unsatisfiable))),
+            HttpResponse(status_code=200, text=json.dumps(chat_body(unsatisfiable))),
+        ]
+    )
+    with pytest.raises(StructuredOutputError):
+        propose_plan(client, "which photographs?", ())
+    assert answered.transport.call_count == 2, "it retried more than once, or not at all"
