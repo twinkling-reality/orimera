@@ -59,10 +59,28 @@ def proposal_rows(connection: psycopg.Connection, workspace: uuid.UUID) -> list[
     pair, and it is what lets an interface say why it is asking again rather than appearing to
     nag. It is NULL when nothing about the pair was refused before, which is the ordinary case
     and not an absent value.
+
+    ``suppressed_by_rejection`` is DERIVED here rather than read off ``outcome``, for the same
+    reason ``pending_match_proposal`` exists. ``outcome`` records what the producer decided when
+    it wrote the row, and the emit key is deliberately keyed on the question rather than on the
+    answer, so a proposal the user rejects afterwards keeps ``outcome = 'surfaced'`` forever: the
+    next pass recomputes the same key and ``on conflict do nothing`` declines to rewrite it.
+    Reading the column would then show a refused proposal as a live one. Whether it is suppressed
+    is a fact about the user's decisions, so it is answered from those.
     """
     rows = connection.execute(
         "select m.proposal_id, m.occurrence_id, m.entity_id, m.rank, m.outcome, m.basis, "
-        "  m.new_modality, o.span_ids "
+        "  m.new_modality, o.span_ids, "
+        # The id-4 subset test, in SQL. A rejection with NULL modalities was spoken unprompted
+        # about the user's own photograph and covers every basis; one with a list covers a
+        # proposal whose basis is a subset of it.
+        "  exists (select 1 from identity_rejection r "
+        "           where r.workspace_id = m.workspace_id and r.scope = 'occurrence_entity' "
+        "             and r.key_a = o.identity_key and r.key_b = uuid_send(m.entity_id) "
+        "             and r.revoked_at is null "
+        "             and (r.basis_modalities is null or coalesce(array(select "
+        "                   jsonb_array_elements_text(m.basis -> 'modalities')), '{}'::text[]) "
+        "                  <@ r.basis_modalities)) as refused "
         "from match_proposal m join occurrence o on o.occurrence_id = m.occurrence_id "
         "where m.workspace_id = %s "
         "order by m.occurrence_id, m.rank",
@@ -77,7 +95,7 @@ def proposal_rows(connection: psycopg.Connection, workspace: uuid.UUID) -> list[
             outcome=row["outcome"],
             basis=row["basis"],
             new_modality=row["new_modality"],
-            suppressed_by_rejection=row["outcome"] == "suppressed_by_rejection",
+            suppressed_by_rejection=bool(row["refused"]),
             support_span_ids=list(row["span_ids"]),
         )
         for row in rows

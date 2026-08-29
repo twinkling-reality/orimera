@@ -58,7 +58,11 @@ PROPOSER_PARAMS: Final[dict[str, Any]] = {
     "weight_context_place": 400,
     "weight_context_cooccurrence": 400,
     "weight_user_text": 800,
-    "surface_threshold_milli": 300,
+    # Above the weight of ONE context signal and below the weight of two, so a single GPS
+    # coincidence or a single shared trip is recorded and not asked about, and two independent
+    # signals agreeing is what earns a question. At 300 this sat below the smallest score any
+    # corroborated pair can have, so `dropped` was unreachable and the threshold decided nothing.
+    "surface_threshold_milli": 500,
     # There is deliberately NO auto_link_threshold. See the module docstring.
     "algorithm": "corroborating_modalities_weighted_sum",
 }

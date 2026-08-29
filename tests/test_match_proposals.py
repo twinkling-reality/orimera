@@ -165,6 +165,16 @@ def corpus(repository):
             emit_key=f"probe:o:{index}",
             quality={"label": "person", "confidence_band": "high"},
         )
+        # A position, so the pair corroborates on place as well as on co-occurrence. One signal
+        # is deliberately not enough to earn a question; see the drop test below.
+        repository.insert_assertion(
+            kind="capture",
+            predicate_key="gps_position_is",
+            subject_ref={"type": "capture", "id": str(capture.capture_id)},
+            object_value={"lat": 51.5007 + index * 0.0002, "lon": -0.1246},
+            emit_key=f"probe:gps:{index}",
+            support_span_ids=[span],
+        )
         captures.append(capture.capture_id)
         occurrences.append(occurrence)
 
@@ -214,7 +224,7 @@ def test_naming_one_person_produces_a_question_about_the_other_capture(corpus):
         entity_id=_entity_of(identity, occurrences[0]),
     )
     assert pending is not None
-    assert pending["basis"]["modalities"] == ["context_cooccurrence"]
+    assert pending["basis"]["modalities"] == ["context_cooccurrence", "context_place"]
 
 
 def _entity_of(identity: IdentityRepository, occurrence_id: uuid.UUID) -> uuid.UUID:
@@ -263,7 +273,7 @@ def test_rejecting_a_proposal_suppresses_the_same_basis_and_not_a_different_one(
         scope="occurrence_entity",
         key_a=occurrence.identity_key,
         key_b=entity_id.bytes,
-        modalities=("context_cooccurrence",),
+        modalities=("context_cooccurrence", "context_place"),
     )
     assert suppressed is True
     assert new_modality is None
@@ -273,10 +283,10 @@ def test_rejecting_a_proposal_suppresses_the_same_basis_and_not_a_different_one(
         scope="occurrence_entity",
         key_a=occurrence.identity_key,
         key_b=entity_id.bytes,
-        modalities=("context_cooccurrence", "context_place"),
+        modalities=("context_cooccurrence", "context_place", "user_text"),
     )
     assert permitted is False
-    assert fresh == "context_place"
+    assert fresh == "user_text"
 
 
 def test_a_user_who_was_shown_nothing_suppresses_everything(corpus):
@@ -440,5 +450,90 @@ def test_the_surface_threshold_is_a_parameter_and_not_a_constant():
     try:
         assert params_digest() != original
     finally:
-        PROPOSER_PARAMS["surface_threshold_milli"] = 300
+        PROPOSER_PARAMS["surface_threshold_milli"] = 500
     assert params_digest() == original
+
+
+def test_one_signal_alone_is_recorded_and_not_asked_about(repository):
+    """A single GPS coincidence is not a question. It is a coincidence.
+
+    The threshold sits above the weight of one context signal and below two, so a pair that
+    corroborates on one is written as ``dropped`` and never surfaced. The row exists because
+    "we considered this and did not ask" is the part of the record that explains why the user is
+    not being asked, and because the threshold was measured by nobody and may move.
+    """
+    from orimera.evidence import EvidenceAddress
+    from orimera.evidence.blob import BlobId
+    from orimera.identity.keys import occurrence_identity_key
+    from orimera.ingest.ledger import Ledger
+
+    run = Ledger.start_run(repository, trigger="ingest")
+    occurrences = []
+    for index in range(2):
+        blob = BlobId.of_bytes(f"one-signal-{index}".encode())
+        repository.upsert_blob(blob, byte_size=8, media_type="image/jpeg", storage_key=f"s{index}")
+        capture = repository.insert_capture(blob, device_id="probe", started_at=None)
+        address = EvidenceAddress.photograph(blob)
+        span = repository.upsert_span(address)
+        occurrences.append(
+            repository.insert_occurrence(
+                capture_id=capture.capture_id,
+                occurrence_class="person",
+                primary_span_id=span,
+                span_ids=[span],
+                presence=[(0, 1)],
+                produced_by_run=run.run_id,
+                detector_version="probe:1",
+                identity_key=occurrence_identity_key(address, "person"),
+                emit_key=f"one-signal:o:{index}",
+                quality={"label": "person"},
+            )
+        )
+        # Position only. No scene group and no shared object labels, so place is the only signal.
+        repository.insert_assertion(
+            kind="capture",
+            predicate_key="gps_position_is",
+            subject_ref={"type": "capture", "id": str(capture.capture_id)},
+            object_value={"lat": 51.5007, "lon": -0.1246},
+            emit_key=f"one-signal:gps:{index}",
+            support_span_ids=[span],
+        )
+    _name_first(repository, occurrences[0], uuid.uuid4())
+    _identity, report = _propose(repository, run.run_id)
+    assert report.surfaced == []
+    assert len(report.dropped) == 1, report
+
+
+def test_a_rejected_proposal_reads_as_suppressed_even_though_its_row_still_says_surfaced(corpus):
+    """``outcome`` is what the producer decided and it goes stale the moment the user answers.
+
+    The emit key is keyed on the question rather than on the answer, deliberately, so the next
+    pass recomputes the same key and ``on conflict do nothing`` declines to rewrite the row. A
+    read that trusted the column would show a proposal the user has refused as a live one, which
+    is the interface asking again with no record of having been told no.
+    """
+    from orimera.graph import read_snapshot
+
+    repository, run_id, _captures, occurrences = corpus
+    actor = uuid.uuid4()
+    entity_id = _name_first(repository, occurrences[0], actor)
+    identity, _ = _propose(repository, run_id)
+    pending = identity.pending_proposal(occurrence_id=occurrences[1], entity_id=entity_id)
+    assert pending is not None
+    reject_link(
+        identity,
+        occurrence_id=occurrences[1],
+        entity_id=entity_id,
+        actor=actor,
+        basis_digest=bytes(pending["basis_digest"]),
+        basis_modalities=pending["basis"]["modalities"],
+    )
+
+    stored = repository.connection.execute(
+        "select outcome from match_proposal where workspace_id = %s", (repository.workspace_id,)
+    ).fetchone()["outcome"]
+    assert stored == "surfaced", "the stored outcome is the producer's decision and does not move"
+
+    snapshot = read_snapshot(repository.connection, repository.workspace_id)
+    assert [p.suppressed_by_rejection for p in snapshot.proposals] == [True]
+    assert [e.open_question_count for e in snapshot.entities] == [0]
