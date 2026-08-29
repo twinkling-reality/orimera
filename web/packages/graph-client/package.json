@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./fixture": "./src/fixture.ts",
     "./mutations": "./src/mutations/index.ts"
   },
   "scripts": { "typecheck": "tsc --build" }

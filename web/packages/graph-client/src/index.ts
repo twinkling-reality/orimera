@@ -27,6 +27,9 @@ export type { GraphPayload } from './wire.js';
 
 export type { IslandOf } from './islands.js';
 
+export type { GraphLoadState, GraphSource, TerminalGraphLoadState } from './source.js';
+export { loadGraph } from './source.js';
+
 export { adaptSnapshot } from './snapshot.js';
 
 export type { ClientOptions } from './client.js';

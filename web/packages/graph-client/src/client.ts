@@ -13,6 +13,7 @@
 
 import { type IslandOf } from './islands.js';
 import type { EvidenceHandle, GraphSnapshot, ResolvedEvidence } from './read-model.js';
+import type { GraphSource } from './source.js';
 import { adaptSnapshot } from './snapshot.js';
 import { Transport, type TransportOptions } from './transport.js';
 import { type GraphPayload, toMs } from './wire.js';
@@ -21,7 +22,7 @@ export interface ClientOptions extends TransportOptions {
   readonly islandOf?: IslandOf;
 }
 
-export class OrimeraClient {
+export class OrimeraClient implements GraphSource {
   readonly #transport: Transport;
   readonly #islandOf: IslandOf | undefined;
 
