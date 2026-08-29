@@ -183,6 +183,45 @@ def test_a_truncated_answer_is_never_salvaged(client, transport):
         client.chat(Role.REASONING_CHEAP, MESSAGES, prompt_version="v1")
 
 
+def test_a_thought_that_never_closed_is_refused_even_when_the_provider_says_it_stopped(
+    client, transport
+):
+    """An unterminated open tag means the limit landed mid-thought, so there is no answer at all.
+
+    This is the case ``SplitContent.complete`` was written for and the case ``finish_reason``
+    cannot see. The provider says ``stop``: as far as the endpoint is concerned the model
+    finished normally. The content ends inside an open ``<think>``, so everything after the tag
+    is scratch work and everything before it is a preamble. Returning that preamble as the
+    answer is a caller inventing a fact out of throat clearing.
+    """
+    transport.default = ok(chat_body("Working through it. <think>the album has se"))
+    with pytest.raises(TruncatedResponseError, match="never closed"):
+        client.chat(Role.REASONING_CHEAP, MESSAGES, prompt_version="v1")
+
+
+def test_a_thought_that_never_closed_and_left_nothing_behind_is_refused_too(client, transport):
+    """The same body without the preamble, which would otherwise return an empty answer.
+
+    Silently, and with ``finish_reason: "stop"`` to say nothing went wrong. An empty answer that
+    a caller has to notice is a worse failure than a refusal it cannot miss.
+    """
+    transport.default = ok(chat_body("<think>the album has se"))
+    with pytest.raises(TruncatedResponseError, match="never closed"):
+        client.chat(Role.REASONING_CHEAP, MESSAGES, prompt_version="v1")
+
+
+def test_a_thought_that_closed_properly_is_not_refused(client, transport):
+    """The other side of the rule, so the refusal above cannot widen into every inline block.
+
+    A closed block is the ordinary inline shape. The answer is the text outside it and the
+    scratch work is kept but never returned as the answer.
+    """
+    transport.default = ok(chat_body("<think>counting them</think>seven"))
+    result = client.chat(Role.REASONING_CHEAP, MESSAGES, prompt_version="v1")
+    assert result.answer == "seven"
+    assert result.reasoning == "counting them"
+
+
 # -- guided_json is unreachable ----------------------------------------------------------------
 
 

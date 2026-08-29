@@ -138,7 +138,16 @@ class SchemaViolationError(StructuredOutputError):
 
 
 class TruncatedResponseError(ModelError):
-    """The response stopped on the token limit before any answer text was produced."""
+    """The token limit landed inside the response, so what came back is not a whole answer.
+
+    Three shapes, and the third is the one the provider does not report. ``finish_reason:
+    "length"`` with nothing written is a ``max_tokens`` that does not clear the reasoning
+    overhead. ``finish_reason: "length"`` with a partial answer is never salvaged, because half
+    a result that happens to parse is a plausible fact with a piece missing. And a body that
+    opens a reasoning block and never closes it was cut mid-thought while the endpoint reported
+    an ordinary stop: ``finish_reason`` cannot see that one, and
+    ``orimera.models.reasoning.SplitContent.complete`` is what does.
+    """
 
 
 class BudgetExceededError(ModelError):

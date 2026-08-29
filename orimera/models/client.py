@@ -630,6 +630,17 @@ class ModelClient:
                 "never salvaged: half a result that happens to parse is a plausible fact with a "
                 "piece missing. Raise max_tokens and retry."
             )
+        if not split.complete:
+            # The case finish_reason cannot see. A body that opens a reasoning block and never
+            # closes it was cut mid-thought, and the endpoint has been observed reporting that
+            # as an ordinary stop. Everything after the open tag is scratch work and everything
+            # before it is a preamble, so there is no answer here to salvage or to return empty.
+            raise TruncatedResponseError(
+                f"{spec.model_id} opened a reasoning block and never closed it, so the answer "
+                f"was cut mid-thought whatever finish_reason claims (it said {finish_reason!r}). "
+                "Everything after the open tag is scratch work and everything before it is a "
+                "preamble, so there is no answer in this response. Raise max_tokens and retry."
+            )
 
         payload = (
             None
