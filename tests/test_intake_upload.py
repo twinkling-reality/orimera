@@ -19,11 +19,11 @@ The tests here are grouped by what they hold, and the grouping matters more than
 from __future__ import annotations
 
 import json
-import struct
+import subprocess
+import sys
 import time
 import uuid
 import warnings
-import zlib
 from dataclasses import replace
 
 import pytest
@@ -40,7 +40,7 @@ from orimera.ingest.worker import DerivativeWorker
 from orimera.store.base import PurgeAuthorization, privileged_purger
 from orimera.store.local import LocalContentAddressedStore
 
-from conftest import CountingVisionModel, photo_bytes
+from conftest import CountingVisionModel, bomb_png, photo_bytes
 
 _TOKEN = "intake-owner-token-that-is-long-enough-ok"
 
@@ -104,30 +104,6 @@ def upload(tmp_path, repository, spine_schema, monkeypatch):
         yield Upload(
             client, store, repository, database, workspace_id, CountingVisionModel()
         )
-
-
-def _bomb_png(width: int, height: int) -> bytes:
-    """A PNG whose header declares an enormous frame and whose body is a few bytes.
-
-    Built rather than committed, for the same reason every other test image here is: the
-    repository carries no binary fixture and the exact declared size is what is being asserted.
-    """
-
-    def chunk(tag: bytes, data: bytes) -> bytes:
-        return (
-            struct.pack(">I", len(data))
-            + tag
-            + data
-            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
-        )
-
-    header = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)
-    return (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", header)
-        + chunk(b"IDAT", zlib.compress(b"\x00" * 16))
-        + chunk(b"IEND", b"")
-    )
 
 
 # -- the happy path ------------------------------------------------------------------------
@@ -282,7 +258,7 @@ def test_no_refusal_detail_leaks_an_object_repr(upload):
         ("files", ("a.txt", b"x", "text/plain")),
         ("files", ("b.jpg", b"", "image/jpeg")),
         ("files", ("c.jpg", b"JFIF is not a JPEG", "image/jpeg")),
-        ("files", ("d.png", _bomb_png(20_000, 20_000), "image/png")),
+        ("files", ("d.png", bomb_png(20_000, 20_000), "image/png")),
     ]
     for refused in upload.post(parts).json()["refused"]:
         assert "object at 0x" not in refused["detail"], refused
@@ -291,7 +267,7 @@ def test_no_refusal_detail_leaks_an_object_repr(upload):
 
 def test_7_a_decompression_bomb_is_refused_and_the_refusal_states_the_pixel_count(upload):
     width, height = 20_000, 20_000
-    body = upload.post([("files", ("a.png", _bomb_png(width, height), "image/png"))]).json()
+    body = upload.post([("files", ("a.png", bomb_png(width, height), "image/png"))]).json()
     refused = body["refused"][0]
     assert refused["reason"] == "too_many_pixels"
     assert str(width * height) in refused["detail"], refused["detail"]
@@ -315,8 +291,70 @@ def test_7_the_pixel_budget_survives_a_process_that_reset_the_warning_filters(up
     # against.
     with warnings.catch_warnings():
         warnings.resetwarnings()
-        body = upload.post([("files", ("a.png", _bomb_png(width, height), "image/png"))]).json()
+        body = upload.post([("files", ("a.png", bomb_png(width, height), "image/png"))]).json()
     assert body["refused"][0]["reason"] == "too_many_pixels"
+
+
+#: Run in a fresh interpreter, and that is the point rather than an inconvenience. Pytest wraps
+#: every test in ``warnings.catch_warnings()`` and calls ``simplefilter("always")`` inside it, so
+#: ``decode``'s promotion is not in force during a test at all. Asserting it in-process would be
+#: asserting pytest's filters. This is the process a deployment actually runs: import the module,
+#: then open bytes the way a caller outside the module does.
+_PROMOTION_PROBE = """
+import io, sys, warnings
+from orimera.ingest.decode import MAX_PIXELS, UNREADABLE, probe
+from PIL import Image
+
+data = bytes.fromhex(sys.argv[1])
+pixels = int(sys.argv[2])
+
+
+def report(label, call):
+    try:
+        call()
+    except Exception as exc:
+        print(label, "refused", type(exc).__name__, "unreadable", isinstance(exc, UNREADABLE),
+              "names_the_count", str(pixels) in str(exc))
+    else:
+        print(label, "returned")
+
+
+report("promoted", lambda: Image.open(io.BytesIO(data)))
+warnings.resetwarnings()
+report("reset_open", lambda: Image.open(io.BytesIO(data)))
+report("reset_probe", lambda: probe(data))
+"""
+
+
+def test_the_warning_promotion_is_what_refuses_a_frame_pillow_would_only_warn_about():
+    """The line nothing covered: ``simplefilter("error", DecompressionBombWarning)``.
+
+    Pillow RAISES only past twice ``MAX_IMAGE_PIXELS`` and merely WARNS between one and two
+    times it. Inside this package that band is caught by ``_within_budget`` comparing two
+    integers, which is why deleting the promotion leaves every other test in this file passing:
+    the explicit comparison covers the same band for every caller that goes through ``decode``.
+
+    The promotion's job is the callers that do not. It is the only thing standing in front of a
+    bare ``Image.open`` anywhere in the process, so this asserts it where it actually acts, and
+    asserts the two halves failing in opposite directions in the same run: with the promotion the
+    bare open refuses and Pillow's own message names the pixel count, and after
+    ``resetwarnings()`` the same bare open RETURNS an image while ``probe`` still refuses.
+    """
+    width, height = 20_000, MAX_PIXELS // 20_000 + 100
+    pixels = width * height
+    assert MAX_PIXELS < pixels < 2 * MAX_PIXELS, "must sit in Pillow's warn-only band"
+    result = subprocess.run(
+        [sys.executable, "-c", _PROMOTION_PROBE, bomb_png(width, height).hex(), str(pixels)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        "promoted refused DecompressionBombWarning unreadable True names_the_count True",
+        "reset_open returned",
+        "reset_probe refused DecompressionBombError unreadable True names_the_count True",
+    ], result.stdout
 
 
 def test_the_pixel_budget_is_below_pillows_own_default(upload):
@@ -737,9 +775,10 @@ def test_a_job_that_fails_outside_the_capture_loop_closes_its_batch_as_failed(up
 def test_a_poll_that_raises_does_not_kill_the_worker_thread(upload, monkeypatch):
     """The thread runs for the life of the process and `start()` is a no-op afterwards.
 
-    One `OperationalError` at connect, a database restart or an exhausted connection pool, used
-    to end it in silence. Every upload after that returns a job id nothing will claim, every
-    batch stays open, and every formation subscriber waits out the stream's thirty minute cap.
+    One `OperationalError` at connect, a database restart or the server running out of
+    connection slots, used to end it in silence. Every upload after that returns a job id nothing
+    will claim, every batch stays open, and every formation subscriber waits out the stream's
+    thirty minute cap.
     """
     worker = DerivativeWorker(
         upload.database,

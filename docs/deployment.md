@@ -34,6 +34,8 @@ The shape of the deployment is decided. The concrete target is not.
 | Who performs the weekly check through the unattended window | **OPEN**, section 9 |
 | Whether the health endpoint exists | **DECIDED and implemented.** `/healthz` and `/readyz`, section 6 |
 | Whether the redeploy command exists | **OPEN.** Specified in section 9 and not implemented |
+| Whether there is a connection pool, a subscriber bound, `blob` reference counting or a decode semaphore | **DECIDED against, on measurement.** Section 12, with the condition that would flip each one |
+| How large a host one API process needs, and what it runs out of first | **MEASURED**, section 5.4 |
 
 **The artefacts exist. Nothing has been provisioned.** The distinction is the whole of this
 section and it is worth stating precisely, because "there is a Dockerfile" and "there is a
@@ -121,6 +123,20 @@ not. Reconstruction, perception and batch ingest take minutes to hours. They run
 terminate. A job failure is retryable, a database failure is not, and that asymmetry is the only
 reason a boundary is drawn at all. Everything in the request path is one process talking to a local
 database.
+
+**What one API process demands of the database, measured rather than reasoned about.** A
+connection is opened per request by a yield dependency (`scoped_connection` and
+`readonly_connection` in `orimera/api/dependencies.py`) and held for that request's whole
+duration. There is no pool. So the number of backends one process wants is the number of
+requests currently in flight past that dependency, plus one for each of the two worker threads.
+
+**It is not capped by the ASGI threadpool, and assuming it was is the mistake to avoid.** A
+request that is waiting for a worker thread still owns its connection. Measured against the real
+application on this cluster: 48 concurrent formation streams held **48** backends while the
+threadpool was 40, and the count tracked N exactly at 8, 39, 40 and 48. The cluster is
+`max_connections = 100` with `superuser_reserved_connections = 3`, so 97 are usable, and nothing
+in this application limits in-flight requests. `uvicorn --limit-concurrency` is the only lever
+that would, and nothing sets it. Section 5.4 carries the arithmetic and what to do about it.
 
 **Region pinning.** All GPU work goes to eu-north1, because that is where the GPU quota is non zero.
 Token Factory reports its public endpoints as global and warns that the processing location can
@@ -326,6 +342,7 @@ is done, no claim is made here about range requests being on the browser path.
 
 | Variable | Purpose | Consumed by |
 | --- | --- | --- |
+| `ORIMERA_DATABASE_URL` | **The connection string the API, the ingest command and both workers actually open.** `orimera_app` is the role that belongs behind it, and the composition does not put it there: 5.1.3. No default: `Database.from_env` raises `DatabaseNotConfigured` naming this variable, because a default would connect to something nobody chose | `orimera/db/session.py`, which sets `DATABASE_URL_ENV = "ORIMERA_DATABASE_URL"`. Every connection in the process comes from here. Local socket or loopback, since section 3 puts the database on the same host |
 | `NEBIUS_API_KEY` | Bearer credential for Token Factory | The model client. Named in `models.manifest.json` as `api_key_env`, so even the environment variable name is manifest data rather than a literal in code |
 | `TAVILY_API_KEY` | Credential for the public entity lookup | The lookup path only. The feature is opt in and is on the cut list if its egress gate does not hold |
 | `ORIMERA_TEST_DATABASE_URL` | Points the database backed tests at a live PostgreSQL 18 server | Tests only. Unset means those tests skip, which is why the suite runs without a database |
@@ -361,7 +378,7 @@ destroyed, the tombstone recorded complete, and another workspace's live photogr
 The purge role's UPDATE is still filtered by `ws_isolation`, so it reads across tenants and writes
 within one. That asymmetry is the whole of the grant.
 
-### 5.1.2 The request body bound, and the part of it a proxy still owns
+### 5.1.2 The request body bound, which the application alone owns today
 
 `POST /intake` is multipart, and **the body is received and parsed before any route function and
 before any dependency runs**, so it is parsed before authentication: an anonymous request has
@@ -381,19 +398,74 @@ applies two bounds:
 The second is what makes the first more than a courtesy: without it, omitting one header walks
 past the whole thing.
 
-A deployment should still set a body size limit on whatever terminates TLS in front of the
-application: `client_max_body_size` on nginx, `proxy-body-size` on an ingress. A proxy refuses
-before the application is involved at all, which is strictly better than refusing one chunk in,
-and it is the only bound that applies when the application is not the thing under load.
+**Today `body_limit.py` is the whole bound, and there is nothing in front of it to configure.**
+D-13 records that the composition has no reverse proxy and no static client host: `compose.yaml`
+publishes uvicorn's own port and there is no service in front of it. So the two bounds above are
+not a second line of defence behind a proxy's, they are the only line, and the paragraph that
+used to sit here read as though a proxy were already part of the deployment.
+
+When D-9 picks a host, whatever terminates TLS should also carry a body size limit:
+`client_max_body_size` on nginx, `proxy-body-size` on an ingress. A proxy refuses before the
+application is involved at all, which is better than refusing one chunk in, and it is the bound
+that still applies when the application itself is the thing under load. **There is nothing to
+build for that until D-9 is answered**, because the setting belongs to a component nobody has
+chosen yet. It is listed here so the choice comes with the setting attached rather than being
+discovered afterwards.
+
+Everything above was read against the code rather than remembered. `MAX_BODY_BYTES` is
+`512 * 1024 * 1024`; `BodyLimit.__call__` refuses a declared length over it before calling the
+application and wraps `receive` otherwise; `_counted` raises `BodyTooLarge` the moment the
+running total crosses the limit and reads nothing further. Starlette 1.6.0's `MultiPartParser`
+applies `max_part_size` inside `on_part_data` only when `self._current_part.file is None`, so
+file parts really are unbounded there, and the route's own `MAX_PART_BYTES` check at
+`orimera/api/routes/intake.py` runs on `upload.file.read(...)`, which is a part already spooled.
+Authentication really is a dependency: `current_session` in `orimera/api/dependencies.py` is
+resolved by `Depends`, and FastAPI resolves dependencies after it has read and parsed the body.
+
+### 5.1.3 Which role belongs behind `ORIMERA_DATABASE_URL`, and which one is there instead
+
+`orimera_app` belongs behind it, for the reason 5.1.1 gives in one line: row-level security is
+inert for an owner. **The composition does not do that.** `compose.yaml` sets
+`POSTGRES_USER: orimera`, which is the bootstrap superuser the image's `initdb` creates, and then
+hands both the API and the worker
+`ORIMERA_DATABASE_URL: postgresql://orimera:${POSTGRES_PASSWORD}@postgres:5432/orimera`. So the
+runtime connects as the owner, and three things follow.
+
+- **The twenty-two `ws_isolation` policies are inert.** `force row level security` makes an ordinary
+  owner subject to a policy; it does not reach a superuser, and PostgreSQL states that a
+  superuser or a role with BYPASSRLS always bypasses row security. What still holds is the
+  trigger half: `assert_workspace_context()` raises for a superuser too, so a WRITE naming the
+  wrong workspace is still refused. Reads are the half with no trigger behind them, so a
+  forgotten `set_config` reads as a cross-workspace SELECT rather than as an empty result.
+- **`Database.unscoped` hides nothing.** Its docstring names the role each half belongs to, and
+  `tests/test_row_level_security.py` asserts both: as `orimera_app` the forced tables read empty,
+  as the owner the same call on the same schema returns the row.
+- **5.4.3's "97 are usable" is a floor, not a ceiling.** `superuser_reserved_connections` reserves
+  slots *for* superusers, so a superuser runtime can take all 100 and leave an administrator
+  unable to connect to the cluster they need in order to fix it.
+
+Nothing in `orimera/api/` or in `orimera/db/session.py` issues a `set role` or looks at
+`RUNTIME_ROLE`, so the connection string is the only thing that decides this. Closing it is a
+compose change and `ORIMERA_APP_ROLE_PASSWORD`, in the order 5.1.1 already fixes: migrate as the
+owner, `orimera-db` provisions the three roles, then point the runtime at `orimera_app`. **It has
+not been done**, and this section exists so that the state is written down rather than inferred
+from a docstring that used to omit it.
+
 
 ### 5.2 What a deployment additionally needs
 
-**PROPOSED.** None of these is read by code in this repository yet, because the service that would
-read them does not exist. They are listed so that the shape is settled before the code is written.
+**PROPOSED.** None of these is read by code in this repository, because the paths that would read
+them are not written: object storage is still a local directory under `ORIMERA_DATA_DIR`, and
+there is no reverse proxy or static host to configure origins on. They are listed so that the
+shape is settled before the code is written.
+
+This section used to open by saying the *service* that would read them did not exist, and to list
+a `DATABASE_URL` as its first row. Both were stale. The service exists, and the variable it reads
+is `ORIMERA_DATABASE_URL`, which is now section 5.1's first row and was documented nowhere at all
+while a name nothing reads sat here.
 
 | Variable | Purpose | Notes |
 | --- | --- | --- |
-| `DATABASE_URL` | The application's PostgreSQL connection | Local socket or loopback, since the database is on the same host |
 | `ORIMERA_OBJECT_STORE_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY`, `_SECRET_KEY` | Object storage write path | The runtime credential is the delete denied service account, never an administrative one |
 | `ORIMERA_PUBLIC_ASSET_BASE_URL` | The base the client is told to fetch assets from | Points at the edge cache when one exists and at the origin otherwise. Changing it must not require a rebuild of anything but the client |
 | `ORIMERA_ALLOWED_ORIGINS` | Cross origin allowlist for the API | Explicit list, never a wildcard |
@@ -416,15 +488,120 @@ read them does not exist. They are listed so that the shape is settled before th
   bug wearing a cost saving's coat.
 - **Secrets are not committed and are not baked into images.** They are injected at run time.
 
+### 5.4 What one instance runs out of, and in which order
+
+None of these is an environment variable, which is exactly why they are written down. They are
+properties of the composition that a deployment inherits by default, and every number below was
+measured on this machine against this repository rather than read out of a library.
+
+#### 5.4.1 The ASGI threadpool is 40, and nothing here chose it
+
+`anyio.to_thread.current_default_thread_limiter().total_tokens` is 40 (anyio 4.14.2, a
+hard-coded default). **Not one of the 23 route handlers in `orimera/api/routes/` is `async def`**,
+so every request occupies one of those 40 worker threads for as long as it runs.
+
+Measured against uvicorn rather than read: 120 concurrent requests to a synchronous handler ran
+**40 at a time across 40 distinct threads**, 0 errors. There is no uvicorn flag for it
+(`--workers` is processes, `--limit-concurrency` caps connections), and the only place a
+deployment could change it is `anyio.to_thread.current_default_thread_limiter().total_tokens`
+inside the application's own lifespan. Nothing sets it today.
+
+#### 5.4.2 A formation stream costs one thread and one backend, and the cliff is at 40
+
+`orimera/api/routes/formation.py` says a subscriber costs a thread. It is now measured, against
+the real application on a real database, with the deployment's own command
+(`uvicorn --factory orimera.api.app:create_app`, one process, no flags):
+
+| Concurrent streams | Backends held | Probe pairs completed | `GET /healthz` median | worst |
+| --- | --- | --- | --- | --- |
+| 8 | 8 | 1228 in 6 s | 1 ms | 3 ms |
+| 39 | 39 | 1207 in 8 s | 1 ms | 1493 ms |
+| **40** | **40** | **1 in 8 s** | **11,465 ms** | 11,465 ms |
+| 48 | 48 | 1 in 5 s | 13,566 ms | 13,566 ms |
+
+Three things to take from that table, and only the first is the obvious one.
+
+**It is a cliff, not a slope, and it sits exactly at the threadpool size.** One extra subscriber
+takes a healthy instance from 1207 completed request pairs in eight seconds to one. The worst
+case past the cliff is about 14 seconds, which is `_POLL_SECONDS x _HEARTBEAT_EVERY`: once every
+token is held, the heartbeat period is what sets the service rate.
+
+**`/healthz` starves with everything else**, because it is a synchronous handler on the same
+limiter. The container's own `HEALTHCHECK` runs `urlopen(..., timeout=2)` inside a Docker
+`--timeout=3s`, so the operative threshold is two seconds, and a saturated instance exceeds it by
+five times. Three failures thirty seconds apart restart the container and kill every stream,
+including the ones that were working. That consequence is arithmetic over the measured latency
+and the Dockerfile; **no container was built or run to observe the restart**, and it is stated
+here as a deduction rather than as an observation.
+
+**A vanished browser keeps its slot for up to a heartbeat.** Sixteen clients aborted at once:
+all sixteen backends were still held at t+10.1 s and gone by t+12.6 s. The generator only notices
+a disconnect when it next tries to yield.
+
+**No subscriber bound is implemented, deliberately.** One was proposed as
+`_MAX_SUBSCRIBERS = 8` and declined for two measured reasons. The number 8 is not derived from
+anything in the table above, which says the boundary is 40 and that 39 is indistinguishable from
+1. And the counter that would enforce it leaks: `stream()` would increment before constructing
+the `StreamingResponse`, but `_events` is a generator function, so its `finally` never runs on
+any path where the response is built and never iterated. Each such request would consume a slot
+permanently, and after eight of them every watcher is refused with no stream open at all. If a
+bound is wanted, the honest lever is `uvicorn --limit-concurrency`, which caps in-flight requests
+where they are actually counted.
+
+#### 5.4.3 Connection slots, which are what actually runs out
+
+`max_connections = 100` and `superuser_reserved_connections = 3` on the documented target, so 97
+are usable by a role that is not a superuser, and 5.1.3 records that the composition's runtime
+role is one, which means it can take the other three as well. One process holds one backend per in-flight request past its connection dependency,
+plus one for the derivative worker and one for the purge worker. **The threadpool does not cap
+this**: 48 streams held 48 backends against a 40-thread pool, measured. So the real ceiling for a
+single-process deployment is about 95 concurrent connection-holding requests, and two API
+processes against one cluster share those 97.
+
+An idle connection is cheap to keep and cheap to make. Opening one costs a median of 1.270 ms
+over the local unix socket this topology uses and 1.285 ms over TCP loopback, 300 samples each on
+a quiet cluster. Section 12.1 is why there is no pool.
+
+#### 5.4.4 Decode memory: the term that sizes the box
+
+One photograph at `MAX_PIXELS` costs about **512 MB at peak**, not the 384 MB
+`orimera/ingest/decode.py` used to claim. Pillow stores mode `RGB` at four bytes per pixel with
+the fourth unused, and `ImageOps.exif_transpose` allocates a second buffer of the same size even
+at orientation 1. Measured on CPython 3.11.6, Pillow 12.3.0, one fresh process per figure:
+4.015 bytes per pixel for the decode (257.0 MB) and 4.003 for the transpose copy (256.2 MB), peak
+515.4 MB; repeated, 4.011, 4.003, 514.8 MB. The fourth byte shows up directly in the modes: one
+64 megapixel frame is 64.1 MB as `L`, 256.3 MB as `RGB` and 256.2 MB as `RGBA`.
+
+    worst-case bytes = baseline + T x 67 MB + (D + 1) x 512 MB
+
+where `T` is the threadpool (40), `D` is the number of decodes running at once and the `+ 1` is
+the in-process derivative worker, which decodes off the request path. The 67 MB per thread is the
+encoded part `_read_and_check` reads into memory before it probes anything
+(`MAX_PART_BYTES + 1`). With nothing bounding `D`, `D` is `T`, and the second term is therefore
+41 decodes rather than 40: **20.5 GiB of decode buffers** (20,992 MiB), plus about 2.7 GB of encoded parts.
+The formula is the half that was right. The aggregate under it used to read 20 GB, which both
+dropped the derivative worker the `+ 1` had just been defined as and rounded 40 x 512 MB down
+from 20.5. A section that exists because `decode.py` understated by a third does not get to
+restate its own total by discarding a term.
+
+**A semaphore around the decode was proposed and is not implemented.** It bounds the right thing
+by the wrong mechanism: acquiring it inside a synchronous handler blocks a thread that is already
+holding one of the 40 tokens, so the uploads over the bound do not fail fast, they sit on threads
+while waiting, and 5.4.2's measurement says what that does to `/healthz`. The levers that
+actually reduce the product are the threadpool size, `MAX_PART_BYTES`, and `MAX_PIXELS`. A
+deployment that wants a smaller box should turn those down, in that order, and section 10.1's
+shape should be read against the arithmetic above rather than against a peak nobody computed.
+
 ---
 
 ## 6. Health check
 
-**OPEN, and stated before the design: there is no HTTP service in this repository.** The runtime
-dependencies are an HTTP client, a JSON schema validator, an imaging library and a data validation
-library. There is no web framework. Everything in this section is a specification for a service that
-has not been written, and it should be read as a requirement rather than as documentation of
-behaviour.
+**IMPLEMENTED.** This section was written before the service existed and opened by saying so;
+that sentence outlived its subject. `fastapi` and `uvicorn` are runtime dependencies, both
+endpoints are in `orimera/api/routes/health.py`, section 1's own table already said "DECIDED and
+implemented", and `tests/test_api.py` and `tests/test_deployment.py` exercise them. What follows
+is documentation of behaviour, and where a sentence is still a requirement rather than a
+description it says which.
 
 ### 6.1 Three signals, not one
 
@@ -440,7 +617,7 @@ Conflating them is the common mistake, and here it would be an expensive one.
 
 | Check | What it proves | What it cannot prove |
 | --- | --- | --- |
-| `SELECT 1` on the application connection | The database process is up and the connection pool is not exhausted | Nothing about schema correctness |
+| `SELECT 1` on a **newly opened** connection | The server accepted a new connection and answered, so it is up and had a free connection slot at that moment | Nothing about schema correctness, and nothing about the *next* request, which needs its own slot. **There is no connection pool**: `orimera/db/session.py` opens a fresh `psycopg.connect` per session and `psycopg_pool` is in neither `pyproject.toml` nor `uv.lock`. This row used to say the pool was not exhausted, which named a component that does not exist |
 | Applied migration version equals the version the code expects | The running code and the running schema agree | Nothing about data integrity |
 | A `HEAD` on one known asset key | Object storage is reachable, credentials are valid, and the bucket is where configuration says it is | Nothing about whether any particular scene's assets are complete |
 | The model manifest parses and every role resolves to an identifier | The application can name a model | **Nothing about whether that model still exists.** That is section 6.1's third signal |
@@ -731,3 +908,170 @@ has happened at least once with a stopwatch running.
 | D-13 | There is no reverse proxy and no static client host in the composition | Choosing one, which is D-9 |
 | D-10 | Nobody is named for the weekly check through the unattended window | Asking a person |
 | D-11 | Whether a preview grade service survives the window at all | The canary endpoint's outage log |
+| D-14 | Nothing limits in-flight requests, so a single process can demand more backends than the cluster has slots. Section 5.4.3 measured 48 concurrent streams holding 48 backends against a 40-thread pool and 97 usable slots | Setting `uvicorn --limit-concurrency`, which is the only lever that counts requests where they are actually held. Not set today, and not urgent at one person watching one upload |
+| D-15 | Section 5.4.2's container-restart consequence is arithmetic over a measured latency and the Dockerfile. No container was built or run to observe it | Running the image, saturating it, and watching whether Docker restarts it |
+| D-16 | The runtime connects as the database owner, who is a superuser, so the twenty-two `ws_isolation` policies are inert in the composition. Section 5.1.3 says what still holds, which is the write triggers, and what does not, which is every read | Setting `ORIMERA_APP_ROLE_PASSWORD` and pointing `ORIMERA_DATABASE_URL` at `orimera_app`, in the order 5.1.1 fixes |
+
+---
+
+## 12. Scalability: four changes that were measured and declined
+
+Each of the four below looked like the obvious next thing to build. Each was measured before it
+was built, and the measurement is why it was not. This section exists so that the next person to
+reach for one of them starts from the numbers rather than from the intuition, and so that the
+condition under which the answer flips is written down rather than rediscovered.
+
+**Every figure here was taken on this machine** (macOS on arm64, CPython 3.11.6, PostgreSQL 18.6
+on port 5433, psycopg 3.3.4, Pillow 12.3.0, anyio 4.14.2, uvicorn 0.52.4, starlette 1.6.0,
+fastapi 0.141.1) against scratch databases created and dropped for the purpose. Where a number
+comes from an assessment rather than from a run reproduced here, it says so.
+
+### 12.1 No connection pool, and the reason is correctness before it is cost
+
+`orimera/db/session.py` opens a fresh `psycopg.connect` per session. `psycopg_pool` appears in
+neither `pyproject.toml` nor `uv.lock`. **Keep it that way**, and the decisive reason is not the
+saving foregone.
+
+**A pooled connection carries the previous borrower's workspace.** Reproduced here with
+`psycopg_pool` 3.3.1 side-loaded onto `PYTHONPATH` (so neither manifest was touched), probed as a
+throwaway **non-superuser** role against the real `intake_batch` policy, which is FORCE row-level
+security on `workspace_id = current_workspace()`. A superuser probe would have proved nothing:
+superusers bypass row-level security entirely.
+
+| Pool configuration | What a borrower that declared NO workspace saw |
+| --- | --- |
+| `psycopg_pool` defaults | Same backend pid across checkouts. After a workspace-A borrower: `current_workspace()` = A, rows = `['workspace A batch']`, `assert_workspace_context(A)` **PASSED**, insert into A **ACCEPTED**. After a workspace-B borrower on the same connection: rows = `['workspace B batch']` |
+| `reset=lambda conn: conn.execute("reset all")` | setting `''`, `current_workspace()` NULL, rows `[]`, insert refused with SQLSTATE 42501, and `assert_workspace_context` raises again |
+
+That is a cross-tenant read introduced by the pool, and it falsifies two things the repository
+already asserts. `Database.unscoped`'s docstring says a caller reaching for it "would get an empty
+result rather than another workspace's rows"; pooled, it gets another workspace's rows.
+`assert_workspace_context` exists in migration 0001 precisely to raise rather than fail open, and
+it passed for a workspace the borrower had never named. `tests/test_row_level_security.py` now
+holds that pair as an assertion.
+
+**Why the default does nothing.** `psycopg_pool` skips its reset when the connection's
+transaction status is IDLE, and under the autocommit `session()` deliberately chooses, a returned
+connection is always IDLE (measured: `transaction_status` 0 after a SELECT). So no DISCARD, no
+RESET, no rollback.
+
+**Two traps in the fix, both measured here.** `DISCARD ALL` is the wrong reset: it deallocates
+server-side prepared statements while psycopg's client-side map still believes in them, and the
+next execute of an auto-prepared query fails with SQLSTATE 26000,
+`prepared statement "_pg3_0" does not exist`. `RESET ALL` does not deallocate and reuse is fine.
+But `RESET ALL` also undoes the UTC that `session()` sets: after one reset the time zone was back
+to `America/New_York`, the server default. Putting it in the startup packet instead
+(`?options=-c timezone=UTC`) survives `RESET ALL`, measured still UTC.
+
+**The saving being declined, with its transport named.** Mixing transports is how this trade gets
+oversold, so each figure says which one it is. Medians over 300 samples on a quiet cluster:
+
+| | TCP loopback | unix socket |
+| --- | --- | --- |
+| `connect` + close | 1.285 ms | 1.270 ms |
+| The whole `Database.session` shape plus one workspace-scoped query | 2.009 ms | 1.689 ms |
+| That query alone on an already-open connection | 0.052 ms | 0.017 ms |
+| The pooled unit of work (`set_config` + query + `reset all`) | not taken | 0.045 ms |
+
+Section 3 puts PostgreSQL on the same host, so the **unix socket** column is the one that
+applies. Over it a pool would save about **1.64 ms** per request, on requests whose real work is
+a model call measured in seconds. Opening a connection is 75 times the query it enables over that
+transport, which sounds decisive and is not: 75 times a very small number is still a very small
+number.
+
+**What would change the answer.** Concurrent request rate rising by an order of magnitude, or
+workspace count per instance doing the same, at which point the per-request 1.64 ms and the
+per-poll connect in each worker stop being noise. If that day comes, the correct pool is exactly
+three things and not two: `reset all` on return, the time zone moved into the startup packet
+because `reset all` undoes it, and `unscoped()` never drawing from the pool at all.
+
+**On an external pooler: not measured, and flagged as reasoning.** PgBouncer is not installed
+here. The mechanism is the one above. `set_workspace` sets a SESSION setting with `is_local`
+false, outside any transaction, so under transaction-mode pooling it lands on whichever server
+connection is assigned at that instant and the next statement may run on a different one, with no
+reset hook to repair it. Session mode would be correct. Settling it needs a probe against a real
+PgBouncer, which this machine cannot run.
+
+### 12.2 No subscriber bound on the formation stream
+
+Declined, and the measurement is in section 5.4.2 rather than repeated here. In summary: the
+cliff is at 40, which is the threadpool and not a number anyone chose; 39 concurrent streams are
+indistinguishable from 1; the proposed bound of 8 is not derived from any of that; and the
+counter that would enforce it leaks a slot on every request whose `StreamingResponse` is
+constructed and never iterated, because `_events` is a generator function and its `finally` runs
+only if the generator is started and closed. The threadpool size and the cliff are recorded as a
+deployment setting instead.
+
+### 12.3 No reference counting on `blob`
+
+`blob` is not workspace-scoped (migration 0001), and the purge path works around that with a
+cross-workspace SELECT policy on `capture` and `artifact` granted to `orimera_purge`. Replacing
+that with a maintained holder count on `blob` is **not the right change now**.
+
+**What is reproduced here**: the structural half. `artifact` carries exactly two indexes,
+`artifact_pkey` and `artifact_workspace_id_idempotency_key_key`. There is **no index on
+`artifact.content_sha256` or on `artifact.source_blob_sha256`**, so `purge_releases_bytes` scans
+the artifact table on every purge job.
+
+**What is not reproduced here, and is recorded as the assessment's own measurement**: that the
+predicate costs about 30 ms per target at 660,000 artifacts, falls to about 0.144 ms with one
+partial index on `artifact (content_sha256) where purged_at is null`, and to about 0.030 ms with
+a materialised holder count. If those hold, the index is worth hours across a large workspace
+deletion and reference counting on top of it is worth about half a minute.
+
+**The comparison as it stands is one-sided, and that strengthens the conclusion rather than
+weakening it.** The 0.030 ms came from a static column on a primary key. The design it stands in
+for is a count on `blob` maintained by triggers on `capture` and `artifact`, paid on every
+capture insert, every capture soft-delete, every artifact insert and every artifact purge. That
+recurring write cost was never measured, and it is precisely the cost the index alternative does
+not pay.
+
+**What would change the answer**, each checkable rather than a matter of taste:
+
+- **A-30 falls.** A workspace stops being one user, or workspaces become shared. The partition
+  strategy and the row-level security predicate need rework anyway at that point, and this rides
+  along with it.
+- **The cross-workspace read itself becomes unacceptable.** `orimera_purge` can answer "which
+  workspace holds these exact bytes" across the whole deployment. That is the one argument a
+  larger retry budget cannot answer, and if the threat model rules it out, a count replaces the
+  read.
+- **The measured sharing rate stops being zero.** Count blobs whose distinct holding-workspace
+  count exceeds one. While that is zero, the condition this design defends against has never
+  occurred.
+
+### 12.4 No semaphore around the decode
+
+Declined. Section 5.4.4 has the arithmetic and the reason: the bound is real, but a
+`threading.BoundedSemaphore` acquired inside a synchronous route handler blocks a thread that is
+already holding one of the 40 anyio tokens, which converts an out-of-memory into section 5.4.2's
+starvation of `/healthz` and the container restart that follows. The aggregate is documented as a
+sizing input instead. `orimera/ingest/decode.py`'s own arithmetic was wrong by a third, in the
+direction that made the aggregate look smaller, and that has been corrected.
+
+### 12.5 Poll intervals stay as they are, and one index does not
+
+The derivative worker polls every 2 s and the purge worker every 30 s. Both are cheap at the
+workspace counts this deployment has, and neither interval is worth touching.
+
+**But the claim index has the wrong columns, and this is a defect rather than a tuning knob.**
+`orimera/ingest/derivative_queue.py` selects `where workspace_id = ? and kind = ? and state =
+'queued' and run_after <= now() order by priority, job_id ... limit 1`, and `job_queue_idx` is
+`(state, run_after, priority, job_id) where state = 'queued'`, which carries neither
+`workspace_id` nor `kind`. Measured on a scratch database with 5,000 queued jobs in the polled
+workspace and 100,000 in two others:
+
+| Index | Plan | Buffers | Time |
+| --- | --- | --- | --- |
+| `job_queue_idx`, as the schema ships | Bitmap Heap Scan, Rows Removed by Filter: 100000 | 1616 | 4.744 ms |
+| `(workspace_id, kind, run_after, priority, job_id) where state = 'queued'` | Bitmap Heap Scan of all 5,000 matches, then a quicksort | 1672 | 1.835 ms |
+| `(workspace_id, kind, priority, job_id) where state = 'queued'` | **Index Scan**, `run_after` as a filter | **5** | **0.027 ms** |
+
+**`run_after` must not sit ahead of the ORDER BY keys.** It is a range predicate, so an index
+leading with it cannot supply the ordering, and the plan falls back to reading every matching row
+and sorting. That defect is invisible against an empty queue, which is the only case an idle-poll
+benchmark exercises and also the only case that does no work. The third row is the shape to
+build.
+
+**This is coordination, not an instruction.** The index belongs to whoever is editing
+`derivative_queue.py` and the next migration, and it is recorded here so that the one that lands
+is the one that helps.

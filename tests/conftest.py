@@ -14,8 +14,10 @@ from __future__ import annotations
 import datetime as dt
 import io
 import os
+import struct
 import urllib.parse
 import uuid
+import zlib
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -61,6 +63,33 @@ def upright_pixels(width: int = 160, height: int = 100) -> Image.Image:
     return image
 
 
+
+
+def bomb_png(width: int, height: int) -> bytes:
+    """A PNG whose header declares an enormous frame and whose body is a few bytes.
+
+    Built rather than committed, for the same reason every other test image here is: the
+    repository carries no binary fixture and the exact declared size is what is being asserted.
+
+    Here rather than in one of the two test modules that feed it to the pipeline, because both
+    of them assert against ``MAX_PIXELS`` and a second copy is a second thing to keep in step
+    with what Pillow reads out of an IHDR.
+    """
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(data))
+            + tag
+            + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        )
+
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(b"\x00" * 16))
+        + chunk(b"IEND", b"")
+    )
 
 
 def photo_bytes(

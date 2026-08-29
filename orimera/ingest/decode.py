@@ -1,5 +1,12 @@
 """The one place a photograph becomes pixels, and the pixel budget that applies when it does.
 
+"The one place" is a claim about call sites and it is checkable: ``Image.open`` appears in this
+module and nowhere else under ``orimera/``. It has not always been true. ``ingest/resolve.py``
+used to open and load an original itself, on the path of a synchronous route, with no budget
+comparison in front of it, and it was protected only by the process-wide state below happening
+to have been installed by some other import. It now calls :func:`open_upright`, and the reason
+it must is the measurement in the warning-filter paragraph below.
+
 Two settings here are **interpreter-global**, which is the whole reason this module exists
 rather than the two lines living wherever an image is next opened:
 
@@ -17,8 +24,18 @@ reason it is written out. Warning filters are process state that anything may re
 library being helpful. Any of those silently removes the promotion, and the symptom is not an
 error, it is a large file quietly decoded. So the budget is enforced by comparing two integers,
 which nothing can reset, and the filter stays because it is what makes Pillow's own message the
-one a caller sees when it fires first. ``tests/test_intake_upload.py`` resets the filters and
-feeds a bomb, so the claim is checked rather than asserted.
+one a caller sees when it fires first.
+
+Both halves are measured, and they fail in opposite directions, which is why both are here. A
+header declaring 66,015,625 pixels, 1.031x the budget and inside Pillow's warn-only band, was
+refused by a bare ``Image.open`` while the promotion stood, and after ``resetwarnings()`` the
+same bare ``Image.open`` **returned an image of size (8125, 8125)** while :func:`probe` on the
+identical bytes still refused with the pixel count in the message. That is the exact shape of
+the danger: the promotion covers callers this module cannot see, the comparison covers this
+module when the promotion has been wiped, and neither covers the other's case.
+``tests/test_intake_upload.py`` holds both claims, the second in a subprocess, because pytest
+installs ``simplefilter("always")`` around every test and would otherwise be testing its own
+filters rather than this module's.
 
 **The budget is below Pillow's default, and the direction matters.** Assigning
 ``Image.MAX_IMAGE_PIXELS`` raises or lowers Pillow's own ceiling process-wide, so a number above
@@ -26,17 +43,37 @@ its default silently makes every caller in the process more permissive than Pill
 including the corpus renderer and the command line. 89478485 is Pillow's default;
 :data:`MAX_PIXELS` is below it.
 
-**The number is an arithmetic about memory, not a claim about cameras.** Pillow decodes to a
-byte per channel, so a frame costs `3 x pixels` as RGB, and the orientation transform in
-``extract_exif_facts`` allocates a second buffer of the same size. At 64 megapixels that is
-about 192 MB decoded and about 384 MB at peak, in a request thread. A larger frame, a stitched
-panorama or a medium-format original, is refused with its own pixel count in the message and the
-number here is one line to raise deliberately.
+**The number is an arithmetic about memory, not a claim about cameras, and the arithmetic is
+measured rather than assumed.** Pillow does not store `RGB` at a byte per channel. It stores it
+at **four** bytes per pixel, with the fourth unused, so a frame costs `4 x pixels` and not
+`3 x pixels`. The orientation transform in ``extract_exif_facts`` allocates a second buffer of
+the same size, because ``ImageOps.exif_transpose`` returns a copy even at orientation 1. At 64
+megapixels that is about **256 MB decoded and about 512 MB at peak**, in a request thread.
 
-**What is NOT bounded, said plainly.** This bounds one decode. A synchronous route runs in the
-ASGI server's threadpool, so the aggregate is that bound times the number of threads, and
-nothing here limits how many decode at once. Bounding that means a semaphore and a decision
-about how many concurrent uploads an instance serves, which is a deployment's to make.
+Measured on this repository's own interpreter, CPython 3.11.6 on arm64 with Pillow 12.3.0, one
+fresh process per figure so a peak counter cannot be reading a recycled allocator arena: an
+8000x8000 JPEG decoded at 4.015 bytes per pixel (257.0 MB), the transpose copy cost a further
+4.003 bytes per pixel (256.2 MB), and the peak over the pair was 515.4 MB. Repeated: 4.011,
+4.003, 514.8 MB. The fourth byte is confirmed by the modes costing the same: one 64 megapixel
+frame is 64.1 MB as `L`, 256.3 MB as `RGB` and 256.2 MB as `RGBA`, so `RGB` pays for a band it
+does not have. A larger frame, a stitched panorama or a medium-format original, is refused with
+its own pixel count in the message, and the number here is one line to raise deliberately.
+
+**What is NOT bounded, said plainly, and what not to reach for.** This bounds one decode. A
+synchronous route runs in the ASGI server's threadpool, so the aggregate is that bound times the
+number of threads, and nothing here limits how many decode at once. Measured against uvicorn
+rather than read from anyio: 120 concurrent requests to a synchronous handler ran 40 at a time
+across 40 distinct worker threads, which is anyio's hard-coded default and nothing in this
+deployment chose it. The in-process derivative worker decodes off the request path and makes a
+forty-first, so the worst case is 41 x 512 MB, about 21 GB, and ``docs/deployment.md`` section
+5.4.4 carries that arithmetic and the sizing it implies.
+
+**A semaphore around the decode is the wrong repair and was rejected on measurement.** Acquiring
+one inside a synchronous handler blocks a thread that is *already* holding one of anyio's 40
+tokens, so the requests over the bound do not fail fast: they occupy threads while waiting, and
+``/healthz`` is synchronous on the same limiter, so the instance's own liveness probe starves at
+exactly the load the semaphore was added to survive. The bound that works is on how many threads
+exist, not on what they are allowed to do once they have one.
 
 **And it does not bound the number of bytes.** A file can be small and decode enormous, which is
 what a decompression bomb is, and it can be enormous and decode to nothing. The byte bound
@@ -58,7 +95,8 @@ __all__ = ["MAX_PIXELS", "UNREADABLE", "open_upright", "probe"]
 
 #: The largest frame this pipeline will decode, in pixels. 64 megapixels: past every phone and
 #: every consumer camera, below Pillow's own 89478485 default so that assigning it below tightens
-#: rather than loosens, and about 384 MB at peak to decode and turn upright.
+#: rather than loosens, and about 512 MB at peak to decode and turn upright. That last number is
+#: measured, at 4 bytes per pixel twice over rather than the 3 an RGB frame looks like it costs.
 MAX_PIXELS: Final = 64_000_000
 
 Image.MAX_IMAGE_PIXELS = MAX_PIXELS

@@ -121,13 +121,31 @@ def readyz(request: Request, response: Response) -> dict[str, Any]:
 
 
 def _database_check(services: Services) -> dict[str, Any]:
-    """Proves the process is up and the pool is not exhausted. Proves nothing about the schema."""
+    """Proves the server accepted a NEW connection and answered on it. Nothing about the schema.
+
+    The noun matters here more than it usually would, because this sentence leaves the process:
+    it is served to an operator over HTTP and a human acts on it. **There is no connection pool
+    in this application.** ``orimera/db/session.py`` opens a fresh ``psycopg.connect`` per
+    session and ``psycopg_pool`` appears in neither ``pyproject.toml`` nor ``uv.lock``, so a
+    check that reported "the pool is not full" was reporting on a component that does not exist.
+
+    What a successful connect does prove is adjacent and real: the server had a free connection
+    slot at that instant. That is worth reporting, because slots are the resource this
+    deployment can actually run out of, and ``docs/deployment.md`` section 5.4 gives the
+    arithmetic. It is not a statement about the next request, which needs its own slot.
+    """
     try:
         with services.database.unscoped() as connection:
             connection.execute("select 1")
     except Exception as exc:
         return {"ok": False, "detail": f"{type(exc).__name__}: {exc}"}
-    return {"ok": True, "proves": "the database is reachable and the connection pool is not full"}
+    return {
+        "ok": True,
+        "proves": (
+            "the database accepted a new connection and answered a query, so the server is up "
+            "and had a free connection slot at that moment"
+        ),
+    }
 
 
 def _schema_check(services: Services) -> dict[str, Any]:

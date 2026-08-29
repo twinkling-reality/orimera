@@ -25,6 +25,36 @@ before the schema exists.
 Both hand out dictionary rows. Column names are the readable half of a query that already spells
 out its own SELECT list, and a positional row makes adding a column to that list a silent
 reindexing of every caller.
+
+**There is no connection pool here, and that is a decision rather than an omission.** This is the
+file somebody would edit to add one, so the measurement lives here as well as in
+``docs/deployment.md`` section 12.1.
+
+``psycopg_pool``'s default reset does nothing when a connection's transaction status is IDLE, and
+under the autocommit :meth:`Database.session` deliberately chooses, a returned connection is
+always IDLE. So nothing is reset, and **the workspace travels to the next borrower**. Probed as a
+non-superuser against real FORCE row-level security tables: a borrower that declared no workspace
+read the previous borrower's rows, then a different workspace's rows after a different previous
+borrower, and ``assert_workspace_context`` PASSED for a workspace it had never named. Two
+sentences in this repository become false at that moment: what :meth:`Database.unscoped` says
+below about a role row-level security does reach, and migration 0001's whole reason for making
+that guard raise rather than fail open.
+``tests/test_row_level_security.py`` holds the pair as an assertion.
+
+What the tax being avoided actually is, over the local unix socket section 3 documents: 1.270 ms
+to open a connection, 1.689 ms for this whole shape plus one workspace-scoped query, against
+0.045 ms for the pooled equivalent. About 1.6 ms per request, on requests whose real work is a
+model call measured in seconds.
+
+If that trade ever flips, the pool needs three things and not two:
+
+*   ``reset=lambda conn: conn.execute("reset all")``. Not ``discard all``, which deallocates
+    server-side prepared statements while psycopg's client-side map still believes in them: the
+    next auto-prepared execute fails with SQLSTATE 26000.
+*   The time zone moved into the startup packet (``?options=-c timezone=UTC``) or a role default,
+    because ``reset all`` also undoes the ``SET`` below, measured putting a connection back on
+    the server's local zone. The UTC paragraph above says why that is not optional either.
+*   :meth:`unscoped` never drawing from the pool at all.
 """
 
 from __future__ import annotations
@@ -83,12 +113,35 @@ class Database:
 
     @contextmanager
     def unscoped(self) -> Iterator[psycopg.Connection]:
-        """A connection with no workspace. For migrations and for nothing else.
+        """A connection with no workspace. For migrations, the schema check and nothing else.
 
-        Every table under row-level security is invisible through this connection, which is the
-        intended effect: DDL does not belong to a workspace, and a caller that wanted workspace
-        data and reached for this would get an empty result rather than another workspace's
-        rows.
+        This opens a connection and declines to declare a workspace. That is the whole of what
+        it does, and **what the connection can then see is a property of the role behind the URL
+        rather than of this method**. The distinction is not decoration: the sentence here used
+        to read "every table under row-level security is invisible through this connection", and
+        that is false for the role the composition actually uses.
+
+        *   **As a role row-level security reaches**, which ``orimera_app`` is, every one of the
+            twenty-two forced tables reads empty. The policy is ``workspace_id =
+            current_workspace()``, ``current_workspace()`` is NULL with nothing declared, and
+            ``NULL = anything`` is not true. So a caller that wanted workspace data and reached
+            for this gets an empty result rather than another workspace's rows.
+        *   **As a superuser, nothing is hidden at all.** PostgreSQL bypasses row security
+            outright for a superuser or a role holding BYPASSRLS, and ``force row level
+            security`` does not reach either: it makes an ordinary owner subject to the policy,
+            not a superuser. The database owner is a superuser on a default installation, so the
+            same call on the same schema hands back the row the bullet above returns none of.
+
+        Both halves are asserted against a live schema in ``tests/test_row_level_security.py``,
+        one per role, because a sentence that was false once should not be a sentence again.
+        ``compose.yaml`` points ``ORIMERA_DATABASE_URL`` at the owner, so it is the second bullet
+        that describes the composition today; ``docs/deployment.md`` section 5.1.3 says what that
+        costs and what closing it takes.
+
+        **The migration path relies on neither bullet.** It needs DDL rights and
+        ``schema_migrations``, which carries no row-level security at all, so it works under
+        either role that can run the DDL. The reason it declares no workspace is that there is no
+        workspace to name before the schema exists, not that the emptiness is useful to it.
         """
         with psycopg.connect(self.url, row_factory=dict_row) as connection:
             connection.execute("set time zone 'UTC'")

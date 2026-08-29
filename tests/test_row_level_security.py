@@ -36,12 +36,23 @@ import psycopg
 import pytest
 from orimera.db.migrate import provision_workspace
 from orimera.db.roles import EXECUTOR_ROLE, RUNTIME_ROLE, provision_runtime_role
+from orimera.db.session import Database
 from orimera.identity import IdentityRepository
 from psycopg.rows import dict_row
 
 from pg_harness import migrated_schema
 
 pytestmark = pytest.mark.postgres
+
+#: Suffixed, because **a role is a CLUSTER object** and the harness's "the database name must
+#: contain test" guard does not reach one. Under the deployment's own names, every run of this
+#: file rewrote the grants on the developer's live `orimera_app` and `orimera_ro` in the same
+#: cluster the `orimera` database lives in. `tests/test_purge.py` moved for that reason and this
+#: file follows it. The privilege set under test does not change: `provision_runtime_role` takes
+#: the role name as an argument and composes every grant and revoke from it, so the suffix moves
+#: the identifier and nothing else.
+_APP_ROLE = f"{RUNTIME_ROLE}_suite"
+_EXECUTOR_ROLE = f"{EXECUTOR_ROLE}_suite"
 
 WIDE_VECTOR = "[" + ",".join(["0.5"] * 4096) + "]"
 
@@ -50,16 +61,28 @@ WIDE_VECTOR = "[" + ",".join(["0.5"] * 4096) + "]"
 def isolated():
     """A migrated schema holding one row per table for workspace A, and both runtime roles.
 
-    The roles are provisioned under their real names rather than test-specific ones, because
-    what is being checked is the privilege set an actual deployment gets. They are created
-    without a password: local connections here authenticate by trust, and inventing a password
-    for a role a deployment also uses would be worse than not having one.
+    The roles are the deployment's, under suffixed names. A role is a CLUSTER object and the
+    harness's "the database name must contain test" guard does not reach one, so provisioning
+    `orimera_app` and `orimera_ro` here rewrote the grants on the developer's live roles, in the
+    same cluster the `orimera` database lives in. That is what the suffix is for, and
+    `tests/test_purge.py` carries the same one.
+
+    It costs nothing that matters: `provision_runtime_role` takes the role name as an argument
+    and composes every grant, revoke and default privilege from it, so what these roles hold is
+    what a deployment's hold. The one thing the suffix does not inherit is
+    `grant_workspace_partition`, which names the real roles; the per-workspace partitions are
+    created after this call, so the ALTER DEFAULT PRIVILEGES issued above is what reaches them,
+    and `test_naming_the_partition_directly_does_not_escape_the_policy` fails on a permission
+    error rather than passing quietly if that ever stops being true.
+
+    They are created without a password: local connections here authenticate by trust, and a
+    password on a role only this suite ever connects as would be a credential nobody asked for.
     """
     with migrated_schema() as (_psycopg, admin):
         admin.row_factory = dict_row
         scratch = admin.execute("select current_schema()").fetchone()["current_schema"]
-        provision_runtime_role(admin)
-        provision_runtime_role(admin, role=EXECUTOR_ROLE, read_only=True)
+        provision_runtime_role(admin, role=_APP_ROLE)
+        provision_runtime_role(admin, role=_EXECUTOR_ROLE, read_only=True)
 
         workspace_a, workspace_b = uuid.uuid4(), uuid.uuid4()
         for workspace in (workspace_a, workspace_b):
@@ -137,7 +160,7 @@ def _count(connection: psycopg.Connection, table: str) -> int:
 
 def test_the_runtime_roles_cannot_bypass_row_level_security(scoped):
     """If either role is a superuser or holds BYPASSRLS, every other test here is vacuous."""
-    for role in (RUNTIME_ROLE, EXECUTOR_ROLE):
+    for role in (_APP_ROLE, _EXECUTOR_ROLE):
         connection = scoped.connect(role, scoped.workspace_a)
         row = connection.execute(
             "select r.rolsuper, r.rolbypassrls, current_user as who from pg_roles r "
@@ -151,8 +174,8 @@ def test_the_runtime_roles_cannot_bypass_row_level_security(scoped):
 @pytest.mark.parametrize("table", ["capture", "evidence_span", "embedding"])
 def test_a_workspace_reads_its_own_rows_and_no_other_workspace_sees_them(scoped, table):
     """A policy that refused everything would pass the isolation half of this on its own."""
-    mine = scoped.connect(RUNTIME_ROLE, scoped.workspace_a)
-    theirs = scoped.connect(RUNTIME_ROLE, scoped.workspace_b)
+    mine = scoped.connect(_APP_ROLE, scoped.workspace_a)
+    theirs = scoped.connect(_APP_ROLE, scoped.workspace_b)
     assert _count(mine, table) == 1
     assert _count(theirs, table) == 0
 
@@ -165,17 +188,17 @@ def test_naming_the_partition_directly_does_not_escape_the_policy(scoped):
     name.
     """
     partition = scoped.partition_of(scoped.workspace_a)
-    theirs = scoped.connect(RUNTIME_ROLE, scoped.workspace_b)
+    theirs = scoped.connect(_APP_ROLE, scoped.workspace_b)
     assert _count(theirs, "embedding") == 0
     assert _count(theirs, partition) == 0
 
-    mine = scoped.connect(RUNTIME_ROLE, scoped.workspace_a)
+    mine = scoped.connect(_APP_ROLE, scoped.workspace_a)
     assert _count(mine, partition) == 1
 
 
 def test_every_per_workspace_partition_carries_its_own_forced_policy(scoped):
     """Structural, so a partition created by some future path cannot quietly omit it."""
-    admin = scoped.connect(RUNTIME_ROLE, scoped.workspace_a)
+    admin = scoped.connect(_APP_ROLE, scoped.workspace_a)
     partitions = admin.execute(
         "select c.relname, c.relrowsecurity, c.relforcerowsecurity "
         "from pg_class c join pg_namespace n on n.oid = c.relnamespace "
@@ -200,7 +223,7 @@ def test_the_runtime_role_may_read_the_vocabulary_and_may_not_edit_it(scoped):
     why this is a privilege question rather than a policy one: `predicate` carries no
     workspace_id, so there is no policy that could scope it.
     """
-    connection = scoped.connect(RUNTIME_ROLE, scoped.workspace_a)
+    connection = scoped.connect(_APP_ROLE, scoped.workspace_a)
     assert connection.execute("select count(*) as n from predicate").fetchone()["n"] > 0
     with pytest.raises(psycopg.errors.InsufficientPrivilege), connection.transaction():
         connection.execute(
@@ -222,7 +245,7 @@ def test_no_runtime_role_may_delete_anything(scoped, table):
     A role that can DELETE can erase the record of what it erased, which is the one thing the
     whole deletion design exists to prevent.
     """
-    for role in (RUNTIME_ROLE, EXECUTOR_ROLE):
+    for role in (_APP_ROLE, _EXECUTOR_ROLE):
         connection = scoped.connect(role, scoped.workspace_a)
         with pytest.raises(psycopg.errors.InsufficientPrivilege), connection.transaction():
             connection.execute(f"delete from {table}")
@@ -231,7 +254,7 @@ def test_no_runtime_role_may_delete_anything(scoped, table):
 def test_the_executor_role_cannot_write_at_all(scoped):
     """The Selection executor runs a plan derived from model output. It holds SELECT and nothing
     else, so whatever happens upstream of it cannot become a write."""
-    connection = scoped.connect(EXECUTOR_ROLE, scoped.workspace_a)
+    connection = scoped.connect(_EXECUTOR_ROLE, scoped.workspace_a)
     assert _count(connection, "capture") == 1
     with pytest.raises(psycopg.errors.InsufficientPrivilege), connection.transaction():
         connection.execute(
@@ -249,7 +272,7 @@ def test_a_session_with_no_workspace_declared_reads_nothing(scoped):
     treats an unset context as "no filter", would make every forgotten set_config a full
     cross-tenant read.
     """
-    connection = psycopg.connect(scoped._dsn(RUNTIME_ROLE), autocommit=True, row_factory=dict_row)
+    connection = psycopg.connect(scoped._dsn(_APP_ROLE), autocommit=True, row_factory=dict_row)
     scoped._open.append(connection)
     connection.execute(f'set search_path to "{scoped.scratch}", public')
     assert connection.execute("select current_workspace() as w").fetchone()["w"] is None
@@ -271,7 +294,7 @@ def test_an_identity_repository_declares_the_workspace_on_a_connection_that_has_
     which has to be run as the owner: with the policy in force a dropped predicate is invisible
     by construction, because ``ws_isolation`` has already filtered to ``current_workspace()``.
     """
-    connection = psycopg.connect(scoped._dsn(RUNTIME_ROLE), autocommit=True, row_factory=dict_row)
+    connection = psycopg.connect(scoped._dsn(_APP_ROLE), autocommit=True, row_factory=dict_row)
     scoped._open.append(connection)
     connection.execute(f'set search_path to "{scoped.scratch}", public')
     assert connection.execute("select current_workspace() as w").fetchone()["w"] is None
@@ -286,10 +309,85 @@ def test_an_identity_repository_declares_the_workspace_on_a_connection_that_has_
 
     # And the policy is doing its own half: a repository for the other workspace, on a fresh
     # connection, cannot see either row however it spells the query.
-    other = psycopg.connect(scoped._dsn(RUNTIME_ROLE), autocommit=True, row_factory=dict_row)
+    other = psycopg.connect(scoped._dsn(_APP_ROLE), autocommit=True, row_factory=dict_row)
     scoped._open.append(other)
     other.execute(f'set search_path to "{scoped.scratch}", public')
     theirs = IdentityRepository(other, scoped.workspace_b)
     assert theirs.entities.by_id(entity_id) is None
     assert theirs.events.by_id(event_id) is None
     assert _count(other, "entity") == 0
+
+
+def test_unscoped_reads_nothing_even_straight_after_a_scoped_session(scoped):
+    """The first bullet of ``Database.unscoped``'s docstring, asserted as ``orimera_app``.
+
+    It says that as a role row-level security reaches, a caller that wanted workspace data and
+    reached for this gets an empty result rather than another workspace's rows. The role is half
+    of that sentence and the sibling test below holds the other half. This one is also true
+    because every session in this codebase is its own backend: ``psycopg.connect`` per call, no
+    pool anywhere. It is the sentence a naive pool falsifies, and that was measured rather than
+    reasoned about.
+    ``psycopg_pool``'s default reset does nothing when the transaction status is IDLE, and under
+    the autocommit ``session()`` deliberately chooses every returned connection IS idle, so
+    nothing is reset: probed as a non-superuser against these same forced policies, a borrower
+    that declared no workspace read the previous borrower's rows, and ``assert_workspace_context``
+    PASSED for a workspace it had never named.
+
+    So this asserts both halves in one run: the backends differ, and the unscoped one sees
+    nothing. A pool without ``reset all`` on return turns the first assertion false and the
+    second into a cross-tenant read.
+    """
+    from tests_support_api import scratch_database
+
+    base = scratch_database(scoped.scratch).url
+    database = Database(url=f"{base}&user={_APP_ROLE}")
+
+    with database.session(scoped.workspace_a) as scoped_connection:
+        scoped_pid = scoped_connection.execute("select pg_backend_pid() as pid").fetchone()["pid"]
+        assert _count(scoped_connection, "capture") == 1
+
+    with database.unscoped() as bare:
+        assert bare.execute("select pg_backend_pid() as pid").fetchone()["pid"] != scoped_pid, (
+            "unscoped() reused the scoped session's backend, so this deployment has grown a "
+            "pool and the workspace setting travels with it"
+        )
+        assert bare.execute("select current_workspace() as w").fetchone()["w"] is None
+        for table in ("capture", "evidence_span", "embedding", "assertion"):
+            assert _count(bare, table) == 0, table
+
+
+def test_unscoped_hides_nothing_from_a_role_row_level_security_does_not_reach(scoped):
+    """The second bullet, and the reason the first one has to name a role.
+
+    ``Database.unscoped`` opens a connection and declines to declare a workspace. That is all it
+    does. Whether the twenty-two forced tables then read empty is a property of the ROLE:
+    PostgreSQL
+    bypasses row security outright for a superuser or a role holding BYPASSRLS, and ``force row
+    level security`` does not reach either, so the same method on the same schema hands the owner
+    the row it hands ``orimera_app`` nothing of. The docstring used to say "every table under
+    row-level security is invisible through this connection" with no role attached, and that
+    sentence was false for the owner.
+
+    Which matters here rather than in the abstract, because ``compose.yaml`` sets
+    ``ORIMERA_DATABASE_URL`` to the bootstrap superuser: the composition runs on the role this
+    test measures, not on the one the test above measures. ``docs/deployment.md`` section 5.1.3
+    is where that is written down; this is where it is checked.
+
+    Skipped rather than asserted when the owner is an ordinary role, because then there is
+    nothing to show: it is subject to FORCE row-level security like any other and the test above
+    already covers that case.
+    """
+    from tests_support_api import scratch_database
+
+    with scratch_database(scoped.scratch).unscoped() as bare:
+        who = bare.execute(
+            "select current_user as who, rolsuper, rolbypassrls from pg_roles "
+            "where rolname = current_user"
+        ).fetchone()
+        if not (who["rolsuper"] or who["rolbypassrls"]):
+            pytest.skip(f"the owner {who['who']} is subject to row-level security")
+        assert bare.execute("select current_workspace() as w").fetchone()["w"] is None
+        assert _count(bare, "capture") == 1, (
+            f"{who['who']} has rolsuper={who['rolsuper']} rolbypassrls={who['rolbypassrls']} "
+            "and should read straight through ws_isolation"
+        )

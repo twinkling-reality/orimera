@@ -45,7 +45,7 @@ from orimera.store.local import LocalContentAddressedStore
 from orimera.store.resolve import address_from_span_row, resolve_original_bytes
 from psycopg.types.json import Jsonb
 
-from conftest import DEFAULT_PAYLOAD, CountingVisionModel, write_photo
+from conftest import DEFAULT_PAYLOAD, CountingVisionModel, bomb_png, write_photo
 
 # No module-level postgres marker. tests/conftest.py marks each test by the fixtures it
 # actually requests, so the handful here that need no server stay runnable without one.
@@ -349,6 +349,187 @@ def test_a_region_address_crops_the_upright_original(ingested):
     cropped = resolve_region_image(address, store)
     assert cropped.size[0] > 0 and cropped.size[1] > 0
     assert cropped.size[0] < 160  # a region, not the whole photograph
+
+
+def test_the_region_crop_refuses_an_original_over_the_pixel_budget(tmp_path):
+    """``resolve_region_image`` is the second decode path, and it must inherit the same bound.
+
+    It is reached from ``GET /evidence/{span_id}/region``, a synchronous route on the same
+    threadpool as the upload, and one call at the budget costs half a gigabyte. It used to open
+    and load the original itself. That was not unprotected, because importing anything under
+    ``orimera.ingest`` assigns ``Image.MAX_IMAGE_PIXELS`` process-wide, but process state is not
+    a bound: reset the warning filters and a frame in Pillow's warn-only band decodes in full.
+    So this asserts the explicit comparison, by its exception type and by its message, and it
+    goes red if the call goes back to a bare ``Image.open``.
+
+    No database. The bytes are put in a store directly, because a photograph over the budget
+    cannot be ingested by definition and so cannot be reached through the ``ingested`` fixture.
+    """
+    from orimera.evidence.address import EvidenceAddress
+    from orimera.evidence.blob import BlobId
+    from orimera.ingest.decode import MAX_PIXELS
+    from PIL import Image
+
+    width, height = 20_000, MAX_PIXELS // 20_000 + 100
+    pixels = width * height
+    assert MAX_PIXELS < pixels < 2 * MAX_PIXELS, "Pillow only WARNS in this band"
+
+    store = LocalContentAddressedStore(tmp_path / "store")
+    data = bomb_png(width, height)
+    store.put_bytes(data)
+    address = EvidenceAddress.photograph(BlobId.of_bytes(data))
+
+    with pytest.raises(Image.DecompressionBombError) as raised:
+        resolve_region_image(address, store)
+    assert str(pixels) in str(raised.value), raised.value
+
+
+def _dotted_name(node: ast.expr) -> str | None:
+    """``a.b.c`` for a chain of ``Name`` and ``Attribute``, and ``None`` for anything else."""
+    parts: list[str] = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if not isinstance(node, ast.Name):
+        return None
+    parts.append(node.id)
+    return ".".join(reversed(parts))
+
+
+def _pil_open_bindings(tree: ast.Module) -> tuple[set[str], set[str]]:
+    """The names one file can spell ``PIL.Image.open`` with, read off its own imports.
+
+    Two sets, because the call looks different in each. The first holds names that resolve to the
+    ``PIL.Image`` *module*, whose ``open`` attribute is then the call. The second holds names
+    bound directly to the function, which are called bare.
+    """
+    modules: set[str] = set()
+    direct: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "PIL":
+                    modules.add(f"{alias.asname}.Image" if alias.asname else "PIL.Image")
+                elif alias.name == "PIL.Image":
+                    modules.add(alias.asname or "PIL.Image")
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                bound = alias.asname or alias.name
+                if node.module == "PIL" and alias.name == "Image":
+                    modules.add(bound)
+                elif node.module == "PIL.Image" and alias.name == "open":
+                    direct.add(bound)
+    return modules, direct
+
+
+def _pil_image_open_calls(tree: ast.Module) -> list[ast.Call]:
+    """Calls that resolve to an explicitly imported ``PIL.Image.open`` spelling."""
+    modules, direct = _pil_open_bindings(tree)
+    calls: list[ast.Call] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        called = _dotted_name(node.func)
+        if called is None:
+            continue
+        if called in direct or (
+            called.endswith(".open") and called[: -len(".open")] in modules
+        ):
+            calls.append(node)
+    return calls
+
+
+def _image_open_call_sites() -> list[str]:
+    """Every call to ``PIL.Image.open`` under ``orimera/``, as ``module:function``.
+
+    An AST walk rather than a grep, so the prose in a docstring that talks *about* ``Image.open``
+    is not counted as a call to it. Attributed to the innermost enclosing function, and a call at
+    module scope says so.
+
+    The match is against the import bindings :func:`_pil_open_bindings` found in the same file,
+    not against the literal characters ``Image.open``, so renaming the import does not hide a
+    decode. The names have to reach Pillow through an import in that file: a module that never
+    imports Pillow contributes nothing, so an unrelated ``path.open`` or ``store.open`` is not a
+    hit.
+    """
+    package = pathlib.Path(pipeline_module.__file__).parent.parent
+    sites: list[str] = []
+    for path in sorted(package.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        enclosing: dict[ast.AST, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                for inner in ast.walk(node):
+                    enclosing[inner] = node.name
+        for node in _pil_image_open_calls(tree):
+            where = enclosing.get(node, "<module scope>")
+            sites.append(f"{path.relative_to(package.parent).as_posix()}:{where}")
+    return sorted(sites)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from PIL import Image\nImage.open(blob)",
+        "from PIL import Image as PILImage\nPILImage.open(blob)",
+        "import PIL\nPIL.Image.open(blob)",
+        "import PIL as pillow\npillow.Image.open(blob)",
+        "import PIL.Image as image_module\nimage_module.open(blob)",
+        "from PIL.Image import open as image_open\nimage_open(blob)",
+    ],
+)
+def test_the_decode_boundary_recognizes_supported_pillow_open_spellings(source):
+    """Import aliases do not turn a Pillow decode into a different operation."""
+    assert len(_pil_image_open_calls(ast.parse(source))) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from elsewhere import Image\nImage.open(blob)",
+        "import pathlib\npathlib.Path('photo.jpg').open()",
+        "store.open(blob)",
+    ],
+)
+def test_the_decode_boundary_does_not_count_unrelated_open_calls(source):
+    """The sweep follows Pillow imports, not the method name ``open`` by itself."""
+    assert _pil_image_open_calls(ast.parse(source)) == []
+
+
+def test_a_photograph_becomes_pixels_in_exactly_one_module():
+    """``decode.py``'s opening sentence, checked rather than asserted.
+
+    The whole module exists because ``Image.MAX_IMAGE_PIXELS`` and the promotion of
+    ``DecompressionBombWarning`` are interpreter-global, so a second decode path anywhere inherits
+    whatever the last import happened to set and nothing else. It was false once:
+    ``ingest/resolve.py`` opened and loaded an original itself, reached from a synchronous route,
+    with no comparison in front of it. A sentence that has been false once is worth a test.
+
+    The sweep is over the whole of ``orimera/`` rather than over the ingest package, because the
+    caller that broke it was in ingest and the next one need not be. ``orimera/corpus`` and
+    ``orimera/reconstruction`` both import Pillow and are allowed to; what they must not do is
+    turn somebody's uploaded bytes into pixels without asking ``decode`` first.
+
+    **What this covers, exactly.** Every statically spelled call that reaches
+    ``PIL.Image.open`` through an import binding in the file making it: ``Image.open`` after
+    ``from PIL import Image``,
+    ``PILImage.open`` after ``from PIL import Image as PILImage``, a spelled-out
+    ``PIL.Image.open``, ``pim.open`` after ``import PIL.Image as pim``, and a bare ``_open(...)``
+    after ``from PIL.Image import open as _open``. An earlier version of this sweep matched the
+    literal ``Image.open`` and nothing else, so the other four walked past it with the assertion
+    still green. Each of the four was planted in ``orimera/`` in turn and each turns it red.
+
+    **What it does not cover, said rather than implied.** Pillow has other doors into a decode:
+    ``ImageFile.Parser``, ``Image.frombytes``, ``open`` reached through ``getattr`` or rebound at
+    run time, and any decoder that is not Pillow. This holds the one door that has actually been
+    walked through. It is not a proof that there is no other, and ``decode.py``'s opening
+    sentence should be read as the claim, with this as the check that catches the shape which
+    broke it before.
+    """
+    assert _image_open_call_sites() == [
+        "orimera/ingest/decode.py:open_upright",
+        "orimera/ingest/decode.py:probe",
+    ]
 
 
 def test_a_photograph_carries_the_degenerate_interval_and_the_img_track(ingested):
