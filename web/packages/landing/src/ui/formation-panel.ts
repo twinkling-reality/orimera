@@ -34,6 +34,8 @@ export interface FormationPanelHandles {
   readonly root: HTMLElement;
   /** `null` means no capture is forming. The panel says so rather than showing stage zero. */
   render(state: FormationState | null): void;
+  /** Mark the region this panel describes as pre-ingested, or as the user's own. */
+  setOrigin(origin: 'sample' | 'yours'): void;
 }
 
 export function buildFormationPanel(onScenario: (s: MockScenario) => void): FormationPanelHandles {
@@ -43,6 +45,18 @@ export function buildFormationPanel(onScenario: (s: MockScenario) => void): Form
   // product-specification.md 4.1 lists "a progress bar not driven by real job state" as
   // explicitly unacceptable demo behaviour; the counts below are scripted, so the page says so.
   root.append(el('p', { class: 'mock-banner', text: MOCK_BANNER }));
+
+  /*
+   * The origin marker rides on the REGION, not on the session.
+   *
+   * A sample region and one of the user's own can sit side by side in the same Atlas, so "this is
+   * a sample" has to be a property of the thing it describes. Flagging the whole surface, which is
+   * what this used to do, leaves a mixed Atlas with nothing truthful to say about itself.
+   */
+  const origin = el('p', { class: 'region-origin' });
+  origin.hidden = true;
+  root.append(origin);
+
   root.append(el('h2', { id: 'formation-heading', class: 'console-heading', text: 'A capture forming' }));
 
   const track = el('ol', { class: 'track' });
@@ -155,7 +169,19 @@ export function buildFormationPanel(onScenario: (s: MockScenario) => void): Form
     root.dataset['phase'] = state.phase;
   }
 
-  return { root, render };
+  return {
+    root,
+    render,
+    setOrigin(which) {
+      // product-specification.md 4.1 requires a pre-ingested capture to disclose itself on the
+      // page it appears on. This is that disclosure, attached to the region it is true of.
+      origin.hidden = which !== 'sample';
+      origin.textContent =
+        which === 'sample'
+          ? 'Sample region. Pre-ingested earlier, not processed just now.'
+          : '';
+    },
+  };
 }
 
 const SCENARIO_LABEL: Readonly<Record<MockScenario, string>> = Object.freeze({

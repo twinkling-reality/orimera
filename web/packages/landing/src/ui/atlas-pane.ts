@@ -10,10 +10,19 @@
 import { el } from './dom.js';
 
 /**
- * What the visitor arrived at, which changes what the pane may truthfully say. An empty Atlas and
- * a pre-ingested sample are different claims and get different sentences.
+ * WHAT THE ATLAS CONTAINS, not how the visitor got here.
+ *
+ * This used to be an arrival mode: the whole session was flagged `empty` or `sample`, and the
+ * pane said "Sample world, pre-ingested" across everything in it. That was wrong on the product's
+ * own terms. interaction-model.md 1.1 has one scene for the whole session, so there is no such
+ * thing as a sample world to arrive in; there are only regions in the Atlas, some of which happen
+ * to be samples. A visitor with three captures of their own and two samples was, under the old
+ * model, in an unnameable mixed state.
+ *
+ * So the pane now says only whether anything is here. Whether a given region is a sample is
+ * carried by that region, next to the rung it earned, which is where a reader can act on it.
  */
-export type Arrival = 'empty' | 'sample';
+export type Arrival = 'empty' | 'populated';
 
 export interface AtlasPaneHandles {
   readonly root: HTMLElement;
@@ -32,13 +41,10 @@ const ARRIVAL_COPY: Readonly<Record<Arrival, { eyebrow: string; lede: string }>>
     lede:
       'Nothing has been uploaded here. This is the space a capture forms into, and it is the same space you would be standing in afterwards. There is no second scene to load.',
   },
-  // product-specification.md 4.1: pre-ingested captures are acceptable and must be disclosed on
-  // the page itself. This is that disclosure, and it is in the first paragraph rather than a
-  // footnote.
-  sample: {
-    eyebrow: 'Sample world, pre-ingested',
+  populated: {
+    eyebrow: 'Atlas',
     lede:
-      'This region was not processed just now. It is a scripted replay of one capture forming, shown so the states and their labels can be read end to end. No live pipeline is running behind this page.',
+      'One region is placed here. Regions sit in the same continuous space whatever they came from, and each one states its own origin and the reconstruction rung it earned rather than leaving you to infer either.',
   },
 });
 
@@ -49,7 +55,7 @@ export function buildAtlasPane(onLeave: () => void, consoleRoot: HTMLElement): A
     id: 'atlas',
     class: 'pane pane-atlas',
     tabindex: '-1',
-    'aria-label': 'Unformed Atlas',
+    'aria-label': 'Atlas',
   });
 
   const arrival = el('p', { class: 'arrival' });

@@ -1,25 +1,23 @@
 /**
- * The signed-out landing page, and the entrance into an unformed Atlas.
+ * The signed-out surfaces: title screen, Method, and the Atlas you arrive at.
  *
- * The shape of this file is the point. There is one canvas, created once, never torn down. Moving
- * between the landing composition and the Atlas changes which figure the particle field holds and
- * animates three numbers; it does not unmount anything, does not navigate, and does not construct
- * a renderer. That is interaction-model.md 1.1 ("there is no scene loading, no 'enter' and no
- * 'return'") honoured at the only place a signed-out page can honour it.
+ * THE SHAPE OF THIS FILE IS THE POINT. There is one ground, one top bar and one set of keyboard
+ * shortcuts, and they are built once and never rebuilt. Moving between surfaces swaps which pane
+ * is shown and which palette the ground holds; it does not navigate, does not unmount the chrome,
+ * and does not construct a second version of anything. That is interaction-model.md 1.1 ("there
+ * is no scene loading, no 'enter' and no 'return'") honoured at the only place a signed-out page
+ * can honour it.
  *
- * NO RENDERER DECISION IS TAKEN HERE. ADR-0003 is unresolved, and this page must not prejudge it
- * or pay for it. The forbidden-imports contract in `web/.dependency-cruiser.cjs` enforces that
- * this package never names three.js, Spark, PlayCanvas, `@orimera/atlas-three` or
- * `@orimera/atlas-react`.
+ * NO RENDERER DECISION IS TAKEN HERE. The forbidden-imports contract in
+ * `web/.dependency-cruiser.cjs` enforces that this package never names three.js, Spark,
+ * PlayCanvas, `@orimera/atlas-three` or `@orimera/atlas-react`.
  */
 
 import './style.css';
 
-import { Atmosphere } from './atmosphere.js';
-import { DPR_CAP, readEnv, watchReducedMotion } from './env.js';
+import { readEnv, watchReducedMotion } from './env.js';
 import {
   MockFormationEventSource,
-  formationVisual,
   initialFormationState,
   reduceFormation,
   replayToEnd,
@@ -28,104 +26,145 @@ import {
   type MockScenario,
 } from './formation/index.js';
 import { buildAtlasPane } from './ui/atlas-pane.js';
+import { buildChrome, type Surface } from './ui/chrome.js';
+import { FIRST_RUN_OFFER, SAMPLE_PLACED, buildCompanion } from './ui/companion.js';
 import { buildFormationPanel } from './ui/formation-panel.js';
-import { buildLanding } from './ui/landing.js';
+import { buildMethod } from './ui/method.js';
+import { buildFigures, buildTitle } from './ui/title.js';
+import { boundaryReason, buildViewportBoundary, readViewport } from './ui/viewport-boundary.js';
 
 const CAPTURE_ID = 'sample-harbour';
 
-const canvas = document.getElementById('field');
 const overlay = document.getElementById('overlay');
-if (!(canvas instanceof HTMLCanvasElement) || !overlay) {
-  throw new Error('landing: expected #field canvas and #overlay in the document');
-}
+if (!overlay) throw new Error('landing: expected #overlay in the document');
 
 const env = readEnv();
-const atmosphere = new Atmosphere(canvas, env);
-atmosphere.start();
 
 let unsubscribeSource: (() => void) | null = null;
 /** `null` when no capture is forming. The empty Atlas is an empty Atlas. */
 let formation: FormationState | null = null;
 
 const panel = buildFormationPanel((scenario) => startFormation(scenario));
-const landing = buildLanding({
-  onEnter: () => enter(null),
-  onSample: () => enter('ready'),
-  onHowItWorks: () => {
-    const how = document.getElementById('how-it-works');
-    if (how instanceof HTMLDetailsElement) {
-      how.open = true;
-      how.scrollIntoView({ behavior: env.reducedMotion ? 'auto' : 'smooth', block: 'start' });
-      how.querySelector('summary')?.focus();
-    }
-  },
-});
-const atlas = buildAtlasPane(() => leave(), panel.root);
+const title = buildTitle({ onEnter: () => enter() });
+const method = buildMethod();
+const atlas = buildAtlasPane(() => go('title'), panel.root);
 
-overlay.append(landing, atlas.root);
+const chrome = buildChrome({
+  onHome: () => go('title'),
+  onMethod: () => go('method'),
+});
+
+/*
+ * The Companion offers the sample; the top bar does not.
+ *
+ * A "Sample world" destination in the bar was a second way into a second world, which is the
+ * discrete-scene structure interaction-model.md 1.1 rejects. The sample is regions placed in THIS
+ * Atlas, and the thing that offers to place them is the agent whose whole job is offering things.
+ */
+const companion = buildCompanion((optionId) => onCompanion(optionId));
+
+// The figures, the bar and the Companion sit outside every pane, shared rather than reproduced.
+overlay.append(buildFigures(), chrome.root, title, method, atlas.root, companion.root);
+
+const PANES: Readonly<Record<Surface, HTMLElement>> = {
+  title,
+  method,
+  atlas: atlas.root,
+};
+
+let surface: Surface = 'title';
 atlas.setArrival('empty');
-setView('landing');
-paint();
+go('title');
+panel.render(formation);
 
 // ---------------------------------------------------------------------------------------------
-// Views. Two panes over one canvas, never two pages.
+// Surfaces. Three panes under one bar, never three pages.
 
-function setView(view: 'landing' | 'atlas'): void {
-  document.documentElement.dataset['view'] = view;
-  const shown = view === 'landing' ? landing : atlas.root;
-  landing.hidden = view !== 'landing';
-  atlas.root.hidden = view !== 'atlas';
-  // Fade the incoming pane in from the same class the outgoing pane fades out with, so the two
-  // halves of the move are one rule rather than two that can drift apart.
+/**
+ * Show one surface.
+ *
+ * The ground palette is derived from the surface rather than set alongside it, so there is no
+ * state in which the Atlas is showing over a pale ground. `data-surface` on the root is what the
+ * stylesheet keys the palette off.
+ */
+function go(next: Surface): void {
+  const previous = surface;
+  surface = next;
+  document.documentElement.dataset['surface'] = next;
+  document.documentElement.dataset['ground'] = next === 'atlas' ? 'deep' : 'pale';
+  chrome.setSurface(next);
+
+  for (const [key, pane] of Object.entries(PANES) as [Surface, HTMLElement][]) {
+    pane.hidden = key !== next;
+  }
+
+  // Leaving the Atlas ends whatever was forming in it. A stream left running behind a hidden
+  // pane would keep describing a capture nobody is looking at.
+  if (previous === 'atlas' && next !== 'atlas') {
+    stopSource();
+    formation = null;
+    panel.render(null);
+    companion.speak(null);
+  }
+  // The Companion belongs to the world, not to the chrome, so it is not shown over Method.
+  companion.root.hidden = next !== 'atlas';
+
+  const shown = PANES[next];
   shown.classList.add('is-faded');
   requestAnimationFrame(() => shown.classList.remove('is-faded'));
-  // The ground is pale on the landing page and deep inside the Atlas. The canvas lerps between
-  // them continuously; the DOM tokens flip at the same moment the pane does, which is behind the
-  // fade and therefore never seen mid-change.
-  document.documentElement.dataset['ground'] = view === 'landing' ? 'pale' : 'deep';
+  shown.focus({ preventScroll: true });
 }
 
 /**
  * The entrance.
  *
- * `scenario` is null for "Enter Orimera", which lands in a genuinely empty Atlas, and set for
- * "Explore a sample world", which lands on an already-formed region. The sample world is replayed
- * through the same reducer as the live path rather than hand-written, so the two cannot diverge.
+ * It always lands in an empty Atlas, because that is what an Atlas with nothing uploaded to it
+ * is. The sample is not a different destination; it is something the Companion offers to place
+ * here, and the offer is the first thing said on arrival.
  */
-function enter(scenario: MockScenario | null): void {
-  const duration = atmosphere.enterAtlas();
-  landing.classList.add('is-faded');
-
-  window.setTimeout(() => {
-    setView('atlas');
-    atlas.setArrival(scenario === null ? 'empty' : 'sample');
-    atlas.setArrivalCaption(
-      env.reducedMotion
-        ? 'You are now standing in the Atlas. The composition changed without moving, because reduced motion is on.'
-        : null,
-    );
-    atlas.root.focus();
-    // "Enter Orimera" arrives in a genuinely empty Atlas. Nothing forms until the visitor asks
-    // for it, because nothing has been uploaded and a console that started counting would be
-    // describing an upload that did not happen.
-    if (scenario === null) applyIdle();
-    else replaySample(scenario);
-  }, Math.max(0, duration - 260));
+function enter(): void {
+  go('atlas');
+  atlas.setArrival('empty');
+  atlas.setArrivalCaption(
+    env.reducedMotion
+      ? 'You are now in the Atlas. The ground changed without moving, because reduced motion is on.'
+      : null,
+  );
+  // Arriving lands in a genuinely empty Atlas. Nothing forms until it is asked for, because
+  // nothing has been uploaded and a console that started counting would be describing an upload
+  // that did not happen.
+  applyIdle();
+  companion.speak(FIRST_RUN_OFFER);
 }
 
-function leave(): void {
-  stopSource();
-  formation = null;
-  const duration = atmosphere.returnToLanding();
-  atlas.root.classList.add('is-faded');
-  window.setTimeout(() => {
-    setView('landing');
-    document.getElementById('path-enter')?.focus();
-  }, Math.max(0, duration - 260));
+/**
+ * The Companion's one turn on this surface.
+ *
+ * `later` closes the thread with no penalty and leaves the summon affordance behind, so the
+ * dismissal is reversible. An offer you can only decline once is a trap rather than an offer.
+ */
+function onCompanion(optionId: string): void {
+  if (optionId === 'place-sample') {
+    placeSampleRegions();
+    companion.speak(SAMPLE_PLACED);
+    return;
+  }
+  if (optionId === 'summon') {
+    companion.speak(formation === null ? FIRST_RUN_OFFER : SAMPLE_PLACED);
+    return;
+  }
+  companion.speak(null);
+}
+
+/** Place the sample regions: a recomposition of this Atlas, not a second world to load. */
+function placeSampleRegions(): void {
+  atlas.setArrival('populated');
+  panel.setOrigin('sample');
+  replaySample('ready');
 }
 
 // ---------------------------------------------------------------------------------------------
-// Formation. One reducer, one visual, one label.
+// Formation. One reducer, one set of labels.
 
 function stopSource(): void {
   unsubscribeSource?.();
@@ -133,28 +172,25 @@ function stopSource(): void {
 }
 
 function applyIdle(): void {
+  stopSource();
   formation = null;
   atlas.setArrival('empty');
-  atmosphere.setComposition({ kind: 'unformed-atlas' });
-  atmosphere.setMotion('breathe');
+  panel.setOrigin('yours');
   panel.render(null);
 }
 
 function applyFormation(next: FormationState): void {
   formation = next;
-  const visual = formationVisual(formation);
-  atmosphere.setComposition({ kind: 'formation', visual });
-  atmosphere.setMotion(visual.motion);
   panel.render(formation);
 }
 
 /** Subscribe to the MOCK source. The real one is an `EventSource`; see `formation/source.ts`. */
 function startFormation(scenario: MockScenario): void {
   stopSource();
-  // Whatever the visitor arrived through, a scripted replay is a scripted replay, and the pane
-  // says so from the first frame rather than leaving "nothing has been uploaded here" standing
-  // above a capture that is visibly forming.
-  atlas.setArrival('sample');
+  // A scripted replay is a scripted replay however it was reached, so the region is marked from
+  // the first frame rather than after it finishes.
+  atlas.setArrival('populated');
+  panel.setOrigin('sample');
   applyFormation(initialFormationState(CAPTURE_ID));
   const source = new MockFormationEventSource(scenario);
   const resumeFrom = formation === null ? null : formation.lastEventId;
@@ -176,7 +212,6 @@ function startFormation(scenario: MockScenario): void {
 /** The sample world: the same scripted events, applied with no waiting. */
 function replaySample(scenario: MockScenario): void {
   stopSource();
-  atlas.setArrival('sample');
   let state = initialFormationState(CAPTURE_ID);
   replayToEnd(scenario, CAPTURE_ID, (event) => {
     state = reduceFormation(state, event);
@@ -184,27 +219,83 @@ function replaySample(scenario: MockScenario): void {
   applyFormation(withStreamState(state, 'live'));
 }
 
-function paint(): void {
-  panel.render(formation);
-}
+// ---------------------------------------------------------------------------------------------
+// Keyboard. The title screen is a title screen, so it has one.
 
+/**
+ * NOTHING HERE BINDS ESCAPE, and nothing ever may: interaction-model.md 2.1 reserves it for
+ * releasing the pointer and states plainly that the application can never own it.
+ *
+ * Two guards keep these from firing on top of something the visitor actually chose. Modified
+ * presses are left alone so browser and system shortcuts still work, and while focus sits on a
+ * control that control keeps its own keys, so tabbing to GitHub and pressing Enter follows the
+ * link instead of starting a session.
+ */
+window.addEventListener('keydown', (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (document.documentElement.dataset['blocked'] === 'true') return;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active.closest('button, a, input, textarea, select')) return;
+
+  const follow = (id: string): void => document.getElementById(id)?.click();
+  switch (e.key.toLowerCase()) {
+    case 'enter':
+    case ' ':
+      // Only the title screen has a start prompt, so only the title screen answers to it.
+      if (surface !== 'title') return;
+      e.preventDefault();
+      enter();
+      return;
+    case 'h':
+      e.preventDefault();
+      go('title');
+      return;
+    case 'm':
+      e.preventDefault();
+      go('method');
+      return;
+    case 'd':
+      follow('path-docs');
+      return;
+    case 'g':
+      follow('path-github');
+      return;
+    default:
+  }
+});
 
 // ---------------------------------------------------------------------------------------------
+// Platform.
 
-window.addEventListener('resize', () =>
-  atmosphere.resize(Math.min(DPR_CAP, window.devicePixelRatio || 1)),
-);
+/*
+ * The desktop boundary.
+ *
+ * Checked on resize as well as at load, because a desktop window can be dragged below the
+ * threshold mid-session and a boundary that only ran once would let that through. `apply` runs
+ * only when the reason changes, so dragging an edge does not thrash the DOM.
+ */
+const boundary = buildViewportBoundary();
+document.body.append(boundary.root);
+
+let lastReason: string | null | undefined;
+function checkViewport(): void {
+  const reason = boundaryReason(readViewport());
+  if (reason === lastReason) return;
+  lastReason = reason;
+  boundary.apply(reason);
+}
+checkViewport();
+
+window.addEventListener('resize', checkViewport);
+/*
+ * Resize is not the only way this can change. Attaching a mouse to a tablet flips
+ * `(pointer: coarse)` with no resize at all, and a visitor who has just solved the stated problem
+ * should not have to reload to be let in.
+ */
+window.matchMedia('(pointer: coarse)').addEventListener('change', checkViewport);
 
 watchReducedMotion((reduced) => {
   env.reducedMotion = reduced;
-  atmosphere.setReducedMotion(reduced);
   document.documentElement.dataset['reducedMotion'] = reduced ? 'true' : 'false';
 });
 document.documentElement.dataset['reducedMotion'] = env.reducedMotion ? 'true' : 'false';
-
-// The field is atmosphere, not information. Nothing is lost by stopping it in a hidden tab, and
-// a background tab that keeps a canvas loop alive is a battery cost with no viewer.
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) atmosphere.stop();
-  else atmosphere.start();
-});

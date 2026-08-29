@@ -3,20 +3,26 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light dark" />
     <title>Orimera</title>
     <meta
       name="description"
       content="A personal world memory model. Your photographs become navigable memory regions, and every claim opens the photograph it came from."
     />
+    <!-- The two figures are the composition, so they are fetched with the document, not after it. -->
+    <link rel="preload" as="image" href="/figures/orimera1-1400.webp" />
+    <link rel="preload" as="image" href="/figures/orimera2-1400.webp" />
   </head>
   <body>
     <!--
-      One canvas for the whole session. The landing composition, the entrance transition and the
-      unformed Atlas are all the same particle field with a different figure assigned to it, which
-      is the 2D echo of interaction-model.md 1.1: there is no "enter scene" and no page swap.
+      The ground, for every surface. One element, two palettes, cross-faded: light on the title
+      screen and in Method, dark inside the Atlas. Changing surface changes the palette rather
+      than swapping in a different background, which is what makes the move read as one place
+      rather than as three pages that happen to be linked.
     -->
-    <canvas id="field" aria-hidden="true"></canvas>
+    <div id="mesh" aria-hidden="true"></div>
+    <div id="mesh-deep" aria-hidden="true"></div>
+    <div id="grain" aria-hidden="true"></div>
     <div id="overlay"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

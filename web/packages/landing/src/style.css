@@ -12,8 +12,8 @@
  */
 
 :root {
-  --ink: #1b2236;
-  --ink-soft: #4b556f;
+  --ink: #0d1017;
+  --ink-soft: #3a4256;
   /* Held at 4.5:1 against the pale ground. This is body copy in several places, so it is a
      contrast requirement rather than a taste decision. */
   --ink-faint: #5c6580;
@@ -60,59 +60,114 @@
   display: none !important;
 }
 
+/*
+ * The document never scrolls. Not a preference: the landing page is one cinematic surface and a
+ * scrollbar on it is a second page appearing under the first. Long reading matter lives in the
+ * method sheet, which scrolls inside itself, and the panes below carry `overflow-y: auto` purely
+ * as a safety valve on very short viewports so nothing is ever clipped away unreachable.
+ */
 html,
 body {
   height: 100%;
+  overflow: hidden;
 }
 
+/*
+ * The ground: a mesh of wide, low-saturation lobes plus grain.
+ *
+ * Four overlapping radial lobes rather than one gradient, because a single ramp reads as a
+ * gradient and a set of overlapping ones reads as light in a room. They are deliberately close
+ * together in value; the composition is carried by the figures, and a ground with contrast in it
+ * would compete with them.
+ *
+ * The grain is an inline SVG turbulence rather than a raster tile: no request, no cache entry,
+ * and it resolves at whatever pixel density the display has instead of being fixed at export.
+ */
 body {
   margin: 0;
   font-family: var(--font);
   font-weight: 300;
   color: var(--ink);
-  background: #eceef3;
+  background-color: #f2f0ee;
   -webkit-font-smoothing: antialiased;
   letter-spacing: 0.005em;
 }
 
-#field {
+#mesh {
   position: fixed;
   inset: 0;
-  display: block;
   z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(58% 46% at 16% 20%, #f6ecf3 0%, rgba(246, 236, 243, 0) 62%),
+    radial-gradient(52% 44% at 84% 16%, #e8eef9 0%, rgba(232, 238, 249, 0) 64%),
+    radial-gradient(64% 52% at 50% 98%, #fbf1e4 0%, rgba(251, 241, 228, 0) 66%),
+    radial-gradient(44% 38% at 94% 76%, #ecf2ee 0%, rgba(236, 242, 238, 0) 62%),
+    radial-gradient(50% 40% at 6% 82%, #f1eef8 0%, rgba(241, 238, 248, 0) 64%),
+    #f2f0ee;
+  transition: opacity 900ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/*
+ * The deep ground is the SAME five lobes, relit.
+ *
+ * Not a different background and not the light one dimmed. It is the same arrangement of light in
+ * the same places with the values inverted, which is what makes entering the Atlas read as the
+ * lights going down in a room you are already standing in rather than as a page swap. The lobes
+ * sit at the same coordinates on purpose; that correspondence is the whole effect.
+ */
+#mesh-deep {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(58% 46% at 16% 20%, #1b1830 0%, rgba(27, 24, 48, 0) 62%),
+    radial-gradient(52% 44% at 84% 16%, #131c33 0%, rgba(19, 28, 51, 0) 64%),
+    radial-gradient(64% 52% at 50% 98%, #241d1c 0%, rgba(36, 29, 28, 0) 66%),
+    radial-gradient(44% 38% at 94% 76%, #131e1d 0%, rgba(19, 30, 29, 0) 62%),
+    radial-gradient(50% 40% at 6% 82%, #191631 0%, rgba(25, 22, 49, 0) 64%),
+    #0a0c14;
+  transition: opacity 900ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+:root[data-ground='deep'] #mesh-deep {
+  opacity: 1;
+}
+
+/*
+ * The grain, over whichever ground is showing.
+ *
+ * An inline SVG turbulence rather than a raster tile: no request, no cache entry, and it resolves
+ * at whatever pixel density the display has instead of being fixed at export.
+ */
+#grain {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.22'/%3E%3C/svg%3E");
+  transition: opacity 900ms ease;
+}
+
+/* Multiply over near-black would erase the grain, so on the deep ground it lightens instead. */
+:root[data-ground='deep'] #grain {
+  mix-blend-mode: screen;
+  opacity: 0.32;
 }
 
 #overlay {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   min-height: 100%;
 }
 
-/*
- * A soft scrim under the text column.
- *
- * The field is atmosphere and the words are the content, so the words win. This is a gradient
- * rather than a panel because a panel would cut the field in half and the continuity of the field
- * is the whole idea. It fades out well before the composition, which sits to the right.
- */
-#overlay::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: linear-gradient(
-    98deg,
-    var(--scrim) 0%,
-    var(--scrim) 30%,
-    color-mix(in srgb, var(--scrim) 55%, transparent) 48%,
-    transparent 68%
-  );
-  transition: background 400ms ease;
-}
-
 .pane {
-  min-height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -127,289 +182,705 @@ body {
   opacity: 0;
 }
 
-/* ------------------------------------------------------------------ landing */
+/*
+ * The landing page is not a column, so it opts out of the shared pane box.
+ *
+ * `.pane` centres a 62rem column and is right for the Atlas. Here the hero is centred over the
+ * full frame and only the reading matter below it is measured, so the constraint moves down to
+ * `.below` where it belongs.
+ */
+.pane-title,
+.pane-method {
+  max-width: none;
+  padding: 0;
+}
 
-.eyebrow {
+/*
+ * The figures are the title screen's composition, not the product's wallpaper. Method is a page to
+ * read and the Atlas is a place to be, and two glowing heads behind either would be decoration
+ * competing with content.
+ */
+.figures {
+  transition: opacity 700ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+:root:not([data-surface='title']) .figures {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ topbar */
+
+.topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: clamp(1.4rem, 3vw, 2.1rem) clamp(1.5rem, 4vw, 3rem);
+}
+
+.destinations {
+  display: flex;
+  align-items: center;
+  gap: clamp(1rem, 2.2vw, 1.7rem);
+}
+
+/*
+ * A destination is a key chip and a label, and the whole thing is one hit target.
+ *
+ * The chip carries the underline on hover rather than the label, which is the small idea that
+ * makes this feel like a console menu instead of a nav bar: what lights up is the key you would
+ * press, not the word you would click.
+ */
+.destination {
+  position: relative;
+  appearance: none;
+  border: 0;
+  padding: 0.3rem 0;
+  background: none;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 300;
+  letter-spacing: 0.015em;
+  color: var(--ink-soft);
+  text-decoration: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55em;
+  transition: color 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.7em;
+  padding: 0.28em 0.42em 0.24em;
+  font: inherit;
+  font-size: 0.78em;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  transition:
+    border-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.key-wide {
+  min-width: 0;
+  letter-spacing: 0.14em;
+  text-indent: 0.14em;
+  padding: 0.3em 0.62em 0.26em;
+}
+
+.destination:hover,
+.destination:focus-visible {
+  color: var(--ink);
+}
+
+.destination:hover .key,
+.destination:focus-visible .key {
+  border-color: color-mix(in srgb, var(--ink) 40%, transparent);
+  background: color-mix(in srgb, #ffffff 62%, transparent);
+  transform: translateY(-1px);
+}
+
+.destination-label::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* -------------------------------------------------------------- title screen */
+
+/*
+ * Two figures facing each other across a centred title, and a start prompt under it.
+ */
+.pane-title {
+  position: relative;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: clamp(4.5rem, 11vh, 7rem) clamp(1.25rem, 4vw, 3rem) clamp(3.5rem, 9vh, 5rem);
+}
+
+/* ------------------------------------------------------------------ figures */
+
+.figures {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/*
+ * Large, and reaching past the frame on both sides. They are the composition rather than a pair of
+ * illustrations beside it, so they are sized to crop rather than to fit.
+ */
+.figure {
+  position: absolute;
+  bottom: -14%;
+  width: clamp(17rem, 31vw, 34rem);
+  max-width: 38%;
+  height: auto;
+  opacity: 0;
+  animation: figure-in 1600ms cubic-bezier(0.22, 1, 0.36, 1) 120ms forwards;
+}
+
+.figure-left {
+  left: -2%;
+}
+
+.figure-right {
+  right: -2%;
+  animation-delay: 260ms;
+}
+
+@keyframes figure-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(1.015);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * A slow drift, well under the rate at which motion reads as animation. It exists so the screen
+ * is never completely static while it waits, which is what makes a title screen feel live rather
+ * than like a screenshot.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .figure-left {
+    animation:
+      figure-in 1600ms cubic-bezier(0.22, 1, 0.36, 1) 120ms forwards,
+      drift-a 19s ease-in-out 1800ms infinite;
+  }
+
+  .figure-right {
+    animation:
+      figure-in 1600ms cubic-bezier(0.22, 1, 0.36, 1) 260ms forwards,
+      drift-b 23s ease-in-out 2100ms infinite;
+  }
+}
+
+@keyframes drift-a {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0.5%, -1.1%, 0); }
+}
+
+@keyframes drift-b {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(-0.5%, -0.8%, 0); }
+}
+
+/* -------------------------------------------------------------------- title */
+
+.title {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(0.8rem, 2vh, 1.5rem);
+}
+
+/*
+ * The name, small and above the line that explains it.
+ *
+ * Wide tracking at this size is what keeps it from reading as a caption. It is the only text on
+ * the screen set in uppercase, which is the whole of its emphasis: no weight, no colour, no rule.
+ */
+.brandline {
   margin: 0;
-  font-size: 0.72rem;
-  font-weight: 400;
-  letter-spacing: 0.22em;
+  font-size: clamp(0.72rem, 0.9vw, 0.82rem);
+  font-weight: 300;
+  letter-spacing: 0.46em;
+  text-indent: 0.46em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  opacity: 0;
+  animation: rise 1000ms cubic-bezier(0.22, 1, 0.36, 1) 200ms forwards;
+}
+
+/*
+ * The proposition, at title scale.
+ *
+ * Weight 200 and nothing heavier anywhere on this page. The tracking settles from open to set
+ * rather than starting there, which is the only reveal on the screen: one property, on one
+ * element, moving nothing else.
+ */
+/* Named `proposition`, not `headline`: the formation console already owns `.headline` for a
+   capture's status line, and two unrelated things under one class is how a stylesheet starts
+   fighting itself. */
+.proposition {
+  margin: 0;
+  /*
+   * No measure cap. This is one short line and it should stay one line wherever it fits; a `ch`
+   * limit was breaking it across two on screens wide enough to hold it, which reads as a layout
+   * accident rather than as a decision. `balance` handles the narrow case, splitting it evenly
+   * instead of orphaning the last word.
+   */
+  max-width: none;
+  text-wrap: balance;
+  font-size: clamp(2.1rem, 4.4vw, 4rem);
+  font-weight: 200;
+  line-height: 1.06;
+  letter-spacing: -0.012em;
+  color: var(--ink);
+  opacity: 0;
+  animation: proposition-in 1500ms cubic-bezier(0.22, 1, 0.36, 1) 340ms forwards;
+}
+
+@keyframes proposition-in {
+  from { opacity: 0; letter-spacing: 0.08em; }
+  to { opacity: 1; letter-spacing: -0.012em; }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* -------------------------------------------------------------------- start */
+
+/*
+ * The start prompt.
+ *
+ * A real button, not just a key hint. Pointer lock does not exist on iOS Safari or Android
+ * Chrome (interaction-model.md 2.1) and neither does a keyboard, so a title screen whose only
+ * way in is a keystroke has no way in at all on the devices most likely to open it.
+ */
+.start {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0.9rem 0.4rem 0.5rem;
+  margin-top: clamp(0.5rem, 2vh, 1.4rem);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.62em;
+  font: inherit;
+  font-size: clamp(0.7rem, 0.86vw, 0.78rem);
+  font-weight: 300;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  cursor: pointer;
+  opacity: 0;
+  animation: rise 1100ms cubic-bezier(0.22, 1, 0.36, 1) 860ms forwards;
+  transition: color 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.start:hover,
+.start:focus-visible {
+  color: var(--ink);
+}
+
+.start:hover .key,
+.start:focus-visible .key {
+  border-color: color-mix(in srgb, var(--ink) 42%, transparent);
+  background: color-mix(in srgb, #ffffff 55%, transparent);
+  transform: translateY(-1px);
+}
+
+/*
+ * A breath on the prompt, so the screen reads as waiting for you rather than as finished. Slow
+ * and shallow: this is the only thing on the page that repeats, and it sits directly under the
+ * title where a faster pulse would be impossible to look away from.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .start .key {
+    animation: breathe 3.6s ease-in-out 2s infinite;
+  }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.58; }
+}
+
+/* --------------------------------------------------------------- companion */
+
+/*
+ * The Companion panel, anchored lower left.
+ *
+ * interaction-model.md 4.1 fixes the position: "A floating dialogue panel in screen space,
+ * anchored lower left, constrained never to overlap the reticle or the focused anchor's label."
+ * There is no reticle on this surface yet, but the anchor is the same one it will keep, so the
+ * panel does not have to move when the world arrives underneath it.
+ *
+ * No tether and no 3D presence, which 4.2 sanctions rather than merely tolerates: with no world
+ * to place it in, no placement candidate survives, and the specified behaviour in that case is
+ * that the panel opens alone.
+ */
+.companion {
+  position: fixed;
+  left: clamp(1.5rem, 4vw, 3rem);
+  bottom: clamp(1.5rem, 4vh, 2.5rem);
+  z-index: 4;
+  width: min(24rem, calc(100vw - 3rem));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.9rem;
+}
+
+.companion-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.2rem 1.3rem 1.25rem;
+  border: 1px solid var(--panel-line);
+  border-radius: 3px;
+  background: var(--panel);
+  backdrop-filter: blur(20px) saturate(1.05);
+  animation: companion-in 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes companion-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.companion-line {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 300;
+  line-height: 1.68;
+  color: var(--ink);
+}
+
+.companion-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.1rem;
+}
+
+/*
+ * Options are text, and the dismissal is quieter than the offer.
+ *
+ * Not equal-weight buttons. "Later" costs nothing and is always available, but it is not the
+ * thing being offered, and styling the two identically would make the panel read as a dialog
+ * asking permission rather than as somebody offering something.
+ */
+.companion-option,
+.companion-summon {
+  position: relative;
+  appearance: none;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 300;
+  color: var(--ink);
+  padding: 0.25rem 0;
+  cursor: pointer;
+  transition: color 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.companion-option-quiet {
+  color: var(--ink-faint);
+}
+
+.companion-option::after,
+.companion-summon::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.companion-option:hover::after,
+.companion-option:focus-visible::after,
+.companion-summon:hover::after,
+.companion-summon:focus-visible::after {
+  transform: scaleX(1);
+}
+
+.companion-option:hover,
+.companion-option:focus-visible,
+.companion-summon:hover,
+.companion-summon:focus-visible {
+  color: var(--ink);
+}
+
+.companion-summon {
+  color: var(--ink-soft);
+}
+
+/* The origin marker on a region, beside the rung it earned rather than over the whole surface. */
+.region-origin {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--ink-faint);
+}
+
+/* ---------------------------------------------------------------- boundary */
+
+/*
+ * The desktop boundary.
+ *
+ * Not a responsive breakpoint. There is no small-screen layout below this because there is no
+ * small-screen PRODUCT below it: the Atlas is navigated by mouse-look, mouse-look is pointer lock,
+ * and pointer lock does not exist on iOS Safari or Android Chrome (interaction-model.md 2.1). A
+ * title screen that reflowed neatly onto a phone would be promising a way in that is not there.
+ *
+ * It covers everything, including the sheet, because while it stands nothing behind it is usable.
+ */
+.boundary {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  text-align: center;
+  padding: clamp(1.5rem, 8vw, 4rem);
+  background: #f2f0ee;
+}
+
+.boundary-eyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 300;
+  letter-spacing: 0.46em;
+  text-indent: 0.46em;
   text-transform: uppercase;
   color: var(--ink-faint);
 }
 
-.display {
+.boundary-head {
   margin: 0;
-  max-width: 18ch;
-  font-size: clamp(2.6rem, 6.4vw, 5rem);
+  font-size: clamp(1.6rem, 6vw, 2.4rem);
   font-weight: 200;
-  line-height: 1.02;
-  letter-spacing: -0.028em;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+  color: var(--ink);
 }
 
-.display em {
-  font-style: normal;
-  color: var(--accent);
-}
-
-.lede {
+.boundary-body {
   margin: 0;
-  max-width: var(--measure);
-  font-size: clamp(1rem, 1.5vw, 1.16rem);
-  line-height: 1.62;
+  max-width: 34rem;
+  font-size: 0.92rem;
+  font-weight: 300;
+  line-height: 1.68;
   color: var(--ink-soft);
 }
 
-.commitments {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.55rem;
-  max-width: var(--measure);
-  border-left: 1px solid var(--rule);
-  padding-left: 1.1rem;
+/* Everything behind the boundary stops: no drift, no breathing, nothing to scroll to. */
+:root[data-blocked='true'] .figures,
+:root[data-blocked='true'] #overlay {
+  display: none;
 }
 
-.commitments li {
-  font-size: 0.9rem;
-  line-height: 1.55;
-  color: var(--ink-faint);
+/* ------------------------------------------------------------------ method */
+
+/*
+ * Method is a page to read, so it is the one surface that scrolls.
+ *
+ * `display: block`, overriding the shared pane. `.pane` centres its children with
+ * `justify-content: center`, which is right for a screen that fits and wrong for one that does
+ * not: a centred flex column that overflows pushes its first child past the top edge, and an
+ * overflowing box cannot be scrolled backwards past its own start. The result is a page whose
+ * first paragraph is rendered and unreachable.
+ */
+.pane-method {
+  display: block;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
-.commitments strong {
-  font-weight: 500;
+/*
+ * One column of prose, and nothing else.
+ *
+ * The measure is the whole design. Around 62 characters is where a line stops needing the eye to
+ * hunt for the start of the next one, and everything else here follows from holding it: no
+ * sidebar to fill, no grid to balance, no cards, so no reason for the furniture that a grid drags
+ * in behind it. The page is text with a few drawings in it, which is what it actually is.
+ */
+.prose-column {
+  max-width: 38rem;
+  margin: 0 auto;
+  padding: clamp(7rem, 18vh, 11rem) clamp(1.5rem, 5vw, 3rem) clamp(6rem, 16vh, 10rem);
+}
+
+.prose {
+  margin: 0 0 1.35em;
+  font-size: clamp(1rem, 1.15vw, 1.08rem);
+  font-weight: 300;
+  line-height: 1.78;
+  letter-spacing: 0.002em;
+  color: var(--ink-soft);
+}
+
+/*
+ * Headings are sentences, so they are set like sentences.
+ *
+ * Same family, barely larger than the body, full ink instead of the softened tone, and separated
+ * by space rather than by a rule. A page whose sections are announced by size and weight reads as
+ * a document with a table of contents; this one should read as somebody explaining something.
+ */
+.prose-head {
+  margin: 2.9em 0 0.9em;
+  font-size: clamp(1.04rem, 1.2vw, 1.14rem);
+  font-weight: 300;
+  line-height: 1.4;
+  letter-spacing: -0.004em;
   color: var(--ink);
 }
 
-.paths {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  margin-top: calc(var(--step) * 0.6);
+.prose-column > .prose-head:first-child {
+  margin-top: 0;
 }
 
-.path {
-  appearance: none;
-  display: grid;
-  gap: 0.18rem;
-  min-width: 13rem;
-  min-height: 44px;
-  padding: 0.75rem 1.1rem;
-  text-align: left;
+.prose-foot {
+  margin-top: 3em;
+  font-size: 0.88rem;
+  color: var(--ink-faint);
+}
+
+/*
+ * The one figure on the page, and it is allowed to break the measure.
+ *
+ * Prose is capped at 38rem because that is where a line stops being comfortable. A figure has no
+ * such limit and this one carries detail at the scale of single points, so it runs wider than the
+ * column it sits in. Breaking out is the signal that it is evidence rather than illustration.
+ *
+ * It inherits `currentColor`, so it follows the ground rather than being pinned to one palette.
+ */
+.figure-block {
+  margin: 3.2em 0 3.4em;
+  width: min(52rem, calc(100vw - 3rem));
+  margin-inline: calc((38rem - min(52rem, 100vw - 3rem)) / 2);
+}
+
+.figure-art {
+  color: var(--ink);
+  opacity: 0.8;
+}
+
+.figure-art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.figure-caption {
+  margin-top: 1.4em;
+  max-width: 38rem;
+  margin-inline: auto;
+  font-size: 0.84rem;
+  font-weight: 300;
+  line-height: 1.7;
+  color: var(--ink-faint);
+}
+
+.inline-link {
+  color: var(--ink);
   text-decoration: none;
-  font-family: inherit;
-  color: var(--ink);
-  background: var(--panel);
-  border: 1px solid var(--panel-line);
-  border-radius: 2px;
-  cursor: pointer;
-  transition:
-    border-color 180ms ease,
-    background 180ms ease,
-    transform 180ms ease;
+  border-bottom: 1px solid var(--rule);
+  transition: border-color 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.path:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
+.inline-link:hover,
+.inline-link:focus-visible {
+  border-bottom-color: currentColor;
 }
 
-.path-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #f6f8ff;
-}
+/* --------------------------------------------------------------- type */
 
-:root[data-ground='deep'] .path-primary {
-  color: #06090f;
-}
-
-.path-primary .path-sub {
-  color: inherit;
-  opacity: 0.72;
-}
-
-.path-label {
-  font-size: 0.98rem;
-  font-weight: 400;
-}
-
-.path-sub {
-  font-size: 0.76rem;
-  color: var(--ink-faint);
-}
-
-.footnote {
-  margin: 0;
-  max-width: var(--measure);
-  font-size: 0.75rem;
-  line-height: 1.6;
-  color: var(--ink-faint);
-}
-
+/*
+ * No bold anywhere on this surface. The lead-in of each commitment is separated by ink weight of
+ * COLOUR, not of stroke: full ink against the softened rest of the sentence. A 500 here was the
+ * only heavy thing on the page and it read as a different typeface.
+ */
 /* ------------------------------------------------------- how it works */
 
-.how {
-  margin-top: calc(var(--step) * 1.2);
-  border-top: 1px solid var(--rule);
-  padding-top: 1rem;
-  max-width: 48rem;
-}
-
-.how > summary {
-  cursor: pointer;
-  font-size: 0.86rem;
-  letter-spacing: 0.06em;
-  color: var(--ink-soft);
-  padding: 0.4rem 0;
-}
-
-.steps {
-  margin: 1rem 0 0;
-  padding: 0;
-  list-style: none;
-  counter-reset: step;
-  display: grid;
-  gap: 1.1rem;
-}
-
-.steps li {
-  counter-increment: step;
-  padding-left: 2.2rem;
-  position: relative;
-}
-
-.steps li::before {
-  content: counter(step);
-  position: absolute;
-  left: 0;
-  top: 0.1rem;
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  color: var(--accent);
-}
-
 .steps h3,
-.sub-head {
-  margin: 0 0 0.3rem;
-  font-size: 0.95rem;
-  font-weight: 500;
-}
-
-.sub-head {
-  margin-top: 1.8rem;
-}
-
 .steps p,
-.body {
-  margin: 0;
-  font-size: 0.86rem;
-  line-height: 1.62;
-  color: var(--ink-soft);
-  max-width: 40rem;
-}
-
 /* The four provenance classes. Distinguishable by mark shape as well as by colour, because a
    colour-only distinction is not a distinction for every reader. */
 
-.provenance {
-  margin: 0.8rem 0 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.5rem;
-}
-
-.prov {
-  display: grid;
-  grid-template-columns: 1.1rem minmax(9rem, auto) 1fr;
-  align-items: baseline;
-  gap: 0.6rem;
-  font-size: 0.82rem;
-  color: var(--ink-faint);
-}
-
-.prov-label {
-  color: var(--ink);
-}
-
-.prov-mark {
-  width: 9px;
-  height: 9px;
-  align-self: center;
-}
-
-.prov-capture .prov-mark {
-  background: var(--accent);
-}
-
-.prov-inference .prov-mark {
-  border: 1px dashed var(--accent-soft);
-}
-
-.prov-user .prov-mark {
-  background: #c98a3a;
-  border-radius: 50%;
-}
-
-.prov-external .prov-mark {
-  border: 1px solid var(--ink-faint);
-  transform: rotate(45deg);
-}
-
-.rungs {
-  margin: 0.8rem 0 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.45rem;
-}
-
-.rung {
-  display: grid;
-  grid-template-columns: 4.5rem 1fr;
-  gap: 0.7rem;
-  font-size: 0.82rem;
-  line-height: 1.55;
-  color: var(--ink-soft);
-  padding-left: 0.7rem;
-  border-left: 2px solid var(--rule);
-}
-
-.rung-free {
-  border-left-color: var(--accent);
-}
-
-.rung-n {
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  color: var(--ink-faint);
-}
-
 /* ------------------------------------------------------------- atlas pane */
 
+/*
+ * The Atlas surface, in the same register as everything else.
+ *
+ * It used to be a boxed console: a panel with a border, a dashed monospace warning, a bulleted
+ * stage list and a row of buttons. Every one of those is a debugging affordance, and together
+ * they read as scaffolding somebody forgot to take out. What it is actually showing is honest and
+ * worth showing, so it is set as text in a column, the way the rest of the product is.
+ *
+ * Nothing it says has changed. The mock disclosure is still first and still unmissable, because
+ * product-specification.md 4.1 requires a pre-ingested replay to disclose itself on the surface it
+ * appears on.
+ */
 .pane-atlas {
-  gap: 0.9rem;
-  padding-block: clamp(1.6rem, 5vh, 4rem);
+  display: block;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+}
+
+.pane-atlas > * {
+  max-width: 38rem;
+  margin-inline: auto;
+  padding-inline: clamp(1.5rem, 5vw, 3rem);
 }
 
 .atlas-head {
   display: grid;
-  gap: 0.5rem;
-  max-width: var(--measure);
+  gap: 0.7rem;
+  padding-top: clamp(7rem, 18vh, 11rem);
 }
 
 .atlas-lede {
   margin: 0;
-  font-size: 0.92rem;
-  line-height: 1.62;
+  font-size: clamp(1rem, 1.15vw, 1.08rem);
+  font-weight: 300;
+  line-height: 1.78;
   color: var(--ink-soft);
 }
 
 .arrival {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 0.84rem;
+  font-weight: 300;
   color: var(--accent);
 }
 
@@ -417,100 +888,129 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
-  margin-top: var(--step);
+  gap: 1.4rem;
+  padding-bottom: clamp(5rem, 14vh, 9rem);
+  padding-top: clamp(2rem, 6vh, 3.5rem);
 }
 
 .standing-caption {
   margin: 0;
-  font-size: 0.76rem;
+  font-size: 0.8rem;
+  font-weight: 300;
+  line-height: 1.6;
   color: var(--ink-faint);
-  border-left: 1px solid var(--rule);
-  padding-left: 0.8rem;
 }
 
-.ghost {
+/* A text control, not a button. Same hairline-from-the-left as everything else that is clickable. */
+.ghost,
+.scenario {
+  position: relative;
   appearance: none;
-  font-family: inherit;
-  font-size: 0.82rem;
-  color: var(--ink-soft);
+  border: 0;
   background: none;
-  border: 1px solid var(--panel-line);
-  border-radius: 2px;
-  min-height: 44px;
-  padding: 0 1rem;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 300;
+  color: var(--ink-soft);
+  padding: 0.3rem 0;
   cursor: pointer;
+  transition: color 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.ghost:hover {
-  border-color: var(--accent);
+.ghost::after,
+.scenario::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ghost:hover,
+.ghost:focus-visible,
+.scenario:hover,
+.scenario:focus-visible {
   color: var(--ink);
+}
+
+.ghost:hover::after,
+.ghost:focus-visible::after,
+.scenario:hover::after,
+.scenario:focus-visible::after {
+  transform: scaleX(1);
 }
 
 /* -------------------------------------------------------- formation console */
 
 .console {
-  max-width: 40rem;
-  padding: 1.1rem 1.2rem 1.2rem;
-  background: var(--panel);
-  border: 1px solid var(--panel-line);
-  border-radius: 3px;
   display: grid;
-  gap: 0.9rem;
+  gap: 1.5rem;
+  padding-top: clamp(2.5rem, 7vh, 4rem);
 }
 
+/*
+ * The mock disclosure.
+ *
+ * Still the first thing in the panel and still in a colour nothing else uses, but no longer a
+ * dashed monospace box. It is a sentence about what you are looking at, so it is set as one.
+ */
 .mock-banner {
   margin: 0;
-  font-family: var(--mono);
-  font-size: 0.68rem;
-  line-height: 1.5;
-  letter-spacing: 0.02em;
-  color: #8c4a0e;
-  border: 1px dashed rgba(179, 101, 28, 0.55);
-  padding: 0.45rem 0.6rem;
+  font-size: 0.84rem;
+  font-weight: 300;
+  line-height: 1.65;
+  color: #a2571a;
+  border-left: 1px solid currentColor;
+  padding-left: 0.9rem;
 }
 
 :root[data-ground='deep'] .mock-banner {
-  color: #f0a95c;
-  border-color: rgba(240, 169, 92, 0.45);
+  color: #e8a45f;
 }
 
-.console-heading {
+.console-heading,
+.scenarios-head {
   margin: 0;
-  font-size: 0.78rem;
-  font-weight: 400;
-  letter-spacing: 0.18em;
+  font-size: 0.7rem;
+  font-weight: 300;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--ink-faint);
 }
 
 .track {
-  margin: 0;
+  margin: 0.5rem 0 0;
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 0.28rem;
+  gap: 0.42rem;
 }
 
 .track-step {
   display: grid;
-  grid-template-columns: 0.9rem 1fr;
+  grid-template-columns: 0.7rem 1fr;
   align-items: center;
-  gap: 0.6rem;
-  font-size: 0.78rem;
+  gap: 0.75rem;
+  font-size: 0.84rem;
+  font-weight: 300;
   color: var(--ink-faint);
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
 .track-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   border: 1px solid currentColor;
 }
 
 .track-step.is-passed {
-  opacity: 0.85;
+  opacity: 0.8;
 }
 
 .track-step.is-passed .track-dot {
@@ -524,7 +1024,7 @@ body {
 
 .track-step.is-current .track-dot {
   background: currentColor;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .track-outcome.is-failed,
@@ -534,23 +1034,23 @@ body {
 
 .label {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.6rem;
 }
 
 .stage-name {
   margin: 0;
-  font-family: var(--mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
+  font-size: 0.7rem;
+  font-weight: 300;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--ink-faint);
 }
 
 .headline {
   margin: 0;
-  font-size: 1.02rem;
+  font-size: clamp(1.04rem, 1.2vw, 1.14rem);
   font-weight: 300;
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--ink);
 }
 
@@ -559,29 +1059,39 @@ body {
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 0.25rem;
-  font-size: 0.8rem;
-  line-height: 1.55;
+  gap: 0.35rem;
+  font-size: 0.88rem;
+  font-weight: 300;
+  line-height: 1.7;
   color: var(--ink-soft);
 }
 
 .idle {
   margin: 0;
-  font-size: 0.86rem;
-  line-height: 1.6;
+  font-size: 0.94rem;
+  font-weight: 300;
+  line-height: 1.75;
   color: var(--ink-soft);
 }
 
+/*
+ * Elapsed time and stream notes stay monospace.
+ *
+ * The only monospace left on the page, and it earns it: these are the two fields that change
+ * while you watch, and a proportional face makes a running number jitter as its digits swap
+ * width. Everything else that was monospace was monospace for atmosphere.
+ */
 .elapsed,
 .note {
   margin: 0;
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
 }
 
 .meter {
-  height: 2px;
+  height: 1px;
   background: var(--rule);
   overflow: hidden;
 }
@@ -601,42 +1111,15 @@ body {
 }
 
 .scenarios {
-  border-top: 1px solid var(--panel-line);
-  padding-top: 0.7rem;
   display: grid;
-  gap: 0.45rem;
-}
-
-.scenarios-head {
-  margin: 0;
-  font-size: 0.7rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
+  gap: 0.7rem;
+  padding-top: 0.4rem;
 }
 
 .scenario-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.scenario {
-  appearance: none;
-  font-family: inherit;
-  font-size: 0.76rem;
-  color: var(--ink-soft);
-  background: none;
-  border: 1px solid var(--panel-line);
-  border-radius: 2px;
-  min-height: 44px;
-  padding: 0 0.85rem;
-  cursor: pointer;
-}
-
-.scenario:hover {
-  border-color: var(--accent);
-  color: var(--ink);
+  gap: 1.2rem;
 }
 
 /* ------------------------------------------------------------------ focus */
@@ -662,28 +1145,4 @@ body {
     scroll-behavior: auto !important;
   }
 
-  .path:hover {
-    transform: none;
-  }
-}
-
-@media (max-width: 46rem) {
-  /*
-   * On a narrow viewport there is no column of negative space for the composition to live in, so
-   * the field becomes a full-bleed backdrop instead of a subject. The scrim goes uniform and the
-   * atmosphere reads as texture behind the words rather than as a shape competing with them.
-   */
-  #overlay::before {
-    background: var(--scrim);
-  }
-
-  .pane {
-    padding: 2rem 1.4rem;
-    justify-content: flex-start;
-    padding-top: 4rem;
-  }
-
-  .path {
-    min-width: 100%;
-  }
 }
