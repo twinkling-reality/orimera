@@ -72,10 +72,9 @@ comment on column job.claim_token is
   'second contradicting the first and arriving after the client stream had ended.';
 
 -- --------------------------------------------------------------------------------------------
--- 2. A running row holds both, so an unleased claim is a schema error rather than a job nothing
---    can ever reclaim. Written as an implication so the terminal states stay unconstrained:
---    `finish` clears both, and a done row holding a stale token would be a second opinion about
---    who owns work that is over.
+-- 2. A running row holds both, and every other state holds neither. An unleased claim would be a
+--    job nothing can ever reclaim; a terminal row with a token would be a second opinion about
+--    who owns work that is over. `finish` and `abandon` clear both as they leave `running`.
 -- --------------------------------------------------------------------------------------------
 
 update job
@@ -85,7 +84,11 @@ update job
    and (lease_expires_at is null or claim_token is null);
 
 alter table job add constraint a_running_job_holds_a_lease
-  check (state <> 'running' or (lease_expires_at is not null and claim_token is not null));
+  check (
+    (state = 'running' and lease_expires_at is not null and claim_token is not null)
+    or
+    (state <> 'running' and lease_expires_at is null and claim_token is null)
+  );
 
 -- --------------------------------------------------------------------------------------------
 -- 3. The index the reclaim arm needs.
@@ -99,5 +102,15 @@ alter table job add constraint a_running_job_holds_a_lease
 create index job_reclaim_idx
   on job (workspace_id, kind, lease_expires_at)
   where state = 'running';
+
+-- 0001 put `run_after` ahead of the queued claim's ORDER BY keys and omitted both tenant and
+-- kind. On a non-empty 55,000-row queue across twenty workspaces, the combined claim query then
+-- read 905 buffers and took 17.3 ms. With the state arms separated and this order, the queued
+-- arm reads four index buffers and stops on its first eligible row. `run_after` stays a filter:
+-- putting it before `(priority, job_id)` makes PostgreSQL sort every eligible row before LIMIT 1.
+drop index job_queue_idx;
+create index job_queue_idx
+  on job (workspace_id, kind, priority, job_id)
+  where state = 'queued';
 
 commit;

@@ -391,7 +391,7 @@ def test_the_reclaim_arm_is_served_by_an_index_that_can_see_running(queued):
 
 
 def test_a_running_job_without_a_lease_is_refused_by_the_schema(queued):
-    """A claim that wrote no lease would be a row nothing could ever reclaim, silently."""
+    """A claim needs both fields, and a terminal row may keep neither."""
     with pytest.raises(psycopg.errors.CheckViolation, match="a_running_job_holds_a_lease"):
         queued.connection.execute(
             "update job set state = 'running', claim_token = gen_random_uuid() where job_id = %s",
@@ -403,6 +403,53 @@ def test_a_running_job_without_a_lease_is_refused_by_the_schema(queued):
             "where job_id = %s",
             (queued.job_id,),
         )
+    claimed = derivative_queue.claim(
+        queued.connection, queued.workspace_id, worker="first", lease_seconds=_LEASE
+    )
+    assert claimed is not None
+    with pytest.raises(psycopg.errors.CheckViolation, match="a_running_job_holds_a_lease"):
+        queued.connection.execute(
+            "update job set state = 'done' where job_id = %s", (queued.job_id,)
+        )
+
+
+def test_the_queued_claim_uses_tenant_kind_and_order_before_its_time_filter(queued):
+    """The queue plan is measured while the queue is populated, where index order matters.
+
+    A leading ``run_after`` looks selective on an empty queue and forces a sort on a real one.
+    The claim needs tenant and kind first, then the exact ``order by`` keys, with ``run_after``
+    left as a filter so LIMIT can stop at the first eligible job.
+    """
+    queued.connection.execute(
+        "insert into job (workspace_id, kind, payload, state, priority, run_after) "
+        "select case when g %% 8 = 0 then %s else md5((g %% 8)::text)::uuid end, "
+        "       case when g %% 2 = 0 then %s else 'other_kind' end, "
+        "       '{}'::jsonb, 'queued', g %% 100, now() - interval '1 minute' "
+        "from generate_series(1, 8000) g",
+        (queued.workspace_id, derivative_queue.DERIVATIVES),
+    )
+    queued.connection.execute("analyze job")
+    plan_value = queued.rows(
+        "explain (analyze, buffers, format json) "
+        "select job_id from job "
+        "where workspace_id = %s and kind = %s and state = 'queued' and run_after <= now() "
+        "order by priority, job_id for update skip locked limit 1",
+        queued.workspace_id,
+        derivative_queue.DERIVATIVES,
+    )[0]["QUERY PLAN"]
+    root = plan_value[0]["Plan"]
+
+    def nodes(node):
+        yield node
+        for child in node.get("Plans", ()):
+            yield from nodes(child)
+
+    all_nodes = list(nodes(root))
+    index = next(
+        node for node in all_nodes if node.get("Index Name") == "job_queue_idx"
+    )
+    assert not any(node["Node Type"] == "Sort" for node in all_nodes), plan_value
+    assert index["Shared Hit Blocks"] + index["Shared Read Blocks"] <= 8, plan_value
 
 
 # -- the bound, and what happens at it --------------------------------------------------------

@@ -76,14 +76,14 @@ DERIVATIVES: Final = "intake_derivatives"
 #: a full re-run of the captures that had not committed, which for a configured instance is a
 #: paid model call apiece, so this bounds a bill as well as a loop.
 #:
-#: **This bound outruns the formation stream's cap, and that is stated here rather than claimed
-#: away.** With the deployed lease of 720 seconds, a job stranded twice reaches its terminal
-#: event up to 3 x 720 = 2160 seconds after its first claim, and ``orimera/api/routes/formation``
-#: gives up at 1800. What a client sees then is what it sees for any ingest that outlives the
-#: cap: the stream ends without a terminal event, the client reconnects with its resume token,
-#: and the events it missed are replayed from the ledger rather than recomputed. Only the FIRST
-#: strand is guaranteed to be visible inside one stream, and a sentence claiming otherwise would
-#: be true of the first reclaim and false of the rest.
+#: **This bound outruns the formation stream's cap, and it is not a wall-clock bound.** With the
+#: deployed lease of 720 seconds and no other work ahead of it, a job stranded on every claim
+#: reaches its terminal event after about 3 x 720 = 2160 seconds; queued work can make it later.
+#: ``orimera/api/routes/formation`` gives up at 1800. What a client sees then is what it sees for
+#: any ingest that outlives the cap: the stream ends without a terminal event, the client
+#: reconnects with its resume token, and missed events are replayed from the ledger rather than
+#: recomputed. Only the FIRST strand is guaranteed to be visible inside one stream, and a sentence
+#: claiming otherwise would be true of the first reclaim and false of the rest.
 MAX_CLAIMS: Final = 3
 
 
@@ -156,10 +156,14 @@ def claim(
 ) -> QueuedDerivatives | None:
     """Take the next job for this workspace, or None when there is nothing to do.
 
-    Two arms. A ``queued`` row whose ``run_after`` has passed is work nobody has started. A
-    ``running`` row whose lease has expired is work somebody started and stopped saying anything
-    about, and it comes back with ``attempts`` incremented rather than reset, so the row says it
-    was claimed twice rather than looking like a new job. A row that has used every one of its
+    Two arms, as two queries. An expired ``running`` row is tried first so recovery is not starved
+    by new uploads; a ``queued`` row whose ``run_after`` has passed is tried otherwise. Combining
+    them with OR made PostgreSQL discard the queued arm's ordering index: measured on 55,000 jobs
+    across twenty workspaces, it read 905 buffers and took 17.3 ms. The separate queued lookup
+    reads four index buffers and stops at the first eligible row.
+
+    A reclaimed row comes back with ``attempts`` incremented rather than reset, so it says it was
+    claimed twice rather than looking like a new job. A row that has used every one of its
     :data:`MAX_CLAIMS` is passed over here and belongs to :func:`abandon`.
 
     ``for update skip locked`` inside the subquery is what makes two workers safe: the second
@@ -178,13 +182,25 @@ def claim(
         "  lease_expires_at = now() + make_interval(secs => %s) "
         "where job_id = ("
         "  select job_id from job "
-        "   where workspace_id = %s and kind = %s "
-        "     and ((state = 'queued' and run_after <= now()) "
-        "          or (state = 'running' and lease_expires_at < now() and attempts < %s)) "
+        "   where workspace_id = %s and kind = %s and state = 'running' "
+        "     and lease_expires_at < now() and attempts < %s "
         "   order by priority, job_id for update skip locked limit 1) "
         "returning job_id, batch_id, payload, attempts, claim_token",
         (worker, lease_seconds, workspace_id, DERIVATIVES, MAX_CLAIMS),
     ).fetchone()
+    if row is None:
+        row = connection.execute(
+            "update job set state = 'running', claimed_by = %s, claimed_at = now(), "
+            "  attempts = attempts + 1, claim_token = gen_random_uuid(), "
+            "  lease_expires_at = now() + make_interval(secs => %s) "
+            "where job_id = ("
+            "  select job_id from job "
+            "   where workspace_id = %s and kind = %s and state = 'queued' "
+            "     and run_after <= now() "
+            "   order by priority, job_id for update skip locked limit 1) "
+            "returning job_id, batch_id, payload, attempts, claim_token",
+            (worker, lease_seconds, workspace_id, DERIVATIVES),
+        ).fetchone()
     if row is None:
         return None
     payload = row["payload"] or {}
