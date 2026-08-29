@@ -3,9 +3,10 @@
  *
  * **The adapter is where the honesty lives.** The read model was designed against a fuller system
  * than exists, and this file is the single auditable place where the difference is recorded.
- * Every field the server cannot answer is listed in `adaptSnapshot` with the reason, because a
- * zero that means 'not implemented' and a zero that means 'none' look identical in a user
- * interface and only one of them is true.
+ * Every field the server cannot answer is set to the value that is true and says why at the line
+ * that sets it, because a zero that means 'not implemented' and a zero that means 'none' look
+ * identical in a user interface and only one of them is true. The four whose reason needs more
+ * than a line are gathered in `adaptSnapshot`'s own comment instead.
  *
  * Nothing here knows the transport exists. The wire shapes come from `wire.ts` as types, so a
  * test of this file needs a payload and no server.
@@ -21,6 +22,7 @@ import type {
   EvidenceHandle,
   GraphSnapshot,
   HistoryEvent,
+  IslandIdRef,
   LinkState,
   MatchProposalView,
   OccurrenceRecord,
@@ -30,8 +32,9 @@ import { type AssertionPayload, type GraphPayload, type HistoryPayload, toMs } f
 /**
  * Server payload to read model, with every gap stated.
  *
- * Four fields the read model asks for that the server cannot answer today. Each is set to the
- * value that is TRUE rather than the value that looks complete, and each says why:
+ * Four of the fields the read model asks for and the server cannot answer today: the four whose
+ * reason needs more than a line. The others carry theirs at the line that sets them. Each is set
+ * to the value that is TRUE rather than the value that looks complete:
  *
  *   - `confidence`: null on every entity and 'low' on every occurrence link. A confirmed link is
  *     a human decision and has no confidence, it has support, which is exactly what the read
@@ -110,26 +113,46 @@ export function adaptSnapshot(
     }),
   );
 
+  // Where each occurrence ended up, so a proposal can name the regions it touches. The same
+  // mapping the occurrence records above went through, because two answers to "which island is
+  // this occurrence in" is one answer too many.
+  const islandByOccurrence = new Map<string, IslandIdRef>(
+    payload.occurrences.map((row) => [row.occurrence_id, toIsland(row.capture_id)]),
+  );
+
   const matchProposals: readonly MatchProposalView[] = payload.proposals.map(
-    (row): MatchProposalView => ({
-      matchId: row.proposal_id,
-      entityId: row.entity_id as EntityIdRef,
-      candidateEntityId: null,
-      occurrenceIds: [row.occurrence_id as OccurrenceRecord['occurrenceId']],
-      anchorIds: [row.occurrence_id as AnchorIdRef],
-      islandIds: [],
-      // A COUNT, not a score. "Two independent signals agree" is a countable fact about the
-      // basis; a band read off an uncalibrated weighted sum would be a guess dressed as a
-      // measurement, and there is no calibration data because no evaluation has run.
-      confidence: bandFromModalityCount(readModalities(row.basis).length),
-      basisModalities: readModalities(row.basis),
-      evidence: row.support_span_ids as readonly EvidenceHandle[],
-      suppressedByRejection: row.suppressed_by_rejection,
-      // What this proposal carries that the user has not already refused for the pair, computed
-      // by the producer that knows. Null when nothing about the pair was refused before, which
-      // is the ordinary case rather than a missing value.
-      newModality: row.new_modality,
-    }),
+    (row): MatchProposalView => {
+      const island = islandByOccurrence.get(row.occurrence_id);
+      return {
+        matchId: row.proposal_id,
+        entityId: row.entity_id as EntityIdRef,
+        // Null because the server proposes an OCCURRENCE against an entity: there is no second
+        // entity in the row to name. Null is what the read model already spells "the entity, and
+        // the bare occurrences it might match", so this is a fact about the proposal rather than
+        // a gap in it, and the option pool reads it and targets the subject entity alone.
+        candidateEntityId: null,
+        occurrenceIds: [row.occurrence_id as OccurrenceRecord['occurrenceId']],
+        anchorIds: [row.occurrence_id as AnchorIdRef],
+        // The regions this proposal reaches into, from the occurrences it names. The join is in
+        // the payload, so it is computed rather than left empty: the option pool unions these
+        // with the subject's own islands to say which places a confirmation would touch, and an
+        // empty list there understates the reach of the decision the user is being asked for.
+        // Empty only when the payload carries no occurrence for the id, which would be an
+        // island invented out of nothing.
+        islandIds: island === undefined ? [] : [island],
+        // A COUNT, not a score. "Two independent signals agree" is a countable fact about the
+        // basis; a band read off an uncalibrated weighted sum would be a guess dressed as a
+        // measurement, and there is no calibration data because no evaluation has run.
+        confidence: bandFromModalityCount(readModalities(row.basis).length),
+        basisModalities: readModalities(row.basis),
+        evidence: row.support_span_ids as readonly EvidenceHandle[],
+        suppressedByRejection: row.suppressed_by_rejection,
+        // What this proposal carries that the user has not already refused for the pair, computed
+        // by the producer that knows. Null when nothing about the pair was refused before, which
+        // is the ordinary case rather than a missing value.
+        newModality: row.new_modality,
+      };
+    },
   );
 
   return {

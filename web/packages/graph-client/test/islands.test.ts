@@ -49,6 +49,69 @@ describe('what an island is, decided by the client', () => {
     const snapshot = adaptSnapshot(PAYLOAD, (captureId) => `island:${captureId}` as never);
     expect(snapshot.occurrences.map((o) => o.islandId)).toEqual(['island:c1', 'island:c2']);
   });
+
+  it('gives an injected function islands that match the occurrences it placed', () => {
+    // The symptom this is about, not tidiness: an occurrence sitting in an island no record
+    // covers is an anchor rendered in a region that does not exist, and a record listing a
+    // capture that went somewhere else is a region claiming a photograph it does not hold. A
+    // function that splits the one scene group is the case that produces both.
+    const snapshot = adaptSnapshot(PAYLOAD, (captureId) => `island:${captureId}` as never);
+    const covered = new Set(snapshot.islands.map((island) => island.islandId));
+    expect(snapshot.occurrences.filter((o) => !covered.has(o.islandId))).toEqual([]);
+    expect(snapshot.islands.map((island) => [island.islandId, island.captureIds])).toEqual([
+      ['island:c1', ['c1']],
+      ['island:c2', ['c2']],
+    ]);
+  });
+
+  it('covers an island an entity names even when its occurrence row is absent', () => {
+    // Entity island ids drive four surfaces. Leaving one without an IslandRecord makes all four
+    // point at a region the snapshot itself says does not exist. The entity has no per-capture
+    // clock, so the honest record exists and remains undated.
+    const entityOnly: GraphPayload = {
+      ...PAYLOAD,
+      entities: [
+        { ...PAYLOAD.entities[0]!, capture_ids: ['c1', 'c2', 'c3'] },
+        PAYLOAD.entities[1]!,
+      ],
+    };
+    const snapshot = adaptSnapshot(entityOnly);
+    expect(snapshot.entities[0]!.islandIds).toEqual(['g1', 'c3']);
+    expect(snapshot.islands.find((island) => island.islandId === 'c3')).toEqual({
+      islandId: 'c3',
+      captureIds: ['c3'],
+      firstCapturedAtMs: null,
+      lastCapturedAtMs: null,
+      positionedCaptureCount: 0,
+      spreadMetres: null,
+      rung: null,
+      rungCaptureCount: 0,
+    });
+  });
+
+  it('drops a split group\'s measurements rather than copying them into both pieces', () => {
+    const islands = adaptSnapshot(PAYLOAD, (captureId) => `island:${captureId}` as never).islands;
+    // The group measured a 14 metre spread over two positioned captures and earned rung 2. All
+    // three are aggregates over the pair, and nothing measured either half of it.
+    expect(islands[0]!.spreadMetres).toBeNull();
+    expect(islands[0]!.positionedCaptureCount).toBe(0);
+    expect(islands[0]!.rung).toBeNull();
+    expect(islands[0]!.rungCaptureCount).toBe(0);
+    // The times are the piece's own occurrences rather than the group's window. c2's only
+    // occurrence has no usable clock, and the group's 11:00 is not an answer for it.
+    expect(islands[1]!.firstCapturedAtMs).toBeNull();
+  });
+
+  it('carries them for an island that IS the group, which is every island the default makes', () => {
+    // The guard against the rule above eating the ordinary case.
+    const island = adaptSnapshot(PAYLOAD).islands[0]!;
+    expect(island.captureIds).toEqual(['c1', 'c2']);
+    expect(island.spreadMetres).toBe(14);
+    expect(island.positionedCaptureCount).toBe(2);
+    expect(island.rung).toBe(2);
+    expect(island.rungCaptureCount).toBe(2);
+    expect(island.firstCapturedAtMs).toBe(Date.parse('2026-03-04T10:00:00+00:00'));
+  });
 });
 
 /**
@@ -75,8 +138,11 @@ describe('what a rung says, and what the count beside it says', () => {
   });
 
   it('takes the capture count to zero for a group nothing reconstructed', () => {
-    // The same rule for the ordinary null. It is also what the ungrouped-capture branch already
-    // answers, so a grouped region and a loose photograph now say the same thing the same way.
+    // The same rule for the ordinary null, and it is what the branch for a region no group
+    // speaks for already answers, so a grouped region and a loose photograph say the same thing
+    // the same way. This pairing is the client's rule rather than a payload seen on the wire:
+    // today's server takes the rung and the count off one list (`max(earned)` beside
+    // `len(earned)` in scene_groups.py), so a null rung reaches it with a count of zero already.
     const island = adaptSnapshot(withRung(null, 5)).islands[0]!;
     expect(island.rung).toBeNull();
     expect(island.rungCaptureCount).toBe(0);

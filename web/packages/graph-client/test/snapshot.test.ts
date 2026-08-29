@@ -62,6 +62,18 @@ describe('the two zeroes that stopped being zeroes', () => {
     expect(proposal?.newModality).toBe('context_place');
   });
 
+  it('names the islands a proposal reaches into, from the occurrences it is about', () => {
+    // The option pool unions these with the subject's own islands to say which places a
+    // confirmation would touch, so an empty list understates the reach of the question the user
+    // is being asked. o2 was taken in c2, which the grouping placed in g1.
+    expect(adaptSnapshot(withProposal).matchProposals[0]?.occurrenceIds).toEqual(['o2']);
+    expect(adaptSnapshot(withProposal).matchProposals[0]?.islandIds).toEqual(['g1']);
+    // Through the caller's own mapping when there is one, rather than read off `scene_groups`,
+    // which would be a second answer to which island an occurrence is in.
+    const injected = adaptSnapshot(withProposal, (captureId) => `island:${captureId}` as never);
+    expect(injected.matchProposals[0]?.islandIds).toEqual(['island:c2']);
+  });
+
   it('leaves an entity with no pending question alone', () => {
     // The guard against the rule widening. Every entity in the base payload has no open
     // question, so nothing here may become needs_review.
