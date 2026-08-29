@@ -8,6 +8,7 @@ and refusing to print a word section 3.1 rule 9 bans.
 
 from __future__ import annotations
 
+import io
 import pathlib
 
 import pytest
@@ -249,3 +250,81 @@ def test_the_manifest_records_which_frames_can_be_placed_on_a_timeline():
     assert passed, "storing no instant for an unplaceable frame is the correct behaviour"
     guessed, why = instant_is_correct(unrecoverable[0], "2026-04-18T09:14:21+00:00")
     assert not guessed and "guessed rather than read" in why
+
+# -- M6: the two vocabularies, and what is still in the way ----------------------------------
+
+
+def test_a_detector_label_resolves_to_the_subject_the_corpus_placed():
+    """The join the manifest now makes possible, and the rule it makes it by.
+
+    Containment rather than equality, because a model that says "a small red cube on the
+    platform" is describing the corpus's satchel correctly, and refusing to join that would be
+    scoring the model down for being right about pixels.
+    """
+    from orimera.corpus.world import SUBJECT_LABELS
+    from orimera.evaluation.scorers import _subject_of
+
+    assert _subject_of("a small red cube", SUBJECT_LABELS) == "satchel"
+    assert _subject_of("the teal cylinder on the shelf", SUBJECT_LABELS) == "thermos"
+    assert _subject_of("amber prism", SUBJECT_LABELS) == "lantern"
+    assert _subject_of("BAG", SUBJECT_LABELS) == "satchel", "the rule is case-insensitive"
+
+
+def test_a_label_that_could_mean_two_subjects_means_neither():
+    """Ambiguity must resolve to nothing, or the mapping manufactures matches.
+
+    "cube" appears in the appearance words of more than one subject. Letting it count for
+    whichever is iterated first would make a gold comparison depend on dictionary order, which is
+    a number that changes for a reason nobody could explain.
+    """
+    from orimera.corpus.world import SUBJECT_LABELS
+    from orimera.evaluation.scorers import _subject_of
+
+    assert _subject_of("cube", SUBJECT_LABELS) is None
+    assert _subject_of("red cube beside a gold cube", SUBJECT_LABELS) is None
+    assert _subject_of("octagonal platform", SUBJECT_LABELS) is None
+
+
+def test_the_generated_manifest_carries_the_mapping_the_scorer_needs():
+    """A pin across the boundary between the corpus generator and the harness that reads it."""
+    import json
+    import tempfile
+    from pathlib import Path
+
+    from orimera.corpus.__main__ import main as corpus_main
+    from orimera.corpus.world import SUBJECT_LABELS
+    from orimera.evaluation.ground_truth import GroundTruth
+
+    with tempfile.TemporaryDirectory() as directory:
+        corpus_main(["--out", directory, "--frames-per-trip", "3"], stream=io.StringIO())
+        document = json.loads((Path(directory) / "MANIFEST.json").read_text())
+        assert document["subject_labels"] == {
+            key: list(labels) for key, labels in SUBJECT_LABELS.items()
+        }
+        truth = GroundTruth.read(directory)
+        assert truth.subject_labels == SUBJECT_LABELS
+
+
+def test_a_manifest_written_before_the_mapping_existed_still_reads():
+    """Absent is a real state and it is not an error. M6 is then blocked for the older reason."""
+    import json
+    import tempfile
+    from pathlib import Path
+
+    from orimera.evaluation.ground_truth import GroundTruth
+
+    with tempfile.TemporaryDirectory() as directory:
+        (Path(directory) / "MANIFEST.json").write_text(
+            json.dumps(
+                {
+                    "generator": "g",
+                    "synthetic": True,
+                    "disclosure": "d",
+                    "trips": [],
+                    "places": {},
+                    "subjects": {"satchel": "a bag"},
+                    "frames": [],
+                }
+            )
+        )
+        assert GroundTruth.read(directory).subject_labels == {}

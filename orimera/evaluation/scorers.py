@@ -10,6 +10,7 @@ the same defect this project keeps finding elsewhere.
 from __future__ import annotations
 
 import hashlib
+import re
 import uuid
 from collections.abc import Callable
 
@@ -116,15 +117,60 @@ def score_provenance_completeness(
     return Count(sum(case.passed for case in cases), len(cases), tuple(cases))
 
 
+def _subject_of(label: str, mapping: dict[str, tuple[str, ...]]) -> str | None:
+    """Which subject a detector's label means, or None when the corpus cannot say.
+
+    The rule, stated because a matching rule nobody wrote down is a matching rule nobody can
+    argue with: a label means a subject when the label, lowercased, contains one of that
+    subject's phrases as a whole-word run. Containment rather than equality, because a model
+    that says "a small red cube on the platform" is describing the corpus's satchel correctly and
+    refusing to join that would be scoring the model down for being right about pixels.
+
+    **A label that matches two subjects means neither.** Ambiguity has to resolve to nothing, or
+    the mapping manufactures matches: "cube" appears in the appearance words of more than one
+    subject, and letting it count for the first one iterated would make the gold comparison
+    depend on dictionary order. None is the honest answer and it costs a detection, not a
+    correctness claim.
+    """
+    words = re.findall(r"[a-z0-9]+", label.lower())
+    haystack = " " + " ".join(words) + " "
+    matched = {
+        subject
+        for subject, phrases in mapping.items()
+        if any(f" {' '.join(re.findall(r'[a-z0-9]+', phrase.lower()))} " in haystack
+               for phrase in phrases)
+    }
+    return matched.pop() if len(matched) == 1 else None
+
+
 def score_filter_sets(
     connection: psycopg.Connection, workspace: uuid.UUID, truth: GroundTruth
 ) -> tuple[Count | None, str]:
     """M6. ANY, ALL and TOGETHER return the exact gold set on every expression tested.
 
-    The gold set comes from the manifest's ``subjects`` per frame, so this measures the query
-    path against what the generator actually placed rather than against what the detector
-    reported. On the synthetic corpus the detector is a stub, so a mismatch here is a query
-    defect or a corpus defect and never a vision one.
+    **This does not score, and the reason is not the one it used to be.** The old reason was that
+    the corpus named its subjects and the detector named appearances and nothing joined them.
+    That gap is closed: ``MANIFEST.json`` now carries ``subject_labels`` and :func:`_subject_of`
+    resolves one vocabulary into the other. The mapping was necessary and it is not sufficient,
+    and having built it the honest thing is to say what is actually in the way.
+
+    **A Selection filters on confirmed entity ids.** ``EntitySelector.ids`` is "resolved entity
+    ids only": the surface that produced the plan already turned a name into an id, and ANY, ALL
+    and TOGETHER are statements about entities. The synthetic corpus has occurrences and **no
+    entities at all**, because promotion from an occurrence to a persistent entity requires
+    explicit user confirmation and nothing has confirmed anything. A harness that confirmed them
+    from ground truth would be writing ``user``-class decisions on a person's behalf to make its
+    own number computable, which is invariant 3 read backwards.
+
+    **And the shape it had could not have failed.** ``got`` was a set comprehension over the rows
+    this function had just read, compared against the manifest. No plan was built, no validator
+    ran and the executor was never called, so a filter defect could not make it fail and a
+    correct filter could not make it pass. What it compared was the detector's vocabulary against
+    the generator's placements, under a name that says filters. Set algebra over the real
+    executor is tested, in ``tests/test_selection.py``, which is where M6's traps live.
+
+    What is returned instead is a refusal carrying measured numbers rather than a guess, because
+    "blocked" and "scored zero" are different facts and the report holds both.
     """
     stored: dict[str, set[str]] = {}
     for row in connection.execute(
@@ -151,56 +197,39 @@ def score_filter_sets(
             "filter to return"
         )
 
-    # THE TWO VOCABULARIES DO NOT MEET, and this is a property of the corpus rather than of the
-    # query path. The manifest records which SUBJECT the generator placed in each frame, by name:
-    # satchel, thermos, lantern. The pipeline records what a detector CALLED what it saw, by
-    # appearance: red cube, octagonal platform, sky. Nothing maps one onto the other, so a gold
-    # set built from subjects can never intersect a result built from labels, and every filter
-    # would score zero for a reason that has nothing to do with filtering. Refusing to score is
-    # the honest answer; a subject-to-label mapping in the manifest is what would fix it.
-    detected = {label for labels in stored.values() for label in labels}
-    if not detected & set(truth.subjects):
+    if not truth.subject_labels:
         return None, (
-            "the corpus names its subjects and the detector names appearances, and nothing maps "
-            f"one onto the other. The manifest records {sorted(truth.subjects)} and the "
-            f"pipeline recorded {sorted(detected)[:4]}, so a gold set built from subjects cannot "
-            "intersect a result built from labels. This is a gap in the corpus rather than in "
-            "the query path: a subject-to-label mapping in MANIFEST.json is what would close it"
+            "this corpus's manifest carries no subject-to-label mapping, so the subjects it "
+            f"names, {sorted(truth.subjects)}, cannot be joined to what the pipeline recorded. "
+            "Regenerate the corpus with `orimera-corpus`, which writes one"
         )
 
-    subjects = sorted(truth.subjects)
-    cases: list[NamedCase] = []
-    for first in subjects:
-        for second in subjects:
-            if first >= second:
-                continue
-            gold_any = {
-                frame.sha256
-                for frame in truth.frames
-                if first in frame.subjects or second in frame.subjects
-            }
-            gold_all = {
-                frame.sha256
-                for frame in truth.frames
-                if first in frame.subjects and second in frame.subjects
-            }
-            got_any = {h for h, labels in stored.items() if {first, second} & labels}
-            got_all = {h for h, labels in stored.items() if {first, second} <= labels}
-            for name, gold, got in (
-                (f"ANY({first}, {second})", gold_any, got_any),
-                (f"ALL({first}, {second})", gold_all, got_all),
-            ):
-                cases.append(
-                    NamedCase(
-                        name,
-                        gold == got,
-                        ""
-                        if gold == got
-                        else f"gold {len(gold)}, got {len(got)}, "
-                        f"missing {len(gold - got)}, spurious {len(got - gold)}",
-                    )
-                )
-    return Count(sum(case.passed for case in cases), len(cases), tuple(cases)), ""
+    resolved = {
+        digest: {
+            subject
+            for label in labels
+            if (subject := _subject_of(label, truth.subject_labels)) is not None
+        }
+        for digest, labels in stored.items()
+    }
+    # The measured facts the refusal carries, so it says how far away this is rather than only
+    # that it is away. `ingested` matters on its own: a gold set over eighty frames compared
+    # against a workspace holding eight scores every filter as failing for a reason that is the
+    # harness's own, which is the shape this file exists to avoid.
+    ingested = len(stored)
+    recovered = sum(1 for subjects in resolved.values() if subjects)
+    entities = connection.execute(
+        "select count(*) as n from entity where workspace_id = %s", (workspace,)
+    ).fetchone()
+    return None, (
+        f"a Selection filters on confirmed entity ids and this workspace has {int(entities['n'])} "
+        f"of them. {ingested} of the corpus's {len(truth.frames)} frames are ingested and the "
+        f"manifest's subject-to-label mapping resolves a subject in {recovered} of them, so the "
+        "join between the two vocabularies is no longer what is missing. What is missing is a "
+        "confirmed entity per subject, and confirming them from ground truth would be this "
+        "harness writing user decisions on a person's behalf to make its own number computable. "
+        "Set algebra over the real executor is tested in tests/test_selection.py"
+    )
 
 
 def score_gate_precision(connection: psycopg.Connection, workspace: uuid.UUID) -> Count:

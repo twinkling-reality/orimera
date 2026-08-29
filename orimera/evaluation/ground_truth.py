@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 __all__ = ["Frame", "GroundTruth"]
@@ -53,6 +53,10 @@ class GroundTruth:
     trips: tuple[str, ...]
     places: tuple[str, ...]
     subjects: tuple[str, ...]
+    #: Subject key -> the phrases a detector might use for it. Empty for a manifest written
+    #: before the mapping existed, which is a real state: M6 is then blocked for the reason it
+    #: was blocked before, and says so, rather than scoring the query path against nothing.
+    subject_labels: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @property
     def by_hash(self) -> dict[str, Frame]:
@@ -77,6 +81,10 @@ class GroundTruth:
             trips=tuple(trip["key"] for trip in document["trips"]),
             places=tuple(document["places"]),
             subjects=tuple(document["subjects"]),
+            subject_labels={
+                key: tuple(labels)
+                for key, labels in (document.get("subject_labels") or {}).items()
+            },
             frames=tuple(
                 Frame(
                     filename=frame["filename"],

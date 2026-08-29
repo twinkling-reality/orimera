@@ -164,6 +164,30 @@ SUBJECTS: dict[str, str] = {
     "lantern": "a squat amber six-sided lantern with a wire handle",
 }
 
+#: What a detector might reasonably CALL each subject, so the manifest's vocabulary and the
+#: pipeline's can be joined at all.
+#:
+#: **This is the corpus's claim about words, not its ground truth about geometry.** The manifest
+#: knows exactly which subject the generator placed in which frame, because it placed it. It
+#: cannot know what a model will call a low-poly carmine box: "satchel", "red bag", "red cube",
+#: "maroon box". Everything else in MANIFEST.json is a fact the generator produced; this is the
+#: one entry that is a guess, and it is written down here, in a reviewed diff, rather than
+#: buried in a scorer, for the same reason `orimera/epistemics/vocabulary.py` exists.
+#:
+#: **A mapping that resolves nothing is a detection gap and must not be scored as a query
+#: defect.** ``score_filter_sets`` refuses in that case rather than reporting every filter as
+#: failing, which is the distinction between "blocked" and "scored zero" that the whole
+#: evaluation report is built on. Adding this makes M6 scorable; it does not make it scored.
+#:
+#: The appearance words are here because the shapes ARE boxes and prisms: a model looking at a
+#: carmine box and saying "red box" is describing the frame correctly, and refusing to join that
+#: to `satchel` would be scoring the model down for being right about pixels.
+SUBJECT_LABELS: dict[str, tuple[str, ...]] = {
+    "satchel": ("satchel", "shoulder bag", "bag", "red box", "red cube", "carmine box"),
+    "thermos": ("thermos", "vacuum flask", "flask", "teal cylinder", "teal prism", "bottle"),
+    "lantern": ("lantern", "amber prism", "hexagonal prism", "amber lantern", "gold cube"),
+}
+
 
 @dataclass(frozen=True, slots=True)
 class Place:
