@@ -243,13 +243,36 @@ export ORIMERA_DATA_DIR=.orimera/local          # where the content-addressed st
 uv run uvicorn --factory orimera.api.app:create_app --port 8000
 ```
 
-Two more are optional and both are reported by `/readyz` when absent, because a defence that is
-off and silent is worse than one that is absent:
+Three more are optional and all three are reported by `/readyz`, because a defence that is off and
+silent is worse than one that is absent:
 
 - `ORIMERA_READONLY_DATABASE_URL` points the Selection executor at `orimera_ro`, a role holding
   SELECT and nothing else. Without it the executor runs as the write role.
 - `NEBIUS_API_KEY` enables the two endpoints that need a model. Without it they return 503 and
   every other endpoint works.
+- `ORIMERA_DERIVATIVE_WORKER=off` serves the API without draining what `POST /intake` queues.
+  It defaults to on, because an instance serving that route with nothing draining the queue is
+  an upload that never finishes.
+
+### Uploading photographs
+
+```bash
+curl -X POST http://localhost:8000/intake -H "Authorization: Bearer <token>" \
+     -F "files=@a.jpg" -F "files=@b.jpg"
+```
+
+202, with `batch_id`, an `accepted` list carrying a capture id and a content hash each, and a
+`refused` list saying which of the eight checks stopped each of the others. `GET /formation/{batch_id}`
+then streams the work as it happens.
+
+**The intake stage runs inside the request and the model stages are queued by capture id.** That
+split is not about latency. An upload has to put the bytes somewhere before the pipeline can hash
+them, and anywhere outside the content-addressed store is outside every tombstone guard and outside
+the purger: a deletion arriving while a file sits in a spool directory or a queue payload cascades
+to neither, and every test of the cascade still passes, because they look at the database and at
+the store. So the staging window collapses to one request. Intake is a hash, an EXIF read, an
+orientation transform and a handful of rows; the vision stage is a model call and runs in the
+worker, from a capture id, over bytes already in the one place a deletion reaches.
 
 `GET /healthz` touches nothing. `GET /readyz` runs one query and one object-store call, reports
 each check separately, and never calls a model: a check every five minutes over a 46 day unattended
@@ -288,7 +311,7 @@ single command that starts Orimera end to end.
 | Path | Contains |
 | --- | --- |
 | `orimera/evidence/` | The evidence address, content-addressed blobs, memory regions, the time base |
-| `orimera/ingest/` | The photograph ingest pipeline: EXIF, orientation, derivatives, vision, scene grouping, the provenance ledger, the CLI |
+| `orimera/ingest/` | The photograph ingest pipeline: EXIF, orientation, derivatives, vision, scene grouping, the provenance ledger, the CLI, the derivative queue and the worker that drains it |
 | `orimera/models/` | The Token Factory client, the model manifest, preflight, the budget guard, the response cache, strict json_schema handling, reasoning-token stripping |
 | `orimera/store/` | Content-addressed storage |
 | `orimera/migrations/` | `0001_spine.sql`, the schema the evidence spine requires, and `0002_naming_and_admission.sql` |
@@ -296,7 +319,7 @@ single command that starts Orimera end to end.
 | `orimera/epistemics/` | Writing a claim under exactly one of the four provenance classes |
 | `orimera/identity/` | Occurrence keys, the identity tables, and the user decisions that promote an occurrence to a person |
 | `orimera/selection/` | The one Selection primitive: plan, validation, deterministic execution, evidence packet, answer validation |
-| `orimera/api/` | The HTTP surface. Routes validate and delegate; the only unauthenticated ones are the health probes |
+| `orimera/api/` | The HTTP surface, including `POST /intake`. Routes validate and delegate; the only unauthenticated ones are the health probes |
 | `pyproject.toml` | Also the backend layering contract, enforced by `uv run lint-imports` |
 | `orimera/canonical.py`, `orimera/errors.py` | Canonical JSON and the one rounding rule; the error taxonomy |
 | `tests/` | 588 tests, 227 of which need a PostgreSQL 18 server. No network, no credentials, no committed binary fixtures |

@@ -316,6 +316,25 @@ is done, no claim is made here about range requests being on the browser path.
 | `NEBIUS_API_KEY` | Bearer credential for Token Factory | The model client. Named in `models.manifest.json` as `api_key_env`, so even the environment variable name is manifest data rather than a literal in code |
 | `TAVILY_API_KEY` | Credential for the public entity lookup | The lookup path only. The feature is opt in and is on the cut list if its egress gate does not hold |
 | `ORIMERA_TEST_DATABASE_URL` | Points the database backed tests at a live PostgreSQL 18 server | Tests only. Unset means those tests skip, which is why the suite runs without a database |
+| `ORIMERA_DATA_DIR` | Where the content addressed store lives | The API and the ingest command must agree on it, or a citation resolves against a store the bytes are not in |
+| `ORIMERA_API_TOKENS` | Bearer token to workspace grant | No default, because a default would be a credential in a repository |
+| `ORIMERA_READONLY_DATABASE_URL` | The Selection executor's role | Optional, and `/readyz` says so when it is absent |
+| `ORIMERA_DERIVATIVE_WORKER` | Whether this process drains what `POST /intake` queues | Defaults to **on**. Off is for an instance that leaves the queue to somebody else, and `/readyz` reports which it is: a queue nobody drains and a queue drained elsewhere look identical from outside |
+
+### 5.1.1 The request body bound belongs partly to the proxy
+
+`POST /intake` is multipart, and a route runs **after** the body has been received and parsed. So
+the checks inside the route bound what reaches the object store and the database, which is what
+they exist for, and they cannot bound the temporary file the parser has already written.
+
+`orimera/api/body_limit.py` is pure ASGI middleware and runs ahead of routing. It refuses a request
+whose `Content-Length` exceeds 512 MiB before any of the body is read. **It does not cover a request
+sent with `Transfer-Encoding: chunked`**, which declares no length; bounding that means counting
+bytes already accepted, which is the work the refusal exists to avoid.
+
+A deployment therefore sets a body size limit on whatever terminates TLS in front of the
+application: `client_max_body_size` on nginx, `proxy-body-size` on an ingress. Stated here rather
+than left to be discovered, because the symptom of its absence is a full disk rather than an error.
 
 ### 5.2 What a deployment additionally needs
 
