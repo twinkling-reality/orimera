@@ -41,7 +41,7 @@ ALL_SQL = "\n".join(MIGRATIONS[version] for version in sorted(MIGRATIONS))
 
 def test_the_migrations_are_numbered_and_ordered():
     files = list(migrations())
-    assert [m.version for m in files] == ["0001", "0002", "0003", "0004", "0005", "0006"]
+    assert [m.version for m in files] == ["0001", "0002", "0003", "0004", "0005", "0006", "0007"]
 
 
 @pytest.mark.parametrize("migration", list(migrations()), ids=lambda m: m.version)

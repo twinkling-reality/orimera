@@ -140,44 +140,56 @@ def test_the_schema_under_test_is_the_one_that_ships(spine):
     assert installed == set(REQUIRED_EXTENSIONS), sorted(installed)
 
 
-def test_the_seeded_vocabulary_is_what_the_guards_read(spine):
-    """Read the live rows, not the migration text.
+def test_the_live_vocabulary_is_the_one_that_was_decided(spine):
+    """Read the live rows, not the migration text, and compare them to the recorded decisions.
 
-    The deleted SQLite test read these rows from a running database and asserted the shape of
-    the seed. Its replacement in ``test_migration.py`` is a substring search over the file, and
-    a substring search cannot notice a trigger that refused the seed: a vocabulary that failed
-    to insert surfaces as an empty table, which reads as "no predicate accepts anything" and
-    refuses every write for a reason nobody would guess from the error.
+    A substring search over the migration cannot notice a trigger that refused the seed: a
+    vocabulary that failed to insert surfaces as an empty table, which reads as "no predicate
+    accepts anything" and refuses every write for a reason nobody would guess from the error.
 
-    The specific row that matters is ``name_is``. It is the only naming predicate, and
-    ``allows_kind`` on it is the whole of invariant 4 at the data layer.
+    Row for row against ``orimera.epistemics.vocabulary.DECISIONS``, which is defect R4's answer.
+    There is deliberately no count to bump here: a predicate added without a decision fails
+    ``tests/test_vocabulary_decisions.py``, and a decision that does not match the database fails
+    this. The count assertion it replaces was ``len(rows) == 12``, whose repair when
+    ``reconstruction_rung_is`` was added was to type 13.
+
+    ``allows_kind`` is sorted on both sides. Array element order is a storage detail, and a
+    vocabulary row reordered by a later migration is not a decision anybody made.
     """
-    rows = spine.conn.execute(
-        "select key, allows_kind::text[] as allows_kind, writes_a_name, functional "
-        "from predicate order by key"
-    ).fetchall()
-    vocabulary = {row[0]: row for row in rows}
+    from orimera.epistemics.vocabulary import DECISIONS
 
-    # Twelve: the eleven seeded by 0001 plus `reconstruction_rung_is` from 0005. The count is
-    # asserted rather than only the individual rows, because a predicate added without anybody
-    # deciding what may write it is exactly the hole `allows_kind` exists to close.
-    assert len(rows) == 12, sorted(vocabulary)
-    naming = [row[0] for row in rows if row[2]]
-    assert naming == ["name_is"], naming
-    assert vocabulary["name_is"][1] == ["user"]
-    # A rung is what a model managed to place, and a different checkpoint gives a different
-    # answer over the same bytes. `{inference}` alone is what stops it being filed as a
-    # capture-supported fact, which would be the flattening invariant 4 forbids.
-    assert vocabulary["reconstruction_rung_is"][1] == ["inference"]
-    assert vocabulary["caption_is"][1] == ["inference"]
-    assert vocabulary["ocr_text_is"][1] == ["inference"]
-    assert vocabulary["device_model_is"][1] == ["capture"]
-    assert vocabulary["public_entity_status_is"][1] == ["external"]
-    # A detection is an inference no matter how confident it is, and the user may also say it.
-    assert sorted(vocabulary["person_present"][1]) == ["inference", "user"]
-    for row in rows:
-        assert row[1], f"{row[0]} allows no kind at all, which refuses every write"
-        assert None not in row[1], f"{row[0]} has a NULL element, which disarms the guard"
+    live = {
+        row[0]: (tuple(sorted(row[1])), row[2], row[3])
+        for row in spine.conn.execute(
+            "select key, allows_kind::text[], writes_a_name, functional from predicate"
+        ).fetchall()
+    }
+    recorded = {
+        decision.key: (tuple(sorted(decision.allows_kind)), decision.writes_a_name,
+                       decision.functional)
+        for decision in DECISIONS
+    }
+    assert live == recorded
+
+    for key, (kinds, _writes, _functional) in live.items():
+        assert kinds, f"{key} allows no kind at all, which refuses every write"
+        assert None not in kinds, f"{key} has a NULL element, which disarms the guard"
+
+
+def test_a_vocabulary_row_must_state_whether_it_writes_a_name(spine):
+    """R4, migration 0007. The fail-open value was the one you got by saying nothing.
+
+    Whether a predicate's object IS a name cannot be enforced here and is not claimed to be. What
+    is enforced is that somebody answered: before 0007 an insert omitting the column was accepted
+    and read back false, so a row whose author never considered naming was silently declared not
+    to name anyone.
+    """
+    message = spine.refuses(
+        "insert into predicate (key, value_schema, allows_kind) values "
+        "('alias_is', '{\"type\":\"string\"}', array['inference']::assertion_kind[])",
+        (),
+    )
+    assert "writes_a_name" in message
 
 
 # -- defect 1: a model writing a name ---------------------------------------------------
