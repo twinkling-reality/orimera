@@ -681,8 +681,11 @@ def test_the_newest_rung_is_the_one_reported(deployment, repository, photo_dir):
     after = deployment.as_owner("GET", "/graph").json()["scene_groups"]
     reported = {g["rung"] for g in after if g["rung"] is not None}
     assert reported == {4}, after
-    # Defect R16, asserted so the day `functional` is enforced this fails and somebody decides
-    # deliberately rather than discovering the change through a rung that moved.
+    # R16 is closed by migration 0006 and the reported rung above is unchanged, which was the
+    # point of asserting both halves: making `functional` real had to be invisible on screen.
+    # What changed is underneath. The first claim is retired rather than left current beside the
+    # second, so the display no longer depends on `_rung_by_capture` ordering to be correct, and
+    # the retired claim is still readable, which is what a superseded row is for.
     statuses = [
         row["status"]
         for row in repository.connection.execute(
@@ -691,7 +694,6 @@ def test_the_newest_rung_is_the_one_reported(deployment, repository, photo_dir):
             (repository.workspace_id,),
         ).fetchall()
     ]
-    assert statuses == ["active", "active"], (
-        "functional is now enforced. The reported rung above is unchanged, which is the point; "
-        "update this assertion and remove R16."
+    assert statuses == ["superseded", "active"], (
+        "a functional predicate is carrying two claims that are not one current and one retired"
     )
