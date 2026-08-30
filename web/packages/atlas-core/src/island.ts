@@ -18,10 +18,16 @@ export interface Island {
   readonly islandId: IslandId;
 
   /**
-   * Creation time, epoch milliseconds. This is the layout solver's ORDERING key
-   * (interaction-model.md 1.4: "ordered by creation time"), which is what makes the layout
-   * stable when islands arrive one at a time. It is not a claim about when the photographs were
-   * taken; wall clock for a photograph lives in a clock anchor, not here.
+   * Monotonic region-creation order from the persisted layout authority. Unlike a photograph's
+   * clock, this value is stable, unique within a layout, and exists only to preserve spatial
+   * memory when new regions arrive.
+   */
+  readonly creationOrdinal: number;
+
+  /**
+   * Earliest available capture time, epoch milliseconds, retained for honest display ordering.
+   * It is never the layout ordering key. Undated and backfilled captures are exactly why the
+   * separate persisted `creationOrdinal` exists.
    */
   readonly createdAt: number;
 
@@ -58,7 +64,7 @@ export interface Island {
 
   /**
    * Entities that count toward semantic proximity in the layout solver, already filtered to
-   * confirmed-or-high-confidence by the caller (see `layout/similarity.ts`). Speculative links
+   * confirmed by the caller (see `layout/similarity.ts`). Speculative links
    * are absent by construction rather than filtered later, so a bug cannot let a guess move the
    * world.
    */
@@ -98,7 +104,17 @@ export function dissolveBandParameter(island: Island, distanceFromCentreLocal: n
   return Math.min(1, (distanceFromCentreLocal - start) / (r - start));
 }
 
-/** Convenience for tests and fixtures. Freezes so non-destructiveness is checkable. */
-export function makeIsland(spec: Island): Island {
-  return Object.freeze({ ...spec, anchors: Object.freeze([...spec.anchors]) });
+export type IslandSpec = Omit<Island, 'creationOrdinal'> & { readonly creationOrdinal?: number };
+
+/** Convenience for adapters and fixtures. Freezes so non-destructiveness is checkable. */
+export function makeIsland(spec: IslandSpec): Island {
+  const creationOrdinal = spec.creationOrdinal ?? 0;
+  if (!Number.isSafeInteger(creationOrdinal) || creationOrdinal < 0) {
+    throw new TypeError('island creationOrdinal must be a non-negative safe integer');
+  }
+  return Object.freeze({
+    ...spec,
+    creationOrdinal,
+    anchors: Object.freeze([...spec.anchors]),
+  });
 }

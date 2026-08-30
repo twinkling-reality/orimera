@@ -5,9 +5,8 @@ import { contributesToLayout } from '../provenance.js';
 /**
  * Semantic proximity, which is the ONLY thing that decides where islands go.
  *
- * interaction-model.md 1.4: "Target separation is derived from a semantic similarity score
- * dominated by shared CONFIRMED or HIGH-CONFIDENCE entities. Speculative links must never move
- * the world; otherwise the layout twitches every time the pipeline guesses."
+ * `atlas-spatial-architecture.md`: target separation is derived only from shared CONFIRMED
+ * entities. Speculative links may affect emphasis and never placement.
  *
  * The filter is applied when the entity set is BUILT, not when the score is read, so a caller
  * that forgets to filter cannot let a `proposed` link move an island. That is why

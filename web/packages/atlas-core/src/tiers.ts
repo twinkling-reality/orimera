@@ -29,6 +29,16 @@ export interface TierState {
 
 export const EMPTY_TIER_STATE: TierState = Object.freeze({ tier: new Map() });
 
+/**
+ * Map is an overview, not a very distant ground camera. Keep every region resident at the same
+ * legible summary density instead of letting altitude accidentally demote the whole world.
+ */
+export function mapTierState(scene: AtlasScene): TierState {
+  const tier = new Map<IslandId, RepresentationTier>();
+  for (const island of scene.islands) tier.set(island.islandId, 1);
+  return Object.freeze({ tier });
+}
+
 function distanceToFootprintBoundary(
   camera: AtlasVec3,
   centre: AtlasVec3,

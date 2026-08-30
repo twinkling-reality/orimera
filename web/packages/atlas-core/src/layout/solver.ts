@@ -35,11 +35,11 @@ export const LAYOUT_GLIDE_MS = 1200;
 
 export interface LayoutInputIsland {
   readonly islandId: IslandId;
-  /** Epoch ms. The ordering key. */
-  readonly createdAt: number;
+  /** Monotonic persisted region-creation order. Never derived from a capture clock. */
+  readonly creationOrdinal: number;
   readonly footprintRadiusLocal: number;
   readonly scale: number;
-  /** Confirmed-or-high-confidence entities only. Built by `layoutEntitiesOf`. */
+  /** Confirmed entities only. Built by `layoutEntitiesOf`. */
   readonly layoutEntities: ReadonlySet<EntityId>;
   /**
    * The placement this island already has in the persisted layout, if any. Pinned islands are
@@ -116,11 +116,11 @@ export class LayoutScopeError extends RangeError {
   }
 }
 
-/** Total order: creation time, then island id. Ties in createdAt are real and must not be random. */
+/** Total order: persisted creation ordinal, then island id as a defensive deterministic tie. */
 function ordered(islands: readonly LayoutInputIsland[]): LayoutInputIsland[] {
   return [...islands].sort(
     (a, b) =>
-      a.createdAt - b.createdAt ||
+      a.creationOrdinal - b.creationOrdinal ||
       (a.islandId < b.islandId ? -1 : a.islandId > b.islandId ? 1 : 0),
   );
 }
@@ -241,11 +241,11 @@ export function solveLayout(
     }
   }
 
-  // Yaw: turn each island so its CAPTURE_FORWARD_LOCAL axis points at the atlas centroid.
+  // Yaw for a NEW island: turn its CAPTURE_FORWARD_LOCAL axis toward the atlas centroid.
   //
   // The documents do not specify island yaw. This is a decision, and it is not cosmetic: a
   // single-photo island is a 2.5D shell with observed surfaces on one side and nothing at all on
-  // the other, so an island facing the wrong way is a hole the user walks into. Orienting the
+  // the other, so an island facing the wrong way is a hole the user walks into. Orienting a new
   // capture direction inward puts the observed content between the user and the island origin,
   // which means anyone approaching from the middle of the Atlas sees the photographed surfaces
   // from the front. Islands are never pitched or rolled, so yaw is the only freedom there is.
@@ -267,9 +267,11 @@ export function solveLayout(
     const dz = cz - z[i]!;
     // Solve localDirectionToAtlas(placement, CAPTURE_FORWARD_LOCAL) == normalize(centroid - p).
     // With CAPTURE_FORWARD_LOCAL = (0, 0, -1) that direction is (-sin yaw, 0, -cos yaw).
-    const yaw = dx === 0 && dz === 0 ? 0 : Math.atan2(-dx, -dz);
-    const position = atlasVec3(x[i]!, 0, z[i]!);
-    const p = makePlacement(position, yaw, island.scale);
+    // A persisted placement is a FULL transform. Recomputing yaw while calling the island pinned
+    // silently turns one-sided panels and is spatial-memory breakage even when X/Z do not move.
+    const yaw = island.pinned?.yaw ?? (dx === 0 && dz === 0 ? 0 : Math.atan2(-dx, -dz));
+    const position = atlasVec3(x[i]!, island.pinned?.position.y ?? 0, z[i]!);
+    const p = makePlacement(position, yaw, island.pinned?.scale ?? island.scale);
     placements.set(island.islandId, p);
 
     if (island.pinned !== null) {

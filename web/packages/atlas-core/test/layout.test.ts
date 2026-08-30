@@ -19,13 +19,13 @@ import { anchor } from './fixture.js';
 
 function input(
   key: string,
-  createdAt: number,
+  creationOrdinal: number,
   entities: readonly string[],
   pinned: LayoutInputIsland['pinned'] = null,
 ): LayoutInputIsland {
   return {
     islandId: islandId(key),
-    createdAt,
+    creationOrdinal,
     footprintRadiusLocal: 30,
     scale: 1,
     layoutEntities: new Set(entities.map(entityId)),
@@ -52,7 +52,7 @@ describe('the layout solver is deterministic', () => {
     expect(placements(solveLayout(shuffled, 1))).toBe(placements(solveLayout(three, 1)));
   });
 
-  it('orders by creation time, then by island id, so equal timestamps are not a coin flip', () => {
+  it('orders by persisted creation ordinal, then by island id, so invalid ties are deterministic', () => {
     const tied = [input('z', 500, ['e1']), input('a', 500, ['e1']), input('m', 500, ['e1'])];
     expect(placements(solveLayout(tied, 1))).toBe(
       placements(solveLayout([tied[1]!, tied[2]!, tied[0]!], 1)),
@@ -127,7 +127,7 @@ describe('semantic proximity, not geography', () => {
 });
 
 describe('speculative links must never move the world', () => {
-  it('excludes proposed links and low-confidence provisional links from the layout set', () => {
+  it('excludes every proposed or provisional link from the persisted layout set', () => {
     const anchors = [
       anchor('i', { key: 'a', local: [0, 0, 0], entity: 'confirmed-1', linkState: 'confirmed' }),
       anchor('i', { key: 'b', local: [1, 0, 0], entity: 'guess-1', linkState: 'proposed', confidence: 'high' }),
@@ -136,7 +136,7 @@ describe('speculative links must never move the world', () => {
       anchor('i', { key: 'e', local: [4, 0, 0], entity: 'strong-1', linkState: 'auto_provisional', confidence: 'high' }),
       anchor('i', { key: 'f', local: [5, 0, 0], entity: 'gone-1', linkState: 'rejected', confidence: 'high' }),
     ];
-    expect([...layoutEntitiesOf(anchors)].sort()).toEqual(['confirmed-1', 'strong-1']);
+    expect([...layoutEntitiesOf(anchors)].sort()).toEqual(['confirmed-1']);
   });
 
   it('gives the same layout whether or not a speculative link exists', () => {
@@ -183,6 +183,14 @@ describe('adding an island does not scramble the ones already there', () => {
     const r = solveLayout([input('a', 1, ['p'], pinned), input('b', 2, ['p'])], 2);
     expect(r.moved.map((m) => m.islandId)).toEqual(['a']);
     expect(r.moved[0]!.distance).toBeGreaterThan(0);
+  });
+
+  it('preserves the full pinned transform, including yaw, height and presentation scale', () => {
+    const pinned = placement(atlasVec3(10, 0.75, -4), 1.234, 1.6);
+    const r = solveLayout([input('a', 1, ['p'], pinned), input('b', 2, ['p'])], 2, {
+      driftRadius: 0,
+    });
+    expect(r.placements.get(islandId('a'))).toEqual(pinned);
   });
 });
 

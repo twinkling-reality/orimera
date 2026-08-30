@@ -150,7 +150,7 @@ export function generateTurn(input: GenerateInput): Turn {
     turnId,
     intent: candidate.intent,
     subjectEntityId: candidate.entity.entityId,
-    // Drives Companion placement (4.2). An id: where it materializes is the binding's problem.
+    // Connects the question to a focusable world anchor without turning the id into geometry.
     subjectAnchorId: footprint.anchorIds[0] ?? null,
     utteranceKey: pool.utteranceKey,
     utterance: null,

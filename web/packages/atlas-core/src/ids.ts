@@ -6,6 +6,7 @@ import type { Brand } from './brand.js';
  * deterministic tie-break (layout/solver.ts), which is why lexicographic order is enough.
  */
 export type IslandId = Brand<string, 'IslandId'>;
+export type NeighborhoodId = Brand<string, 'NeighborhoodId'>;
 export type AnchorId = Brand<string, 'AnchorId'>;
 export type EntityId = Brand<string, 'EntityId'>;
 export type OccurrenceId = Brand<string, 'OccurrenceId'>;
@@ -23,6 +24,7 @@ export type SegmentId = Brand<number, 'SegmentId'>;
 export type EvidenceRef = Brand<string, 'EvidenceRef'>;
 
 export const islandId = (v: string): IslandId => v as IslandId;
+export const neighborhoodId = (v: string): NeighborhoodId => v as NeighborhoodId;
 export const anchorId = (v: string): AnchorId => v as AnchorId;
 export const entityId = (v: string): EntityId => v as EntityId;
 export const occurrenceId = (v: string): OccurrenceId => v as OccurrenceId;

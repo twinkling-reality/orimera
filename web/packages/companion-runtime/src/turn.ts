@@ -83,18 +83,17 @@ export interface ChoiceSet {
 
 /**
  * A turn (4.3): "an utterance with its evidence, an optional choice set, a free input affordance
- * for text, an always-present set of escapes, the subject anchor that drives Companion
- * placement, and the graph state version that invalidates it."
+ * for text, an always-present set of escapes, the subject anchor that connects the question to
+ * the world, and the graph state version that invalidates it."
  *
  * Note what is NOT here: no screen position, no panel geometry, no element. The subject anchor
- * is an id; where the Companion materializes around it is 4.2's problem and lives in the
- * renderer binding, which this package may not import.
+ * is an id that a presentation may focus or highlight. The runtime never turns it into geometry.
  */
 export interface Turn {
   readonly turnId: string;
   readonly intent: Intent;
   readonly subjectEntityId: EntityIdRef | null;
-  /** Drives Companion placement (4.2). An id, never a position. */
+  /** Connects the question to a focusable world anchor. An id, never a position. */
   readonly subjectAnchorId: AnchorIdRef | null;
   readonly utteranceKey: string;
   readonly utterance: string | null;

@@ -61,7 +61,7 @@ export interface AnchorTable {
 }
 
 function compareIslands(a: Island, b: Island): number {
-  if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
+  if (a.creationOrdinal !== b.creationOrdinal) return a.creationOrdinal - b.creationOrdinal;
   return a.islandId < b.islandId ? -1 : a.islandId > b.islandId ? 1 : 0;
 }
 

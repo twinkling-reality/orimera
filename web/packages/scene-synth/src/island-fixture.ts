@@ -125,6 +125,7 @@ export function buildIslandFixture(options: IslandFixtureOptions): Island {
 
   return makeIsland({
     islandId: id,
+    creationOrdinal: options.createdAt,
     createdAt: options.createdAt,
     // Placeholder. The real placement comes from the layout solver; see `buildFixtureScene`.
     placement: placement(ATLAS_ORIGIN, 0, 1),
@@ -160,7 +161,7 @@ export function buildFixtureScene(islandCount = 3): AtlasScene {
   const draft = specs.map(buildIslandFixture);
   const inputs: LayoutInputIsland[] = draft.map((island) => ({
     islandId: island.islandId,
-    createdAt: island.createdAt,
+    creationOrdinal: island.creationOrdinal,
     footprintRadiusLocal: island.footprintRadiusLocal,
     scale: 1,
     layoutEntities: island.layoutEntities,

@@ -21,6 +21,7 @@ export type {
   EntityId,
   EvidenceRef,
   IslandId,
+  NeighborhoodId,
   ManifestId,
   OccurrenceId,
   SegmentId,
@@ -30,6 +31,7 @@ export {
   entityId,
   evidenceRef,
   islandId,
+  neighborhoodId,
   manifestId,
   occurrenceId,
   segmentId,
@@ -66,7 +68,7 @@ export { contributesToLayout, isConfirmed, readsAsUnconfirmed } from './provenan
 export type { Anchor, AnchorKind } from './anchor.js';
 export { rendersAsPresenceMarker } from './anchor.js';
 
-export type { Island } from './island.js';
+export type { Island, IslandSpec } from './island.js';
 export {
   DISSOLVE_BAND_FRACTION,
   asMetricLocal,
@@ -87,6 +89,7 @@ export {
   MAX_TIER_3_ISLANDS,
   TIER_DEMOTE_FACTOR,
   TIER_PROMOTE_AU,
+  mapTierState,
   resolveTiers,
 } from './tiers.js';
 
@@ -165,30 +168,111 @@ export {
 export { IMPORTANCE_WEIGHTS, deriveImportance, occurrenceNormalizer } from './focus/importance.js';
 
 export type {
-  CompanionPlacement,
-  Materialization,
-  Obstacle,
-  PlacementConfig,
-  PlacementInputs,
-  PlacementResolution,
-  RejectionReason,
-  RejectionTally,
-  ScreenRect,
-} from './companion/placement.js';
+  CircleObstacle,
+  CorridorRule,
+  GroundMovementInput,
+  GroundMovementResolution,
+  MapPresentationState,
+  NavigationPose,
+  NavigationRegion,
+  NavigationSurface,
+  NavigationWorld,
+  OpenTraversalRule,
+  RegionTraversalRule,
+  SemanticTrace,
+  SpatialClassification,
+  SpatialPhase,
+  SurfaceNormal,
+  SurfaceSample,
+} from './navigation.js';
 export {
-  DEFAULT_PLACEMENT_CONFIG,
-  REJECTION_REASONS,
-  resolveCompanionPlacement,
-} from './companion/placement.js';
+  DEFAULT_CAMERA_RADIUS_AU,
+  DEFAULT_EYE_HEIGHT_AU,
+  DEFAULT_MAXIMUM_SLOPE_DEGREES,
+  DEFAULT_MAXIMUM_STEP_HEIGHT_AU,
+  DEFAULT_SURFACE_SAMPLE_SPACING_AU,
+  FIELD_MARGIN_AU,
+  RECOVERY_MARGIN_AU,
+  REGION_APPROACH_AU,
+  atlasLandscapeHeight,
+  atlasLandscapeSurface,
+  atlasMapPose,
+  buildNavigationWorld,
+  classifySpatialPhase,
+  constrainRegionTraversal,
+  enterAtlasMap,
+  exitAtlasMap,
+  flatNavigationSurface,
+  isNavigationLineVisible,
+  isNavigationPathClear,
+  isNavigationPositionClear,
+  resolveGroundMovement,
+  sourceFirstCardLocalPosition,
+} from './navigation.js';
 
 export type {
-  CompanionStation,
-  HomeConfig,
-  HomeReason,
-  StationInputs,
-  StationKind,
-} from './companion/station.js';
-export { DEFAULT_HOME_CONFIG, homePosition, resolveStation } from './companion/station.js';
+  DirectNavigationFailureReason,
+  DirectNavigationResolution,
+  DirectNavigationTarget,
+  DirectNavigationTransition,
+} from './direct-navigation.js';
+export {
+  DIRECT_NAVIGATION_DURATION_MS,
+  planDirectNavigationTransition,
+  resolveDirectNavigation,
+  sampleDirectNavigationTransition,
+} from './direct-navigation.js';
+
+export type {
+  Neighborhood,
+  NeighborhoodIndex,
+  NeighborhoodOptions,
+  NeighborhoodRoute,
+  NeighborhoodSnapshotVersion,
+} from './neighborhood.js';
+export {
+  DEFAULT_MAX_SEMANTIC_ROUTES_PER_NEIGHBORHOOD,
+  DEFAULT_NEIGHBORHOOD_CAPACITY,
+  DEFAULT_SEMANTIC_ENTITY_FANOUT_LIMIT,
+  buildNeighborhoodIndex,
+  snapshotNeighborhoodIndex,
+} from './neighborhood.js';
+
+export type {
+  AtlasNeighborhoodMembership,
+  AtlasNeighborhoodReason,
+  AtlasNeighborhoodSnapshot,
+  NeighborhoodCoverage,
+} from './neighborhood-snapshot.js';
+export {
+  ATLAS_NEIGHBORHOOD_SCHEMA_VERSION,
+  AtlasNeighborhoodValidationError,
+  inspectNeighborhoodCoverage,
+  makeAtlasNeighborhoodSnapshot,
+  parseAtlasNeighborhoodSnapshot,
+} from './neighborhood-snapshot.js';
+
+export type {
+  ResidencyAction,
+  ResidencyAsset,
+  ResidencyBudget,
+  ResidencyCost,
+  ResidencyDemand,
+  ResidencyEntry,
+  ResidencyPlan,
+  ResidencyRequest,
+  ResidencyStage,
+  ResidencyState,
+  ResidencyView,
+} from './residency.js';
+export {
+  DEFAULT_RESIDENCY_GRACE_REVISIONS,
+  EMPTY_RESIDENCY_STATE,
+  RESIDENCY_STAGE_ORDER,
+  completeResidencyRequest,
+  planResidency,
+  residencyDemandsForView,
+} from './residency.js';
 
 export type {
   LayoutConfig,
@@ -211,3 +295,100 @@ export {
   semanticSimilarity,
   sharedLayoutEntityCount,
 } from './layout/similarity.js';
+export type {
+  AtlasLayoutEntry,
+  AtlasLayoutReason,
+  AtlasLayoutSnapshot,
+  LayoutCoverage,
+} from './layout/snapshot.js';
+export {
+  ATLAS_LAYOUT_SCHEMA_VERSION,
+  AtlasLayoutValidationError,
+  inspectLayoutCoverage,
+  layoutCreationOrdinals,
+  layoutPlacements,
+  makeAtlasLayoutSnapshot,
+  nextCreationOrdinal,
+  parseAtlasLayoutSnapshot,
+} from './layout/snapshot.js';
+
+export type {
+  ModuleAccessibilityContract,
+  ModuleBounds,
+  ModuleCollisionContract,
+  ModuleEvidenceRequirement,
+  ModuleLodVariants,
+  ModuleNavigationContract,
+  ModuleSocket,
+  WorldCustomizationAxis,
+  WorldModuleDefinition,
+  WorldModuleRole,
+} from './world/module-registry.js';
+export { WorldModuleRegistry } from './world/module-registry.js';
+
+export type {
+  WorldRecipeAttachment,
+  WorldRecipeDefinition,
+  WorldRecipeSlot,
+} from './world/recipe-registry.js';
+export { WorldRecipeRegistry } from './world/recipe-registry.js';
+
+export {
+  DEFAULT_WORLD_MODULE_CATALOG_VERSION,
+  DEFAULT_WORLD_MODULES,
+  DEFAULT_WORLD_RECIPE_CATALOG_VERSION,
+  DEFAULT_WORLD_RECIPES,
+} from './world/default-catalog.js';
+
+export type {
+  ComposeWorldOptions,
+  WorldElementCause,
+  WorldElementOrigin,
+  WorldElementOwner,
+  WorldElementProvenance,
+  WorldModuleAttachment,
+  WorldModuleInstance,
+  WorldNavigationDestination,
+  WorldNavigationEdge,
+  WorldNavigationGraph,
+  WorldPathGeometry,
+  WorldTopologyDiagnostic,
+  WorldTopologySnapshot,
+  WorldTransform,
+} from './world/composer.js';
+export {
+  ATLAS_COMPOSER_KEY,
+  ATLAS_COMPOSER_VERSION,
+  DEFAULT_WORLD_ID,
+  WORLD_TOPOLOGY_SCHEMA_VERSION,
+  WorldTopologyValidationError,
+  composeAtlasWorld,
+  topologyReachability,
+  validateWorldTopology,
+} from './world/composer.js';
+
+export type {
+  WorldAppearanceProposal,
+  WorldCustomizationControllerOptions,
+  WorldCustomizationProposal,
+  WorldPreviewSession,
+  WorldProposalIssue,
+  WorldProposalIssueCode,
+  WorldProposalKind,
+  WorldProposalOrigin,
+  WorldProposalScope,
+  WorldProposalValidation,
+  WorldRegionStyleOverride,
+  WorldStructuralProposal,
+  WorldStyleCatalog,
+  WorldStyleDescriptor,
+  WorldStyleParameterDefinition,
+  WorldStyleParameterValue,
+  WorldStyleReference,
+  WorldStyleResolution,
+  WorldStyleVersion,
+} from './world/customization.js';
+export {
+  WorldCustomizationController,
+  resolveWorldStyleVersion,
+} from './world/customization.js';

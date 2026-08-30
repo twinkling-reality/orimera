@@ -19,8 +19,8 @@ export type ProvenanceClass =
 /**
  * Link state between an occurrence and an entity (domain-and-evidence-model.md 4.3).
  *
- * id-2 is the line the whole product turns on: `auto_provisional` may drive Atlas layout,
- * filtering and highlighting; it may never support a historical factual clause.
+ * id-2 is the line the whole product turns on: `auto_provisional` may drive filtering and
+ * highlighting; it may never move persisted Atlas placement or support a historical clause.
  */
 export type LinkState = 'proposed' | 'auto_provisional' | 'confirmed' | 'rejected' | 'revoked';
 
@@ -42,16 +42,15 @@ export function isConfirmed(state: LinkState): boolean {
 /**
  * Whether a link may influence LAYOUT.
  *
- * interaction-model.md 1.4: "Target separation is derived from a semantic similarity score
- * dominated by shared confirmed or high-confidence entities. Speculative links must never move
- * the world; otherwise the layout twitches every time the pipeline guesses."
+ * `atlas-spatial-architecture.md` corrects the older high-confidence exception: speculative links
+ * must never move the world; otherwise spatial memory changes whenever the pipeline guesses.
  *
- * So `auto_provisional` counts only at high confidence, and `proposed` never counts.
+ * Long-term spatial-memory correction (`atlas-spatial-architecture.md`): a confidence band is
+ * still a model judgement. It may drive temporary emphasis, never a persisted placement. Only a
+ * user-confirmed link is stable enough to move the world.
  */
-export function contributesToLayout(state: LinkState, confidence: ConfidenceBand): boolean {
-  if (state === 'confirmed') return true;
-  if (state === 'auto_provisional') return confidence === 'high';
-  return false;
+export function contributesToLayout(state: LinkState, _confidence: ConfidenceBand): boolean {
+  return state === 'confirmed';
 }
 
 /**

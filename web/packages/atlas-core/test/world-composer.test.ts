@@ -1,0 +1,114 @@
+import { describe, expect, it } from 'vitest';
+import {
+  DEFAULT_WORLD_MODULES,
+  WorldModuleRegistry,
+  WorldTopologyValidationError,
+  composeAtlasWorld,
+  entityId,
+  islandId,
+  makeIsland,
+  topologyReachability,
+  validateWorldTopology,
+} from '../src/index.js';
+import { island, scene } from './fixture.js';
+
+const region = (
+  key: string,
+  rung: 1 | 2 | 3 | 4,
+  ordinal: number,
+  position: readonly [number, number, number],
+) => {
+  const base = island({
+    key,
+    createdAt: 1_000 + ordinal,
+    position,
+    footprint: 8,
+    entities: ['shared'],
+    anchors: [],
+  });
+  return makeIsland({
+    ...base,
+    rung,
+    creationOrdinal: ordinal,
+    layoutEntities: new Set([entityId('shared')]),
+  });
+};
+
+describe('world topology composition', () => {
+  const atlas = scene([
+    region('r1', 1, 0, [-12, 0, -4]),
+    region('r2', 2, 1, [-4, 0, 5]),
+    region('r3', 3, 2, [5, 0, -3]),
+    region('r4', 4, 3, [13, 0, 4]),
+  ]);
+
+  it('is deterministic and keeps element identity stable across graph-state reloads', () => {
+    const first = composeAtlasWorld(atlas, {
+      seed: 'archive-seed',
+      availableReconstruction: new Set([islandId('r1'), islandId('r3')]),
+    });
+    const reloaded = composeAtlasWorld(scene(atlas.islands, 99), {
+      seed: 'archive-seed',
+      availableReconstruction: new Set([islandId('r1'), islandId('r3')]),
+    });
+
+    expect(first.topologyDigest).toBe(reloaded.topologyDigest);
+    expect(first.snapshotId).toBe(reloaded.snapshotId);
+    expect(first.instances.map((value) => value.instanceId)).toEqual(
+      reloaded.instances.map((value) => value.instanceId),
+    );
+    expect(first.inputStateVersion).toBe(1);
+    expect(reloaded.inputStateVersion).toBe(99);
+    expect(composeAtlasWorld(atlas, {
+      seed: 'archive-seed',
+      availableReconstruction: new Set([islandId('r1'), islandId('r3')]),
+    })).toEqual(first);
+  });
+
+  it('falls back to source evidence rather than inventing unavailable reconstruction geometry', () => {
+    const snapshot = composeAtlasWorld(atlas, {
+      availableReconstruction: new Set([islandId('r1'), islandId('r3')]),
+    });
+    const contentByRegion = new Map(snapshot.instances
+      .filter((value) => value.slotKey === 'content' && value.provenance.owner.kind === 'region')
+      .map((value) => [value.provenance.owner.id, value]));
+
+    expect(contentByRegion.get(islandId('r1'))?.moduleKey).toBe('region.reconstruction-volume');
+    expect(contentByRegion.get(islandId('r2'))?.moduleKey).toBe('region.source-register');
+    expect(contentByRegion.get(islandId('r3'))?.moduleKey).toBe('region.photographic-panels');
+    expect(contentByRegion.get(islandId('r4'))?.moduleKey).toBe('region.evidence-cards');
+    expect(snapshot.diagnostics.map((value) => value.instanceId)).toEqual([
+      contentByRegion.get(islandId('r2'))!.instanceId,
+    ]);
+    for (const value of snapshot.instances) {
+      expect(value.provenance.causes.length).toBeGreaterThan(0);
+      expect(value.streamingKey).toContain(value.moduleKey);
+    }
+  });
+
+  it('keeps every required destination reachable and aligned to its region placement', () => {
+    const snapshot = composeAtlasWorld(atlas);
+    expect(topologyReachability(snapshot).size).toBe(snapshot.navigation.destinations.length);
+    for (const destination of snapshot.navigation.destinations) {
+      const source = atlas.islands.find((value) => value.islandId === destination.islandId)!;
+      expect(destination.position.x).toBe(source.placement.position.x);
+      expect(destination.position.z).toBe(source.placement.position.z);
+    }
+  });
+
+  it('rejects tampered topology and invalid attachment catalogs', () => {
+    const snapshot = composeAtlasWorld(atlas);
+    const disconnected = {
+      ...snapshot,
+      topologyDigest: 'tampered',
+      navigation: { ...snapshot.navigation, edges: [] },
+    } as typeof snapshot;
+    expect(() => validateWorldTopology(disconnected)).toThrow(WorldTopologyValidationError);
+    expect(() => validateWorldTopology(disconnected)).toThrow(/unreachable|digest/);
+
+    const modules = DEFAULT_WORLD_MODULES.definitions.map((value) => ({ ...value }));
+    const first = modules[0]!;
+    modules[0] = { ...first, fallbackKey: first.key };
+    expect(() => new WorldModuleRegistry(2, modules)).toThrow(/fall back to itself/);
+  });
+});

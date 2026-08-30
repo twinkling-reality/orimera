@@ -49,7 +49,7 @@ describe('unconfirmedWeight', () => {
   });
 
   it('orders proposed above auto_provisional at equal confidence', () => {
-    // domain model id-2: auto_provisional may drive layout, filtering and highlighting; proposed
+    // domain model id-2: auto_provisional may drive filtering and temporary highlighting; proposed
     // is a guess the system has not even provisionally acted on. That gap has to be visible.
     const provisional = unconfirmedWeight(
       anchor('a', { linkState: 'auto_provisional', confidence: 'high' }),
