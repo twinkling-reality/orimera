@@ -32,6 +32,10 @@ export interface DetailHandlers {
   onName(occurrence: OccurrenceRecord): void;
   /** An evidence chip was opened. The corresponding anchor pulses at the same moment. */
   onEvidenceOpened(anchorId: string | null): void;
+  /** Move the live Atlas to the citation's anchor, or its region when no anchor is available. */
+  onLocate(anchorId: string | null, islandId: string): void;
+  /** Return to the Index when this pane occupies the narrow-screen surface. */
+  onClose(): void;
 }
 
 export interface DetailPane {
@@ -41,13 +45,33 @@ export interface DetailPane {
   showOccurrence(occurrence: OccurrenceRecord): void;
 }
 
-export function buildDetail(evidence: EvidenceCache, handlers: DetailHandlers): DetailPane {
+export interface DetailPresentation {
+  /** Synthetic development data has neither originals nor a write path. */
+  readonly preview?: boolean;
+}
+
+export function buildDetail(
+  evidence: EvidenceCache,
+  handlers: DetailHandlers,
+  presentation: DetailPresentation = {},
+): DetailPane {
   const root = el('section', { class: 'detail', 'aria-label': 'Detail' });
+  const close = el('button', {
+    type: 'button',
+    class: 'detail-close',
+    'aria-label': 'Back to the World Index',
+    text: 'Back to the Index',
+  });
+  close.addEventListener('click', () => handlers.onClose());
+
+  const show = (children: readonly (Node | string)[]): void => {
+    replace(root, [close, ...children]);
+  };
 
   return {
     root,
     showNothing() {
-      replace(root, [
+      show([
         el('p', {
           class: 'detail-empty',
           text: 'Pick something on the left, or aim at an anchor in the Atlas.',
@@ -56,17 +80,22 @@ export function buildDetail(evidence: EvidenceCache, handlers: DetailHandlers): 
     },
     showEntity(snapshot, entity) {
       const view = buildEntityDetail({ snapshot, entity });
-      replace(root, sectionsOf(view, evidence, handlers));
+      show(sectionsOf(view, evidence, handlers, presentation));
     },
     showOccurrence(occurrence) {
-      replace(root, [
+      show([
         el('h1', { class: 'detail-title', text: `An unidentified ${occurrence.kind}` }),
         el('p', { class: 'detail-lede' }, [
           'Nobody has said what this is. A detector saw something here, which is an inference ' +
             'and not a fact about anybody, so it supports nothing until you say so.',
         ]),
-        citationList([citationOf(occurrence)], evidence, handlers),
-        nameOffer(occurrence, handlers),
+        citationList([citationOf(occurrence)], evidence, handlers, presentation.preview !== true),
+        presentation.preview === true
+          ? el('p', {
+              class: 'detail-note preview-read-only-note',
+              text: 'Naming is unavailable in the synthetic read-only preview.',
+            })
+          : nameOffer(occurrence, handlers),
       ]);
     },
   };
@@ -91,8 +120,8 @@ function nameOffer(occurrence: OccurrenceRecord, handlers: DetailHandlers): HTML
     type: 'text',
     name: 'display-name',
     maxlength: 200,
-    placeholder: 'Say what this is',
-    'aria-label': 'Say what this is',
+    placeholder: 'Name or describe this',
+    'aria-label': 'Name or describe this',
   });
   form.append(
     input,
@@ -115,6 +144,7 @@ function sectionsOf(
   view: EntityDetailView,
   evidence: EvidenceCache,
   handlers: DetailHandlers,
+  presentation: DetailPresentation,
 ): readonly HTMLElement[] {
   // Iterated from the exported order rather than written out, so a section added to that array
   // appears here and a section removed from it disappears, in one place.
@@ -139,9 +169,16 @@ function sectionsOf(
         return el('section', { class: 'detail-section', 'aria-label': 'Occurrences' }, [
           el('h2', { text: 'Occurrences' }),
           el('p', { class: 'detail-note' }, [
-            'Every one of these opens the exact photograph it came from.',
+            presentation.preview === true
+              ? 'These synthetic citations exercise the detail layout; no source photographs exist.'
+              : 'Every one of these opens the exact photograph it came from.',
           ]),
-          citationList(view.occurrences, evidence, handlers),
+          citationList(
+            view.occurrences,
+            evidence,
+            handlers,
+            presentation.preview !== true,
+          ),
         ]);
       case 'relations':
         return el('section', { class: 'detail-section', 'aria-label': 'Relations' }, [
@@ -209,7 +246,7 @@ const EMPTY_BAND: Readonly<Record<ConfirmationBand['band'], string>> = Object.fr
 function bandRow(row: BandRow): HTMLElement {
   const item = el('li', { class: row.pending ? 'band-row is-pending' : 'band-row' });
   // Band 1 renders the user's own words verbatim. 5.1: "always retained and never paraphrased
-  // away." A row that showed a tidied version would be the system speaking in the user's voice.
+  // away." A row that showed a tidied version would put system wording in the user's own record.
   item.append(
     el('span', { class: 'row-label', text: row.verbatim ?? say(row.labelKey) }),
     el('span', { class: 'row-value', text: renderValue(row.value) }),
@@ -241,6 +278,7 @@ function citationList(
   citations: readonly OccurrenceCitation[],
   evidence: EvidenceCache,
   handlers: DetailHandlers,
+  evidenceAvailable: boolean,
 ): HTMLElement {
   const list = el('ol', { class: 'citations' });
   for (const citation of citations) {
@@ -250,11 +288,24 @@ function citationList(
         ? 'time not recorded'
         : new Date(citation.capturedAtMs ?? 0).toISOString().slice(0, 16).replace('T', ' '),
     });
-    const open = el('button', { type: 'button', class: 'citation-open', text: 'Open the original' });
-    open.addEventListener('click', () => {
-      void openInto(figure, open, citation, evidence, handlers);
+    const open = el('button', {
+      type: 'button',
+      class: 'citation-open',
+      text: evidenceAvailable ? 'Open the original' : 'Evidence unavailable in preview',
+      disabled: !evidenceAvailable,
     });
-    figure.append(open, caption);
+    if (evidenceAvailable) {
+      open.addEventListener('click', () => {
+        void openInto(figure, open, citation, evidence, handlers);
+      });
+    }
+    const locate = el('button', {
+      type: 'button',
+      class: 'citation-locate',
+      text: 'Locate in Atlas',
+    });
+    locate.addEventListener('click', () => handlers.onLocate(citation.anchorId, citation.islandId));
+    figure.append(el('div', { class: 'citation-actions' }, [locate, open]), caption);
     list.append(el('li', {}, [figure]));
   }
   return list;

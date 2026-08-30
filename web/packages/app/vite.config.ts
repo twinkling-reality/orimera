@@ -1,4 +1,18 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
+import { previewApiResponse } from './src/dev/preview-api.js';
+
+const previewApi: Plugin = {
+  name: 'orimera-atlas-preview-api',
+  configureServer(server) {
+    server.middlewares.use('/preview-api', (request, response) => {
+      const decision = previewApiResponse(request.method ?? 'GET', request.url ?? '/');
+      response.setHeader('cache-control', 'no-store');
+      response.setHeader('content-type', 'application/json; charset=utf-8');
+      response.statusCode = decision.statusCode;
+      response.end(JSON.stringify(decision.body));
+    });
+  },
+};
 
 /**
  * The authenticated surface.
@@ -10,6 +24,7 @@ import { defineConfig } from 'vite';
  */
 export default defineConfig({
   build: { target: 'es2022' },
+  plugins: [previewApi],
   server: {
     proxy: {
       '/api': {

@@ -10,7 +10,7 @@ import { el } from './dom.js';
  *
  * The way in is not discoverable on its own, but the prompt that says so belongs to the Companion
  * panel rather than here: it is one element that moves through "click to look around", "press X",
- * and the conversation itself, so the thing offering to talk is the thing that talked.
+ * and the conversation itself, so the prompt and the open exchange remain one surface.
  *
  * **Escape is not handled anywhere in this file and must not be.** It has exactly one meaning
  * everywhere in Orimera: release the mouse. The browser owns it, the mode follows from the
@@ -26,10 +26,12 @@ export interface WorldChrome {
   /** Which side the Companion and its words occupy. Remembered across sessions. */
   companionSide(): CompanionSide;
   toggleCompanionSide(): void;
+  setCompanionSide(side: CompanionSide): void;
   setMode(mode: ShellMode): void;
   mode(): ShellMode;
   /** Open or close the World Index. Releases the mouse first, because a summoned panel needs it. */
   toggleIndex(): void;
+  setIndexOpen(open: boolean): void;
   indexOpen(): boolean;
 }
 
@@ -63,6 +65,10 @@ export function buildWorldChrome(shell: HTMLElement): WorldChrome {
   return {
     reticle,
     companionSide: () => side,
+    setCompanionSide(next) {
+      side = next;
+      shell.setAttribute('data-companion-side', side);
+    },
     toggleCompanionSide() {
       side = side === 'right' ? 'left' : 'right';
       shell.setAttribute('data-companion-side', side);
@@ -76,12 +82,6 @@ export function buildWorldChrome(shell: HTMLElement): WorldChrome {
     setMode(next) {
       mode = next;
       shell.setAttribute('data-mode', next);
-      // Taking the lock closes the index. Leaving it open would put a panel the user cannot
-      // click over the world they just entered.
-      if (next === 'traverse' && open) {
-        open = false;
-        shell.removeAttribute('data-index');
-      }
     },
     indexOpen: () => open,
     toggleIndex() {
@@ -94,6 +94,11 @@ export function buildWorldChrome(shell: HTMLElement): WorldChrome {
       } else {
         shell.removeAttribute('data-index');
       }
+    },
+    setIndexOpen(next) {
+      open = next;
+      if (open) shell.setAttribute('data-index', 'open');
+      else shell.removeAttribute('data-index');
     },
   };
 }

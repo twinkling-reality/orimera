@@ -42,6 +42,17 @@ function unmeasured(): FormationState {
   });
 }
 
+function ready(): FormationState {
+  return reduceFormation(midFlight(), {
+    eventId: 'ready',
+    captureId: 'b1',
+    phase: 'ready',
+    stageIndex: 6,
+    at: 10_000,
+    outcome: { rung: 4, openQuestions: 0, photographsAvailable: 148 },
+  });
+}
+
 function render(state: FormationState, label: string | null = 'my upload'): HTMLElement {
   const panel = buildFormation();
   panel.render(state, label);
@@ -107,5 +118,12 @@ describe('the forming panel', () => {
     const panel = buildFormation();
     panel.render(null, null);
     expect(panel.root.hidden).toBe(true);
+  });
+
+  it('hides the completed receipt once the region is ready', () => {
+    const panel = buildFormation();
+    panel.render(ready(), '.orimera/media/intake/synthetic');
+    expect(panel.root.hidden).toBe(true);
+    expect(panel.root.textContent).toBe('');
   });
 });

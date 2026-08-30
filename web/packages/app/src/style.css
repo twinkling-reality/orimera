@@ -1,9 +1,8 @@
 /*
  * The authenticated surface.
  *
- * Three columns over one canvas: the library rail, the Atlas, and the detail pane. The canvas is
- * fixed behind everything and is never unmounted, so a layout change is a change of what is over
- * it rather than a page.
+ * One full-bleed canvas with summoned chrome over it. The canvas is fixed behind everything and is
+ * never unmounted, so a layout change is a change of what is over it rather than a page.
  *
  * Colour carries meaning in exactly one place and it is declared here rather than chosen per
  * component: the four provenance classes must be visually distinguishable wherever they appear
@@ -12,23 +11,8 @@
  */
 
 :root {
-  --ground: #0b0e15;
-  --panel: rgba(16, 20, 30, 0.82);
-  --edge: rgba(180, 200, 235, 0.14);
-  --ink: #e8edf7;
-  --ink-soft: #a8b3c8;
-  /* Held at 4.5:1 against --panel. This is body copy, so it is a contrast requirement. */
-  --ink-faint: #8590a6;
-  --accent: #7fd4c8;
-
-  /* The four provenance classes. One vocabulary, one palette, everywhere. */
-  --user: #e2c98a;
-  --capture: #9fd0e8;
-  --inference: #9c9fc4;
-  --external: #c9a0d8;
-
-  --radius: 10px;
   --gap: clamp(0.75rem, 1.4vw, 1.25rem);
+  --companion-size: min(26rem, 30vw, 34vh);
 }
 
 *,
@@ -66,10 +50,9 @@ body {
  * thing the user is supposed to walk through rendered as a letterboxed panel between two lists.
  * A world you look at through a hole is a viewport widget; a world you stand in is the product.
  *
- * The index in particular does not belong here permanently. It is the MOBILE entry point, and it
- * exists because Pointer Lock has no implementation on iOS Safari or Android Chrome, so a phone
- * gets a list with tap to travel instead of a world. Showing it beside the Atlas on a desktop put
- * the phone interface and the world interface on screen at the same time.
+ * The index in particular does not belong here permanently. On the supported desktop/laptop
+ * viewport it is a summoned navigation surface over the same world. Showing it permanently
+ * beside the Atlas would turn the world into the leftover column of a dashboard.
  */
 #shell {
   position: fixed;
@@ -80,6 +63,29 @@ body {
    * from nothing else. Chrome opts back in below. */
   pointer-events: none;
 }
+
+/* The presentation package supplies the non-semantic directional field in appearance.css. */
+#shell::before {
+  content: '';
+  position: fixed;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Peripheral comfort is active only while moving through the world. */
+#shell::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle at center, transparent 46%, rgb(0 0 0 / 88%) 118%);
+  transition: opacity 180ms ease;
+}
+
+#shell[data-mode='traverse'][data-moving='true'][data-vignette='subtle']::after { opacity: 0.28; }
+#shell[data-mode='traverse'][data-moving='true'][data-vignette='strong']::after { opacity: 0.52; }
 
 /*
  * The stage is the parent the anchor overlay writes its projected labels into, and it now spans
@@ -151,6 +157,11 @@ body {
   opacity: 0.62;
 }
 
+#shell[data-camera='map'] > :where(.reticle, .companion-panel) {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* ------------------------------------------------------------------ the credential gate */
 
 .gate {
@@ -183,13 +194,13 @@ body {
 
 .gate-failure {
   margin: 0;
-  color: #f0a0a0;
+  color: var(--error);
   font-size: 0.88rem;
 }
 
 input {
   padding: 0.6rem 0.75rem;
-  background: rgba(8, 11, 18, 0.7);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
   border: 1px solid var(--edge);
   border-radius: 8px;
   color: var(--ink);
@@ -197,8 +208,9 @@ input {
 }
 
 input:focus-visible,
-button:focus-visible {
-  outline: 2px solid var(--accent);
+button:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -208,14 +220,14 @@ button {
   border-radius: 8px;
   padding: 0.5rem 0.9rem;
   border: 1px solid var(--edge);
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--raised) 66%, transparent);
   color: var(--ink);
 }
 
 button.primary {
   background: var(--accent);
   border-color: transparent;
-  color: #06231f;
+  color: var(--ground);
   font-weight: 500;
 }
 
@@ -246,7 +258,7 @@ button.ghost {
   position: fixed;
   left: var(--gap);
   top: var(--gap);
-  bottom: var(--gap);
+  bottom: 2.3rem;
   width: min(22rem, 30vw);
   display: flex;
   flex-direction: column;
@@ -327,7 +339,7 @@ button.ghost {
 
 .rail-row:hover,
 .rail-row[aria-current='true'] {
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--raised) 54%, transparent);
   border-color: var(--edge);
 }
 
@@ -367,7 +379,7 @@ button.ghost {
   border-radius: 4px;
   font-size: 0.62rem;
   font-weight: 600;
-  color: #0b0e15;
+  color: var(--ground);
 }
 
 .mark-user { background: var(--user); }
@@ -392,6 +404,19 @@ button.ghost {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.detail-close {
+  align-self: flex-start;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  background: none;
+  border: none;
+}
+
+.detail-close:hover {
+  color: var(--ink);
 }
 
 /* Absent, not empty. A pane reading "pick something on the left" is a permanent instruction
@@ -463,7 +488,7 @@ button.ghost {
 }
 
 .band-row.is-pending {
-  background: rgba(127, 212, 200, 0.1);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
   border-radius: 4px;
 }
 
@@ -494,6 +519,22 @@ button.ghost {
   gap: 0.3rem;
 }
 
+.citation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.citation-actions button {
+  flex: 1 1 9rem;
+}
+
+.citation-locate {
+  color: var(--ink);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--edge));
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
 .citation img {
   width: 100%;
   height: auto;
@@ -509,8 +550,34 @@ button.ghost {
 }
 
 .citation-failed {
-  color: #f0a0a0;
+  color: var(--error);
 }
+
+/* A travel/recovery sentence appears only while the world is changing. It sits on the same
+ * evidence axis as the selected citation instead of becoming another permanent command pill. */
+.travel-status {
+  position: fixed;
+  left: 50%;
+  bottom: 5.25rem;
+  z-index: 12;
+  max-width: min(36rem, calc(100vw - 2 * var(--gap)));
+  margin: 0;
+  padding: 0.42rem 0.7rem;
+  transform: translateX(-50%);
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-label, 6px);
+  box-shadow: 0 8px 30px rgb(0 0 0 / 24%);
+  backdrop-filter: blur(10px);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  text-align: center;
+  text-shadow: none;
+}
+
+.travel-status[data-kind='failure'] { color: var(--warning); }
+.travel-status[hidden] { display: none; }
 
 /* ------------------------------------------------------------------ naming */
 
@@ -575,7 +642,7 @@ button.ghost {
 .confirm-refused {
   margin: 0;
   font-size: 0.88rem;
-  color: #f0a0a0;
+  color: var(--error);
 }
 
 .confirm-actions {
@@ -585,16 +652,7 @@ button.ghost {
 
 /* ------------------------------------------------------------------ the status bar */
 
-/*
- * The status line. Quiet, at the foot of the world, and never a panel.
- *
- * It was a full width bar across the top of the Atlas carrying four sentences at once, which put
- * the least urgent text in the product in the most prominent place on the screen. None of these
- * sentences can be deleted: the standing caption is the one that says an atlas position is not a
- * location, and the reconstruction rung is the one that stops a label implying free movement in
- * a region that has none. They are obligations, so they stay, in the register an obligation
- * deserves rather than the register a headline does.
- */
+/* One governing sentence, with one concise exception when part of the Atlas is absent. */
 .status {
   position: fixed;
   left: var(--gap);
@@ -602,19 +660,45 @@ button.ghost {
   bottom: 0.5rem;
   display: flex;
   flex-wrap: wrap;
-  gap: 0 1.2rem;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1.2rem;
   padding: 0;
   background: none;
   border: none;
   font-size: 0.72rem;
   line-height: 1.5;
   color: var(--ink-faint);
-  opacity: 0.62;
   text-shadow: 0 1px 3px rgb(0 0 0 / 70%);
 }
 
 .status p {
   margin: 0;
+}
+
+.status-context {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.preview-disclosure {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.48rem;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.025em;
+  white-space: nowrap;
+  text-shadow: none;
+  backdrop-filter: blur(8px);
 }
 
 /*
@@ -623,32 +707,319 @@ button.ghost {
  */
 .standing-caption {
   color: var(--ink-soft);
+  opacity: 0.62;
 }
 
 .status-warning {
-  color: #e8c08a;
+  margin-left: auto;
+  text-align: right;
+  color: var(--warning);
+  opacity: 0.82;
 }
 
-/* ------------------------------------------------------------------ narrow viewports */
+/* ------------------------------------------------------------------ Atlas system surfaces */
 
-/*
- * On a narrow screen the Atlas is not the entry point: Pointer Lock does not exist on iOS Safari
- * or Android Chrome, so first-person movement is unavailable and the World Index is the default
- * entry (interaction-model.md 2.5). The canvas stays mounted and behind, and the rail takes the
- * screen: the surface does not change, only what is over it.
- */
+.atlas-commands {
+  position: fixed;
+  left: 50%;
+  top: var(--gap);
+  z-index: 10;
+  display: flex;
+  gap: 0.15rem;
+  padding: 0.2rem;
+  transform: translateX(-50%);
+  background: color-mix(in srgb, var(--surface) 68%, transparent);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  backdrop-filter: blur(12px);
+}
+
+.atlas-commands button {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.58rem;
+  color: var(--ink-soft);
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  font-size: 0.76rem;
+}
+
+.atlas-commands button:hover,
+.atlas-commands button[aria-current='page'] {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--raised) 70%, transparent);
+}
+
+.atlas-commands kbd { color: currentColor; opacity: 0.72; }
+
+.map-caption {
+  position: fixed;
+  left: 50%;
+  top: calc(var(--gap) + 2.8rem);
+  z-index: 10;
+  margin: 0;
+  transform: translateX(-50%);
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 60%);
+}
+
+.map-caption[hidden] { display: none; }
+
+.map-regions {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+}
+
+.map-regions[hidden] { display: none; }
+
+.map-region-target {
+  position: absolute;
+  left: 0;
+  top: 0;
+  min-width: 5.2rem;
+  padding: 0.25rem 0.48rem;
+  translate: -50% -50%;
+  pointer-events: auto;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--ground) 84%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--edge));
+  border-radius: var(--radius-label, 6px);
+  box-shadow: 0 5px 18px rgb(0 0 0 / 22%);
+  backdrop-filter: blur(8px);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.map-region-target::before {
+  content: '';
+  display: inline-block;
+  width: 0.35rem;
+  height: 0.35rem;
+  margin-right: 0.4rem;
+  border: 1px solid var(--accent);
+  transform: rotate(45deg);
+}
+
+.map-region-target:hover,
+.map-region-target:focus-visible {
+  color: var(--ink);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+}
+
+.system-overlay {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 20;
+  width: min(42rem, calc(100vw - 2 * var(--gap)));
+  max-height: min(46rem, calc(100vh - 2 * var(--gap)));
+  overflow-y: auto;
+  padding: clamp(1.1rem, 2vw, 1.6rem);
+  transform: translate(-50%, -50%);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--edge);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 100vmax color-mix(in srgb, var(--ground) 68%, transparent),
+    0 30px 90px rgb(0 0 0 / 42%);
+  backdrop-filter: blur(24px) saturate(115%);
+}
+
+.system-overlay[hidden] { display: none; }
+
+.overlay-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: 1.4rem;
+}
+
+.overlay-kicker {
+  margin: 0 0 0.2rem;
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.overlay-head h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 2.7rem);
+  font-weight: 300;
+  letter-spacing: -0.045em;
+}
+
+.overlay-close,
+.text-action {
+  padding: 0.2rem 0;
+  color: var(--ink-soft);
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
+.overlay-close:hover,
+.text-action:hover { color: var(--ink); }
+
+.option-group {
+  padding: 1rem 0 0.65rem;
+  border-top: 1px solid var(--edge);
+}
+
+.option-group h2 {
+  margin: 0 0 0.55rem;
+  color: var(--ink-faint);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.option-field {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(11rem, 1.2fr);
+  align-items: center;
+  gap: 0.35rem 1.25rem;
+  min-height: 3.1rem;
+  color: var(--ink-soft);
+}
+
+.option-label { color: var(--ink); }
+
+.option-note {
+  grid-column: 2;
+  margin-top: -0.25rem;
+  color: var(--ink-faint);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+select {
+  min-height: 2.45rem;
+  padding: 0.4rem 2rem 0.4rem 0.7rem;
+  color: var(--ink);
+  background: var(--raised);
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.range-control {
+  display: grid;
+  grid-template-columns: 1fr 3.2rem;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.range-control input {
+  width: 100%;
+  padding: 0;
+  accent-color: var(--accent);
+  background: none;
+  border: 0;
+}
+
+.option-value {
+  color: var(--ink-faint);
+  font: 500 0.75rem/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-align: right;
+}
+
+.overlay-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--edge);
+}
+
+.controls-list {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.75fr) 1.5fr;
+  gap: 0;
+  margin: 0 0 1.2rem;
+}
+
+.controls-list dt,
+.controls-list dd {
+  margin: 0;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--edge);
+}
+
+.controls-list dd { color: var(--ink-soft); }
+
+kbd {
+  color: var(--ink);
+  font: 500 0.72rem/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: 0.04em;
+}
+
+#shell[data-primary='options'] > :where(.rail, .detail, .confirm, .companion-panel, .forming),
+#shell[data-primary='controls'] > :where(.rail, .detail, .confirm, .companion-panel, .forming) {
+  pointer-events: none;
+  opacity: 0;
+}
+
+#shell[data-primary='options'] > :where(.atlas-commands, .map-caption),
+#shell[data-primary='controls'] > :where(.atlas-commands, .map-caption) {
+  pointer-events: none;
+  opacity: 0;
+}
+
+.viewport-boundary {
+  display: none;
+}
+
+/* ------------------------------------------------------------------ supported viewport */
+
+/* Desktop/laptop only. This is a viewport boundary, not an alternate mobile navigation mode. */
 @media (max-width: 60rem) {
-  #shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+  #atlas {
+    visibility: hidden;
   }
 
-  .stage {
-    display: none;
+  #shell > :not(.viewport-boundary) {
+    display: none !important;
   }
 
-  .detail {
-    grid-row: 2;
+  .viewport-boundary {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    padding: 2rem;
+    color: var(--ink);
+    text-align: center;
+    background: var(--ground);
+  }
+
+  .viewport-boundary h1 {
+    max-width: 24rem;
+    margin: 0;
+    font-size: clamp(2rem, 8vw, 3.8rem);
+    font-weight: 300;
+    letter-spacing: -0.045em;
+  }
+
+  .viewport-boundary > p:last-child {
+    max-width: 31rem;
+    margin: 1rem 0 0;
+    color: var(--ink-soft);
   }
 }
 
@@ -822,6 +1193,25 @@ button.ghost {
    * instead of visibly drawing nothing, which hides the fault it should be showing. */
 }
 
+/* Motion normally carries the state distinction. This visible caption replaces that channel when
+ * the field is static. It is deliberately plain and adjacent to the body, not a badge or a meter. */
+.companion-motion-caption {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.2rem;
+  left: 0.75rem;
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--ink-soft);
+  text-shadow: 0 1px 5px rgb(0 0 0 / 75%);
+}
+
+.companion-motion-caption[hidden] {
+  display: none;
+}
+
 /* The Companion's own canvas, composited over the world.
  *
  * A 2D canvas over the Atlas, sitting above the world and below the panel. It is transparent
@@ -834,8 +1224,8 @@ button.ghost {
   right: 3vw;
   top: 12vh;
   z-index: 2;
-  width: min(26rem, 30vw);
-  height: min(26rem, 34vh);
+  width: var(--companion-size);
+  height: var(--companion-size);
   opacity: 0;
   pointer-events: none;
   transition: opacity 260ms ease, transform 260ms ease;
@@ -857,7 +1247,7 @@ button.ghost {
 
 @media (prefers-reduced-motion: reduce) {
   .companion-stage {
-    transition: opacity 160ms ease;
+    transition: none;
     transform: none;
   }
 }
@@ -933,10 +1323,10 @@ button.ghost {
   position: fixed;
   right: 3vw;
   left: auto;
-  top: calc(12vh + min(26rem, 34vh) - 1.5rem);
+  top: calc(12vh + var(--companion-size) - 1.5rem);
   bottom: auto;
   transform: none;
-  width: min(26rem, 30vw);
+  width: var(--companion-size);
   padding: 0;
   background: none;
   border-radius: 0;
@@ -948,15 +1338,16 @@ button.ghost {
   left: 3vw;
 }
 
-/* The name, the way a game names whoever is speaking. */
-.companion-panel .speaker {
+/* The presence name. It identifies which text belongs to the Companion without implying a
+ * person, a recorded source, or a second interaction mode. */
+.companion-panel .companion-name {
   display: block;
   margin-bottom: 0.2rem;
   font-size: 0.72rem;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #6fb6ff;
+  color: var(--accent);
 }
 
 /* The number that answers it. Legible as a key, because it is one. */
@@ -1175,5 +1566,3 @@ button.ghost {
   font-size: 0.8rem;
   color: var(--ink-faint);
 }
-
-

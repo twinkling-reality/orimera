@@ -32,7 +32,7 @@ export function buildFormation(): FormationPanel {
   return {
     root,
     render(state, batchLabel) {
-      if (state === null) {
+      if (state === null || state.phase === 'ready') {
         root.hidden = true;
         replace(root, []);
         return;

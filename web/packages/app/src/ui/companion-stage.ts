@@ -1,5 +1,5 @@
 import type { MoteState } from './companion-motes.js';
-import { createMoteField } from './companion-motes.js';
+import { createMoteField, MOTE_STATE_CAPTIONS } from './companion-motes.js';
 
 /**
  * The Companion's body: one field of motes on its own 2D canvas, over the world.
@@ -18,7 +18,12 @@ import { createMoteField } from './companion-motes.js';
  * somebody else's product tomorrow.
  *
  * **Rendered in 2D, deliberately.** The Atlas owns a WebGL context and this does not need a second
- * one. Nothing here reads the point map, the islands or the anchors.
+ * one. Nothing here reads the point map, the islands or the anchors. It stays in screen space, so
+ * it also has no world placement to solve and cannot be occluded by inferred geometry.
+ *
+ * **Reduced motion is a different rendering contract.** The field becomes static and the caption
+ * states the epistemic distinction the weather would otherwise carry. The caption is visible text,
+ * not an assistive-only annotation, because motion cannot be the sole carrier of information.
  */
 
 export interface CompanionStageOptions {
@@ -40,23 +45,47 @@ export interface CompanionStage {
 export function buildCompanionStage(options: CompanionStageOptions): CompanionStage {
   const root = document.createElement('div');
   root.className = 'companion-stage';
-  root.setAttribute('aria-hidden', 'true');
 
   const canvas = document.createElement('canvas');
   canvas.className = 'companion-flat';
-  root.append(canvas);
+  canvas.setAttribute('aria-hidden', 'true');
+
+  const caption = document.createElement('p');
+  caption.className = 'companion-motion-caption';
+  caption.setAttribute('aria-live', 'polite');
+  root.append(canvas, caption);
   options.parent.append(root);
 
-  const field = createMoteField();
+  const motionQuery =
+    typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)')
+      : null;
+  let reducedMotion = motionQuery?.matches ?? false;
+  const field = createMoteField({ reducedMotion });
   let shown = false;
   let raf = 0;
   let last = 0;
+  let needsDraw = true;
+
+  const reflectMotionPreference = (): void => {
+    reducedMotion = motionQuery?.matches ?? false;
+    field.setReducedMotion(reducedMotion);
+    root.toggleAttribute('data-reduced-motion', reducedMotion);
+    caption.hidden = !reducedMotion;
+    caption.textContent = MOTE_STATE_CAPTIONS[field.state()];
+    needsDraw = true;
+  };
+  reflectMotionPreference();
+
+  const onMotionPreference = (): void => reflectMotionPreference();
+  motionQuery?.addEventListener('change', onMotionPreference);
 
   const size = (): void => {
     const rect = root.getBoundingClientRect();
     const side = Math.max(1, Math.round(Math.min(rect.width, rect.height) * window.devicePixelRatio));
     canvas.width = side;
     canvas.height = side;
+    needsDraw = true;
   };
   size();
   window.addEventListener('resize', size);
@@ -75,11 +104,13 @@ export function buildCompanionStage(options: CompanionStageOptions): CompanionSt
     const dt = last === 0 ? 0.016 : Math.min(0.05, (ms - last) / 1000);
     last = ms;
     if (!shown) return;
+    if (reducedMotion && !needsDraw) return;
     const ctx = canvas.getContext('2d');
     if (ctx === null) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     field.update(dt);
     field.draw(ctx, canvas.width);
+    needsDraw = false;
   }
   raf = window.requestAnimationFrame(tick);
 
@@ -89,12 +120,15 @@ export function buildCompanionStage(options: CompanionStageOptions): CompanionSt
     state: () => field.state(),
     setState(next) {
       field.setState(next);
+      caption.textContent = MOTE_STATE_CAPTIONS[next];
+      needsDraw = true;
     },
     show() {
       shown = true;
       root.setAttribute('data-shown', 'true');
       // The box may have had no size while hidden, so measure it now it has one.
       size();
+      needsDraw = true;
     },
     hide() {
       shown = false;
@@ -108,6 +142,7 @@ export function buildCompanionStage(options: CompanionStageOptions): CompanionSt
       window.cancelAnimationFrame(raf);
       observer.disconnect();
       window.removeEventListener('resize', size);
+      motionQuery?.removeEventListener('change', onMotionPreference);
       root.remove();
     },
   };

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { BAND_ORDER } from '@orimera/companion-runtime';
 import type { EntityRecord, GraphSnapshot, OccurrenceRecord } from '@orimera/graph-client';
 
@@ -24,7 +25,12 @@ import { STANDING_CAPTION, buildStatus } from '../src/ui/status.js';
  */
 
 const NO_EVIDENCE = new EvidenceCache({ evidenceBytes: () => Promise.reject(new Error('none')) });
-const HANDLERS = { onName: () => undefined, onEvidenceOpened: () => undefined };
+const HANDLERS = {
+  onName: () => undefined,
+  onEvidenceOpened: () => undefined,
+  onLocate: () => undefined,
+  onClose: () => undefined,
+};
 
 function entity(overrides: Partial<EntityRecord> = {}): EntityRecord {
   return {
@@ -133,15 +139,66 @@ describe('the provenance panel', () => {
   });
 });
 
+describe('the desktop viewport boundary', () => {
+  it('has an explicit way back to the World Index', () => {
+    let closed = false;
+    const detail = buildDetail(NO_EVIDENCE, {
+      ...HANDLERS,
+      onClose: () => {
+        closed = true;
+      },
+    });
+    detail.showOccurrence(occurrence('o1'));
+    const back = detail.root.querySelector<HTMLButtonElement>('.detail-close');
+    expect(back?.textContent).toContain('Index');
+    back?.click();
+    expect(closed).toBe(true);
+  });
+
+  it('does not silently switch into a mobile Index layout', () => {
+    const style = readFileSync('packages/app/src/style.css', 'utf8');
+    const start = style.indexOf('@media (max-width: 60rem)');
+    const end = style.indexOf('@media (prefers-reduced-motion: reduce)', start);
+    const narrowRules = style.slice(start, end);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(narrowRules).not.toContain('grid-template');
+    expect(narrowRules).not.toContain('.rail {');
+    expect(narrowRules).toContain('.viewport-boundary');
+    expect(narrowRules).toContain('visibility: hidden');
+  });
+
+  it('uses a directional atmosphere rather than decorative gradient circles', () => {
+    const appearance = readFileSync('packages/app/src/appearance.css', 'utf8');
+    expect(appearance).toContain('var(--field-image)');
+    expect(appearance).not.toContain('radial-gradient');
+  });
+});
+
+describe('citation-to-world navigation', () => {
+  it('offers a location action even when synthetic evidence cannot be opened', () => {
+    let located: readonly [string | null, string] | null = null;
+    const detail = buildDetail(NO_EVIDENCE, {
+      ...HANDLERS,
+      onLocate: (anchorId, islandId) => {
+        located = [anchorId, islandId];
+      },
+    }, { preview: true });
+    detail.showOccurrence(occurrence('o1'));
+    const locate = detail.root.querySelector<HTMLButtonElement>('.citation-locate');
+    const original = detail.root.querySelector<HTMLButtonElement>('.citation-open');
+    expect(locate?.disabled).toBe(false);
+    expect(original?.disabled).toBe(true);
+    locate?.click();
+    expect(located).toEqual(['o1', 'isl']);
+  });
+});
+
 // ---------------------------------------------------------------------------------------------
 // The standing caption
 
 describe('the standing caption', () => {
   const status = () =>
     buildStatus({
-      snapshot: snapshot([], []),
-      regionCount: 1,
-      rung: 4,
       omittedRegionCount: 0,
       undrawable: new Map(),
     });
@@ -158,23 +215,20 @@ describe('the standing caption', () => {
     expect(bar.querySelector('.standing-caption')?.hasAttribute('hidden')).toBe(false);
   });
 
-  it('displays the rung the regions earned rather than hiding it', () => {
-    const text = status().querySelector('.status-rung')?.textContent ?? '';
-    expect(text.length).toBeGreaterThan(0);
-    expect(text).not.toBe('rung.4');
+  it('keeps diagnostics out of the normal world view', () => {
+    const text = status().textContent ?? '';
+    expect(text).not.toContain('state version');
+    expect(text).not.toContain('detections');
+    expect(text).not.toContain('reconstruction');
   });
 
   it('states what was left out instead of showing a smaller world as the whole one', () => {
     const bar = buildStatus({
-      snapshot: snapshot([], []),
-      regionCount: 5,
-      rung: 4,
       omittedRegionCount: 3,
       undrawable: new Map([['voice', 7]]),
     });
     const warnings = [...bar.querySelectorAll('.status-warning')].map((n) => n.textContent ?? '');
-    expect(warnings.some((w) => w.includes('3 regions are not shown'))).toBe(true);
-    expect(warnings.some((w) => w.includes('7 voice detections'))).toBe(true);
+    expect(warnings).toEqual(['3 regions and 7 detections not shown in the Atlas.']);
   });
 });
 

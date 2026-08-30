@@ -34,9 +34,12 @@ import type {
   Anchor,
   AnchorKind,
   AtlasScene,
+  AtlasLayoutSnapshot,
   Island,
+  IslandId,
   IslandPlacement,
   LayoutInputIsland,
+  LayoutCoverage,
   ReconstructionRung,
 } from '@orimera/atlas-core';
 import {
@@ -45,11 +48,15 @@ import {
   anchorId,
   atlasVec3,
   entityId as toEntityId,
+  inspectLayoutCoverage,
   islandId as toIslandId,
+  layoutCreationOrdinals,
   layoutEntitiesOf,
+  layoutPlacements,
   localVec3,
   makeIsland,
   makeScene,
+  nextCreationOrdinal,
   occurrenceId as toOccurrenceId,
   phyllotaxisSeed,
   placement,
@@ -85,6 +92,8 @@ const FOOTPRINT_MARGIN = 2.5;
 
 export interface SceneBuild {
   readonly scene: AtlasScene;
+  /** Present only when a durable layout artifact was supplied by the caller. */
+  readonly layoutCoverage?: LayoutCoverage;
   /**
    * Islands the layout solver could not take, with the reason.
    *
@@ -103,6 +112,42 @@ export interface SceneBuild {
    * world that simply does not draw them.
    */
   readonly undrawable: ReadonlyMap<OccurrenceKind, number>;
+}
+
+/**
+ * Consume durable presentation authority without making the graph transport own Atlas layout.
+ * Missing regions receive deterministic draft ordinals and placements for this render, while the
+ * coverage report makes the persistence debt explicit to the backend adapter.
+ */
+export function buildSceneFromLayout(
+  snapshot: GraphSnapshot,
+  stored: AtlasLayoutSnapshot,
+): SceneBuild {
+  const graphIds = snapshot.islands.map((record) => toIslandId(record.islandId));
+  const coverage = inspectLayoutCoverage(stored, graphIds);
+  const ordinals = new Map(layoutCreationOrdinals(stored));
+  let next = nextCreationOrdinal(stored);
+  for (const id of graphIds) {
+    if (ordinals.has(id)) continue;
+    if (next >= Number.MAX_SAFE_INTEGER) {
+      throw new RangeError('Atlas layout creation ordinals are exhausted');
+    }
+    ordinals.set(id, next);
+    next += 1;
+  }
+  const effectiveVersion = coverage.missing.length === 0
+    ? stored.layoutVersion
+    : stored.layoutVersion + 1;
+  if (!Number.isSafeInteger(effectiveVersion)) {
+    throw new RangeError('Atlas layout versions are exhausted');
+  }
+  const built = buildScene(
+    snapshot,
+    effectiveVersion,
+    layoutPlacements(stored),
+    ordinals,
+  );
+  return Object.freeze({ ...built, layoutCoverage: coverage });
 }
 
 /**
@@ -126,9 +171,15 @@ const ANCHOR_KINDS: Readonly<Partial<Record<OccurrenceKind, AnchorKind>>> = Obje
   event: 'event',
 });
 
-export function buildScene(snapshot: GraphSnapshot, layoutVersion = 1): SceneBuild {
+export function buildScene(
+  snapshot: GraphSnapshot,
+  layoutVersion = 1,
+  persistedPlacements: ReadonlyMap<IslandId, IslandPlacement> = new Map(),
+  creationOrdinals: ReadonlyMap<IslandId, number> = new Map(),
+): SceneBuild {
   const kept = snapshot.islands.slice(0, MAX_ISLANDS);
   const omitted = snapshot.islands.slice(MAX_ISLANDS);
+  const resolvedOrdinals = resolveCreationOrdinals(kept, creationOrdinals);
 
   // Importance is driven by how often the linked entity appears across the WHOLE workspace,
   // not within one island, so it is read from the entity rather than counted here.
@@ -145,7 +196,9 @@ export function buildScene(snapshot: GraphSnapshot, layoutVersion = 1): SceneBui
     }
     const list = anchorsByIsland.get(occurrence.islandId);
     const linked = occurrence.entityId;
-    const count = linked === null ? 0 : (occurrenceCounts.get(linked) ?? 0);
+    // A bare detection is still one occurrence. Zero would make the focus label contradict the
+    // citation that led to it; linked records use the graph's full cross-library count.
+    const count = linked === null ? 1 : Math.max(1, occurrenceCounts.get(linked) ?? 0);
     const anchor = toAnchor(occurrence, kind, count);
     if (list === undefined) anchorsByIsland.set(occurrence.islandId, [anchor]);
     else list.push(anchor);
@@ -164,11 +217,14 @@ export function buildScene(snapshot: GraphSnapshot, layoutVersion = 1): SceneBui
 
   const inputs: LayoutInputIsland[] = placed.map(({ record, anchors }) => ({
     islandId: toIslandId(record.islandId),
-    createdAt: orderingKey(record),
+    creationOrdinal: resolvedOrdinals.get(toIslandId(record.islandId))!,
     footprintRadiusLocal: footprintOf(anchors),
     scale: 1,
     layoutEntities: layoutEntitiesOf(anchors),
-    pinned: null,
+    // Backend persistence is a separate task. This seam is deliberately supplied by the caller:
+    // current preview has no artifact, while a production layout adapter can restore full pinned
+    // transforms without changing atlas-core or the renderer binding.
+    pinned: persistedPlacements.get(toIslandId(record.islandId)) ?? null,
   }));
 
   const layout = solveLayout(inputs, layoutVersion, DEFAULT_LAYOUT_CONFIG);
@@ -176,6 +232,7 @@ export function buildScene(snapshot: GraphSnapshot, layoutVersion = 1): SceneBui
   const islands: Island[] = placed.map(({ record, anchors }) =>
     makeIsland({
       islandId: toIslandId(record.islandId),
+      creationOrdinal: resolvedOrdinals.get(toIslandId(record.islandId))!,
       createdAt: orderingKey(record),
       placement: layout.placements.get(toIslandId(record.islandId)) ?? originPlacement(),
       rung: record.rung ?? NO_GEOMETRY_RUNG,
@@ -202,14 +259,43 @@ export function buildScene(snapshot: GraphSnapshot, layoutVersion = 1): SceneBui
   };
 }
 
+function resolveCreationOrdinals(
+  records: readonly IslandRecord[],
+  supplied: ReadonlyMap<IslandId, number>,
+): ReadonlyMap<IslandId, number> {
+  const resolved = new Map<IslandId, number>();
+  const used = new Set<number>();
+  let next = 0;
+  for (const record of records) {
+    const id = toIslandId(record.islandId);
+    const value = supplied.get(id);
+    if (value === undefined) continue;
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new RangeError(`invalid creation ordinal for ${record.islandId}`);
+    }
+    if (used.has(value)) throw new RangeError(`duplicate creation ordinal: ${value}`);
+    resolved.set(id, value);
+    used.add(value);
+    next = Math.max(next, value + 1);
+  }
+  for (const record of records) {
+    const id = toIslandId(record.islandId);
+    if (resolved.has(id)) continue;
+    while (used.has(next)) next += 1;
+    if (!Number.isSafeInteger(next)) throw new RangeError('Atlas creation ordinals are exhausted');
+    resolved.set(id, next);
+    used.add(next);
+    next += 1;
+  }
+  return resolved;
+}
+
 /**
  * The layout solver's ordering key.
  *
- * `Island.createdAt` is documented as the ordering key and explicitly not a claim about when the
- * photographs were taken, so this uses the earliest capture time where there is one and sorts an
- * island with no usable clock LAST rather than to the epoch. Sorting an undated photograph first
- * would make it the anchor of the user's spatial memory of the whole library, which is the exact
- * outcome the pinning rule in interaction-model.md 1.4 exists to avoid.
+ * Earliest display time for a region. Stable layout ordering is `creationOrdinal`; this value is
+ * retained only for chronological labels and source-first presentation. An island with no usable
+ * clock sorts last in those chronological views rather than pretending it was captured at epoch.
  */
 function orderingKey(record: IslandRecord): number {
   return record.firstCapturedAtMs ?? Number.MAX_SAFE_INTEGER;

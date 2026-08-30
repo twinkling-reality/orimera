@@ -132,12 +132,11 @@ export function buildCompanionPanel(handlers: CompanionHandlers): CompanionPanel
       close.addEventListener('click', () => handlers.onDismiss());
       children.push(close);
 
-      // Named, the way a game names whoever is talking. The label is the Companion's own name for
-      // its own words. It says nothing about audio: the product has none, and nothing here is
-      // derived from a recording.
+      // The presence is named so its text and its body read as one participant. This is an author
+      // label for written text, with no claim about a person or a captured source.
       children.push(
         el('p', { class: 'utterance' }, [
-          el('span', { class: 'speaker', text: 'Wayfinder' }),
+          el('span', { class: 'companion-name', text: 'Wayfinder' }),
           turn.utterance ?? say(turn.utteranceKey),
         ]),
       );

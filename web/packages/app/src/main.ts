@@ -2,9 +2,11 @@
  * Boot: one session, one snapshot, one scene, and one write path.
  *
  * The shape of this file is the argument. It builds a session, reads the graph once, adapts it
- * into a scene, mounts the renderer, and wires three surfaces to that one snapshot. There is no
- * second source of truth and no fixture: everything on the screen came from `GET /graph`,
- * `GET /evidence/{span}` or a write that went through the gate.
+ * into a scene, mounts the renderer, and wires three surfaces to that one snapshot. In a normal
+ * build there is no second source of truth and no fixture: everything on the screen came from
+ * `GET /graph`, `GET /evidence/{span}` or a write that went through the gate. The Vite development
+ * server has one explicit `?preview=1` exception for UI work while the API is unavailable. It is
+ * synthetic, visibly labelled, and read-only; production builds cannot enter it.
  *
  * **Every write goes through the confirmation surface**, and the confirmation surface is the only
  * caller of `session.commit`. The chain is: the user types a name, a draft is built by
@@ -17,29 +19,49 @@
  * interface would be confidently wrong. Re-reading costs one request and cannot drift.
  */
 
+import '@orimera/presentation/tokens.css';
 import './style.css';
+import './appearance.css';
 
 import type { GraphSnapshot, OccurrenceRecord } from '@orimera/graph-client';
 import { ApiError } from '@orimera/graph-client';
+import { anchorId as toAnchorId, islandId as toIslandId } from '@orimera/atlas-core';
 import { confirmationFor, draftEdit } from '@orimera/world-index';
 import { mountAtlas, type MountedAtlas } from './atlas.js';
-import { credentials, developmentToken } from './config.js';
+import {
+  credentials,
+  developmentToken,
+  isAtlasPreview,
+  previewCredentials,
+} from './config.js';
 import { EvidenceCache } from './evidence.js';
 import { listBatches, watchBatch, type BatchSummary } from './formation.js';
 import { toUpdateProposal } from './proposal.js';
-import { NO_GEOMETRY_RUNG, buildScene } from './scene.js';
+import { buildScene } from './scene.js';
 import { openSession, type Session } from './session.js';
 import { buildConfirm } from './ui/confirm.js';
 import { buildCompanionPanel } from './ui/companion-panel.js';
+import { buildAtlasCommands, type AtlasCommand } from './ui/atlas-commands.js';
+import { buildControlsGuide } from './ui/controls-guide.js';
+import { buildOptions } from './ui/options.js';
 import { buildWorldChrome } from './ui/world-chrome.js';
-import { buildCompanionStage } from './ui/companion-stage.js';
+import { buildCompanionStage, type CompanionStage } from './ui/companion-stage.js';
 import { createCompanionController } from './companion.js';
-import type { CompanionSession } from '@orimera/companion-runtime';
+import type { CompanionSession, Turn } from '@orimera/companion-runtime';
 import { buildDetail } from './ui/detail.js';
 import { buildFormation } from './ui/formation.js';
 import { el, replace } from './ui/dom.js';
 import { buildLibrary } from './ui/library.js';
 import { buildStatus } from './ui/status.js';
+import { readPreferences, writePreferences, type AtlasPreferences } from './preferences.js';
+import { applyDocumentAppearance, themeForPreferences } from './theme.js';
+import { worldArtProfile } from '@orimera/presentation';
+import {
+  commandForKeystroke,
+  initialWorldShell,
+  updateWorldShell,
+  type WorldShellEvent,
+} from './world-shell.js';
 
 const shell = document.getElementById('shell');
 const canvas = document.getElementById('atlas');
@@ -54,6 +76,12 @@ let snapshot: GraphSnapshot | null = null;
 let atlas: MountedAtlas | null = null;
 let evidence: EvidenceCache | null = null;
 let companionEngine: CompanionSession | null = null;
+let mountedCompanionStage: CompanionStage | null = null;
+let settingsStylePreviewId: string | null = null;
+const systemAppearance = window.matchMedia('(prefers-color-scheme: dark)');
+const systemReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+let preferences = readPreferences(window.localStorage);
+applyDocumentAppearance(preferences, systemAppearance.matches);
 /**
  * Window listeners belonging to the current mount.
  *
@@ -67,10 +95,21 @@ let search = '';
 let selected: string | null = null;
 /** Monotonic, so two proposals in one session never share an id. Not a clock and not random. */
 let issued = 0;
+const preview = isAtlasPreview(window.location.search, import.meta.env.DEV);
+const previewArtProfileId = preview
+  ? new URLSearchParams(window.location.search).get('world-style')
+  : null;
+const previewArtProfile = previewArtProfileId === null
+  ? undefined
+  : worldArtProfile(previewArtProfileId);
 
 void boot();
 
 async function boot(): Promise<void> {
+  if (preview) {
+    await start('');
+    return;
+  }
   const token = developmentToken();
   if (token === null) {
     askForToken();
@@ -127,7 +166,9 @@ function askForToken(): void {
 }
 
 async function start(token: string): Promise<void> {
-  credentials_ = credentials(token);
+  credentials_ = preview
+    ? previewCredentials(window.location.origin)
+    : credentials(token);
   const opened = await openSession(credentials_);
   session = opened.session;
   snapshot = opened.initial;
@@ -158,6 +199,25 @@ async function mount(): Promise<void> {
   currentCompanion.observeSnapshot(current);
 
   const built = buildScene(current);
+  // A graph write remounts every surface. Stop the previous field before replacing its node, or
+  // its frame loop and observers would survive invisibly for the rest of the session.
+  mountedCompanionStage?.dispose();
+  const stage = el('div', { class: 'stage' });
+  const companionStage = buildCompanionStage({ parent: stage });
+  mountedCompanionStage = companionStage;
+
+  function reflectTurnState(turn: Turn | null): void {
+    if (turn === null || turn.intent === 'acknowledge') {
+      companionStage.setState('resting');
+      return;
+    }
+    if (turn.intent === 'enrich_relation') {
+      companionStage.setState('attending');
+      return;
+    }
+    // Identity, continuity, and contradiction turns all exist because the graph is unresolved.
+    companionStage.setState('uncertain');
+  }
 
   const confirm = buildConfirm({
     onConfirm: (proposalId) => void commit(proposalId),
@@ -172,17 +232,29 @@ async function mount(): Promise<void> {
   const companionController = createCompanionController({
     companion: currentCompanion,
     onAwaitingConfirmation: (proposalId, summary, utterance) => {
+      // A staged proposal is still unconfirmed. It may not borrow the settled presentation.
+      companionStage.setState('uncertain');
       confirm.show(proposalId, summary, utterance);
     },
   });
   const companionPanel = buildCompanionPanel({
     onDismiss: () => {
       companionController.dismiss();
+      companionStage.setState('resting');
       companionStage.hide();
     },
-    onSelect: (optionId) => companionController.select(optionId),
-    onSubmit: (optionIds) => companionController.submit(optionIds),
-    onSay: (text) => companionController.say(text),
+    onSelect: (optionId) => {
+      companionController.select(optionId);
+      reflectTurnState(companionController.current());
+    },
+    onSubmit: (optionIds) => {
+      companionController.submit(optionIds);
+      reflectTurnState(companionController.current());
+    },
+    onSay: (text) => {
+      companionController.say(text);
+      reflectTurnState(companionController.current());
+    },
     onEvidence: (index) => {
       const handle = companionController.evidenceAt(index);
       if (handle !== null) void currentEvidence.open(handle);
@@ -190,7 +262,36 @@ async function mount(): Promise<void> {
   });
   companionController.attach(companionPanel);
 
+  let shellState = initialWorldShell();
+  let reflectShell = (): void => undefined;
+  const dispatchShell = (event: WorldShellEvent): void => {
+    shellState = updateWorldShell(shellState, event);
+    reflectShell();
+  };
+
+  const travelStatus = el('p', {
+    class: 'travel-status',
+    role: 'status',
+    'aria-live': 'polite',
+  });
+  travelStatus.hidden = true;
+  let travelStatusTimer: number | null = null;
+  const showTravelStatus = (message: string, kind: 'progress' | 'failure' = 'progress'): void => {
+    if (travelStatusTimer !== null) window.clearTimeout(travelStatusTimer);
+    travelStatus.textContent = message;
+    travelStatus.dataset['kind'] = kind;
+    travelStatus.hidden = false;
+    travelStatusTimer = window.setTimeout(() => {
+      travelStatus.hidden = true;
+      travelStatusTimer = null;
+    }, kind === 'failure' ? 5200 : 3200);
+  };
+  const travelUsesReducedMotion = (): boolean =>
+    preferences.transition === 'fade' ||
+    (preferences.transition === 'system' && systemReducedMotion.matches);
+
   const detail = buildDetail(currentEvidence, {
+    onClose: () => dispatchShell({ type: 'close-detail' }),
     onName: (occurrence) => propose(occurrence, confirm),
     onEvidenceOpened: (anchorId) => {
       // 5.2: the written claim and the spatial world point at the same evidence at the same
@@ -199,7 +300,29 @@ async function mount(): Promise<void> {
       const index = atlas.binding.table.indexOf.get(anchorId as never);
       if (index !== undefined) atlas.binding.focusAnchor(index);
     },
-  });
+    onLocate: (targetAnchorId, targetIslandId) => {
+      const binding = atlas?.binding;
+      if (binding === undefined) {
+        showTravelStatus('The Atlas is still forming. Try again in a moment.', 'failure');
+        return;
+      }
+      const resolution = targetAnchorId === null
+        ? binding.navigateToIsland(toIslandId(targetIslandId), travelUsesReducedMotion())
+        : binding.navigateToAnchor(toAnchorId(targetAnchorId), travelUsesReducedMotion());
+      if (!resolution.ok) {
+        const message = {
+          'unknown-target': 'That source is not in this Atlas.',
+          'outside-resident-field': 'That region is outside the resident field.',
+          'no-safe-surface': 'No safe arrival point is available near that source. Open Map to approach its region.',
+          occluded: 'That source is present, but no clear arrival point is available.',
+        }[resolution.reason];
+        showTravelStatus(message, 'failure');
+        return;
+      }
+      dispatchShell({ type: 'show-world' });
+      showTravelStatus(travelUsesReducedMotion() ? 'Located the source.' : 'Moving to the source…');
+    },
+  }, { preview });
 
   const library = buildLibrary({
     onEntity: (entityId) => {
@@ -207,7 +330,7 @@ async function mount(): Promise<void> {
       const entity = current.entities.find((e) => e.entityId === entityId);
       if (entity !== undefined) {
         detail.showEntity(current, entity);
-        detail.root.removeAttribute('hidden');
+        dispatchShell({ type: 'show-detail', id: entityId });
       }
       library.render(current, search, selected);
     },
@@ -216,7 +339,7 @@ async function mount(): Promise<void> {
       const occurrence = current.occurrences.find((o) => o.occurrenceId === occurrenceId);
       if (occurrence !== undefined) {
         detail.showOccurrence(occurrence);
-        detail.root.removeAttribute('hidden');
+        dispatchShell({ type: 'show-detail', id: occurrenceId });
       }
       library.render(current, search, selected);
     },
@@ -224,18 +347,85 @@ async function mount(): Promise<void> {
       search = text;
       library.render(current, search, selected);
     },
-  });
+  }, { preview });
 
   // The canvas stays where the document put it: fixed, behind everything, outside the shell.
   // Moving it into the shell would put it in the shell's stacking context, where it paints over
   // the rail. The stage is the hole it shows through and the parent the anchor overlay writes
   // its nodes into, which is a different job from being the canvas.
   const forming = buildFormation();
-  const stage = el('div', { class: 'stage' });
   const chrome = buildWorldChrome(shell!);
+  const commandBar = buildAtlasCommands((command: AtlasCommand) => {
+    if (command === 'index') dispatchShell({ type: 'toggle-index' });
+    else if (command === 'map') dispatchShell({ type: 'toggle-map' });
+    else if (command === 'options') dispatchShell({ type: 'toggle-options' });
+    else dispatchShell({ type: 'toggle-controls' });
+  });
+  const mapCaption = el('p', {
+    class: 'map-caption',
+    text: 'Atlas Map · M to return to ground view',
+  });
+  mapCaption.hidden = true;
+  const viewportBoundary = el('aside', {
+    class: 'viewport-boundary',
+    'aria-labelledby': 'viewport-boundary-title',
+  }, [
+    el('p', { class: 'overlay-kicker', text: 'Atlas boundary' }),
+    el('h1', { id: 'viewport-boundary-title', text: 'A wider view is required' }),
+    el('p', {
+      text:
+        'This Atlas prototype is designed for laptop and desktop windows. ' +
+        'Widen this window to at least 60rem to continue.',
+    }),
+  ]);
+  const optionsView = buildOptions({
+    preferences,
+    onChange: applyPreferences,
+    onPreview: (candidate) => {
+      if (atlas === null) return;
+      if (settingsStylePreviewId !== null) {
+        atlas.binding.discardArtProfilePreview(settingsStylePreviewId);
+        settingsStylePreviewId = null;
+      }
+      const previewSession = atlas.binding.previewArtProfile(
+        worldArtProfile(candidate.worldArtProfile, 1, candidate.worldStyleParameters),
+        'settings',
+        candidate.worldStyleParameters,
+      );
+      if (previewSession.validation.ok) settingsStylePreviewId = previewSession.sessionId;
+    },
+    onClose: () => dispatchShell({ type: 'toggle-options' }),
+    onShowControls: () => dispatchShell({ type: 'toggle-controls' }),
+  });
+  const controlsGuide = buildControlsGuide({
+    onClose: () => dispatchShell({ type: 'toggle-controls' }),
+    onShowOptions: () => dispatchShell({ type: 'toggle-options' }),
+  });
 
-  // The Companion's own canvas, over the world.
-  const companionStage = buildCompanionStage({ parent: stage });
+  function applyPreferences(next: AtlasPreferences): void {
+    preferences = next;
+    if (settingsStylePreviewId !== null && atlas !== null) {
+      atlas.binding.discardArtProfilePreview(settingsStylePreviewId);
+      settingsStylePreviewId = null;
+    }
+    try {
+      writePreferences(window.localStorage, preferences);
+    } catch {
+      // Private browsing may refuse storage. The live setting still applies for this session.
+    }
+    const theme = applyDocumentAppearance(preferences, systemAppearance.matches);
+    optionsView.setPreferences(preferences);
+    chrome.setCompanionSide(preferences.companionSide);
+    shell!.setAttribute('data-vignette', preferences.vignette);
+    atlas?.binding.setTheme(theme);
+    atlas?.binding.setArtProfile(
+      worldArtProfile(preferences.worldArtProfile, 1, preferences.worldStyleParameters),
+      'settings',
+      preferences.worldStyleParameters,
+    );
+    atlas?.binding.setFieldOfView(preferences.fieldOfView);
+    atlas?.binding.setSensitivityMultiplier(preferences.mouseSensitivity);
+  }
 
   replace(shell!, [
     stage,
@@ -245,17 +435,58 @@ async function mount(): Promise<void> {
     forming.root,
     companionPanel.root,
     confirm.root,
+    commandBar.root,
+    mapCaption,
+    travelStatus,
+    optionsView.root,
+    controlsGuide.root,
+    viewportBoundary,
     buildStatus({
-      snapshot: current,
-      regionCount: built.scene.islands.length,
-      rung: NO_GEOMETRY_RUNG,
       omittedRegionCount: built.omitted.length,
       undrawable: built.undrawable,
+      preview,
     }),
   ]);
 
+  reflectShell = (): void => {
+    shell!.setAttribute('data-primary', shellState.primary);
+    shell!.setAttribute('data-camera', shellState.camera);
+    chrome.setIndexOpen(shellState.primary === 'index');
+    library.root.inert = shellState.primary !== 'index';
+    library.root.setAttribute('aria-hidden', shellState.primary === 'index' ? 'false' : 'true');
+    optionsView.setVisible(shellState.primary === 'options');
+    controlsGuide.setVisible(shellState.primary === 'controls');
+    const systemSurfaceOpen = shellState.primary === 'options' || shellState.primary === 'controls';
+    for (const surface of [
+      stage,
+      library.root,
+      detail.root,
+      forming.root,
+      companionPanel.root,
+      confirm.root,
+      commandBar.root,
+      mapCaption,
+      travelStatus,
+    ]) {
+      surface.inert = systemSurfaceOpen;
+    }
+    commandBar.reflect(shellState.primary, shellState.camera);
+    mapCaption.hidden = shellState.camera !== 'map';
+    detail.root.hidden = shellState.primary !== 'index' || shellState.detailId === null;
+    atlas?.binding.setMapMode(shellState.camera === 'map');
+    atlas?.binding.setControlsEnabled(!systemSurfaceOpen && shellState.camera === 'ground');
+    if (
+      (shellState.primary !== 'world' || shellState.camera === 'map') &&
+      document.pointerLockElement !== null
+    ) {
+      document.exitPointerLock();
+    }
+  };
+  chrome.setCompanionSide(preferences.companionSide);
+  shell!.setAttribute('data-vignette', preferences.vignette);
+  reflectShell();
+
   library.render(current, search, selected);
-  detail.root.setAttribute('hidden', '');
   forming.render(null, null);
 
   // What there is to watch. There is no upload endpoint yet, so an intake starts from the command
@@ -272,7 +503,39 @@ async function mount(): Promise<void> {
   });
 
   atlas?.dispose();
-  atlas = await mountAtlas(canvas as HTMLCanvasElement, stage, built.scene);
+  settingsStylePreviewId = null;
+  const activeTheme = themeForPreferences(preferences, systemAppearance.matches);
+  let lastMoving: boolean | null = null;
+  atlas = await mountAtlas(canvas as HTMLCanvasElement, stage, built.scene, (report) => {
+    if (lastMoving !== report.moving) {
+      lastMoving = report.moving;
+      shell!.setAttribute('data-moving', report.moving ? 'true' : 'false');
+    }
+    shell!.setAttribute('data-spatial', report.spatial.phase);
+    if (report.recoveryReason !== null) {
+      showTravelStatus(
+        report.recoveryReason === 'outside-field'
+          ? 'Returned to the nearest safe place; the resident field ended here.'
+          : report.recoveryReason === 'no-surface'
+            ? 'Returned to the nearest safe place; there is no walkable surface here.'
+            : 'Returned to the nearest safe place; the surface ahead is too steep or discontinuous.',
+        'failure',
+      );
+    }
+  }, {
+    theme: activeTheme,
+    fieldOfView: preferences.fieldOfView,
+    mouseSensitivity: preferences.mouseSensitivity,
+    artProfile: previewArtProfile ?? worldArtProfile(
+      preferences.worldArtProfile,
+      1,
+      preferences.worldStyleParameters,
+    ),
+    ...(previewArtProfile === undefined
+      ? { artProfileParameters: preferences.worldStyleParameters }
+      : {}),
+  });
+  reflectShell();
 
   // -- the two input modes, and the one key that calls the Companion ----------------------
   //
@@ -280,8 +543,28 @@ async function mount(): Promise<void> {
   // the lock on Escape and on focus loss without telling the application first, so a mode the
   // application tracked itself would be wrong within seconds of the user tabbing away.
   const mounted = atlas;
+  mounted.binding.mapOverlay?.setActive(shellState.camera === 'map');
+  mounted.binding.onMapTarget = (islandId) => {
+    const resolution = mounted.binding.navigateToIsland(islandId, travelUsesReducedMotion());
+    if (!resolution.ok) {
+      showTravelStatus('No safe arrival point is available in that region.', 'failure');
+      return;
+    }
+    dispatchShell({ type: 'show-world' });
+    showTravelStatus(travelUsesReducedMotion() ? 'Located the region.' : 'Moving to the region…');
+  };
+  mounted.binding.onNavigationArrive = (target) => {
+    if (target.kind === 'anchor') {
+      const index = mounted.binding.table.indexOf.get(target.anchorId);
+      if (index !== undefined) mounted.binding.focusAnchor(index);
+    }
+    showTravelStatus(target.kind === 'anchor' ? 'Located the source.' : 'Located the region.');
+  };
   function reflectMode(next: 'traverse' | 'converse'): void {
     chrome.setMode(next);
+    if (next === 'traverse' && (shellState.primary !== 'world' || shellState.camera !== 'ground')) {
+      dispatchShell({ type: 'show-world' });
+    }
     // The prompt says what is true right now. With the mouse free the useful instruction is how
     // to get into the world; once inside it is how to call the Companion. An open conversation
     // outranks both and is left alone.
@@ -302,6 +585,7 @@ async function mount(): Promise<void> {
   // Right click and C are already the summon verb in the controls.
   function summonCompanion(): void {
     companionController.summon(Date.now());
+    reflectTurnState(companionController.current());
     companionStage.show();
   }
 
@@ -312,14 +596,45 @@ async function mount(): Promise<void> {
   window.addEventListener(
     'keydown',
     (event) => {
-      // Not while the user is typing an answer into the Companion or a name into the index.
       const target = event.target;
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-      if (event.code === 'KeyI') {
+      const typing =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      const command = commandForKeystroke({
+        code: event.code,
+        key: event.key,
+        modified: event.altKey || event.ctrlKey || event.metaKey,
+        typing,
+      });
+      if (command === 'toggle-index') {
         event.preventDefault();
-        chrome.toggleIndex();
+        dispatchShell({ type: 'toggle-index' });
         return;
       }
+      if (command === 'toggle-map') {
+        event.preventDefault();
+        dispatchShell({ type: 'toggle-map' });
+        return;
+      }
+      if (command === 'toggle-options') {
+        event.preventDefault();
+        dispatchShell({ type: 'toggle-options' });
+        return;
+      }
+      if (command === 'toggle-controls') {
+        event.preventDefault();
+        dispatchShell({ type: 'toggle-controls' });
+        return;
+      }
+      if (command === 'selection-back' && shellState.detailId !== null) {
+        event.preventDefault();
+        dispatchShell({ type: 'close-detail' });
+        return;
+      }
+      // Not while the user is typing an answer into the Companion or a name into the index.
+      if (typing) return;
       // Answering by number, which is the only way to answer while the pointer is locked: there
       // is no cursor to click with, and releasing the lock to reply would mean leaving the world
       // for every question. Unavailable options return null and the key does nothing, rather than
@@ -332,7 +647,10 @@ async function mount(): Promise<void> {
       // and read as "push it that way".
       if (event.code === 'BracketLeft' || event.code === 'BracketRight') {
         event.preventDefault();
-        chrome.toggleCompanionSide();
+        applyPreferences({
+          ...preferences,
+          companionSide: event.code === 'BracketLeft' ? 'left' : 'right',
+        });
         return;
       }
       // Cycle the Companion's form. A comparison in place, against the real world, rather than on
@@ -347,6 +665,11 @@ async function mount(): Promise<void> {
         }
       }
     },
+    { signal: mountListeners.signal },
+  );
+  systemAppearance.addEventListener(
+    'change',
+    () => applyPreferences(preferences),
     { signal: mountListeners.signal },
   );
 
@@ -392,12 +715,22 @@ async function mount(): Promise<void> {
   }
 
   async function commit(proposalId: string): Promise<void> {
+    if (preview) {
+      companionStage.setState('uncertain');
+      confirm.reportFailure('Preview mode is read-only. No change was sent.');
+      return;
+    }
+    // This state names a real pending write. It begins before the request and ends with its result.
+    companionStage.setState('working');
     try {
       await currentSession!.commit(proposalId);
     } catch (error) {
+      companionStage.setState('uncertain');
       panelFailure(confirm, error);
       return;
     }
+    // Only a completed account-holder confirmation earns this state.
+    companionStage.setState('settled');
     confirm.hide();
     // Re-read rather than patched. See the module comment.
     snapshot = await currentSession!.snapshot();

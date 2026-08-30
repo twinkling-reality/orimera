@@ -1,0 +1,326 @@
+/*
+ * The Atlas has one material identity and two exposures. This file assigns shared presentation
+ * tokens to app surfaces; component files do not choose new colors, blur levels or radii here.
+ */
+
+html,
+body {
+  font-family: "Avenir Next", "Segoe UI Variable", ui-sans-serif, system-ui, sans-serif;
+  background-color: var(--ground);
+  transition: background-color 320ms ease, color 240ms ease;
+}
+
+/* The rendered sky and horizon own the world atmosphere. Never tint the whole viewport in CSS. */
+#shell::before {
+  inset: 0;
+  background: transparent;
+}
+
+/* A nearly imperceptible paper tooth keeps UI surfaces related to the physical archive leaves. */
+.stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: min(var(--grain-opacity), 0.08);
+  mix-blend-mode: var(--grain-blend);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.22'/%3E%3C/svg%3E");
+}
+
+/* Archive sheets: summoned reading surfaces. Photographs and evidence stay visually dominant. */
+.rail,
+.detail,
+.confirm {
+  background: var(--material-archive);
+  border-radius: var(--radius-panel);
+  backdrop-filter: blur(var(--blur-system));
+  box-shadow: 0 20px 56px color-mix(in srgb, var(--material-shadow) 46%, transparent);
+}
+
+/* System sheets: choices about the Atlas, separate from evidence without becoming a glass card. */
+.system-overlay,
+.gate {
+  background: var(--material-system);
+  border-radius: var(--radius-panel);
+  backdrop-filter: blur(var(--blur-system));
+  box-shadow:
+    0 0 0 100vmax color-mix(in srgb, var(--ground) 76%, transparent),
+    0 28px 72px color-mix(in srgb, var(--material-shadow) 58%, transparent);
+}
+
+.system-overlay {
+  width: min(48rem, calc(100vw - 2 * var(--gap)));
+}
+
+.options-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(14rem, 0.7fr);
+  column-gap: 1.4rem;
+}
+
+.options-view[hidden] {
+  display: none;
+}
+
+.options-view > :where(.overlay-head, .appearance-options, .world-style-options, .overlay-actions) {
+  grid-column: 1 / -1;
+}
+
+.options-view .view-options {
+  grid-column: 1;
+}
+
+.options-view .companion-options {
+  grid-column: 2;
+}
+
+.companion-options .option-field {
+  grid-template-columns: 1fr;
+  align-content: start;
+}
+
+.companion-options select {
+  width: 100%;
+}
+
+.options-view .overlay-actions {
+  margin-top: 0.2rem;
+}
+
+.appearance-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 0.8rem;
+}
+
+.appearance-options > h2 {
+  grid-column: 1 / -1;
+}
+
+.appearance-options .option-field {
+  grid-template-columns: 1fr;
+  align-content: start;
+}
+
+.appearance-options .option-note { grid-column: 1; }
+
+.world-style-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 0.8rem;
+}
+
+.world-style-head {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.2rem 0.8rem;
+  margin-bottom: 0.35rem;
+}
+
+.world-style-head h2,
+.world-style-head p { margin: 0; }
+
+.world-style-head p { grid-column: 1 / -1; }
+
+.world-style-name {
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.world-style-options .option-field {
+  grid-template-columns: 1fr;
+  align-content: start;
+}
+
+.world-style-options .option-note { grid-column: 1; }
+
+/* The supported laptop floor is still a desktop surface. Keep all settings and both actions in
+ * one glance at common 768px heights instead of turning a short system sheet into a scroll task. */
+@media (max-height: 50rem) and (min-width: 60.001rem) {
+  .options-view.system-overlay {
+    max-height: calc(100vh - 2rem);
+    padding: 0.9rem 1.35rem;
+    overflow-y: auto;
+  }
+
+  .options-view .overlay-head { margin-bottom: 0.75rem; }
+  .options-view .option-group { padding: 0.6rem 0 0.3rem; }
+  .options-view .atmosphere-picker { margin-bottom: 0.45rem; }
+  .options-view .atmosphere-choice { grid-template-rows: 3rem auto; }
+  .options-view .option-field { min-height: 2.55rem; }
+  .options-view .overlay-actions { padding-top: 0.55rem; }
+}
+
+/* Instrument strips are the only persistent pills. */
+.atlas-commands,
+.preview-disclosure,
+.ov-focus {
+  background: var(--material-instrument);
+  backdrop-filter: blur(var(--blur-world));
+}
+
+.atlas-commands {
+  border-radius: var(--radius-pill);
+}
+
+.preview-disclosure,
+.ov-focus {
+  border-radius: var(--radius-label);
+}
+
+.ov-callout,
+.ov-marker {
+  background: color-mix(in srgb, var(--ground) 88%, transparent);
+  border-radius: var(--radius-label);
+}
+
+.overlay-head h1,
+.detail-title,
+.viewport-boundary h1 {
+  font-family: "Avenir Next", "Segoe UI Variable Display", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 300;
+}
+
+.overlay-kicker,
+.option-group h2,
+.rail-head,
+.detail-section h2,
+.band h3 {
+  font-weight: 500;
+}
+
+/* Three curated exposures are clearer than a hue picker and visible before selection. */
+.atmosphere-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  border: 0;
+}
+
+.atmosphere-choice {
+  position: relative;
+  display: grid;
+  grid-template-rows: 3.9rem auto;
+  overflow: hidden;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--raised) 62%, transparent);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-panel);
+  cursor: pointer;
+}
+
+.atmosphere-choice:has(input:checked) {
+  color: var(--ink);
+  border-color: var(--focus);
+  box-shadow: inset 0 0 0 1px var(--focus);
+}
+
+.atmosphere-choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.atmosphere-choice input:focus-visible + .atmosphere-sample {
+  outline: 2px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.atmosphere-sample {
+  --field-key-color: var(--dawn-field-key);
+  --field-crosslight-color: var(--dawn-field-crosslight);
+  --field-afterimage-color: var(--dawn-field-afterimage);
+  --field-bounce-color: var(--dawn-field-bounce);
+  --field-rim-color: var(--dawn-field-rim);
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-bottom: 1px solid var(--edge);
+  background-color: var(--dawn-ground);
+  background-image: var(--field-image);
+}
+
+.atmosphere-sample[data-atmosphere='blue-hour'] {
+  --field-key-color: var(--blue-hour-field-key);
+  --field-crosslight-color: var(--blue-hour-field-crosslight);
+  --field-afterimage-color: var(--blue-hour-field-afterimage);
+  --field-bounce-color: var(--blue-hour-field-bounce);
+  --field-rim-color: var(--blue-hour-field-rim);
+  background-color: var(--blue-hour-ground);
+  background-image: var(--field-image);
+}
+
+.atmosphere-sample[data-atmosphere='system'] {
+  background: transparent;
+}
+
+.atmosphere-sample[data-atmosphere='system']::before,
+.atmosphere-sample[data-atmosphere='system']::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  width: 50%;
+  background-image: var(--field-image);
+}
+
+.atmosphere-sample[data-atmosphere='system']::before {
+  inset-inline-start: 0;
+  --field-key-color: var(--dawn-field-key);
+  --field-crosslight-color: var(--dawn-field-crosslight);
+  --field-afterimage-color: var(--dawn-field-afterimage);
+  --field-bounce-color: var(--dawn-field-bounce);
+  --field-rim-color: var(--dawn-field-rim);
+  background-color: var(--dawn-ground);
+}
+
+.atmosphere-sample[data-atmosphere='system']::after {
+  inset-inline-end: 0;
+  --field-key-color: var(--blue-hour-field-key);
+  --field-crosslight-color: var(--blue-hour-field-crosslight);
+  --field-afterimage-color: var(--blue-hour-field-afterimage);
+  --field-bounce-color: var(--blue-hour-field-bounce);
+  --field-rim-color: var(--blue-hour-field-rim);
+  background-color: var(--blue-hour-ground);
+  border-inline-start: 1px solid color-mix(in srgb, var(--focus) 58%, transparent);
+}
+
+.atmosphere-copy {
+  display: grid;
+  gap: 0.12rem;
+  padding: 0.58rem 0.65rem 0.64rem;
+}
+
+.atmosphere-copy strong {
+  color: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.atmosphere-copy small {
+  color: var(--ink-faint);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+:root[data-contrast='high'] .standing-caption,
+:root[data-contrast='high'] .status,
+:root[data-contrast='high'] .map-caption {
+  opacity: 1;
+  text-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html,
+  body,
+  #shell::before {
+    transition: none;
+  }
+}

@@ -21,6 +21,11 @@
  */
 
 import type { AtlasScene, IslandId } from '@orimera/atlas-core';
+import type {
+  PresentationTheme,
+  WorldArtProfile,
+  WorldStyleParameters,
+} from '@orimera/presentation';
 import type { FrameReport, PlacementCheck, PointMap } from '@orimera/atlas-react/playcanvas';
 import { AtlasBinding } from '@orimera/atlas-react/playcanvas';
 
@@ -38,13 +43,34 @@ export async function mountAtlas(
   overlayParent: HTMLElement,
   scene: AtlasScene,
   onFrame?: (report: FrameReport) => void,
+  presentation?: {
+    readonly theme: PresentationTheme;
+    readonly fieldOfView: number;
+    readonly mouseSensitivity: number;
+    readonly artProfile?: WorldArtProfile;
+    readonly artProfileParameters?: WorldStyleParameters;
+  },
 ): Promise<MountedAtlas> {
   const binding = await AtlasBinding.create({
     canvas,
     overlayParent,
     scene,
     pointMaps: NO_POINT_MAPS,
+    ...(presentation === undefined
+      ? {}
+      : {
+          theme: presentation.theme,
+          fov: presentation.fieldOfView,
+          sensitivityMultiplier: presentation.mouseSensitivity,
+          ...(presentation.artProfile === undefined ? {} : { artProfile: presentation.artProfile }),
+          ...(presentation.artProfileParameters === undefined
+            ? {}
+            : { artProfileParameters: presentation.artProfileParameters }),
+        }),
   });
+  canvas.dataset.worldProfile = binding.composedWorld.profileId;
+  canvas.dataset.worldTopology = binding.topology.topologyDigest;
+  canvas.dataset.worldModules = String(binding.topology.instances.length);
 
   if (onFrame !== undefined) binding.onFrame = onFrame;
   // The engine drives the clock. The binding's own update runs before the render, which is the
@@ -57,6 +83,11 @@ export async function mountAtlas(
   return {
     binding,
     placements: binding.verifyPlacements(),
-    dispose: () => binding.destroy(),
+    dispose: () => {
+      delete canvas.dataset.worldProfile;
+      delete canvas.dataset.worldTopology;
+      delete canvas.dataset.worldModules;
+      binding.destroy();
+    },
   };
 }

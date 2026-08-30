@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { GraphSnapshot, OccurrenceRecord } from '@orimera/graph-client';
-import { asMetricLocal, localVec3, rendersAsPresenceMarker } from '@orimera/atlas-core';
+import {
+  asMetricLocal,
+  atlasVec3,
+  islandId,
+  localVec3,
+  makeAtlasLayoutSnapshot,
+  placement,
+  rendersAsPresenceMarker,
+} from '@orimera/atlas-core';
 
-import { buildScene } from '../src/scene.js';
+import { buildScene, buildSceneFromLayout } from '../src/scene.js';
 
 /**
  * The adapter from graph data to the scene graph, which is where three product rules stop being
@@ -64,6 +72,69 @@ function snapshotOf(
 }
 
 describe('graph data becomes a scene', () => {
+  it('preserves a persisted full transform across a scene rebuild', () => {
+    const input = snapshotOf([island('a')], [occurrence('o1', 'a')]);
+    const pinned = placement(atlasVec3(42, 0.5, -18), 0.75, 1.4);
+    const built = buildScene(input, 8, new Map([[islandId('a'), pinned]]));
+
+    expect(built.scene.layoutVersion).toBe(8);
+    expect(built.scene.islands[0]!.placement).toEqual(pinned);
+  });
+
+  it('allocates incomplete ordinal input above persisted history without collisions', () => {
+    const input = snapshotOf(
+      [island('a'), island('b')],
+      [occurrence('o1', 'a'), occurrence('o2', 'b')],
+    );
+    const built = buildScene(input, 2, new Map(), new Map([[islandId('a'), 17]]));
+    expect(built.scene.islands.map((value) => value.creationOrdinal)).toEqual([17, 18]);
+  });
+
+  it('consumes the durable layout artifact as full transform and stable creation order', () => {
+    const pinned = placement(atlasVec3(42, 0.5, -18), 0.75, 1.4);
+    const stored = makeAtlasLayoutSnapshot({
+      layoutVersion: 8,
+      previousLayoutVersion: 7,
+      reason: 'new-regions',
+      entries: [{ islandId: islandId('a'), creationOrdinal: 17, placement: pinned }],
+    });
+    const built = buildSceneFromLayout(
+      snapshotOf([island('a')], [occurrence('o1', 'a')]),
+      stored,
+    );
+    expect(built.scene.layoutVersion).toBe(8);
+    expect(built.scene.islands[0]).toMatchObject({ creationOrdinal: 17, placement: pinned });
+    expect(built.layoutCoverage).toEqual({
+      present: [islandId('a')],
+      missing: [],
+      stale: [],
+    });
+  });
+
+  it('marks a new region as a draft layout addition instead of pretending it was persisted', () => {
+    const stored = makeAtlasLayoutSnapshot({
+      layoutVersion: 3,
+      previousLayoutVersion: 2,
+      reason: 'initial',
+      entries: [{
+        islandId: islandId('a'),
+        creationOrdinal: 9,
+        placement: placement(atlasVec3(4, 0, 2), 0.1, 1),
+      }],
+    });
+    const built = buildSceneFromLayout(
+      snapshotOf(
+        [island('a'), island('new')],
+        [occurrence('o1', 'a'), occurrence('o2', 'new')],
+      ),
+      stored,
+    );
+    expect(built.scene.layoutVersion).toBe(4);
+    expect(built.scene.islands.find((value) => value.islandId === islandId('new'))?.creationOrdinal)
+      .toBe(10);
+    expect(built.layoutCoverage?.missing).toEqual([islandId('new')]);
+  });
+
   it('puts every anchor of one island in that island', () => {
     const built = buildScene(
       snapshotOf(
@@ -74,6 +145,11 @@ describe('graph data becomes a scene', () => {
     const byId = new Map(built.scene.islands.map((i) => [i.islandId as string, i]));
     expect(byId.get('a')!.anchors).toHaveLength(2);
     expect(byId.get('b')!.anchors).toHaveLength(1);
+  });
+
+  it('counts a bare detection as the occurrence it visibly is', () => {
+    const built = buildScene(snapshotOf([island('a')], [occurrence('o1', 'a')]));
+    expect(built.scene.islands[0]!.anchors[0]!.occurrenceCount).toBe(1);
   });
 
   it('reports rung 4, because nothing reconstructed anything', () => {

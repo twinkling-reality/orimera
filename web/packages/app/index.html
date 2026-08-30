@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Orimera</title>
     <meta
       name="description"
@@ -13,6 +15,17 @@
       requires a credential; a crawler that reached it would get a 401 and index the refusal.
     -->
     <meta name="robots" content="noindex, nofollow" />
+    <script>
+      try {
+        const saved = JSON.parse(localStorage.getItem('orimera.atlas.preferences.v1') || '{}');
+        document.documentElement.dataset.theme = 'dawn';
+        document.documentElement.dataset.contrast = saved.contrast === 'high' ? 'high' : 'standard';
+        document.documentElement.dataset.transparency = saved.transparency === 'reduced'
+          ? 'reduced'
+          : 'layered';
+        document.documentElement.style.colorScheme = 'light';
+      } catch {}
+    </script>
   </head>
   <body>
     <!--

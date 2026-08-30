@@ -1,0 +1,59 @@
+import { describe, expect, it } from 'vitest';
+import {
+  commandForKeystroke,
+  initialWorldShell,
+  updateWorldShell,
+} from '../src/world-shell.js';
+
+describe('the Atlas shell', () => {
+  it('allows one primary surface and clears Index detail when switching', () => {
+    const index = updateWorldShell(initialWorldShell(), { type: 'toggle-index' });
+    const detail = updateWorldShell(index, { type: 'show-detail', id: 'entity-1' });
+    expect(detail).toMatchObject({ primary: 'index', detailId: 'entity-1' });
+
+    const options = updateWorldShell(detail, { type: 'toggle-options' });
+    expect(options).toMatchObject({ primary: 'options', camera: 'ground', detailId: null });
+    expect(updateWorldShell(options, { type: 'toggle-options' })).toEqual(detail);
+  });
+
+  it('models Map as a camera presentation of the live world', () => {
+    const map = updateWorldShell(initialWorldShell(), { type: 'toggle-map' });
+    expect(map).toEqual({ primary: 'world', camera: 'map', detailId: null, returnTo: null });
+    expect(updateWorldShell(map, { type: 'toggle-map' })).toEqual(initialWorldShell());
+  });
+
+  it('refuses to create an orphaned detail outside the Index', () => {
+    expect(
+      updateWorldShell(initialWorldShell(), { type: 'show-detail', id: 'entity-1' }),
+    ).toEqual(initialWorldShell());
+  });
+});
+
+describe('shell command ownership', () => {
+  const stroke = (over: Partial<Parameters<typeof commandForKeystroke>[0]> = {}) => ({
+    code: 'KeyI',
+    key: 'i',
+    modified: false,
+    typing: false,
+    ...over,
+  });
+
+  it.each([
+    ['KeyI', 'i', 'toggle-index'],
+    ['KeyM', 'm', 'toggle-map'],
+    ['KeyO', 'o', 'toggle-options'],
+    ['Slash', '?', 'toggle-controls'],
+    ['Backspace', 'Backspace', 'selection-back'],
+  ])('maps %s to its one shell command', (code, key, command) => {
+    expect(commandForKeystroke(stroke({ code, key }))).toBe(command);
+  });
+
+  it('never takes a shortcut while the user types or holds a modifier', () => {
+    expect(commandForKeystroke(stroke({ typing: true }))).toBeNull();
+    expect(commandForKeystroke(stroke({ modified: true }))).toBeNull();
+  });
+
+  it('never binds Escape', () => {
+    expect(commandForKeystroke(stroke({ code: 'Escape', key: 'Escape' }))).toBeNull();
+  });
+});

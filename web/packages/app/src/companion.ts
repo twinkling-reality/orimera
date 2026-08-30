@@ -46,9 +46,7 @@ export interface CompanionController {
   say(text: string): void;
   /** The evidence behind a chip, for opening the photograph it came from. */
   evidenceAt(index: number): EvidenceHandle | null;
-  /** The anchor this turn is about, for the placement solver. Null means nothing to point at. */
-  subjectAnchorId(): string | null;
-  /** Whether a turn is open. Drives attention, and whether the Companion leaves home. */
+  /** Whether a turn is open. Drives the presence's attending behavior. */
   active(): boolean;
 }
 
@@ -114,7 +112,6 @@ export function createCompanionController(
     submit: (optionIds) => handle(companion.submit(optionIds, Date.now())),
     say: (text) => handle(companion.say(text, Date.now())),
     evidenceAt: (index) => turn?.evidence[index] ?? null,
-    subjectAnchorId: () => (turn === null ? null : (turn.subjectAnchorId as string | null)),
     active: () => panel?.state() === 'open',
   };
 }

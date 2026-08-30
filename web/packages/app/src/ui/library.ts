@@ -33,10 +33,17 @@ export interface LibraryPane {
   render(snapshot: GraphSnapshot, search: string, selected: string | null): void;
 }
 
+export interface LibraryPresentation {
+  readonly preview?: boolean;
+}
+
 /** How many bare detections are listed before the rail stops and says how many are left. */
 const DETECTION_PAGE = 60;
 
-export function buildLibrary(handlers: LibraryHandlers): LibraryPane {
+export function buildLibrary(
+  handlers: LibraryHandlers,
+  presentation: LibraryPresentation = {},
+): LibraryPane {
   const root = el('nav', { class: 'rail', 'aria-label': 'Library' });
 
   const search = el('input', {
@@ -83,7 +90,9 @@ export function buildLibrary(handlers: LibraryHandlers): LibraryPane {
       detectionsNote.textContent =
         bare.length === 0
           ? 'Every detection in this library has been identified.'
-          : `${bare.length} detections nobody has named. Each one opens the photograph it came from.`;
+          : presentation.preview === true
+            ? `${bare.length} synthetic detections nobody has named. Source evidence is unavailable in preview.`
+            : `${bare.length} detections nobody has named. Each one opens the photograph it came from.`;
       replace(
         detections,
         bare

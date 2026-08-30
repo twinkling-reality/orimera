@@ -26,6 +26,8 @@
  */
 
 const API_PATH = '/api';
+const PREVIEW_API_PATH = '/preview-api';
+const PREVIEW_TOKEN = 'atlas-preview-read-only';
 
 export interface Credentials {
   readonly baseUrl: string;
@@ -40,4 +42,20 @@ export function developmentToken(): string | null {
 
 export function credentials(token: string): Credentials {
   return { baseUrl: `${window.location.origin}${API_PATH}`, token };
+}
+
+/**
+ * Whether this page explicitly requested the synthetic development Atlas.
+ *
+ * `development` is an argument so the production refusal is unit-testable. The caller passes
+ * Vite's compile-time `import.meta.env.DEV`; a production build cannot be put into preview mode
+ * by adding a query parameter.
+ */
+export function isAtlasPreview(search: string, development: boolean): boolean {
+  return development && new URLSearchParams(search).get('preview') === '1';
+}
+
+/** Credentials for the Vite-only preview route. No user credential is read or persisted. */
+export function previewCredentials(origin: string): Credentials {
+  return { baseUrl: `${origin}${PREVIEW_API_PATH}`, token: PREVIEW_TOKEN };
 }
