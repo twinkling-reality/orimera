@@ -19,10 +19,9 @@
  * stable id and a human line, and a dismissal that costs nothing. When the Companion lands in
  * `app` this panel binds to a real `Turn` and the local turn below is deleted.
  *
- * NO 3D PRESENCE, AND THAT IS SANCTIONED RATHER THAN MISSING. interaction-model.md 4.2: "If no
- * candidate survives, the Companion does not appear in 3D at all: the panel opens alone and the
- * tether terminates in a small edge glyph. Honest degradation rather than a bad placement." There
- * is no world here to place it in, so no candidate survives, so the panel opens alone.
+ * NO MOTE BODY, AND THAT IS DELIBERATE. The signed-out surface has no Atlas memories whose
+ * point-cloud material could form the presence. It renders the introductory panel alone rather
+ * than presenting a decorative imitation of a user's memory field.
  */
 
 import { el } from './dom.js';
@@ -50,7 +49,7 @@ export interface CompanionTurn {
 export interface CompanionHandles {
   readonly root: HTMLElement;
   /** Show a turn. Passing `null` closes the panel and leaves the summon affordance behind. */
-  speak(turn: CompanionTurn | null): void;
+  showTurn(turn: CompanionTurn | null): void;
 }
 
 export function buildCompanion(onSelect: (optionId: string) => void): CompanionHandles {
@@ -109,7 +108,7 @@ export function buildCompanion(onSelect: (optionId: string) => void): CompanionH
 
   return {
     root,
-    speak(turn) {
+    showTurn(turn) {
       current = turn;
       render();
     },

@@ -13,6 +13,7 @@
  * PlayCanvas, `@orimera/atlas-three` or `@orimera/atlas-react`.
  */
 
+import '@orimera/presentation/tokens.css';
 import './style.css';
 
 import { readEnv, watchReducedMotion } from './env.js';
@@ -92,6 +93,7 @@ function go(next: Surface): void {
   surface = next;
   document.documentElement.dataset['surface'] = next;
   document.documentElement.dataset['ground'] = next === 'atlas' ? 'deep' : 'pale';
+  document.documentElement.dataset['theme'] = next === 'atlas' ? 'blue-hour' : 'dawn';
   chrome.setSurface(next);
 
   for (const [key, pane] of Object.entries(PANES) as [Surface, HTMLElement][]) {
@@ -104,7 +106,7 @@ function go(next: Surface): void {
     stopSource();
     formation = null;
     panel.render(null);
-    companion.speak(null);
+    companion.showTurn(null);
   }
   // The Companion belongs to the world, not to the chrome, so it is not shown over Method.
   companion.root.hidden = next !== 'atlas';
@@ -134,7 +136,7 @@ function enter(): void {
   // nothing has been uploaded and a console that started counting would be describing an upload
   // that did not happen.
   applyIdle();
-  companion.speak(FIRST_RUN_OFFER);
+  companion.showTurn(FIRST_RUN_OFFER);
 }
 
 /**
@@ -146,14 +148,14 @@ function enter(): void {
 function onCompanion(optionId: string): void {
   if (optionId === 'place-sample') {
     placeSampleRegions();
-    companion.speak(SAMPLE_PLACED);
+    companion.showTurn(SAMPLE_PLACED);
     return;
   }
   if (optionId === 'summon') {
-    companion.speak(formation === null ? FIRST_RUN_OFFER : SAMPLE_PLACED);
+    companion.showTurn(formation === null ? FIRST_RUN_OFFER : SAMPLE_PLACED);
     return;
   }
-  companion.speak(null);
+  companion.showTurn(null);
 }
 
 /** Place the sample regions: a recomposition of this Atlas, not a second world to load. */

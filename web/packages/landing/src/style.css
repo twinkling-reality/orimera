@@ -12,18 +12,10 @@
  */
 
 :root {
-  --ink: #0d1017;
-  --ink-soft: #3a4256;
-  /* Held at 4.5:1 against the pale ground. This is body copy in several places, so it is a
-     contrast requirement rather than a taste decision. */
-  --ink-faint: #5c6580;
-  --accent: #1a35a8;
-  --accent-soft: #5f4bbf;
-  --rule: rgba(27, 34, 54, 0.14);
-  --panel: rgba(255, 255, 255, 0.55);
-  --panel-line: rgba(27, 34, 54, 0.1);
-  --focus: #1a35a8;
-  --scrim: rgba(244, 245, 248, 0.84);
+  --rule: color-mix(in srgb, var(--ink) 14%, transparent);
+  --panel: color-mix(in srgb, var(--raised) 55%, transparent);
+  --panel-line: color-mix(in srgb, var(--ink) 10%, transparent);
+  --scrim: color-mix(in srgb, var(--ground) 84%, transparent);
 
   --step: clamp(0.6rem, 1.4vh, 1.1rem);
   --measure: 34rem;
@@ -31,19 +23,6 @@
   --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial,
     sans-serif;
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
-}
-
-:root[data-ground='deep'] {
-  --ink: #e6ecf8;
-  --ink-soft: #a8b4cf;
-  --ink-faint: #8d99b4;
-  --accent: #7cc0ff;
-  --accent-soft: #b79dff;
-  --rule: rgba(230, 236, 248, 0.16);
-  --panel: rgba(10, 16, 30, 0.5);
-  --panel-line: rgba(230, 236, 248, 0.12);
-  --focus: #8fd7ff;
-  --scrim: rgba(7, 10, 19, 0.74);
 }
 
 * {
@@ -73,10 +52,10 @@ body {
 }
 
 /*
- * The ground: a mesh of wide, low-saturation lobes plus grain.
+ * The ground: a broad directional light field plus grain.
  *
- * Four overlapping radial lobes rather than one gradient, because a single ramp reads as a
- * gradient and a set of overlapping ones reads as light in a room. They are deliberately close
+ * The planes cross the complete viewport, so the atmosphere reads as an exposure of one space
+ * rather than as decorative lights placed behind the interface. They remain deliberately close
  * together in value; the composition is carried by the figures, and a ground with contrast in it
  * would compete with them.
  *
@@ -88,47 +67,47 @@ body {
   font-family: var(--font);
   font-weight: 300;
   color: var(--ink);
-  background-color: #f2f0ee;
+  background-color: var(--ground);
   -webkit-font-smoothing: antialiased;
   letter-spacing: 0.005em;
 }
 
 #mesh {
+  --field-key-color: var(--dawn-field-key);
+  --field-crosslight-color: var(--dawn-field-crosslight);
+  --field-afterimage-color: var(--dawn-field-afterimage);
+  --field-bounce-color: var(--dawn-field-bounce);
+  --field-rim-color: var(--dawn-field-rim);
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background:
-    radial-gradient(58% 46% at 16% 20%, #f6ecf3 0%, rgba(246, 236, 243, 0) 62%),
-    radial-gradient(52% 44% at 84% 16%, #e8eef9 0%, rgba(232, 238, 249, 0) 64%),
-    radial-gradient(64% 52% at 50% 98%, #fbf1e4 0%, rgba(251, 241, 228, 0) 66%),
-    radial-gradient(44% 38% at 94% 76%, #ecf2ee 0%, rgba(236, 242, 238, 0) 62%),
-    radial-gradient(50% 40% at 6% 82%, #f1eef8 0%, rgba(241, 238, 248, 0) 64%),
-    #f2f0ee;
+  background-color: var(--dawn-ground);
+  background-image: var(--field-image);
   transition: opacity 900ms cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 /*
- * The deep ground is the SAME five lobes, relit.
+ * The deep ground is the SAME directional field, relit.
  *
  * Not a different background and not the light one dimmed. It is the same arrangement of light in
  * the same places with the values inverted, which is what makes entering the Atlas read as the
- * lights going down in a room you are already standing in rather than as a page swap. The lobes
- * sit at the same coordinates on purpose; that correspondence is the whole effect.
+ * lights going down in a room you are already standing in rather than as a page swap. The planes
+ * keep the same directions on purpose; that correspondence is the whole effect.
  */
 #mesh-deep {
+  --field-key-color: var(--blue-hour-field-key);
+  --field-crosslight-color: var(--blue-hour-field-crosslight);
+  --field-afterimage-color: var(--blue-hour-field-afterimage);
+  --field-bounce-color: var(--blue-hour-field-bounce);
+  --field-rim-color: var(--blue-hour-field-rim);
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
   opacity: 0;
-  background:
-    radial-gradient(58% 46% at 16% 20%, #1b1830 0%, rgba(27, 24, 48, 0) 62%),
-    radial-gradient(52% 44% at 84% 16%, #131c33 0%, rgba(19, 28, 51, 0) 64%),
-    radial-gradient(64% 52% at 50% 98%, #241d1c 0%, rgba(36, 29, 28, 0) 66%),
-    radial-gradient(44% 38% at 94% 76%, #131e1d 0%, rgba(19, 30, 29, 0) 62%),
-    radial-gradient(50% 40% at 6% 82%, #191631 0%, rgba(25, 22, 49, 0) 64%),
-    #0a0c14;
+  background-color: var(--blue-hour-ground);
+  background-image: var(--field-image);
   transition: opacity 900ms cubic-bezier(0.65, 0, 0.35, 1);
 }
 
@@ -527,14 +506,11 @@ body {
 /*
  * The Companion panel, anchored lower left.
  *
- * interaction-model.md 4.1 fixes the position: "A floating dialogue panel in screen space,
- * anchored lower left, constrained never to overlap the reticle or the focused anchor's label."
- * There is no reticle on this surface yet, but the anchor is the same one it will keep, so the
- * panel does not have to move when the world arrives underneath it.
+ * This signed-out surface has no Atlas material from which to form the screen-space mote body.
+ * The panel therefore keeps a quiet fixed position and does not pretend that a memory presence
+ * exists before any memories are available.
  *
- * No tether and no 3D presence, which 4.2 sanctions rather than merely tolerates: with no world
- * to place it in, no placement candidate survives, and the specified behaviour in that case is
- * that the panel opens alone.
+ * There is no tether because there is no separate body to associate with the panel here.
  */
 .companion {
   position: fixed;
