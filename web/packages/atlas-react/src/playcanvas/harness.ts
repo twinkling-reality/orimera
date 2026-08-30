@@ -266,6 +266,7 @@ async function loadScene(config: HarnessConfig): Promise<AtlasScene> {
       makeIsland({
         ...source,
         islandId: `${source.islandId}${suffix}` as IslandId,
+        creationOrdinal: source.creationOrdinal + i,
         createdAt: source.createdAt + i,
         placement: {
           position: { x: Math.cos(angle) * radius, y: 0, z: Math.sin(angle) * radius },

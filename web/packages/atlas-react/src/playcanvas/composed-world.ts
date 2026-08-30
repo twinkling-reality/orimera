@@ -1,0 +1,526 @@
+import * as pc from 'playcanvas';
+import { atlasLandscapeHeight, type WorldModuleInstance, type WorldTopologySnapshot } from '@orimera/atlas-core';
+import {
+  DAWN_THEME,
+  ORIGIN_LANDSCAPE,
+  SURVEY_RELIEF,
+  unitRgb,
+  type PresentationTheme,
+  type WorldArtProfile,
+  type WorldArtProfileId,
+} from '@orimera/presentation';
+
+export interface ComposedWorld {
+  readonly entity: pc.Entity;
+  readonly topology: WorldTopologySnapshot;
+  readonly profileId: WorldArtProfileId;
+  setTheme(theme: PresentationTheme): void;
+  setProfile(profile: WorldArtProfile): void;
+  setMapActive(active: boolean): void;
+  destroy(): void;
+}
+
+interface ProfileLayer {
+  readonly root: pc.Entity;
+  readonly materials: readonly pc.Material[];
+  readonly mapHidden: readonly pc.Entity[];
+  readonly applyProfile: (profile: WorldArtProfile) => void;
+}
+
+interface MeshCatalog {
+  readonly cube: pc.Mesh;
+  readonly rock: pc.Mesh;
+  readonly ridge: pc.Mesh;
+  readonly sky: pc.Mesh;
+  readonly ring: pc.Mesh;
+  readonly disc: pc.Mesh;
+}
+
+interface ShaderDesc {
+  uniqueName: string;
+  attributes?: Record<string, string>;
+  vertexGLSL?: string;
+  fragmentGLSL?: string;
+}
+
+const SKY_VERTEX_GLSL = /* glsl */ `
+attribute vec3 aPosition;
+uniform mat4 matrix_model;
+uniform mat4 matrix_viewProjection;
+varying vec3 vDirection;
+
+void main(void) {
+    vDirection = normalize(aPosition);
+    gl_Position = matrix_viewProjection * matrix_model * vec4(aPosition, 1.0);
+}
+`;
+
+const SKY_FRAGMENT_GLSL = /* glsl */ `
+precision highp float;
+varying vec3 vDirection;
+uniform vec3 uSky;
+uniform vec3 uHaze;
+uniform vec3 uSun;
+uniform vec3 uCloud;
+
+void main(void) {
+    vec3 d = normalize(vDirection);
+    float height = smoothstep(-0.04, 0.78, d.y);
+    vec3 colour = mix(uHaze, uSky, height);
+
+    // Long, quiet cloud veils. They are directional weather, not screen-space decoration.
+    float veilA = sin(d.x * 31.0 + sin(d.z * 17.0) * 1.7);
+    float veilB = sin(d.z * 43.0 - d.x * 13.0);
+    float veil = smoothstep(1.05, 1.72, veilA + veilB * 0.42);
+    veil *= smoothstep(0.08, 0.4, d.y) * (1.0 - smoothstep(0.58, 0.82, d.y));
+    colour = mix(colour, uCloud, veil * 0.15);
+
+    vec3 sunDirection = normalize(vec3(-0.36, 0.38, -0.85));
+    float sunFacing = max(0.0, dot(d, sunDirection));
+    float sunDisc = smoothstep(0.9987, 0.99945, sunFacing);
+    float sunHaze = pow(sunFacing, 90.0) * 0.22;
+    colour += uSun * (sunDisc * 0.78 + sunHaze);
+
+    gl_FragColor = vec4(colour, 1.0);
+}
+`;
+
+function color(hex: string): pc.Color {
+  const [r, g, b] = unitRgb(hex);
+  return new pc.Color(r, g, b);
+}
+
+function createMaterial(
+  hex: string,
+  options: {
+    readonly lit?: boolean;
+    readonly emissive?: string;
+    readonly emissiveIntensity?: number;
+    readonly metalness?: number;
+    readonly gloss?: number;
+    readonly opacity?: number;
+    readonly fog?: boolean;
+  } = {},
+): pc.StandardMaterial {
+  const material = new pc.StandardMaterial();
+  material.useLighting = options.lit ?? true;
+  material.diffuse.copy(color(hex));
+  material.emissive.copy(color(options.emissive ?? '#000000'));
+  material.emissiveIntensity = options.emissiveIntensity ?? 0;
+  material.metalness = options.metalness ?? 0;
+  material.gloss = options.gloss ?? 0.16;
+  material.opacity = options.opacity ?? 1;
+  material.blendType = material.opacity < 1 ? pc.BLEND_NORMAL : pc.BLEND_NONE;
+  material.depthWrite = material.opacity >= 0.72;
+  material.cull = pc.CULLFACE_BACK;
+  material.useFog = options.fog ?? true;
+  material.update();
+  return material;
+}
+
+function createSkyMaterial(profile: WorldArtProfile): pc.ShaderMaterial {
+  const material = new pc.ShaderMaterial({
+    uniqueName: `orimera-origin-sky:${profile.profileId}`,
+    attributes: { aPosition: pc.SEMANTIC_POSITION },
+    vertexGLSL: SKY_VERTEX_GLSL,
+    fragmentGLSL: SKY_FRAGMENT_GLSL,
+  } as ShaderDesc);
+  material.setParameter('uSky', new Float32Array(unitRgb(profile.palette.sky)));
+  material.setParameter('uHaze', new Float32Array(unitRgb(profile.palette.haze)));
+  material.setParameter('uSun', new Float32Array(unitRgb(profile.palette.sun)));
+  material.setParameter('uCloud', new Float32Array(unitRgb(profile.palette.paper)));
+  material.cull = pc.CULLFACE_FRONT;
+  material.depthWrite = false;
+  material.blendType = pc.BLEND_NONE;
+  material.update();
+  return material;
+}
+
+function updateSkyMaterial(material: pc.ShaderMaterial, profile: WorldArtProfile): void {
+  material.setParameter('uSky', new Float32Array(unitRgb(profile.palette.sky)));
+  material.setParameter('uHaze', new Float32Array(unitRgb(profile.palette.haze)));
+  material.setParameter('uSun', new Float32Array(unitRgb(profile.palette.sun)));
+  material.setParameter('uCloud', new Float32Array(unitRgb(profile.palette.paper)));
+  material.update();
+}
+
+function updateMaterial(
+  material: pc.StandardMaterial,
+  hex: string,
+  options: {
+    readonly emissive?: string;
+    readonly emissiveIntensity?: number;
+    readonly metalness?: number;
+    readonly gloss?: number;
+    readonly opacity?: number;
+  } = {},
+): void {
+  material.diffuse.copy(color(hex));
+  material.emissive.copy(color(options.emissive ?? '#000000'));
+  material.emissiveIntensity = options.emissiveIntensity ?? 0;
+  material.metalness = options.metalness ?? 0;
+  material.gloss = options.gloss ?? 0.16;
+  material.opacity = options.opacity ?? 1;
+  material.blendType = material.opacity < 1 ? pc.BLEND_NORMAL : pc.BLEND_NONE;
+  material.depthWrite = material.opacity >= 0.72;
+  material.update();
+}
+
+function addPrimitive(
+  parent: pc.Entity,
+  name: string,
+  mesh: pc.Mesh,
+  material: pc.Material,
+  position: readonly [number, number, number],
+  scale: readonly [number, number, number],
+  rotation: readonly [number, number, number] = [0, 0, 0],
+): pc.Entity {
+  const entity = new pc.Entity(name);
+  entity.setLocalPosition(position[0], position[1], position[2]);
+  entity.setLocalScale(scale[0], scale[1], scale[2]);
+  entity.setLocalEulerAngles(rotation[0], rotation[1], rotation[2]);
+  const instance = new pc.MeshInstance(mesh, material, entity);
+  instance.castShadow = true;
+  instance.receiveShadow = true;
+  entity.addComponent('render', { meshInstances: [instance] });
+  parent.addChild(entity);
+  return entity;
+}
+
+function atInstance(root: pc.Entity, instance: WorldModuleInstance): pc.Entity {
+  const group = new pc.Entity(instance.instanceId);
+  group.setPosition(
+    instance.transform.position.x,
+    instance.transform.position.y + atlasLandscapeHeight(
+      instance.transform.position.x,
+      instance.transform.position.z,
+    ),
+    instance.transform.position.z,
+  );
+  group.setEulerAngles(0, (instance.transform.yaw * 180) / Math.PI, 0);
+  root.addChild(group);
+  return group;
+}
+
+function openingFrame(topology: WorldTopologySnapshot): {
+  x: number;
+  z: number;
+  yaw: number;
+  forwardX: number;
+  forwardZ: number;
+  rightX: number;
+  rightZ: number;
+} {
+  const foundations = topology.instances.filter((instance) => instance.role === 'region-foundation');
+  const first = foundations[0];
+  if (first === undefined) {
+    return { x: 0, z: 0, yaw: 0, forwardX: 0, forwardZ: -1, rightX: 1, rightZ: 0 };
+  }
+  const yaw = first.transform.yaw;
+  return {
+    x: first.transform.position.x,
+    z: first.transform.position.z,
+    yaw,
+    forwardX: -Math.sin(yaw),
+    forwardZ: -Math.cos(yaw),
+    rightX: Math.cos(yaw),
+    rightZ: -Math.sin(yaw),
+  };
+}
+
+/** A low-poly extruded ridge: a real horizon silhouette, not a screen-space gradient. */
+function createRidgeMesh(device: pc.GraphicsDevice): pc.Mesh {
+  const xs = [-96, -80, -64, -50, -38, -27, -17, -7, 3, 15, 29, 44, 61, 78, 96];
+  const heights = [2.5, 5, 3.8, 7.6, 5.2, 10.5, 7, 13.5, 7.8, 11, 6.2, 8.5, 5, 6, 2.5];
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (let index = 0; index < xs.length; index += 1) {
+    const x = xs[index]!;
+    const height = heights[index]!;
+    positions.push(x, -2, -4, x, height, -4, x, -2, 4, x, height * 0.9, 4);
+  }
+  for (let index = 0; index < xs.length - 1; index += 1) {
+    const a = index * 4;
+    const b = (index + 1) * 4;
+    indices.push(
+      a, b, b + 1, a, b + 1, a + 1,
+      a + 2, a + 3, b + 3, a + 2, b + 3, b + 2,
+      a + 1, b + 1, b + 3, a + 1, b + 3, a + 3,
+    );
+  }
+  const geometry = new pc.Geometry();
+  geometry.positions = positions;
+  geometry.indices = indices;
+  geometry.normals = pc.calculateNormals(positions, indices);
+  return pc.Mesh.fromGeometry(device, geometry);
+}
+
+function addOriginEnvironment(
+  root: pc.Entity,
+  topology: WorldTopologySnapshot,
+  meshes: MeshCatalog,
+  stone: pc.StandardMaterial,
+  shadow: pc.StandardMaterial,
+  growth: pc.StandardMaterial,
+  sky: pc.ShaderMaterial,
+): pc.Entity {
+  const frame = openingFrame(topology);
+  const yawDegrees = (frame.yaw * 180) / Math.PI;
+  const environment = new pc.Entity('origin-environment');
+  root.addChild(environment);
+
+  const skyEntity = new pc.Entity('origin-sky');
+  skyEntity.setPosition(frame.x, 0, frame.z);
+  skyEntity.setLocalScale(540, 540, 540);
+  skyEntity.setEulerAngles(0, yawDegrees, 0);
+  const skyInstance = new pc.MeshInstance(meshes.sky, sky, skyEntity);
+  skyInstance.castShadow = false;
+  skyInstance.receiveShadow = false;
+  skyEntity.addComponent('render', { meshInstances: [skyInstance] });
+  environment.addChild(skyEntity);
+
+  // Two terrain silhouettes produce foreground/middle/far depth while remaining beyond the
+  // navigable field. They establish a landscape even when there are no memories yet.
+  addPrimitive(environment, 'archive-ridge-far', meshes.ridge, shadow,
+    [frame.x + frame.forwardX * 190, -0.8, frame.z + frame.forwardZ * 190],
+    [1.32, 1.18, 1], [0, yawDegrees - 2, 0]);
+  addPrimitive(environment, 'living-ridge-near', meshes.ridge, growth,
+    [
+      frame.x + frame.forwardX * 124 + frame.rightX * 18,
+      -1.1,
+      frame.z + frame.forwardZ * 124 + frame.rightZ * 18,
+    ],
+    [0.86, 0.7, 0.72], [0, yawDegrees + 4, 0]);
+  // An empty Atlas gets one unoccupied clearing. This is landscape infrastructure, not a memory.
+  if (!topology.instances.some((instance) => instance.role === 'region-foundation')) {
+    for (let index = 0; index < 5; index += 1) {
+      const angle = -0.85 + index * 0.42;
+      addPrimitive(environment, `empty-garden-bud:${index}`, meshes.rock, index % 2 === 0 ? growth : stone,
+        [Math.sin(angle) * 4.6, 0.12, -7 + Math.cos(angle) * 2.8],
+        [0.52 + index * 0.07, 0.2 + (index % 2) * 0.08, 0.72],
+        [index * 3, index * 31, index * -2]);
+    }
+  }
+  return environment;
+}
+
+function addAeroBeacon(
+  group: pc.Entity,
+  profile: WorldArtProfile,
+  meshes: MeshCatalog,
+  stone: pc.StandardMaterial,
+  shadow: pc.StandardMaterial,
+  brass: pc.StandardMaterial,
+  glass: pc.StandardMaterial,
+): void {
+  const h = profile.geometry.landmarkHeight;
+  addPrimitive(group, 'beacon-base', meshes.disc, stone, [0, 0.12, 0], [1.1, 0.18, 1.1]);
+  addPrimitive(group, 'beacon-stem', meshes.cube, stone, [0, h * 0.42, 0], [0.12, h * 0.78, 0.12]);
+  addPrimitive(group, 'beacon-lens', meshes.rock, glass, [0, h * 0.86, 0], [0.58, 0.58, 0.28]);
+  addPrimitive(group, 'beacon-ring', meshes.ring, shadow, [0, h * 0.86, 0], [1.5, 1.5, 1.5], [90, 0, 0]);
+  addPrimitive(group, 'beacon-signal', meshes.rock, brass, [0, h * 0.86, -0.02], [0.14, 0.14, 0.08]);
+}
+
+function addSurveyLandmark(
+  group: pc.Entity,
+  profile: WorldArtProfile,
+  meshes: MeshCatalog,
+  stone: pc.StandardMaterial,
+  shadow: pc.StandardMaterial,
+  brass: pc.StandardMaterial,
+): void {
+  const h = profile.geometry.landmarkHeight;
+  for (let index = 0; index < 4; index += 1) {
+    const height = h * (0.7 - index * 0.1);
+    addPrimitive(group, `survey-rib:${index}`, meshes.cube, index % 2 === 0 ? stone : shadow,
+      [(index - 1.5) * 0.34, height / 2, 0], [0.12, height, 0.38 + index * 0.08],
+      [0, (index - 1.5) * 8, 0]);
+  }
+  addPrimitive(group, 'survey-index', meshes.cube, brass, [0, 0.08, -0.2], [1.15, 0.035, 0.08]);
+}
+
+function addRelationshipInlay(
+  root: pc.Entity,
+  instance: WorldModuleInstance,
+  mesh: pc.Mesh,
+  material: pc.StandardMaterial,
+): void {
+  if (instance.path === null) return;
+  const { start, end, strength } = instance.path;
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const length = Math.hypot(dx, dz);
+  if (length < 0.01) return;
+  const count = Math.max(3, Math.min(14, Math.floor(length / 3.2)));
+  const yaw = (Math.atan2(dx, dz) * 180) / Math.PI;
+  const group = new pc.Entity(instance.instanceId);
+  root.addChild(group);
+  for (let index = 1; index < count; index += 1) {
+    const t = index / count;
+    addPrimitive(group, `relationship-inlay:${index}`, mesh, material,
+      [
+        start.x + dx * t,
+        atlasLandscapeHeight(start.x + dx * t, start.z + dz * t) + 0.018,
+        start.z + dz * t,
+      ],
+      [0.055 + strength * 0.035, 0.018, 0.38 + strength * 0.18],
+      [0, yaw, 0]);
+  }
+}
+
+/**
+ * Realize passive topology as one authored landscape. Profile layers are built once and toggled,
+ * so a visual preview cannot perturb identity, placement, navigation, collision, or evidence.
+ */
+export function createComposedWorld(
+  device: pc.GraphicsDevice,
+  topology: WorldTopologySnapshot,
+  initialProfile: WorldArtProfile = ORIGIN_LANDSCAPE,
+  _theme: PresentationTheme = DAWN_THEME,
+): ComposedWorld {
+  const entity = new pc.Entity('atlas-composed-world');
+  const meshes: MeshCatalog = {
+    cube: pc.Mesh.fromGeometry(device, new pc.BoxGeometry({ halfExtents: new pc.Vec3(0.5, 0.5, 0.5) })),
+    rock: pc.Mesh.fromGeometry(device, new pc.SphereGeometry({ radius: 0.5, latitudeBands: 7, longitudeBands: 8 })),
+    ridge: createRidgeMesh(device),
+    sky: pc.Mesh.fromGeometry(device, new pc.SphereGeometry({ radius: 1, latitudeBands: 24, longitudeBands: 48 })),
+    ring: pc.Mesh.fromGeometry(device, new pc.TorusGeometry({ ringRadius: 0.32, tubeRadius: 0.045, segments: 28, sides: 8 })),
+    disc: pc.Mesh.fromGeometry(device, new pc.CylinderGeometry({ radius: 0.5, height: 0.5, capSegments: 32 })),
+  };
+  const layers = new Map<WorldArtProfileId, ProfileLayer>();
+
+  const buildLayer = (profile: WorldArtProfile): ProfileLayer => {
+    const root = new pc.Entity(`world-profile:${profile.profileId}`);
+    const stone = createMaterial(profile.palette.stone, { gloss: 0.12 });
+    const shadow = createMaterial(profile.palette.stoneShadow, { gloss: 0.08 });
+    const brass = createMaterial(profile.palette.brass, { metalness: 0.62, gloss: 0.36 });
+    const path = createMaterial(profile.palette.path, { metalness: 0.22, gloss: 0.22 });
+    const growth = createMaterial(profile.palette.terrainLift, { gloss: 0.34 });
+    const glass = createMaterial(profile.palette.paper, {
+      emissive: profile.palette.paper,
+      emissiveIntensity: profile.material.emissiveStrength * 0.18,
+      gloss: profile.material.gloss,
+      opacity: profile.material.opacity,
+    });
+    glass.cull = pc.CULLFACE_NONE;
+    const sky = createSkyMaterial(profile);
+    const materials = Object.freeze<pc.Material[]>([stone, shadow, brass, path, growth, glass, sky]);
+    entity.addChild(root);
+
+    const mapHidden = profile.profileId === ORIGIN_LANDSCAPE.profileId
+      ? [addOriginEnvironment(root, topology, meshes, stone, shadow, growth, sky)]
+      : [];
+    const details: pc.Entity[] = [];
+
+    for (const instance of topology.instances) {
+      // Foundations remain one continuous field. Evidence bodies are created by source-first-grove
+      // so a missing photograph never gets replaced by decorative renderer geometry here.
+      if (instance.role === 'landmark') {
+        const group = atInstance(root, instance);
+        if (profile.geometry.landmark === 'aero-beacon') {
+          addAeroBeacon(group, profile, meshes, stone, shadow, brass, glass);
+        } else {
+          addSurveyLandmark(group, profile, meshes, stone, shadow, brass);
+        }
+      }
+
+      if (instance.role === 'expansion-point') {
+        const group = atInstance(root, instance);
+        const count = profile.geometry.expansion === 'living-buds' ? 7 : 5;
+        for (let index = 0; index < count; index += 1) {
+          const angle = 0.35 + index * 1.08;
+          const distance = 0.28 + index * 0.13;
+          if (profile.geometry.expansion === 'living-buds') {
+            const bud = new pc.Entity(`living-bud:${index}`);
+            group.addChild(bud);
+            const x = Math.cos(angle) * distance;
+            const z = Math.sin(angle) * distance;
+            addPrimitive(bud, 'stem', meshes.cube, growth, [x, 0.14, z], [0.035, 0.28, 0.035]);
+            addPrimitive(bud, 'leaf-left', meshes.rock, growth, [x - 0.07, 0.26, z], [0.13, 0.055, 0.07], [0, 0, -28]);
+            addPrimitive(bud, 'leaf-right', meshes.rock, growth, [x + 0.07, 0.31, z], [0.13, 0.055, 0.07], [0, 0, 28]);
+            addPrimitive(bud, 'signal', meshes.rock, index === 0 ? brass : glass, [x, 0.4, z], [0.07, 0.07, 0.07]);
+            details.push(bud);
+          } else {
+            addPrimitive(group, `survey-stake:${index}`, meshes.cube, index === 0 ? brass : stone,
+              [Math.cos(angle) * distance, 0.2, Math.sin(angle) * distance],
+              [0.045, 0.4 + (index % 2) * 0.12, 0.045], [0, angle * 57.2958, 0]);
+          }
+        }
+      }
+
+      if (instance.role === 'relationship-path') {
+        addRelationshipInlay(root, instance, meshes.cube, path);
+      }
+    }
+    const applyProfile = (next: WorldArtProfile): void => {
+      updateMaterial(stone, next.palette.stone, { gloss: 0.34 });
+      updateMaterial(shadow, next.palette.stoneShadow, { gloss: 0.28 });
+      updateMaterial(brass, next.palette.brass, {
+        emissive: next.palette.brass,
+        emissiveIntensity: next.material.emissiveStrength * 0.34,
+        metalness: 0.38,
+        gloss: 0.64,
+      });
+      updateMaterial(path, next.palette.path, {
+        emissive: next.palette.path,
+        emissiveIntensity: next.material.emissiveStrength * 0.44,
+        metalness: 0.16,
+        gloss: 0.48,
+      });
+      updateMaterial(growth, next.palette.terrainLift, { gloss: 0.32 });
+      updateMaterial(glass, next.palette.paper, {
+        emissive: next.palette.paper,
+        emissiveIntensity: next.material.emissiveStrength * 0.18,
+        gloss: next.material.gloss,
+        opacity: next.material.opacity,
+      });
+      glass.cull = pc.CULLFACE_NONE;
+      glass.update();
+      updateSkyMaterial(sky, next);
+      details.forEach((detail, index) => { detail.enabled = index % 7 < next.geometry.expansionCount; });
+    };
+    applyProfile(profile);
+    return { root, materials, mapHidden, applyProfile };
+  };
+
+  layers.set(ORIGIN_LANDSCAPE.profileId, buildLayer(ORIGIN_LANDSCAPE));
+  layers.set(SURVEY_RELIEF.profileId, buildLayer(SURVEY_RELIEF));
+  let activeProfileId = initialProfile.profileId;
+  let mapActive = false;
+
+  const setProfile = (profile: WorldArtProfile): void => {
+    activeProfileId = layers.has(profile.profileId) ? profile.profileId : ORIGIN_LANDSCAPE.profileId;
+    for (const [id, layer] of layers) {
+      layer.root.enabled = id === activeProfileId;
+      if (id === activeProfileId) layer.applyProfile(profile);
+      for (const hidden of layer.mapHidden) hidden.enabled = !mapActive;
+    }
+  };
+  setProfile(initialProfile);
+
+  return {
+    entity,
+    topology,
+    get profileId() { return activeProfileId; },
+    // UI exposure affects readable surfaces and semantic markers, not the landscape's identity.
+    setTheme() {},
+    setProfile,
+    setMapActive(active) {
+      mapActive = active;
+      for (const layer of layers.values()) {
+        for (const hidden of layer.mapHidden) hidden.enabled = !active;
+      }
+    },
+    destroy() {
+      for (const layer of layers.values()) {
+        for (const material of layer.materials) material.destroy();
+      }
+      meshes.cube.destroy();
+      meshes.rock.destroy();
+      meshes.ridge.destroy();
+      meshes.sky.destroy();
+      meshes.ring.destroy();
+      meshes.disc.destroy();
+    },
+  };
+}

@@ -1,5 +1,11 @@
 import * as pc from 'playcanvas';
 import { DISSOLVE_BAND_FRACTION } from '@orimera/atlas-core';
+import {
+  BLUE_HOUR_THEME,
+  pointProvenancePalette,
+  unitRgb,
+  type PresentationTheme,
+} from '@orimera/presentation';
 import type { PointMap } from './opm.js';
 import { footprintRadiusOf, packedVertexBytes } from './opm.js';
 import type { SegmentSemantics } from './semantics.js';
@@ -35,6 +41,7 @@ export interface PointCloudOptions {
   readonly maxSizePx?: number;
   /** Alpha blending instead of the alpha-tested opaque path. Order-dependent; off by default. */
   readonly blend?: boolean;
+  readonly theme?: PresentationTheme;
 }
 
 export interface PointCloud {
@@ -48,6 +55,7 @@ export interface PointCloud {
   readonly vertexBytes: number;
   readonly defaultSizeGain: number;
   readonly defaultMaxSizePx: number;
+  setTheme(theme: PresentationTheme): void;
   destroy(): void;
 }
 
@@ -68,18 +76,6 @@ const ATTRIBUTES = {
   aColor: pc.SEMANTIC_COLOR,
   aSegment: pc.SEMANTIC_ATTR8,
 } as const;
-
-/**
- * Four palette slots, one per provenance class, so capture-supported, model-inferred,
- * user-provided and external-web are visually distinguishable in the shell itself and not only in
- * the overlay. `w` is how strongly the tint is applied over the point's own albedo.
- */
-const PALETTE = new Float32Array([
-  1.0, 0.98, 0.94, 0.15, // capture: near-neutral, the albedo is trusted
-  0.62, 0.76, 1.0, 0.55, // inference: cool, clearly not the capture's own colour
-  1.0, 0.82, 0.55, 0.5, // user: warm accent, the same accent the confirmation panel uses
-  0.78, 0.72, 0.86, 0.65, // external: desaturated violet, deliberately foreign
-]);
 
 /** `ShaderDesc` is documented but not exported from the engine's type surface, so it is restated. */
 interface ShaderDesc {
@@ -199,8 +195,12 @@ export function createPointCloud(options: PointCloudOptions): PointCloud {
   // person points are NOT discarded, so people get baked into the geometry as reconstructions
   // instead of rendering as time-anchored presence markers. The scene looks fine. It is lying.
   material.setParameter('uSegState[0]', packSemantics(semantics));
-  material.setParameter('uPalette[0]', PALETTE);
-  material.setParameter('uFogColor', [0.055, 0.062, 0.086]);
+  const setTheme = (theme: PresentationTheme): void => {
+    material.setParameter('uPalette[0]', pointProvenancePalette(theme));
+    material.setParameter('uFogColor', [...unitRgb(theme.ground)]);
+    material.update();
+  };
+  setTheme(options.theme ?? BLUE_HOUR_THEME);
   // Fog starts at the footprint boundary rather than inside it, so the island's own body is not
   // washed out and the ramp lands where the dissolve band already is.
   material.setParameter('uFog', [footprint * 0.9, footprint * 3.2, 1.2, 1]);
@@ -230,6 +230,7 @@ export function createPointCloud(options: PointCloudOptions): PointCloud {
     vertexBytes: vertexBuffer.numBytes,
     defaultSizeGain: options.sizeGain ?? DEFAULT_SIZE_GAIN,
     defaultMaxSizePx: options.maxSizePx ?? DEFAULT_MAX_SIZE_PX,
+    setTheme,
     destroy(): void {
       mesh.destroy();
       material.destroy();

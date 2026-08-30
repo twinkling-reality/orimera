@@ -1,6 +1,12 @@
 import * as pc from 'playcanvas';
 import type { AnchorTable, EmphasisBuffers } from '@orimera/atlas-core';
 import { readsAsUnconfirmed, rendersAsPresenceMarker } from '@orimera/atlas-core';
+import type { ProvenanceClass } from '@orimera/atlas-core';
+import {
+  DAWN_THEME,
+  byteRgba,
+  type PresentationTheme,
+} from '@orimera/presentation';
 
 /**
  * One mote per anchor. What a region with no reconstructed geometry actually looks like.
@@ -25,9 +31,9 @@ import { readsAsUnconfirmed, rendersAsPresenceMarker } from '@orimera/atlas-core
  */
 
 /** World-space radius the mote subtends. Turned into pixels by the projection scale. */
-const DEFAULT_SIZE_METRES = 0.34;
-const DEFAULT_MAX_SIZE_PX = 26;
-const MIN_SIZE_PX = 3;
+const DEFAULT_SIZE_METRES = 0.14;
+const DEFAULT_MAX_SIZE_PX = 11;
+const MIN_SIZE_PX = 2;
 
 /** Bytes per mote: position 12, colour 4, emphasis 4. */
 const STRIDE = 20;
@@ -38,16 +44,11 @@ const ATTRIBUTES = {
   aEmphasis: pc.SEMANTIC_ATTR8,
 } as const;
 
-/**
- * The four provenance classes, as rgba. The same four the confirmation panel and the index use,
- * because one vocabulary everywhere is the rule and a fifth palette would be a fifth vocabulary.
- * Alpha is the resting opacity before emphasis and confirmation are applied.
- */
-const PALETTE: Readonly<Record<string, readonly [number, number, number, number]>> = Object.freeze({
-  capture: [242, 238, 226, 235],
-  inference: [158, 176, 214, 200],
-  user: [232, 202, 138, 245],
-  external: [196, 176, 214, 210],
+const PROVENANCE_ALPHA: Readonly<Record<ProvenanceClass, number>> = Object.freeze({
+  capture: 0.92,
+  inference: 0.78,
+  user: 0.96,
+  external: 0.82,
 });
 
 export interface AnchorMotesOptions {
@@ -55,6 +56,7 @@ export interface AnchorMotesOptions {
   readonly table: AnchorTable;
   readonly sizeMetres?: number;
   readonly maxSizePx?: number;
+  readonly theme?: PresentationTheme;
 }
 
 export interface AnchorMotes {
@@ -66,7 +68,17 @@ export interface AnchorMotes {
   readonly uMote: Float32Array;
   /** Rewrite the emphasis channel from the current buffers. Cheap; see the note in `update`. */
   update(emphasis: EmphasisBuffers): void;
+  setTheme(theme: PresentationTheme): void;
   destroy(): void;
+}
+
+export function anchorMoteRgba(
+  theme: PresentationTheme,
+  provenance: ProvenanceClass,
+  unconfirmed: boolean,
+): readonly [number, number, number, number] {
+  const rgba = byteRgba(theme.provenance[provenance], PROVENANCE_ALPHA[provenance]);
+  return [rgba[0], rgba[1], rgba[2], Math.round(rgba[3] * (unconfirmed ? 0.55 : 1))];
 }
 
 const VERTEX_GLSL = /* glsl */ `
@@ -174,16 +186,19 @@ export function createAnchorMotes(options: AnchorMotesOptions): AnchorMotes {
     floats[base + 1] = table.atlasPositions[index * 3 + 1] ?? 0;
     floats[base + 2] = table.atlasPositions[index * 3 + 2] ?? 0;
 
-    const colour = PALETTE[anchor.provenance] ?? PALETTE['inference']!;
     // An unconfirmed link is dimmer, and the rule for what counts as unconfirmed is atlas-core's.
     // id-2: an auto-provisional link may organise the world and may never support a claim, so it
     // is present and visibly not settled rather than absent or indistinguishable.
-    const dim = readsAsUnconfirmed(anchor.linkState, anchor.provenance) ? 0.55 : 1;
+    const colour = anchorMoteRgba(
+      options.theme ?? DAWN_THEME,
+      anchor.provenance,
+      readsAsUnconfirmed(anchor.linkState, anchor.provenance),
+    );
     const offset = m * STRIDE + 12;
     bytes[offset] = colour[0];
     bytes[offset + 1] = colour[1];
     bytes[offset + 2] = colour[2];
-    bytes[offset + 3] = Math.round(colour[3] * dim);
+    bytes[offset + 3] = colour[3];
 
     floats[base + 4] = 1;
   }
@@ -217,12 +232,29 @@ export function createAnchorMotes(options: AnchorMotesOptions): AnchorMotes {
     MIN_SIZE_PX,
   ]);
 
+  const setTheme = (theme: PresentationTheme): void => {
+    if (count === 0) return;
+    const view = new Uint8Array(vertexBuffer.lock());
+    for (let m = 0; m < count; m += 1) {
+      const index = anchorIndices[m] as number;
+      const anchor = table.anchors[index]!;
+      const colour = anchorMoteRgba(
+        theme,
+        anchor.provenance,
+        readsAsUnconfirmed(anchor.linkState, anchor.provenance),
+      );
+      view.set(colour, m * STRIDE + 12);
+    }
+    vertexBuffer.unlock();
+  };
+
   return {
     mesh,
     material,
     count,
     anchorIndices,
     uMote,
+    setTheme,
     /**
      * Rewrite the emphasis channel.
      *

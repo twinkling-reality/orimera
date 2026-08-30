@@ -1,5 +1,10 @@
-import type { AtlasVec3 } from '@orimera/atlas-core';
-import { forwardFromYawPitch } from '@orimera/atlas-core';
+import type {
+  AtlasVec3,
+  GroundMovementResolution,
+  NavigationWorld,
+  SpatialClassification,
+} from '@orimera/atlas-core';
+import { atlasVec3, forwardFromYawPitch, resolveGroundMovement } from '@orimera/atlas-core';
 
 /**
  * First-person controls: pointer-lock mouse-look plus WASD, and a reticle at fixed screen centre.
@@ -62,10 +67,16 @@ export class FirstPersonControls {
 
   private readonly canvas: HTMLCanvasElement;
   private readonly config: ControlsConfig;
+  private sensitivityMultiplier = 1;
+  private enabled = true;
   private readonly keys = new Set<string>();
   private vx = 0;
   private vz = 0;
   private locked = false;
+  private lastSafe: AtlasVec3 | null = null;
+  private readonly navigationWorld: NavigationWorld | null;
+  private spatial: SpatialClassification | null = null;
+  private recoveryReason: GroundMovementResolution['recoveryReason'] = null;
   private disposers: Array<() => void> = [];
 
   /** Fired when the browser's lock state changes. The application follows; it never drives. */
@@ -75,9 +86,15 @@ export class FirstPersonControls {
   /** Summon Companion. Bound to C and right click. */
   onSummon: (() => void) | null = null;
 
-  constructor(canvas: HTMLCanvasElement, start: CameraState, config = DEFAULT_CONTROLS) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    start: CameraState,
+    config = DEFAULT_CONTROLS,
+    navigationWorld: NavigationWorld | null = null,
+  ) {
     this.canvas = canvas;
     this.config = config;
+    this.navigationWorld = navigationWorld;
     this.state = { ...start };
 
     const on = <K extends keyof DocumentEventMap>(
@@ -92,15 +109,20 @@ export class FirstPersonControls {
 
     on(document, 'pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.canvas;
-      if (!this.locked) this.keys.clear();
+      if (!this.locked) {
+        this.keys.clear();
+        this.vx = 0;
+        this.vz = 0;
+      }
       this.onModeChange?.(this.locked ? 'traverse' : 'converse');
     });
 
     on(document, 'mousemove', (e: MouseEvent) => {
       if (!this.locked) return;
       // movementX/movementY only. clientX/clientY are frozen by the specification.
-      this.state.yaw -= e.movementX * this.config.sensitivity;
-      this.state.pitch -= e.movementY * this.config.sensitivity;
+      if (!this.enabled) return;
+      this.state.yaw -= e.movementX * this.config.sensitivity * this.sensitivityMultiplier;
+      this.state.pitch -= e.movementY * this.config.sensitivity * this.sensitivityMultiplier;
       this.state.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.state.pitch));
     });
 
@@ -119,23 +141,67 @@ export class FirstPersonControls {
       // Escape is never bound. It has exactly one meaning everywhere: release the mouse, and the
       // browser owns it. Reading it here at all would be a bug.
       if (e.code === 'Escape') return;
+      const target = e.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest('button, a[href], input, textarea, select, [role="button"]') !== null)
+      ) {
+        return;
+      }
+      if (!this.enabled) return;
       this.keys.add(e.code);
-      if (e.code === 'Space' || e.code === 'KeyE' || e.code === 'Enter') {
+      if (this.locked && (e.code === 'Space' || e.code === 'KeyE' || e.code === 'Enter')) {
         e.preventDefault();
         this.onInteract?.();
       }
       if (e.code === 'KeyC') this.onSummon?.();
     });
     on(window, 'keyup', (e: KeyboardEvent) => this.keys.delete(e.code));
-    on(window, 'blur', () => this.keys.clear());
+    on(window, 'blur', () => {
+      this.keys.clear();
+      this.vx = 0;
+      this.vz = 0;
+    });
   }
 
   get mode(): InputMode {
     return this.locked ? 'traverse' : 'converse';
   }
 
+  get movementSpeed(): number {
+    return Math.hypot(this.vx, this.vz);
+  }
+
+  get spatialClassification(): SpatialClassification | null {
+    return this.spatial;
+  }
+
+  /** One-shot recovery event for contextual UI. Reading it consumes it. */
+  consumeRecoveryReason(): GroundMovementResolution['recoveryReason'] {
+    const reason = this.recoveryReason;
+    this.recoveryReason = null;
+    return reason;
+  }
+
+  setSensitivityMultiplier(multiplier: number): void {
+    if (!Number.isFinite(multiplier)) return;
+    this.sensitivityMultiplier = Math.max(0.5, Math.min(2, multiplier));
+  }
+
+  /** Map is a camera presentation, so ground movement pauses without changing input mode. */
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) {
+      this.keys.clear();
+      this.vx = 0;
+      this.vz = 0;
+    }
+  }
+
   /** Advance by `dt` seconds. Movement is disabled in `converse`, per the input mode table. */
   update(dt: number): void {
+    if (!this.enabled) return;
     let ix = 0;
     let iz = 0;
     if (this.locked) {
@@ -162,9 +228,29 @@ export class FirstPersonControls {
     // forward = (-sin y, 0, -cos y) and right = (cos y, 0, -sin y).
     const s = Math.sin(this.state.yaw);
     const c = Math.cos(this.state.yaw);
-    this.state.x += (this.vz * -s + this.vx * c) * dt;
-    this.state.z += (this.vz * -c - this.vx * s) * dt;
-    this.state.y = this.config.eyeHeight;
+    const current = atlasVec3(this.state.x, this.state.y, this.state.z);
+    const desired = atlasVec3(
+      this.state.x + (this.vz * -s + this.vx * c) * dt,
+      this.state.y,
+      this.state.z + (this.vz * -c - this.vx * s) * dt,
+    );
+    if (this.navigationWorld === null) {
+      this.state.x = desired.x;
+      this.state.y = this.config.eyeHeight;
+      this.state.z = desired.z;
+      return;
+    }
+    const resolution = resolveGroundMovement(this.navigationWorld, {
+      current,
+      desired,
+      lastSafe: this.lastSafe,
+    });
+    this.state.x = resolution.position.x;
+    this.state.y = resolution.position.y;
+    this.state.z = resolution.position.z;
+    this.lastSafe = resolution.lastSafe;
+    this.spatial = resolution.spatial;
+    if (resolution.recovered) this.recoveryReason = resolution.recoveryReason;
   }
 
   /** The reticle direction. Screen centre, always. */

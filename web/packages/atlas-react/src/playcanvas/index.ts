@@ -42,6 +42,11 @@ export { MOTE_FRAGMENT_GLSL, createAnchorMotes, moteAnchorIndices } from './anch
 export type { OverlayCounts, OverlayFrame } from './anchor-overlay.js';
 export { AnchorOverlay } from './anchor-overlay.js';
 
+export { MapRegionOverlay } from './map-region-overlay.js';
+
+export type { ComposedWorld } from './composed-world.js';
+export { createComposedWorld } from './composed-world.js';
+
 export type { ClaimResult } from './probes.js';
 export { probeAll, probeGlobalSort, probeSplatBudget, probeWebGpu } from './probes.js';
 
@@ -51,7 +56,7 @@ export type {
   IslandVisual,
   PlacementCheck,
 } from './atlas-binding.js';
-export { AtlasBinding } from './atlas-binding.js';
+export { AtlasBinding, mapCameraState } from './atlas-binding.js';
 
 export type { BakeoffResult, HarnessConfig, HarnessHandle, PathMode } from './harness.js';
 export { POINT_LADDER, fixtureName, parseConfig, runBakeoff } from './harness.js';

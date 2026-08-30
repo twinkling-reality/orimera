@@ -1,34 +1,89 @@
 import * as pc from 'playcanvas';
 import type {
   AnchorTable,
+  AnchorId,
   AtlasScene,
   CameraPose,
+  DirectNavigationResolution,
+  DirectNavigationTarget,
+  DirectNavigationTransition,
   EmphasisBuffers,
   FocusState,
   Island,
   IslandId,
+  MapPresentationState,
+  NavigationWorld,
+  NeighborhoodId,
+  NeighborhoodIndex,
+  NavigationPose,
+  ResidencyAction,
+  ResidencyAsset,
+  ResidencyStage,
+  ResidencyState,
+  SpatialClassification,
   TierState,
   ViewManifest,
+  WorldTopologySnapshot,
+  WorldPreviewSession,
+  WorldProposalOrigin,
+  WorldStyleVersion,
 } from '@orimera/atlas-core';
 import {
   DISSOLVE_BAND_FRACTION,
+  EMPTY_RESIDENCY_STATE,
   EMPTY_TIER_STATE,
   INITIAL_FOCUS_STATE,
   applyViewManifestInto,
+  atlasLandscapeSurface,
+  atlasMapPose,
   atlasVec3,
   buildAnchorTable,
+  buildNeighborhoodIndex,
+  buildNavigationWorld,
+  classifySpatialPhase,
+  enterAtlasMap,
+  exitAtlasMap,
   focusDirectly,
+  isNavigationLineVisible,
   localToAtlas,
   localVec3,
+  mapTierState,
   neutralEmphasis,
   occurrenceNormalizer,
   resolveFocus,
+  resolveDirectNavigation,
   resolveTiers,
+  planDirectNavigationTransition,
+  planResidency,
+  residencyDemandsForView,
+  sampleDirectNavigationTransition,
+  completeResidencyRequest,
+  composeAtlasWorld,
+  WorldCustomizationController,
 } from '@orimera/atlas-core';
+import {
+  DAWN_THEME,
+  DEFAULT_WORLD_ART_PROFILE,
+  WORLD_STYLE_CATALOG,
+  unitRgb,
+  worldArtProfile,
+  type PresentationTheme,
+  type WorldArtProfile,
+  type WorldStyleParameters,
+} from '@orimera/presentation';
 import { AnchorOverlay } from './anchor-overlay.js';
+import { MapRegionOverlay } from './map-region-overlay.js';
 import type { AnchorMotes } from './anchor-motes.js';
 import { createAnchorMotes } from './anchor-motes.js';
-import { FirstPersonControls, type CameraState, type InputMode } from './controls.js';
+import {
+  DEFAULT_CONTROLS,
+  FirstPersonControls,
+  type CameraState,
+  type InputMode,
+} from './controls.js';
+import { createSourceFirstGrove, type SourceFirstGrove } from './source-first-grove.js';
+import { createWorldField, type WorldField } from './world-field.js';
+import { createComposedWorld, type ComposedWorld } from './composed-world.js';
 import type { PointMap } from './opm.js';
 import type { PointCloud } from './point-cloud.js';
 import { createPointCloud } from './point-cloud.js';
@@ -69,7 +124,14 @@ export interface AtlasBindingOptions {
   readonly sizeGain?: number;
   readonly maxSizePx?: number;
   readonly fov?: number;
+  readonly sensitivityMultiplier?: number;
   readonly overlay?: boolean;
+  readonly theme?: PresentationTheme;
+  /** Appearance-only realization. Topology, navigation, collision, and evidence stay protected. */
+  readonly artProfile?: WorldArtProfile;
+  readonly artProfileParameters?: WorldStyleParameters;
+  /** Abstract renderer residency units. Point-map full detail costs 24 by default. */
+  readonly residencyBudget?: number;
 }
 
 export interface FrameReport {
@@ -77,6 +139,12 @@ export interface FrameReport {
   readonly mode: InputMode;
   readonly tier: TierState;
   readonly focusedIndex: number | null;
+  readonly moving: boolean;
+  readonly spatial: SpatialClassification;
+  readonly residency: ResidencyState;
+  readonly activeNeighborhood: NeighborhoodId | null;
+  readonly navigating: boolean;
+  readonly recoveryReason: 'outside-field' | 'no-surface' | 'unsafe-surface' | null;
 }
 
 /** A tiny structural check that the presentation transform survived the trip into the engine. */
@@ -91,6 +159,7 @@ export class AtlasBinding {
   readonly camera: pc.Entity;
   readonly controls: FirstPersonControls;
   readonly overlay: AnchorOverlay | null;
+  readonly mapOverlay: MapRegionOverlay | null;
   /**
    * One mote per non-person anchor, in atlas space.
    *
@@ -103,6 +172,13 @@ export class AtlasBinding {
   readonly emphasis: EmphasisBuffers;
   readonly islands: readonly IslandVisual[];
   readonly scene: AtlasScene;
+  readonly navigationWorld: NavigationWorld;
+  readonly field: WorldField;
+  readonly sourceFirst: SourceFirstGrove;
+  readonly topology: WorldTopologySnapshot;
+  readonly composedWorld: ComposedWorld;
+  readonly customization: WorldCustomizationController;
+  readonly neighborhoodIndex: NeighborhoodIndex;
 
   private tierState: TierState = EMPTY_TIER_STATE;
   private focusState: FocusState = INITIAL_FOCUS_STATE;
@@ -114,33 +190,73 @@ export class AtlasBinding {
   private readonly qYaw = new pc.Quat();
   private readonly qPitch = new pc.Quat();
   private elapsed = 0;
+  private mapState: MapPresentationState | null = null;
+  private readonly residencyCatalog: readonly ResidencyAsset[];
+  private readonly residencyBudget: number;
+  private residencyState: ResidencyState = EMPTY_RESIDENCY_STATE;
+  private residencyAllocated: ReadonlyMap<IslandId, ResidencyStage> = new Map();
+  private residencySignature = '';
+  private activeNeighborhood: NeighborhoodId | null = null;
+  private navigationTransition: DirectNavigationTransition | null = null;
+  private navigationElapsedMs = 0;
+  private navigationTargetIsland: IslandId | null = null;
+  private applicationControlsEnabled = true;
+  private styleProposalSequence = 0;
 
   onFrame: ((report: FrameReport) => void) | null = null;
+  onResidencyActions: ((actions: readonly ResidencyAction[]) => void) | null = null;
+  onNavigationArrive: ((target: DirectNavigationTarget) => void) | null = null;
+  onMapTarget: ((islandId: IslandId) => void) | null = null;
 
   private constructor(
     app: pc.AppBase,
     camera: pc.Entity,
     controls: FirstPersonControls,
     overlay: AnchorOverlay | null,
+    mapOverlay: MapRegionOverlay | null,
     motes: AnchorMotes,
     scene: AtlasScene,
     table: AnchorTable,
     islands: readonly IslandVisual[],
+    navigationWorld: NavigationWorld,
+    field: WorldField,
+    sourceFirst: SourceFirstGrove,
+    topology: WorldTopologySnapshot,
+    composedWorld: ComposedWorld,
+    customization: WorldCustomizationController,
+    neighborhoodIndex: NeighborhoodIndex,
+    residencyCatalog: readonly ResidencyAsset[],
+    residencyBudget: number,
   ) {
     this.app = app;
     this.device = app.graphicsDevice;
     this.camera = camera;
     this.controls = controls;
     this.overlay = overlay;
+    this.mapOverlay = mapOverlay;
+    if (this.mapOverlay !== null) {
+      this.mapOverlay.onSelect = (islandId) => this.onMapTarget?.(islandId);
+    }
     this.motes = motes;
     this.scene = scene;
     this.table = table;
     this.islands = islands;
+    this.navigationWorld = navigationWorld;
+    this.field = field;
+    this.sourceFirst = sourceFirst;
+    this.topology = topology;
+    this.composedWorld = composedWorld;
+    this.customization = customization;
+    this.neighborhoodIndex = neighborhoodIndex;
+    this.residencyCatalog = residencyCatalog;
+    this.residencyBudget = residencyBudget;
     this.emphasis = neutralEmphasis(table);
     this.normalizer = occurrenceNormalizer(table.anchors);
   }
 
   static async create(options: AtlasBindingOptions): Promise<AtlasBinding> {
+    const theme = options.theme ?? DAWN_THEME;
+    const initialArtProfile = options.artProfile ?? DEFAULT_WORLD_ART_PROFILE;
     const device = await pc.createGraphicsDevice(options.canvas, {
       deviceTypes: [...(options.deviceTypes ?? ['webgl2'])],
       antialias: false,
@@ -152,22 +268,92 @@ export class AtlasBinding {
     const app = new pc.AppBase(options.canvas);
     const appOptions = new pc.AppOptions();
     appOptions.graphicsDevice = device;
-    appOptions.componentSystems = [pc.RenderComponentSystem, pc.CameraComponentSystem];
+    appOptions.componentSystems = [
+      pc.RenderComponentSystem,
+      pc.CameraComponentSystem,
+      pc.LightComponentSystem,
+    ];
     appOptions.resourceHandlers = [];
     app.init(appOptions);
     app.setCanvasFillMode(pc.FILLMODE_NONE);
     app.setCanvasResolution(pc.RESOLUTION_AUTO);
 
     const camera = new pc.Entity('atlas-camera');
+    const [skyR, skyG, skyB] = unitRgb(initialArtProfile.palette.sky);
     camera.addComponent('camera', {
       fov: options.fov ?? 70,
       nearClip: 0.08,
       farClip: 1200,
-      clearColor: new pc.Color(0.055, 0.062, 0.086, 1),
+      clearColor: new pc.Color(skyR, skyG, skyB, 1),
     });
+    if (camera.camera !== undefined && camera.camera !== null) {
+      camera.camera.toneMapping = pc.TONEMAP_NEUTRAL;
+    }
     app.root.addChild(camera);
 
+    const [hazeR, hazeG, hazeB] = unitRgb(initialArtProfile.palette.haze);
+    app.scene.ambientLight = new pc.Color(hazeR * 0.58, hazeG * 0.58, hazeB * 0.58);
+    app.scene.exposure = 1.08;
+    app.scene.fog.type = pc.FOG_LINEAR;
+    app.scene.fog.color.set(hazeR, hazeG, hazeB);
+    app.scene.fog.start = 58;
+    app.scene.fog.end = 265;
+
+    const worldLight = new pc.Entity('atlas-directional-light');
+    const [lr, lg, lb] = unitRgb(initialArtProfile.palette.sun);
+    worldLight.addComponent('light', {
+      type: 'directional',
+      color: new pc.Color(lr, lg, lb),
+      intensity: 1.65,
+      castShadows: true,
+      shadowDistance: 72,
+      shadowResolution: 2048,
+    });
+    worldLight.setEulerAngles(48, 132, 0);
+    app.root.addChild(worldLight);
+
     const table = buildAnchorTable(options.scene);
+    const navigationWorld = buildNavigationWorld(options.scene, atlasLandscapeSurface());
+    const neighborhoodIndex = buildNeighborhoodIndex(options.scene);
+    const residencyCatalog: ResidencyAsset[] = options.scene.islands.map((island) => ({
+      islandId: island.islandId,
+      cost: options.pointMaps.has(island.islandId)
+        ? Object.freeze({ stub: 0, proxy: 4, coarse: 10, full: 24 })
+        : Object.freeze({ stub: 0, proxy: 2, coarse: 2, full: 2 }),
+    }));
+    const field = createWorldField(device, navigationWorld, initialArtProfile, theme);
+    app.root.addChild(field.entity);
+    const sourceFirst = createSourceFirstGrove(device, options.scene, initialArtProfile, theme);
+    app.root.addChild(sourceFirst.entity);
+    const topology = composeAtlasWorld(options.scene, {
+      availableReconstruction: new Set(options.pointMaps.keys()),
+    });
+    const composedWorld = createComposedWorld(
+      device,
+      topology,
+      initialArtProfile,
+      theme,
+    );
+    const customization = new WorldCustomizationController({
+      topologyDigest: topology.topologyDigest,
+      regionIds: new Set(options.scene.islands.map((island) => island.islandId)),
+      catalog: WORLD_STYLE_CATALOG,
+      initial: Object.freeze({
+        versionId: 'world-style:0',
+        revision: 0,
+        parentVersionId: null,
+        global: Object.freeze({
+          profileId: initialArtProfile.profileId,
+          profileVersion: initialArtProfile.profileVersion,
+          ...(options.artProfileParameters === undefined
+            ? {}
+            : { parameters: options.artProfileParameters }),
+        }),
+        regions: Object.freeze([]),
+        appliedFromProposalId: null,
+      }),
+    });
+    app.root.addChild(composedWorld.entity);
     const visuals: IslandVisual[] = [];
 
     for (const island of options.scene.islands) {
@@ -184,6 +370,7 @@ export class AtlasBinding {
           ...(options.sizeGain === undefined ? {} : { sizeGain: options.sizeGain }),
           ...(options.maxSizePx === undefined ? {} : { maxSizePx: options.maxSizePx }),
           ...(options.blend === undefined ? {} : { blend: options.blend }),
+          theme,
         });
         const instance = new pc.MeshInstance(cloud.mesh, cloud.material, entity);
         entity.addComponent('render', { meshInstances: [instance] });
@@ -212,32 +399,47 @@ export class AtlasBinding {
       }
     }
 
-    // Start at the first island's viewpoint, FACING THE WAY THE CAMERA FACED. A single-photo
-    // island has exactly one viewpoint and observed surfaces on one side only, so standing at the
-    // viewpoint looking the other way puts the user inside the void with the shell behind them.
-    //
-    // The yaw is the island's placement yaw and nothing else. `CAPTURE_FORWARD_LOCAL` is -Z, both
-    // engines put the camera's forward on -Z, and `applyPlacement` writes the same yaw onto the
-    // island, so a camera yaw equal to the placement yaw looks straight down the capture's own
-    // forward direction. Adding half a turn here is the obvious mistake and it is silent: the
-    // world still renders, it is just behind you.
+    // Open from a composed approach, not in the middle of renderer geometry. The first memory
+    // clearing, landscape basin, sun, and archive ridge line up on the camera's -Z axis. This pose
+    // is presentational only and uses the same safe flat surface as locomotion.
     const first = options.scene.islands[0];
     const start: CameraState =
       first === undefined
-        ? { x: 0, y: 1.62, z: 0, yaw: 0, pitch: 0 }
+        ? {
+            x: navigationWorld.centre.x,
+            y: (navigationWorld.surface.sample(
+              navigationWorld.centre.x,
+              navigationWorld.centre.z + 10,
+            )?.height ?? 0) + navigationWorld.eyeHeight,
+            z: navigationWorld.centre.z + 10,
+            yaw: 0,
+            pitch: -0.085,
+          }
         : (() => {
-            const p = localToAtlas(first.placement, first.viewpointLocal);
-            return { x: p.x, y: p.y, z: p.z, yaw: first.placement.yaw, pitch: 0 };
+            const distance = Math.max(7.2, Math.min(8.6, first.footprintRadiusLocal * 0.36));
+            const x = first.placement.position.x + Math.sin(first.placement.yaw) * distance;
+            const z = first.placement.position.z + Math.cos(first.placement.yaw) * distance;
+            const height = navigationWorld.surface.sample(x, z)?.height ?? 0;
+            return {
+              x,
+              y: height + navigationWorld.eyeHeight,
+              z,
+              yaw: first.placement.yaw,
+              pitch: -0.085,
+            };
           })();
 
-    const controls = new FirstPersonControls(options.canvas, start);
+    const controls = new FirstPersonControls(options.canvas, start, DEFAULT_CONTROLS, navigationWorld);
+    controls.setSensitivityMultiplier(options.sensitivityMultiplier ?? 1);
     const overlay =
       options.overlay === false ? null : new AnchorOverlay(options.overlayParent);
+    const mapOverlay =
+      options.overlay === false ? null : new MapRegionOverlay(options.overlayParent, options.scene);
 
     // Parented to the ROOT and not to an island entity. `table.atlasPositions` already has the
     // presentation transform applied, so hanging the cloud under an island would apply the
     // placement a second time and put every anchor somewhere no anchor is.
-    const motes = createAnchorMotes({ device, table });
+    const motes = createAnchorMotes({ device, table, theme });
     if (motes.count > 0) {
       const moteEntity = new pc.Entity('atlas-anchors');
       moteEntity.addComponent('render', {
@@ -246,7 +448,234 @@ export class AtlasBinding {
       app.root.addChild(moteEntity);
     }
 
-    return new AtlasBinding(app, camera, controls, overlay, motes, options.scene, table, visuals);
+    return new AtlasBinding(
+      app,
+      camera,
+      controls,
+      overlay,
+      mapOverlay,
+      motes,
+      options.scene,
+      table,
+      visuals,
+      navigationWorld,
+      field,
+      sourceFirst,
+      topology,
+      composedWorld,
+      customization,
+      neighborhoodIndex,
+      Object.freeze(residencyCatalog),
+      options.residencyBudget ?? 96,
+    );
+  }
+
+  setTheme(theme: PresentationTheme): void {
+    this.motes.setTheme(theme);
+    this.field.setTheme(theme);
+    this.sourceFirst.setTheme(theme);
+    this.composedWorld.setTheme(theme);
+    for (const visual of this.islands) visual.cloud.setTheme(theme);
+  }
+
+  private setProfileVisuals(profile: WorldArtProfile): void {
+    this.composedWorld.setProfile(profile);
+    this.field.setProfile(profile);
+    this.sourceFirst.setProfile(profile);
+    const [skyR, skyG, skyB] = unitRgb(profile.palette.sky);
+    if (this.camera.camera !== undefined && this.camera.camera !== null) {
+      this.camera.camera.clearColor.set(skyR, skyG, skyB, 1);
+    }
+    const [hazeR, hazeG, hazeB] = unitRgb(profile.palette.haze);
+    this.app.scene.ambientLight.set(hazeR * 0.58, hazeG * 0.58, hazeB * 0.58);
+    this.app.scene.fog.color.set(hazeR, hazeG, hazeB);
+    const [sunR, sunG, sunB] = unitRgb(profile.palette.sun);
+    const light = (this.app.root.findByName('atlas-directional-light') as pc.Entity | null)?.light;
+    if (light !== undefined && light !== null) light.color.set(sunR, sunG, sunB);
+  }
+
+  previewArtProfile(
+    profile: WorldArtProfile,
+    origin: WorldProposalOrigin,
+    parameters?: WorldStyleParameters,
+  ): WorldPreviewSession {
+    this.styleProposalSequence += 1;
+    const current = this.customization.current();
+    const preview = this.customization.preview({
+      proposalId: `${origin}-${this.styleProposalSequence}-${profile.profileId}`,
+      origin,
+      kind: 'appearance',
+      scope: { kind: 'global' },
+      baseStyleVersionId: current.versionId,
+      baseTopologyDigest: this.topology.topologyDigest,
+      profile: {
+        profileId: profile.profileId,
+        profileVersion: profile.profileVersion,
+        ...(parameters === undefined ? {} : { parameters }),
+      },
+    });
+    if (preview.validation.ok) this.setProfileVisuals(profile);
+    return preview;
+  }
+
+  applyArtProfilePreview(sessionId: string): WorldStyleVersion {
+    const applied = this.customization.apply(sessionId);
+    this.setProfileVisuals(worldArtProfile(
+      applied.global.profileId,
+      applied.global.profileVersion,
+      applied.global.parameters,
+    ));
+    const canvas = this.device.canvas;
+    if (canvas instanceof HTMLCanvasElement) canvas.dataset.worldProfile = this.composedWorld.profileId;
+    return applied;
+  }
+
+  discardArtProfilePreview(sessionId: string): void {
+    this.customization.discard(sessionId);
+    const current = this.customization.current();
+    this.setProfileVisuals(worldArtProfile(
+      current.global.profileId,
+      current.global.profileVersion,
+      current.global.parameters,
+    ));
+  }
+
+  /** Settings convenience; Companion can hold the preview open and call apply/discard explicitly. */
+  setArtProfile(
+    profile: WorldArtProfile,
+    origin: WorldProposalOrigin = 'settings',
+    parameters?: WorldStyleParameters,
+  ): WorldStyleVersion {
+    const current = this.customization.current();
+    const currentParameters = current.global.parameters ?? {};
+    // Omitting parameters means "keep the current treatment" when the caller is already on this
+    // profile. This preserves the pre-parameter API without manufacturing a duplicate version.
+    const requestedParameters = parameters ?? (
+      current.global.profileId === profile.profileId &&
+      current.global.profileVersion === profile.profileVersion
+        ? currentParameters
+        : {}
+    );
+    const parameterKeys = new Set([...Object.keys(currentParameters), ...Object.keys(requestedParameters)]);
+    const sameParameters = [...parameterKeys].every(
+      (key) => currentParameters[key] === requestedParameters[key],
+    );
+    if (
+      current.global.profileId === profile.profileId &&
+      current.global.profileVersion === profile.profileVersion &&
+      sameParameters
+    ) return current;
+    return this.applyArtProfilePreview(
+      this.previewArtProfile(profile, origin, requestedParameters).sessionId,
+    );
+  }
+
+  setFieldOfView(degrees: number): void {
+    if (!Number.isFinite(degrees)) return;
+    if (this.camera.camera !== undefined && this.camera.camera !== null) {
+      this.camera.camera.fov = Math.max(60, Math.min(90, degrees));
+    }
+  }
+
+  setSensitivityMultiplier(multiplier: number): void {
+    this.controls.setSensitivityMultiplier(multiplier);
+  }
+
+  /** Compose application surfaces with Map and travel locks so one cannot re-enable another. */
+  setControlsEnabled(enabled: boolean): void {
+    this.applicationControlsEnabled = enabled;
+    this.refreshControlsEnabled();
+  }
+
+  private refreshControlsEnabled(): void {
+    this.controls.setEnabled(
+      this.applicationControlsEnabled &&
+      this.mapState === null &&
+      this.navigationTransition === null,
+    );
+  }
+
+  /** The map is the same live scene from a high camera pose; no scene is loaded or replaced. */
+  setMapMode(active: boolean): void {
+    if (active === (this.mapState !== null)) return;
+    this.composedWorld.setMapActive(active);
+    if (active) {
+      this.cancelDirectNavigation();
+      const s = this.controls.state;
+      this.mapState = enterAtlasMap(this.scene, {
+        position: atlasVec3(s.x, s.y, s.z),
+        yaw: s.yaw,
+        pitch: s.pitch,
+      });
+      const activePose = this.mapState.active;
+      Object.assign(this.controls.state, {
+        x: activePose.position.x,
+        y: activePose.position.y,
+        z: activePose.position.z,
+        yaw: activePose.yaw,
+        pitch: activePose.pitch,
+      });
+      this.field.setMapGroundPose(this.mapState.ground);
+      if (this.overlay !== null) this.overlay.root.hidden = true;
+      this.mapOverlay?.setActive(true);
+      this.sourceFirst.setResidency(this.residencyAllocated, true);
+      this.refreshControlsEnabled();
+      return;
+    }
+    if (this.mapState !== null) {
+      const ground = exitAtlasMap(this.mapState);
+      Object.assign(this.controls.state, {
+        x: ground.position.x,
+        y: ground.position.y,
+        z: ground.position.z,
+        yaw: ground.yaw,
+        pitch: ground.pitch,
+      });
+    }
+    this.mapState = null;
+    this.field.setMapGroundPose(null);
+    if (this.overlay !== null) this.overlay.root.hidden = false;
+    this.mapOverlay?.setActive(false);
+    this.sourceFirst.setResidency(this.residencyAllocated, false);
+    this.refreshControlsEnabled();
+  }
+
+  /** Resolve and begin one safe direct-navigation transition. No target means no camera change. */
+  navigate(
+    target: DirectNavigationTarget,
+    reducedMotion = false,
+  ): DirectNavigationResolution {
+    const state = this.mapState?.ground ?? this.navigationPose();
+    const resolution = resolveDirectNavigation(
+      this.scene,
+      this.navigationWorld,
+      target,
+      state.position,
+    );
+    if (!resolution.ok) return resolution;
+    if (this.mapState !== null) this.setMapMode(false);
+    this.navigationTransition = planDirectNavigationTransition(resolution, state, reducedMotion);
+    this.navigationElapsedMs = 0;
+    this.navigationTargetIsland = resolution.islandId;
+    this.refreshControlsEnabled();
+    if (this.navigationTransition.durationMs === 0) this.advanceDirectNavigation(0);
+    return resolution;
+  }
+
+  navigateToAnchor(anchorId: AnchorId, reducedMotion = false): DirectNavigationResolution {
+    return this.navigate({ kind: 'anchor', anchorId }, reducedMotion);
+  }
+
+  navigateToIsland(islandId: IslandId, reducedMotion = false): DirectNavigationResolution {
+    return this.navigate({ kind: 'island', islandId }, reducedMotion);
+  }
+
+  cancelDirectNavigation(): void {
+    if (this.navigationTransition === null) return;
+    this.navigationTransition = null;
+    this.navigationTargetIsland = null;
+    this.navigationElapsedMs = 0;
+    this.refreshControlsEnabled();
   }
 
   /**
@@ -321,6 +750,35 @@ export class AtlasBinding {
     return { position: atlasVec3(s.x, s.y, s.z), forward: this.controls.forward() };
   }
 
+  private navigationPose(): NavigationPose {
+    const s = this.controls.state;
+    return Object.freeze({ position: atlasVec3(s.x, s.y, s.z), yaw: s.yaw, pitch: s.pitch });
+  }
+
+  private applyNavigationPose(pose: NavigationPose): void {
+    Object.assign(this.controls.state, {
+      x: pose.position.x,
+      y: pose.position.y,
+      z: pose.position.z,
+      yaw: pose.yaw,
+      pitch: pose.pitch,
+    });
+  }
+
+  private advanceDirectNavigation(dtMs: number): void {
+    const transition = this.navigationTransition;
+    if (transition === null) return;
+    this.navigationElapsedMs += dtMs;
+    this.applyNavigationPose(sampleDirectNavigationTransition(transition, this.navigationElapsedMs));
+    if (this.navigationElapsedMs < transition.durationMs) return;
+    this.applyNavigationPose(transition.to);
+    this.navigationTransition = null;
+    this.navigationTargetIsland = null;
+    this.navigationElapsedMs = 0;
+    this.refreshControlsEnabled();
+    this.onNavigationArrive?.(transition.target);
+  }
+
   /**
    * One frame of Atlas logic. Called from the engine's update, before it renders.
    *
@@ -330,7 +788,9 @@ export class AtlasBinding {
    */
   update(dt: number, nowMs: number): void {
     this.elapsed += dt;
-    this.controls.update(dt);
+    const navigating = this.navigationTransition !== null;
+    if (navigating) this.advanceDirectNavigation(dt * 1000);
+    else this.controls.update(dt);
 
     const s = this.controls.state;
     this.pose.position.set(s.x, s.y, s.z);
@@ -341,7 +801,54 @@ export class AtlasBinding {
     this.camera.setRotation(this.pose.rotation);
 
     const cameraAtlas = atlasVec3(s.x, s.y, s.z);
-    this.tierState = resolveTiers(this.scene, this.table, cameraAtlas, this.tierState);
+    this.tierState =
+      this.mapState === null
+        ? resolveTiers(this.scene, this.table, cameraAtlas, this.tierState)
+        : mapTierState(this.scene);
+
+    const spatial = classifySpatialPhase(this.navigationWorld, cameraAtlas);
+    this.activeNeighborhood =
+      spatial.islandId === null
+        ? (this.activeNeighborhood ?? this.neighborhoodIndex.neighborhoods[0]?.neighborhoodId ?? null)
+        : (this.neighborhoodIndex.neighborhoodOf.get(spatial.islandId) ?? this.activeNeighborhood);
+    const signature = [
+      this.mapState === null ? 'ground' : 'map',
+      this.activeNeighborhood ?? '',
+      this.navigationTargetIsland ?? '',
+      ...[...this.tierState.tier.entries()].map(([id, tier]) => `${id}:${tier}`),
+    ].join('|');
+    if (signature !== this.residencySignature) {
+      this.residencySignature = signature;
+      const plan = planResidency(
+        this.residencyCatalog,
+        residencyDemandsForView(this.neighborhoodIndex, {
+          map: this.mapState !== null,
+          activeNeighborhood: this.activeNeighborhood,
+          tier: this.tierState,
+          target: this.navigationTargetIsland,
+        }),
+        { maxCost: this.residencyBudget },
+        this.residencyState,
+      );
+      this.onResidencyActions?.(plan.actions);
+      let settled = plan.state;
+      // Every visual passed to this binding is already constructed. A future streaming loader
+      // consumes the same actions asynchronously; the current binding acknowledges them now.
+      for (const action of plan.actions) {
+        if (action.type === 'load') {
+          settled = completeResidencyRequest(settled, action.request.requestId, true);
+        }
+      }
+      this.residencyState = settled;
+      this.residencyAllocated = plan.allocated;
+      this.sourceFirst.setResidency(plan.allocated, this.mapState !== null);
+      // Residency transitions are sparse state changes, unlike tier changes. Stub point maps stop
+      // issuing draw calls; the caller-owned decoded map remains available until a future loader
+      // consumes the same release action and disposes it physically.
+      for (const visual of this.islands) {
+        visual.entity.enabled = plan.allocated.get(visual.island.islandId) !== 'stub';
+      }
+    }
 
     // Representation density, as one uniform write per island. No material swap, no scene-graph
     // mutation: that is the performance contract, and it is what makes emphasis previewable on
@@ -358,7 +865,11 @@ export class AtlasBinding {
 
       // Tier is representation DENSITY, never scene identity. A tier 0 island is still in the
       // scene and still emphasised; it just carries less of itself.
-      const density = tier === 3 ? 1 : tier === 2 ? 0.7 : tier === 1 ? 0.35 : 0.12;
+      const tierDensity = tier === 3 ? 1 : tier === 2 ? 0.7 : tier === 1 ? 0.35 : 0.12;
+      const residency = this.residencyAllocated.get(visual.island.islandId) ?? 'stub';
+      const residencyDensity =
+        residency === 'full' ? 1 : residency === 'coarse' ? 0.7 : residency === 'proxy' ? 0.35 : 0;
+      const density = Math.min(tierDensity, residencyDensity);
 
       visual.uIsland[0] = Math.max(0.001, emphasis / 0.45) * density;
       visual.uPoint[2] = projScale;
@@ -380,6 +891,7 @@ export class AtlasBinding {
         camera: this.cameraPose(),
         nowMs,
         occurrenceNormalizer: this.normalizer,
+        visible: (from, to) => isNavigationLineVisible(this.navigationWorld, from, to),
       },
       this.focusState,
     );
@@ -391,11 +903,16 @@ export class AtlasBinding {
         table: this.table,
         emphasis: this.emphasis,
         camera: cameraComponent,
-        focusedIndex: this.focusState.focusedIndex,
+        // Conversation mode is for reading chrome, not for showing whatever happens to sit under
+        // the dormant reticle. Focus copy enters only after the person clicks into the world.
+        focusedIndex: this.controls.mode === 'traverse' ? this.focusState.focusedIndex : null,
         widthCss: this.device.canvas.clientWidth,
         heightCss: this.device.canvas.clientHeight,
         capturedAt: this.scene.islands[0]?.createdAt ?? Date.now(),
       });
+      if (this.mapState !== null) {
+        this.mapOverlay?.update(cameraComponent, this.device.canvas.clientWidth, this.device.canvas.clientHeight);
+      }
     }
 
     this.onFrame?.({
@@ -403,16 +920,38 @@ export class AtlasBinding {
       mode: this.controls.mode,
       tier: this.tierState,
       focusedIndex: this.focusState.focusedIndex,
+      moving: this.controls.movementSpeed > 0.08,
+      spatial,
+      residency: this.residencyState,
+      activeNeighborhood: this.activeNeighborhood,
+      navigating,
+      recoveryReason: this.controls.consumeRecoveryReason(),
     });
   }
 
   destroy(): void {
     this.controls.destroy();
     this.overlay?.destroy();
+    this.mapOverlay?.destroy();
     this.motes.destroy();
+    this.field.destroy();
+    this.sourceFirst.destroy();
+    this.composedWorld.destroy();
     for (const visual of this.islands) visual.cloud.destroy();
     this.app.destroy();
   }
+}
+
+/** A deterministic overview pose derived only from persisted presentation layout. */
+export function mapCameraState(scene: AtlasScene): CameraState {
+  const pose = atlasMapPose(scene);
+  return {
+    x: pose.position.x,
+    y: pose.position.y,
+    z: pose.position.z,
+    yaw: pose.yaw,
+    pitch: pose.pitch,
+  };
 }
 
 /**

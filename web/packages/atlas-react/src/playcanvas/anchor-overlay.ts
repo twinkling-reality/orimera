@@ -4,7 +4,6 @@ import {
   MAX_CAPTIONS,
   MAX_EDGE_CHEVRONS,
   MAX_FOCUS_LABELS,
-  levelAt,
   rendersAsPresenceMarker,
 } from '@orimera/atlas-core';
 
@@ -191,7 +190,15 @@ export class AnchorOverlay {
         continue;
       }
 
-      if (rendersAsPresenceMarker(anchor) && onScreen && markerUsed < this.markers.length) {
+      // A timestamp is world content, but it is not ambient scenery. Reveal presence markers only
+      // when a view has deliberately promoted the anchor; neutral dates scattered across the
+      // horizon make an archival landscape read like a debug overlay.
+      if (
+        rendersAsPresenceMarker(anchor) &&
+        scalar >= 0.7 &&
+        onScreen &&
+        markerUsed < this.markers.length
+      ) {
         const node = this.markers[markerUsed]!;
         node.root.textContent = new Date(frame.capturedAt).toISOString().slice(0, 10);
         node.root.dataset['linkState'] = anchor.linkState;
@@ -221,15 +228,8 @@ export class AnchorOverlay {
         continue;
       }
 
-      if (calloutUsed < MAX_CAPTIONS) {
-        const node = this.callouts[calloutUsed]!;
-        node.root.textContent = `${anchor.kind} · ${levelAt(emphasis, i)}`;
-        node.root.dataset['provenance'] = anchor.provenance;
-        // Fixed-increment collision push, down and to the right, per the overlay rules. The
-        // leader line back to the true point is a CSS pseudo-element on the node.
-        show(node, projected.sx + 10 + calloutUsed * 4, projected.sy + calloutUsed * 22, scalar);
-        calloutUsed += 1;
-      }
+      // Neutral anchors remain world matter, not ambient captions. A label is earned by focus or
+      // by explicit view emphasis; generic object-kind callouts create a competing dashboard.
     }
 
     if (focusUsed === 0) hide(this.focusLabel);
@@ -245,19 +245,23 @@ export class AnchorOverlay {
     };
   }
 
-  /**
-   * Three lines at most: an honest placeholder rather than a name, a provenance and confidence
-   * chip, and the verb hint. This binding has no graph-client, so the name is deliberately absent
-   * rather than invented; an anchor never carries a display name in the first place.
-   */
+  /** Three plain-language lines. Full provenance remains in the evidence surface after opening. */
   private focusText(table: AnchorTable, index: number, capturedAt: number): string {
     const a = table.anchors[index]!;
-    const name =
-      a.entityId === null
-        ? `Unnamed ${a.kind}, ${a.occurrenceCount} occurrences`
-        : `${a.kind} · ${a.occurrenceCount} occurrences`;
-    const stamp = new Date(capturedAt).toISOString().slice(0, 10);
-    return `${name}\n${a.provenance} · ${a.confidence} · ${a.linkState}\n${stamp} · Interact [E]`;
+    const kind = `${a.kind.slice(0, 1).toUpperCase()}${a.kind.slice(1)}`;
+    const name = a.entityId === null ? `Unidentified ${a.kind}` : `${kind} in this memory`;
+    const seen = a.occurrenceCount === 1 ? 'Seen once' : `Seen in ${a.occurrenceCount} memories`;
+    const relation = a.linkState === 'confirmed'
+      ? 'Confirmed connection'
+      : a.linkState === 'auto_provisional'
+        ? 'Possible connection'
+        : a.linkState === 'proposed'
+          ? 'Suggested connection'
+          : 'Connection not active';
+    const stamp = new Intl.DateTimeFormat('en', {
+      day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+    }).format(capturedAt);
+    return `${name}\n${seen} · ${relation}\n${stamp} · Open [E]`;
   }
 
   destroy(): void {
