@@ -1,0 +1,136 @@
+/*
+ * One world, two exposures. Components consume roles from this file and never choose palette,
+ * field geometry, blur or radius values for themselves.
+ */
+:root {
+  color-scheme: light;
+
+  --dawn-ground: #dce5df;
+  --dawn-field-key: #f1d394;
+  --dawn-field-crosslight: #d6c2a5;
+  --dawn-field-afterimage: #a8783b;
+  --dawn-field-bounce: #bac7bc;
+  --dawn-field-rim: #e8e0ce;
+  --blue-hour-ground: #10151e;
+  --blue-hour-field-key: #365579;
+  --blue-hour-field-crosslight: #4a334f;
+  --blue-hour-field-afterimage: #63452f;
+  --blue-hour-field-bounce: #2e514a;
+  --blue-hour-field-rim: #44365f;
+
+  /* Geometry exists once. Exposures below only remap the five source-light colors. */
+  --field-image:
+    linear-gradient(
+      118deg,
+      color-mix(in srgb, var(--field-key-color) 42%, transparent) -12%,
+      color-mix(in srgb, var(--field-key-color) 24%, transparent) 28%,
+      transparent 76%
+    ),
+    linear-gradient(
+      252deg,
+      color-mix(in srgb, var(--field-crosslight-color) 26%, transparent) -8%,
+      color-mix(in srgb, var(--field-crosslight-color) 18%, transparent) 34%,
+      transparent 72%
+    ),
+    linear-gradient(
+      18deg,
+      transparent 4%,
+      color-mix(in srgb, var(--field-afterimage-color) 16%, transparent) 34%,
+      color-mix(in srgb, var(--field-afterimage-color) 30%, transparent) 58%,
+      color-mix(in srgb, var(--field-afterimage-color) 8%, transparent) 78%,
+      transparent 96%
+    ),
+    linear-gradient(
+      4deg,
+      color-mix(in srgb, var(--field-bounce-color) 18%, transparent) -8%,
+      color-mix(in srgb, var(--field-bounce-color) 10%, transparent) 34%,
+      transparent 72%
+    ),
+    linear-gradient(
+      154deg,
+      transparent 30%,
+      color-mix(in srgb, var(--field-rim-color) 10%, transparent) 66%,
+      color-mix(in srgb, var(--field-rim-color) 18%, transparent) 110%
+    );
+
+  --ground: var(--dawn-ground);
+  --surface: #eff1e9;
+  --raised: #fbf8ee;
+  --ink: #1b261f;
+  --ink-soft: #3c493f;
+  --ink-faint: #58645c;
+  --accent: #3e634d;
+  --accent-soft: #a8783b;
+  --focus: #2c5c45;
+  --warning: #805724;
+  --error: #99464b;
+  --user: #805724;
+  --capture: #2f6a5b;
+  --inference: #57686d;
+  --external: #70586d;
+
+  --field-key-color: var(--dawn-field-key);
+  --field-crosslight-color: var(--dawn-field-crosslight);
+  --field-afterimage-color: var(--dawn-field-afterimage);
+  --field-bounce-color: var(--dawn-field-bounce);
+  --field-rim-color: var(--dawn-field-rim);
+  --grain-blend: multiply;
+  --grain-opacity: 0.1;
+
+  --radius-label: 3px;
+  --radius-panel: 6px;
+  --radius-pill: 999px;
+  --blur-world: 8px;
+  --blur-system: 18px;
+  --edge: color-mix(in srgb, var(--ink-faint) 28%, transparent);
+  --material-archive: color-mix(in srgb, var(--raised) 95%, transparent);
+  --material-system: color-mix(in srgb, var(--surface) 94%, transparent);
+  --material-instrument: color-mix(in srgb, var(--surface) 74%, transparent);
+  --material-shadow: color-mix(in srgb, var(--ground) 68%, transparent);
+
+  /* Compatibility for existing components during the material migration. */
+  --panel: var(--material-archive);
+  --radius: var(--radius-panel);
+}
+
+:root[data-theme='dawn'] {
+  color-scheme: light;
+
+  --ground: var(--dawn-ground);
+  --surface: #eff1e9;
+  --raised: #fbf8ee;
+  --ink: #1b261f;
+  --ink-soft: #3c493f;
+  --ink-faint: #58645c;
+  --accent: #3e634d;
+  --accent-soft: #a8783b;
+  --focus: #2c5c45;
+  --warning: #805724;
+  --error: #99464b;
+  --user: #805724;
+  --capture: #2f6a5b;
+  --inference: #57686d;
+  --external: #70586d;
+
+  --field-key-color: var(--dawn-field-key);
+  --field-crosslight-color: var(--dawn-field-crosslight);
+  --field-afterimage-color: var(--dawn-field-afterimage);
+  --field-bounce-color: var(--dawn-field-bounce);
+  --field-rim-color: var(--dawn-field-rim);
+  --grain-blend: multiply;
+  --grain-opacity: 0.1;
+}
+
+:root[data-contrast='high'] {
+  --edge: color-mix(in srgb, var(--ink) 58%, transparent);
+  --material-archive: var(--raised);
+  --material-system: var(--surface);
+  --material-instrument: var(--surface);
+}
+
+:root[data-transparency='reduced'],
+:root[data-contrast='high'] {
+  --blur-world: 0px;
+  --blur-system: 0px;
+  --grain-opacity: 0;
+}

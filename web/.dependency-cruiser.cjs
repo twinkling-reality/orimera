@@ -74,6 +74,17 @@ module.exports = {
       to: { path: notPkgRef('atlas-core') },
     },
 
+    // ---- presentation: one world identity, shared by every visual consumer -----------------
+    {
+      name: 'presentation-imports-atlas-core-only',
+      severity: 'error',
+      comment:
+        'Presentation owns atmosphere, material and exposure policy. It may read the canonical ' +
+        'provenance vocabulary from atlas-core and must remain independent of DOM and renderers.',
+      from: { path: pkg('presentation') },
+      to: { path: notPkgRef('presentation', 'atlas-core') },
+    },
+
     // ---- companion-runtime: "renderer, React, DOM" ----------------------------------------
     {
       name: 'companion-runtime-no-view-layer',
@@ -233,7 +244,7 @@ module.exports = {
         'engine-specific-code-stays-behind-the-binding, which does not list landing among the ' +
         'packages allowed to name an engine.',
       from: { path: pkg('landing') },
-      to: { path: notPkgRef('landing', 'atlas-core', 'formation') },
+      to: { path: notPkgRef('landing', 'atlas-core', 'formation', 'presentation') },
     },
 
     // ---- app: the composition root ---------------------------------------------------------
@@ -257,6 +268,7 @@ module.exports = {
           'atlas-react',
           'companion-runtime',
           'formation',
+          'presentation',
           'world-index',
         ),
       },

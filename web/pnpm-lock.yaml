@@ -44,6 +44,9 @@ importers:
       '@orimera/graph-client':
         specifier: workspace:*
         version: link:../graph-client
+      '@orimera/presentation':
+        specifier: workspace:*
+        version: link:../presentation
       '@orimera/world-index':
         specifier: workspace:*
         version: link:../world-index
@@ -65,6 +68,9 @@ importers:
       '@orimera/graph-client':
         specifier: workspace:*
         version: link:../graph-client
+      '@orimera/presentation':
+        specifier: workspace:*
+        version: link:../presentation
       '@orimera/world-index':
         specifier: workspace:*
         version: link:../world-index
@@ -136,10 +142,19 @@ importers:
       '@orimera/formation':
         specifier: workspace:*
         version: link:../formation
+      '@orimera/presentation':
+        specifier: workspace:*
+        version: link:../presentation
     devDependencies:
       vite:
         specifier: ^6
         version: 6.4.3(@types/node@22.20.1)(lightningcss@1.33.0)(tsx@4.23.12)
+
+  packages/presentation:
+    dependencies:
+      '@orimera/atlas-core':
+        specifier: workspace:*
+        version: link:../atlas-core
 
   packages/scene-synth:
     dependencies:

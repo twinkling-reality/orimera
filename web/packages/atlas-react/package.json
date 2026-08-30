@@ -11,6 +11,7 @@
     "@orimera/atlas-core": "workspace:*",
     "@orimera/companion-runtime": "workspace:*",
     "@orimera/graph-client": "workspace:*",
+    "@orimera/presentation": "workspace:*",
     "@orimera/world-index": "workspace:*"
   },
   "scripts": {

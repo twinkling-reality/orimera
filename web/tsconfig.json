@@ -4,6 +4,7 @@
     { "path": "./packages/graph-client" },
     { "path": "./packages/formation" },
     { "path": "./packages/atlas-core" },
+    { "path": "./packages/presentation" },
     { "path": "./packages/companion-runtime" },
     { "path": "./packages/world-index" },
     { "path": "./packages/atlas-react" },

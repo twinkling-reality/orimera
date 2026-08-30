@@ -10,6 +10,7 @@
   "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"],
   "references": [
     { "path": "../atlas-core" },
+    { "path": "../presentation" },
     { "path": "../companion-runtime" },
     { "path": "../graph-client" },
     { "path": "../world-index" }

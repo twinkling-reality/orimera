@@ -5,7 +5,8 @@
   "type": "module",
   "dependencies": {
     "@orimera/atlas-core": "workspace:*",
-    "@orimera/formation": "workspace:*"
+    "@orimera/formation": "workspace:*",
+    "@orimera/presentation": "workspace:*"
   },
   "devDependencies": {
     "vite": "^6"

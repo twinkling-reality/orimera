@@ -9,6 +9,7 @@
     "@orimera/companion-runtime": "workspace:*",
     "@orimera/formation": "workspace:*",
     "@orimera/graph-client": "workspace:*",
+    "@orimera/presentation": "workspace:*",
     "@orimera/world-index": "workspace:*"
   },
   "devDependencies": {

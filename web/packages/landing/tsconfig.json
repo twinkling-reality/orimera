@@ -9,5 +9,9 @@
     "rootDir": "."
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "vite.config.ts"],
-  "references": [{ "path": "../atlas-core" }, { "path": "../formation" }]
+  "references": [
+    { "path": "../atlas-core" },
+    { "path": "../formation" },
+    { "path": "../presentation" }
+  ]
 }
