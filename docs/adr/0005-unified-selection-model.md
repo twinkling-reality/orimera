@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-08-28
 - Supersedes nothing. Extends ADR-0003 and the recomposition design in `interaction-model.md`.
+  Its mobile-delivery consequences are superseded by ADR-0006.
 
 ## Context
 

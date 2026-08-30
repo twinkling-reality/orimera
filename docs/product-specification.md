@@ -162,7 +162,7 @@ a direct consequence of it. Nothing here is aspirational.
 - Structured update proposals with the four band provenance panel (what you told me / what the
   captures support / what I inferred / what I still do not know) and tiered confirmation.
 - The World Index: a non-spatial, keyboard-first, fully equivalent path to every function, which is
-  also the default entry point on touch devices.
+  the desktop accessibility and direct-navigation route.
 - The Atlas Map: the same scene from a high vantage, carrying a permanent caption that positions are
   not geographic.
 - Cross-region view recomposition for single entity, OR, and AND (co-presence), with AND and OR
@@ -173,7 +173,7 @@ a direct consequence of it. Nothing here is aspirational.
 - Processing shown as spatial formation in the place the region will occupy, every visual state
   paired with a factual label naming the real pipeline stage (section 5.3).
 
-**Out of the MVP, designed and deferred:** touch traversal and gyro look, entity split and delete
+**Out of the MVP, designed and deferred:** mobile delivery, entity split and delete
 (tier 3 operations), batch operations, voice input, Companion spontaneous initiative (the ambient
 open-question channel ships, the speech gate does not), glide traversal, and fine grained
 reconstruction telemetry.
@@ -436,7 +436,7 @@ it points to.
 | L-9 | **The embedding model has no in-catalog fallback, and vector search is exact rather than indexed.** `Qwen/Qwen3-Embedding-8B` is the only embedding-typed model in the Token Factory catalog, and its 4096-dimensional output is above pgvector's 4000-dimension index ceiling. Exact search is both faster and strictly more correct at personal-library scale, and it is not a design that scales to millions of vectors | VERIFIED | `runtime-verification.md` 7, `domain-and-evidence-model.md` 4.4 |
 | L-10 | **Model availability is a live exposure for the whole unattended deployment window.** Nebius removed 11 models from Token Factory Serverless in June 2026 and removes 10 more on 2026-08-31. A further round landing between feature freeze and the end of that window is mitigated structurally, by one model manifest, a preflight check against the live catalog, a declared per-role fallback exercised in CI, and a weekly catalog diff. It is mitigated, not eliminated | ASSUMPTION A-33 | 8 |
 | L-11 | **The hosted demo runs unattended for roughly 46 days**, which is the planning horizon between feature freeze and the end of the deployment window. The Nebius Serverless option is Preview grade, with no service level and no automatic recovery, so the API and database run on a Compute VM with a restart policy, behind an external health check, with a clearly labelled recorded tour on a second host as the fallback. Uptime is engineered for, not guaranteed | DECISION | `architecture-overview.md` 2.1, 7 |
-| L-12 | **Touch devices do not get Atlas traversal.** They enter through the World Index, which is a complete and equivalent path to every function rather than a reduced one, and which is also the keyboard-first path on desktop | DECISION | 4, and `interaction-model.md` 2, 6 |
+| L-12 | **The current prototype is desktop/laptop only.** At or below the existing 60rem viewport boundary it displays a factual boundary notice rather than an unvalidated mobile Index or touch navigation mode | DECISION | 4, `interaction-model.md` 2.5, and ADR-0006 |
 
 Two further limitations are named in their own sections rather than compressed into a row: the
 consent rule for biometric embeddings of people who have not consented is undecided and identity work

@@ -94,9 +94,9 @@ that register into a single model.
 
 **DECISION.** Layout is a stored artifact, never recomputed at runtime. A deterministic seed
 (phyllotaxis) plus a pinned force relaxation, ordered by creation time, run once and persisted with a
-layout version. Target separation is derived from a semantic similarity score dominated by shared
-**confirmed or high-confidence** entities. Speculative links must never move the world; otherwise the
-layout twitches every time the pipeline guesses.
+layout version. Target separation is derived from shared **confirmed** entities. A confidence band is
+still a model judgement: speculative links must never move the world, otherwise the layout twitches
+every time the pipeline guesses.
 
 Pre-existing regions are pinned during relaxation and then hard clamped inside a small drift radius,
 so adding a fourth capture cannot scramble the user's spatial memory of the first three. When layout
@@ -173,9 +173,8 @@ Internet 4 through 30 as Not supported. Firefox for Android 153 is listed as sup
 https://caniuse.com/pointerlock
 
 > **Consequence: mouse-look first-person navigation is impossible on iOS Safari and Android Chrome.
-> Since the MVP is browser-only with no native app, mobile is a genuinely different mode, and its
-> default entry point is the World Index with tap-to-travel, not the Atlas.** This is a hard platform
-> limit with no workaround, not a scoping choice, and it is not solvable by effort.
+> The current prototype is therefore desktop/laptop only and stops at a viewport boundary rather
+> than inventing a second navigation mode.** This is a hard platform limit with no workaround.
 
 ### 2.2 Two explicit input modes
 
@@ -236,27 +235,16 @@ https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion
 | Transition style | motion / fade | from `prefers-reduced-motion` |
 | Companion initiative | normal / minimal / off | normal |
 
-### 2.5 Mobile
+### 2.5 Supported viewport
 
-**DECISION.** Mobile is a first-class reduced mode, not a scaled desktop.
+**DECISION, see [ADR-0006](adr/0006-desktop-viewport-boundary.md).** The current prototype supports
+laptop and desktop windows only. Its existing `60rem` layout breakpoint is a hard viewport boundary:
+below it, the product shows one factual boundary notice and does not expose a mobile Index, mobile
+commands, touch traversal, a virtual joystick or a rearranged Companion.
 
-- **Default entry on a touch device is the World Index.** This is not a consolation prize: for "where
-  else does this person appear", a searchable list with evidence playback is the better interface on
-  any device.
-- The Atlas is available as **guided traversal**: drag anywhere to look (touch deltas drive yaw and
-  pitch directly, no pointer lock needed), and **tap an anchor or a region sigil to trigger damped
-  auto-travel** along the same spline the Locate action uses. Any touch interrupts travel.
-- No virtual joystick. A joystick plus drag-look on a phone is a well known failure, and tap-to-travel
-  reuses machinery Locate needs anyway.
-- Optional gyro look sits behind an explicit opt-in button, never an on-load request. **VERIFIED:**
-  `DeviceOrientationEvent.requestPermission()` "requires transient activation, meaning that it must
-  be triggered by a UI event such as a button click", is available only in secure contexts, and is
-  limited availability.
-  https://developer.mozilla.org/en-US/docs/Web/API/DeviceOrientationEvent/requestPermission_static
-  The mode must be fully usable without it.
-- Touch targets are at least 44 CSS px; the Companion panel becomes a bottom sheet.
-
-Mobile traversal is outside the MVP cut. The World Index path is not.
+The World Index remains the non-spatial desktop accessibility route. It is not a device fallback.
+Mobile delivery requires a separate product decision, implementation and validation pass; none is
+implied by responsive CSS in this prototype.
 
 ### 2.6 Keyboard-only, and the accessibility route
 
@@ -274,6 +262,33 @@ and focuses each exactly as the reticle would, `Enter` interacts, `C` summons, `
 Map, `I` opens the World Index, `Backspace` pops the view manifest stack. Escape is unavailable
 (2.1).
 
+**System surfaces use a small, stable command vocabulary.** A quiet command strip makes it visible:
+`I` opens the World Index, `M` changes only the camera into Atlas Map presentation, `O` opens
+Options, and `?` opens the complete controls guide. Options and Controls are the only centred system
+surfaces and only one major surface may own the cursor at a time. Closing either returns to the exact
+surface and detail from which it was opened. Neither binds Escape.
+
+**DECISION: Atlas opens as one living archival landscape, not a list of unfinished themes.**
+Aeroheart is the sole complete user-facing identity: bright living terrain with optical memory
+lenses, water-glass approaches, growth forms, and vector relationship signals. Blue Hour and the former
+Celestial scaffolding are not exposed in the app. The atmosphere has its own non-semantic colours;
+evidence and provenance colours are never reused as decoration.
+
+The physical landscape uses chalk daylight, moss and mineral ground, dark stone, paper, and brass.
+It is a real world shader and geometry composition rather than a viewport-wide CSS gradient.
+Colour is never the only carrier of provenance or confirmation state.
+
+Options exposes Standard/High contrast, Layered/Reduced transparency, and the active style's
+manifest-generated world controls. It does not expose an incomplete style as a product choice.
+Style controls preview physical terrain/material changes through the same protected transaction
+boundary used by future Companion proposals. Presentation updates keep DOM legibility, point
+provenance tints, and anchor motes coherent.
+
+Three material roles exist: archive sheets for evidence and summoned reading, system sheets for
+Options and Controls, and instrument strips for compact persistent chrome. Only instrument strips may
+use a pill silhouette. The implementation lives in `@orimera/presentation`, so landing, DOM chrome and
+the renderer consume one versioned visual contract rather than copying theme values.
+
 **Canvas content is invisible to screen readers**, so the DOM overlay is the accessibility surface
 and must contain real focusable labelled elements. Every entity, every evidence item and every source
 image must be reachable from a flat keyboard-navigable list.
@@ -283,9 +298,8 @@ image must be reachable from a flat keyboard-navigable list.
 ## 3. Two verbs, and the contextual affordance system
 
 The entire verb set is `Interact` (contextual, acts on the focused anchor) and `Summon Companion`
-(global, always available). Interact is bound to space, `E`, left click, `Enter` and tap. Summon is
-bound to `C`, right click, a persistent low-opacity affordance at bottom centre, and a floating
-button on touch.
+(global, always available). Interact is bound to space, `E`, left click and `Enter`. Summon is
+bound to `C`, right click, and a persistent low-opacity affordance at bottom centre.
 
 ### 3.1 The problem, stated precisely
 
@@ -354,84 +368,56 @@ constructs or parses one; it passes it to the evidence resolver and renders what
 **DECISION.** The Companion is a **presence in the world** and a **panel in the view**, and they are
 visually separate on purpose.
 
-**Presence.** A 3D entity, not humanoid: a slowly rotating assembly of thin concentric rings around a
-suspended luminous core, roughly human height, with a volumetric haze skirt and a soft ground
-caustic. No face, no eyes, no limbs, no anthropomorphic proportions. Attention is expressed by core
-orientation and by ring alignment. It is an original abstract form, which sidesteps the uncanny
-valley entirely (there is no valley to fall into) and cannot infringe a protected character design.
+**Presence.** A field of roughly 560 motes on a transparent 2D canvas over the Atlas. It is made from
+the same point-cloud substance as the regions, photographs and anchors, so it reads as part of the
+memory world rather than as a character imported into it. The motes always occupy one spherical
+body. State changes happen inside that body through local illumination, short threads between
+neighbours, ripples across its surface and small density gathers. The silhouette does not morph.
 
-**Panel.** A floating dialogue panel in screen space, anchored lower left, constrained never to
-overlap the reticle or the focused anchor's label.
+The internal behavior is epistemic rather than emotional. An inferred, unconfirmed link is dim,
+sparsely connected and unsteady. A link the account holder confirmed is bright, coherent and nearly
+still. One certainty value derives brightness, coherence, connection density and steadiness, so the
+presence cannot look more certain than the graph is. Operational states such as attending and
+checking evidence change the kind of internal event, but they do not raise certainty.
 
-**Tether.** A thin low-opacity curve from the panel's leading edge to the Companion's projected
-screen position, terminating in an edge chevron when the Companion is off screen. The tether is the
-grammar that makes a panel elsewhere in view still read as this specific agent speaking.
+**Panel.** A floating dialogue panel in screen space, placed directly below the presence on the same
+chosen side of the view. It never overlaps the reticle.
 
-Rejected alternative: a speech bubble attached to the Companion. Rejected because a bubble forces the
-user to keep the Companion in frame while reading, gets occluded by geometry, fights the camera when
-the user looks at the thing being discussed, and cannot hold rich content such as evidence chips,
-provenance bands or multi-select. Separating them lets the user read the question **while looking at
-the person the question is about**, which is precisely the behaviour the product wants.
+**Association.** The presence and panel share one column and one side, close enough that they read as
+one participant without a tether. A tether would imply a world position that the screen-space
+presence does not have.
 
-**UNRESOLVED EXPERIMENT.** Whether the separated form plus panel plus tether reads as one agent or as
-two unrelated UI elements. A five-person read test, half a day. The research did not settle it.
+Rejected alternatives were a mesh gradient orb, an aperture, a constellation and an authored Spline
+robot. The robot lost on a product argument rather than a visual one: a face would make social claims
+the graph has not earned at the measured identification accuracy. The other abstract forms were less
+specific to the Atlas's material. ADR-0003 records the Spline runtime exception being opened and
+closed.
+
+Rejected alternative: a bubble attached to the presence. It cannot hold evidence chips, provenance
+bands or multi-select without turning the body into a window frame. Separating the panel lets the
+user read a question while looking at the memory it concerns.
 
 ### 4.2 Spatial placement
 
-The Companion has two stations. It rests at **home**, a fixed offset in the camera's own basis, off
-the shoulder opposite the panel and slightly below the eye line. When a turn is about a specific
-anchor the user can already see, it goes on an **errand**: it detaches, travels out to stand beside
-that anchor, and returns home when the turn ends.
-
-**DECISION, CORRECTED 2026-08-28.** An earlier version of this section decided that the Companion
-never sits near the user, on the grounds that continuous following reads as a pet, generates
-constant peripheral motion, and makes the world feel like it has an escort rather than an
-inhabitant. That reasoning is correct about a companion which only ever hovers at the shoulder, and
-it is retained in full for the resting pose. It was wrong as a blanket rule, and the cost it imposed
-was not small: a Companion that exists only out in the world is one the user routinely cannot find,
-and the tether was left carrying that entire failure by itself. The reversal is deliberately narrow.
-Home is a resting station and not a leash. The Companion still relocates only on discrete events,
-and it still never trails the camera continuously during traversal.
-
-What the errand buys is the reason to build it this way at all. An agent that crosses to the thing
-it is asking about is pointing at something inside the user's own memory, which is the product's
-central premise performed rather than described.
-
-**Errand placement is a solver, never a parent transform.** The Companion is placed on a horizontal
-arc around the subject point (the focused anchor, or a point ahead of the camera if there is none),
-at a radius scaled to the subject distance. Candidates are rejected if they fall outside the
-horizontal field of view minus a margin, project too near screen centre (never block the reticle),
-project into the panel rectangle, fail a visibility raycast, sit too close to the camera, or land
-inside the collision proxy. Survivors are scored for preferring the side opposite the panel, a
-middle depth between camera and subject, a middle screen height, and minimum angular change from the
-last placement.
-
-**The travel rule is unchanged, and it is what keeps the errand legal.** Assemble from motes on
-first appearance; glide for a small relocation; **dissolve and reassemble for a large one, never fly
-across the user's view**, because a traverse is both an optic-flow cost and an attention theft for
-its whole duration. An errand is not a traverse: it moves away along the direction the user is
-already looking, toward a thing already on screen. Radial motion, not lateral. That distinction is
-enforced rather than trusted. A destination whose sideways sweep from home exceeds the configured
-limit is not travelled to at all, and a move that would cross the view dissolves and reassembles
-regardless of how short it is.
-
-**Every failure to travel falls back to home with a reason attached, and the reason is rendered.**
-The five are: no subject to point at, the subject is off screen, the sweep would be too wide,
-reduced motion is set, and no arc candidate survived. A silent fallback is indistinguishable on
-screen from a deliberate stay, which leaves the interface either inventing an explanation or
-offering none. Where no candidate survives the Companion does not appear in 3D at all: the panel
-opens alone and the tether terminates in a small edge glyph. Honest degradation rather than a bad
+**DECISION, CORRECTED 2026-08-29.** The Companion is a screen-space overlay, not an entity in the
+Atlas coordinate frame. It occupies a stable column near the upper left or upper right of the view.
+The account holder can flip the side with the adjacent bracket keys, and that preference is
+remembered. The presence does not trail the camera, travel to anchors or use inferred geometry for
 placement.
 
-**Attention is orientation.** Even at home it yaws to face the subject it is asking about, because
-core orientation is the only channel the form has (4.1) and a Companion square to the camera while
-asking about something off to one side is saying nothing with it. Under `prefers-reduced-motion` it
-never travels, and the pointing the movement would have carried becomes a mandatory caption, which
-is the accessibility rule applied rather than an exemption from it.
+The rejected in-world placement model had a tested home and errand solver. It was not wired after
+the presence became a 2D canvas overlay. Keeping it would preserve two incompatible answers to where
+the Companion exists, so the solver and its station abstraction were deleted rather than wired back.
 
-Implemented in `web/packages/atlas-core/src/companion/placement.ts` (the arc solver) and
-`station.ts` (home, errand, and the travel gate). The guarantees above are under test in
-`test/companion-placement.test.ts` and `test/companion-station.test.ts`.
+Attention now happens inside the stable body. A local gather marks an open question, and the world
+anchor itself carries any required focus or evidence highlight. This keeps the presence findable and
+lets the actual memory point at what the question concerns.
+
+Under `prefers-reduced-motion`, the sphere is static. Every distinction otherwise carried by its
+weather becomes a visible plain-language caption beside it. The caption is mandatory, because a
+motion preference cannot remove information.
+
+Implemented in `web/packages/app/src/ui/companion-motes.ts` and mounted by `companion-stage.ts`.
 
 #### CORRECTED 2026-08-28: options are answerable by number, in both modes
 
@@ -475,8 +461,8 @@ per turn from the entity graph.
 
 A turn carries: an utterance with its evidence, an optional choice set (single or multi select, with
 an explicit submit in multi mode), a free input affordance for text, an always-present set of
-escapes, the subject anchor that drives Companion placement, and the graph state version that
-invalidates it. Each choice carries an id, text, an availability flag with a reason shown when
+escapes, the subject anchor that connects the question to the world, and the graph state version
+that invalidates it. Each choice carries an id, text, an availability flag with a reason shown when
 unavailable, a kind, an optional update proposal that is previewed on focus, and a consequence tier.
 
 **Choice mode rules.** Single select when the answers are logically exclusive or when the choice
@@ -644,8 +630,8 @@ ambient channel and the counter ship.
 
 ### 6.1 World Index
 
-Non-spatial, keyboard-first, the accessibility equivalent path (2.6), and the default entry on touch
-devices (2.5). One entity table under four facets:
+Non-spatial, keyboard-first, and the desktop accessibility equivalent path (2.6). One entity table
+under four facets:
 
 - **Kind:** person / place / object / event / region. A region is an entity too. (The research listed
   voice and conversation here; both are deferred, see the product specification.)
@@ -656,8 +642,8 @@ devices (2.5). One entity table under four facets:
 The fourth facet deliberately reuses the same trichotomy as the confirmation panel. One vocabulary
 everywhere, so "what do you actually know about this" is answered identically in every surface.
 
-Layout is a left facet rail, a centre virtualized list and a right detail pane, collapsing to list
-then detail on mobile. Search is one input with prefix operators falling through to semantic search.
+Layout is a left facet rail, a centre virtualized list and a right detail pane. Search is one input
+with prefix operators falling through to semantic search.
 A row shows a kind glyph, a display name or an honest placeholder ("Unnamed person, 4 occurrences"),
 a three-mark provenance triad, an occurrence count, the regions present, and a confidence bar only for
 inferred entities.
@@ -948,7 +934,6 @@ Other accessibility commitments:
 - Full keyboard operation of every function without moving the camera (2.6).
 - Snap turning in fixed increments for keyboard-only and comfort-sensitive users.
 - Field of view and vignette are user settings, not fixed values (2.4).
-- Touch targets at least 44 CSS px in touch mode.
 - **The reduced-motion default is read from the platform**, not asked for in an onboarding step.
 
 **RISK (medium).** Reduced-motion users lose information that lives only in animation. The mitigation
@@ -991,6 +976,6 @@ Switching engines after the interaction layer is built means rewriting it.**
 | I-2 | Renderer (section 10) | The bake-off in [adr/0003-renderer-selection.md](adr/0003-renderer-selection.md), forced at its stated deadline |
 | I-3 | Per-stage counters, which gate section 8 | A-29, two hours, do it first |
 | I-4 | Layout at three regions: algorithmic or hand-placed (1.4) | Side-by-side comparison on the three real captures, two hours |
-| I-5 | Whether the separated Companion form, panel and tether read as one agent (4.1) | Five-person read test, half a day |
+| I-5 | Nothing further. The Companion and panel now share one screen-space column and need no tether (4.1) | Closed |
 | I-6 | Whether muting stays legible at high mute ratios, and the right cross-fade duration (7.3) | Debug-panel tuning, half a day |
 | I-7 | Nothing further. The evidence reference shape for stills, previously open here, is settled in [domain-and-evidence-model.md](domain-and-evidence-model.md) section 1.5 | Closed |

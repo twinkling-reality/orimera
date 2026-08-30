@@ -580,9 +580,10 @@ about 60 percent identification rate at a false alarm rate of 0.01, and the pape
 thresholding verification-like scores is a widespread misconception as a solution to open-set
 identification. Source: <https://ar5iv.labs.arxiv.org/html/1705.01567> (2026-08-27).
 
-**DECISION (id-2).** `auto_provisional` links may drive **Atlas layout, filtering and "maybe" results**.
-They may **never** support a historical factual clause. This is the line that lets the system organize
-on a guess while refusing to assert on one.
+**DECISION (id-2).** `auto_provisional` links may drive **filtering, temporary emphasis and "maybe"
+results**. They may **never** move persisted Atlas layout or support a historical factual clause.
+This is the line that lets the system surface a guess while refusing to turn one into spatial memory
+or an assertion.
 
 **DECISION (id-6): the system never proposes a real-world identity.** It proposes only "the same person
 as in these other captures". Names come solely from the account holder's own annotation. This also

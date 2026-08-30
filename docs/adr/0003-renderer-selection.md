@@ -8,6 +8,7 @@
 - Settled at: the bake-off, ahead of the week 3 renderer deadline
 - Supersedes: nothing
 - Related: [architecture-overview.md](../architecture-overview.md) section 1.1
+- Mobile-delivery consequences in the preserved analysis are superseded by ADR-0006.
 
 ## CORRECTED 2026-08-29: the Spline exception was opened and closed
 

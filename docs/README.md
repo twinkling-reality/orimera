@@ -45,6 +45,9 @@ questions in both.
 | [interaction-model.md](interaction-model.md) | Atlas and coordinate model, navigation and the two platform limits that force it, the two verbs, the Companion, update proposals and confirmation tiers, World Index and Atlas Map, recomposition, formation, accessibility | Mixed, labelled per claim |
 | **Architecture** | | |
 | [architecture-overview.md](architecture-overview.md) | System shape, platform split and deployment topology, storage and one consistency domain, object storage limits, query and answer safety, prompt injection posture, the 46 day uptime obligation | DECISION, with OPEN and ASSUMPTION items inline |
+| [atlas-spatial-architecture.md](atlas-spatial-architecture.md) | Grounded memory archipelago, navigation, neighborhoods, residency, Map correspondence, and phased spatial roadmap | DECISION and ACTIVE IMPLEMENTATION |
+| [atlas-world-research.md](atlas-world-research.md) | Procedural-world, persistence, wayfinding, streaming, accessibility, and customization research; repository measurements; prioritized gaps and acceptance gates | VERIFIED, DECISION, and ASSUMPTION, labelled |
+| [atlas-world-customization-contract.md](atlas-world-customization-contract.md) | Protected topology, appearance and structural proposal lifecycles, profile compatibility, failures, and safe fallbacks | DECISION and ACTIVE IMPLEMENTATION |
 | [domain-and-evidence-model.md](domain-and-evidence-model.md) | The evidence address, the epistemic model, occurrence versus entity, schemas, idempotency, deletion and tombstones, the provenance ledger, the World Memory Package | DECISION, with CORRECTED and OPEN items inline |
 | [model-and-service-selection.md](model-and-service-selection.md) | The model and service matrix with exact identifiers and declared fallbacks, the 2026-08-31 deprecation, the catalog type-field hazard, routing and cost discipline, and what may be claimed about model use | VERIFIED 2026-08-27, with OPEN items listed |
 | [runtime-verification.md](runtime-verification.md) | What the platform does when called rather than when read about: the archived NVIDIA provenance record, measured image token costs, reasoning-token behaviour, which structured-output mechanism works, embedding width, and the resolved spend exposure | VERIFIED by execution 2026-08-27 |
@@ -69,6 +72,8 @@ and their consequences, so that a later reader can tell a considered choice from
 | [adr/0003-renderer-selection.md](adr/0003-renderer-selection.md) | Renderer bake-off, resolved on matched-resolution measurement. PlayCanvas wins on 1% low frame pacing and covers both reconstruction rungs natively | ACCEPTED: PlayCanvas |
 | [adr/0004-exif-orientation-normalisation.md](adr/0004-exif-orientation-normalisation.md) | Normalise EXIF orientation once at ingest so every downstream stage works from upright pixels, and record that the transform happened | ACCEPTED |
 | [adr/0005-unified-selection-model.md](adr/0005-unified-selection-model.md) | One Selection primitive across person, object, place, time and trip, reached from four equal entry points | ACCEPTED |
+| [adr/0006-desktop-viewport-boundary.md](adr/0006-desktop-viewport-boundary.md) | Desktop/laptop-only Atlas with an explicit 60rem viewport boundary | ACCEPTED |
+| [adr/0007-world-composition-and-customization.md](adr/0007-world-composition-and-customization.md) | Passive module/recipe catalogs, deterministic composition, stable provenance-bearing topology, and protected customization transactions | ACCEPTED for frontend/core; backend authority OPEN |
 
 ## Current state
 

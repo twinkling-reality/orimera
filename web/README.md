@@ -13,6 +13,7 @@ pnpm run test         # vitest
 | Package | Contains | Forbidden |
 | --- | --- | --- |
 | `@orimera/atlas-core` | scene graph, island frames, focus resolution, view manifest application, layout solver | React, DOM, any renderer, and any other workspace package |
+| `@orimera/presentation` | the authored Origin Landscape identity, renderer colors, shared CSS tokens and material grammar; internal compatibility fixtures are not product choices | DOM, renderers, and every workspace package except atlas-core |
 | `@orimera/atlas-react` | renderer bindings, anchor overlay, HUD, comfort settings | graph mutations |
 | `@orimera/companion-runtime` | turn generation, option pools, proposal drafting, escape handling, initiative gate | renderer, React, DOM |
 | `@orimera/world-index` | index UI, entity detail, provenance panel | renderer |
@@ -20,10 +21,10 @@ pnpm run test         # vitest
 | `@orimera/atlas-three` | the three.js r185 + Spark 2.1.0 renderer binding, ADR-0003 option A | React, and every workspace package except atlas-core |
 | `@orimera/scene-synth` | the synthetic scene generator for the ADR-0003 bake-off | everything except atlas-core; offline only |
 | `@orimera/bakeoff` | the ADR-0003 X-R1 harness page | everything except atlas-core and atlas-three |
-| `@orimera/landing` | the signed-out landing page, the entrance transition, the processing formation states | every renderer, and every workspace package except atlas-core |
+| `@orimera/landing` | the signed-out landing page, the entrance transition, the processing formation states | every renderer, and every workspace package except atlas-core, formation and presentation |
 
 From `docs/architecture-overview.md` section 1.1, plus four packages that are not among the
-five shipped modules: `scene-synth` is a build-time tool, `bakeoff` is a harness,
+five shipped modules: `presentation` owns visual policy without owning a surface, `scene-synth` is a build-time tool, `bakeoff` is a harness,
 `atlas-three` is one of the two competing renderer bindings ADR-0003 exists to choose between,
 and `landing` is the signed-out surface, which deliberately takes no renderer at all so that the
 first paint does not depend on the ADR's outcome. Only `atlas-three`, `atlas-react` and `bakeoff`
@@ -60,6 +61,12 @@ Two further guards worth knowing about:
 
 `pnpm landing` serves the signed-out landing page and the formation states; see
 `packages/landing/README.md`.
+
+For Atlas UI work while the API is unavailable, run `pnpm app` and open
+`http://127.0.0.1:5173/?preview=1`. This is an explicit development preview, not the hosted demo:
+everything shown is synthetic, graph changes are refused, source evidence is disabled, and the
+normal URL still requires the live API. The preview endpoint exists only in Vite's development
+server and cannot be activated in a production build.
 
 `pnpm synth --out ./fixtures` writes the bake-off ladder (250k, 1M, 2M, 3M, 4M)
 in about ten seconds. `pnpm bakeoff` then serves the harness; see
