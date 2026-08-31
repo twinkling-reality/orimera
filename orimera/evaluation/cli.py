@@ -16,6 +16,7 @@ shortcut into the tables.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import pathlib
 import subprocess
@@ -28,7 +29,18 @@ from orimera.db.session import Database
 from orimera.evaluation.bundle import CorpusBundle, CorpusContractError
 from orimera.evaluation.counts import Count, Sample
 from orimera.evaluation.coverage import what_the_corpus_cannot_support
+from orimera.evaluation.execution import execution_snapshot
 from orimera.evaluation.ground_truth import GroundTruth
+from orimera.evaluation.provenance import (
+    RUN_PROFILE,
+    ArchiveError,
+    create_archive,
+    migration_snapshot,
+    model_snapshot,
+    pipeline_snapshot,
+    repository_snapshot,
+    verify_archive,
+)
 from orimera.evaluation.report import render_report
 from orimera.evaluation.scorers import (
     score_authorisation,
@@ -94,6 +106,19 @@ def _cmd_inspect_corpus(args: argparse.Namespace, stream: Any) -> int:
     return 0
 
 
+def _cmd_verify_archive(args: argparse.Namespace, stream: Any) -> int:
+    """Verify an evaluation archive without opening corpus media or a database."""
+    try:
+        receipt = verify_archive(args.archive, expected_root_sha256=args.root_sha256)
+    except ArchiveError as exc:
+        print(f"evaluation archive: FAILED: {exc}", file=stream)
+        return 2
+    print(f"evaluation archive: VERIFIED: {receipt.run_id}", file=stream)
+    print(f"  root sha256  {receipt.root_sha256}", file=stream)
+    print(f"  files        {receipt.files}", file=stream)
+    return 0
+
+
 def _git_commit() -> str:
     """The commit measured, read from git and never typed.
 
@@ -117,6 +142,13 @@ def _git_commit() -> str:
 
 
 def _cmd_run(args: argparse.Namespace, stream: Any) -> int:
+    repository_state: dict[str, object] | None = None
+    if args.archive_parent or args.record:
+        try:
+            repository_state = repository_snapshot(args.repository)
+        except ArchiveError as exc:
+            print(f"evaluation archive: FAILED: {exc}", file=stream)
+            return 2
     truth = GroundTruth.read(args.corpus)
     workspace = uuid.UUID(args.workspace)
     database = Database.from_env()
@@ -133,16 +165,20 @@ def _cmd_run(args: argparse.Namespace, stream: Any) -> int:
 
     results: dict[str, Count | Sample | None] = {}
     blocked: dict[str, str] = {}
+    execution: dict[str, object]
     with database.session(workspace) as connection:
         results["M1.cit_id"] = score_citation_identity(connection, workspace, truth, read_blob)
-        results["M5.provenance_completeness"] = score_provenance_completeness(
-            connection, workspace
-        )
+        results["M5.provenance_completeness"] = score_provenance_completeness(connection, workspace)
         windows, why = score_capture_time_windows(connection, workspace, truth)
         results["M15.capture_time_window_exact_match"] = windows
         if windows is None:
             blocked["M15.capture_time_window_exact_match"] = why
         coverage = what_the_corpus_cannot_support(connection, workspace, truth)
+        execution = execution_snapshot(
+            connection,
+            workspace,
+            (frame.sha256 for frame in truth.frames),
+        )
 
     results["M10.authorisation"] = _score_authorisation_over_http(args)
     if results["M10.authorisation"] is None:
@@ -166,31 +202,82 @@ def _cmd_run(args: argparse.Namespace, stream: Any) -> int:
     )
     print(report, file=stream)
 
+    run_id = str(uuid.uuid4())
+    generated_at = dt.datetime.now(dt.UTC)
+    model, model_bytes = model_snapshot()
+    stages = pipeline_snapshot()
+    package_migrations = migration_snapshot()
+    record = {
+        "profile": RUN_PROFILE,
+        "run_id": run_id,
+        "harness_version": "2",
+        "generated_at": generated_at.isoformat(),
+        "git": repository_state,
+        "corpus": {
+            "id": truth.corpus_tag,
+            "corpus_version": truth.generator,
+            "manifest_sha256": truth.manifest_sha256,
+            "synthetic": truth.synthetic,
+            "frames": len(truth.frames),
+            "contract": "legacy MANIFEST.json; not an OGC-1 CORPUS.json split bundle",
+        },
+        # Null with a reason rather than absent. Section 2.0 rule 1 names it as a required
+        # key, and a missing key and a blocked one read the same in a JSON file.
+        "fixture_version": None,
+        "fixture_blocked_on": "no gold question set exists",
+        "blind_access_proof": None,
+        "blind_access_blocked_on": "legacy corpus has no frozen split or access receipt",
+        "workspace_id": str(workspace),
+        "components": {
+            key: None if value is None else {"k": value.k, "n": value.n}
+            for key, value in results.items()
+            if not isinstance(value, Sample)
+        },
+        "blocked": blocked,
+        "execution_summary": execution["summary"],
+        "execution_source_coverage": execution["source_coverage"],
+        "model_manifest": model,
+        "pipeline": stages,
+        "package_migrations": package_migrations,
+    }
     if args.record:
-        record = {
-            "harness_version": "1",
-            "git_commit": _git_commit(),
-            "corpus": {
-                "id": truth.corpus_tag,
-                "corpus_version": truth.generator,
-                "manifest_sha256": truth.manifest_sha256,
-                "synthetic": truth.synthetic,
-                "frames": len(truth.frames),
-            },
-            # Null with a reason rather than absent. Section 2.0 rule 1 names it as a required
-            # key, and a missing key and a blocked one read the same in a JSON file.
-            "fixture_version": None,
-            "fixture_blocked_on": "no gold question set exists",
-            "workspace_id": str(workspace),
-            "components": {
-                key: None if value is None else {"k": value.k, "n": value.n}
-                for key, value in results.items()
-                if not isinstance(value, Sample)
-            },
-        }
-        pathlib.Path(args.record).write_text(json.dumps(record, indent=2), encoding="utf-8")
+        try:
+            with pathlib.Path(args.record).open("x", encoding="utf-8") as handle:
+                json.dump(record, handle, indent=2, sort_keys=True)
+                handle.write("\n")
+        except FileExistsError:
+            print(f"\nrecord exists and was not overwritten: {args.record}", file=stream)
+            return 2
         print(f"\nrecord written to {args.record}", file=stream)
+    if args.archive_parent:
+        snapshots = {
+            "inputs/corpus-manifest.json": truth.path.read_bytes(),
+            "inputs/model-manifest.json": model_bytes,
+            "snapshots/repository.json": _pretty_json(repository_state),
+            "snapshots/model-bindings.json": _pretty_json(model),
+            "snapshots/pipeline.json": _pretty_json(stages),
+            "snapshots/package-migrations.json": _pretty_json(package_migrations),
+            "snapshots/database-execution.json": _pretty_json(execution),
+        }
+        try:
+            receipt = create_archive(
+                args.archive_parent,
+                run_id=run_id,
+                record=record,
+                report=report + "\n",
+                snapshots=snapshots,
+                completed_at=generated_at,
+            )
+        except ArchiveError as exc:
+            print(f"\nevaluation archive: FAILED: {exc}", file=stream)
+            return 2
+        print(f"\nevaluation archive written to {receipt.path}", file=stream)
+        print(f"archive root sha256 {receipt.root_sha256}", file=stream)
     return 0
+
+
+def _pretty_json(value: object) -> bytes:
+    return (json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n").encode()
 
 
 def _score_authorisation_over_http(args: argparse.Namespace) -> Count | None:
@@ -239,11 +326,28 @@ def main(argv: list[str] | None = None, stream: Any = None) -> int:
     inspect.add_argument("--corpus", required=True)
     inspect.add_argument("--json", action="store_true")
     inspect.set_defaults(handler=_cmd_inspect_corpus)
+    verify = sub.add_parser(
+        "verify-archive",
+        help="verify a versioned report archive against its separately retained root",
+    )
+    verify.add_argument("--archive", required=True)
+    verify.add_argument("--root-sha256", required=True)
+    verify.set_defaults(handler=_cmd_verify_archive)
     run = sub.add_parser("run", help="measure what can be measured against a corpus")
     run.add_argument("--corpus", required=True, help="the directory holding MANIFEST.json")
     run.add_argument("--workspace", required=True, help="the workspace uuid the corpus is in")
     run.add_argument("--data-dir", default=".orimera/local", help="where the object store lives")
     run.add_argument("--record", default=None, help="write the machine-readable record here")
+    run.add_argument(
+        "--archive-parent",
+        default=None,
+        help="create a write-once versioned report directory under this existing directory",
+    )
+    run.add_argument(
+        "--repository",
+        default=".",
+        help="clean Git repository whose exact commit and tree produced an archived run",
+    )
     run.add_argument(
         "--stranger-token",
         default=None,

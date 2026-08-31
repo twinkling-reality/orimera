@@ -48,6 +48,7 @@ class StageRecorder:
     stage_started_event: uuid.UUID
     output_artifact_ids: list[uuid.UUID] = field(default_factory=list)
     model_ref: dict[str, Any] | None = None
+    models_tried: tuple[str, ...] | None = None
     cost: dict[str, Any] | None = None
     attempt: int = 1
     reused: bool = False
@@ -69,9 +70,18 @@ class StageRecorder:
         )
 
     def record_model_call(
-        self, model_ref: dict[str, Any], cost: dict[str, Any], attempts: int
+        self,
+        model_ref: dict[str, Any],
+        cost: dict[str, Any],
+        attempts: int,
+        models_tried: Sequence[str],
     ) -> None:
+        if attempts < 1:
+            raise ValueError("a live stage model call must record at least one attempt")
+        if not models_tried or any(not model_id for model_id in models_tried):
+            raise ValueError("a live stage model call must record every model identifier tried")
         self.model_ref = model_ref
+        self.models_tried = tuple(models_tried)
         self.cost = cost
         self.attempt = attempts
 
@@ -186,6 +196,7 @@ class Ledger:
         output_artifact_ids: Sequence[uuid.UUID] = (),
         input_blob: BlobId | None = None,
         model_ref: dict[str, Any] | None = None,
+        models_tried: Sequence[str] | None = None,
         cost: dict[str, Any] | None = None,
         params_digest: bytes | None = None,
         attempt: int = 1,
@@ -201,9 +212,9 @@ class Ledger:
             "insert into pipeline_event (run_id, seq, parent_event_id, type, "
             "stage_key, stage_version, model_ref, params_digest, input_artifact_ids, "
             "output_artifact_ids, input_blob_sha256, attempt, max_attempts, error_class, "
-            "error_message, started_at, ended_at, duration_ms, cost, host) "
+            "error_message, started_at, ended_at, duration_ms, cost, host, models_tried) "
             "values (%s, %s, %s, %s, %s, %s, %s, %s, %s::uuid[], %s::uuid[], %s, %s, %s, %s, "
-            "%s, %s, %s, %s, %s, %s) returning event_id",
+            "%s, %s, %s, %s, %s, %s, %s) returning event_id",
             (
                 self.run_id,
                 self._next_seq(),
@@ -227,6 +238,7 @@ class Ledger:
                 duration_ms,
                 Jsonb(cost) if cost else None,
                 self._host,
+                list(models_tried) if models_tried is not None else None,
             ),
         ).fetchone()
         assert row is not None
@@ -275,6 +287,7 @@ class Ledger:
                 output_artifact_ids=recorder.output_artifact_ids,
                 input_blob=input_blob,
                 model_ref=recorder.model_ref,
+                models_tried=recorder.models_tried,
                 cost=recorder.cost,
                 attempt=recorder.attempt,
                 error_class=type(exc).__name__,
@@ -292,6 +305,7 @@ class Ledger:
             output_artifact_ids=recorder.output_artifact_ids,
             input_blob=input_blob,
             model_ref=recorder.model_ref,
+            models_tried=recorder.models_tried,
             cost=recorder.cost,
             attempt=recorder.attempt,
             started_at=started_at,
@@ -417,8 +431,7 @@ class Ledger:
                     ),
                 )
                 repository.connection.execute(
-                    "update pipeline_run set status = 'failed', ended_at = now() "
-                    "where run_id = %s",
+                    "update pipeline_run set status = 'failed', ended_at = now() where run_id = %s",
                     (ledger.run_id,),
                 )
                 closed += 1

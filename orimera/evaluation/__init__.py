@@ -30,8 +30,15 @@ from orimera.evaluation.bundle import (
     CorpusItem,
 )
 from orimera.evaluation.counts import Count, NamedCase, Sample, render, wilson
+from orimera.evaluation.execution import execution_snapshot
 from orimera.evaluation.ground_truth import Frame, GroundTruth
 from orimera.evaluation.metrics import METRICS, Component
+from orimera.evaluation.provenance import (
+    ArchiveError,
+    ArchiveReceipt,
+    create_archive,
+    verify_archive,
+)
 from orimera.evaluation.report import BANNED, banned_words_in, render_report
 
 __all__ = [
@@ -39,6 +46,8 @@ __all__ = [
     "METRICS",
     "AccessPurpose",
     "AccessReceipt",
+    "ArchiveError",
+    "ArchiveReceipt",
     "AuthorizedSource",
     "Component",
     "CorpusBundle",
@@ -50,7 +59,10 @@ __all__ = [
     "NamedCase",
     "Sample",
     "banned_words_in",
+    "create_archive",
+    "execution_snapshot",
     "render",
     "render_report",
+    "verify_archive",
     "wilson",
 ]

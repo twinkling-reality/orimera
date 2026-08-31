@@ -86,7 +86,12 @@ def run(
         spec, input_artifact_ids=[rendition.artifact_id], input_blob=blob_id
     ) as recorder:
         result = model.observe(image_bytes=image_bytes, media_type="image/jpeg")
-        recorder.record_model_call(result.model_ref, result.cost, result.attempts)
+        recorder.record_model_call(
+            result.model_ref,
+            result.cost,
+            result.attempts,
+            result.tried,
+        )
         outcome.model_calls += 1
         outcome.input_tokens += int(result.cost.get("input_tokens", 0))
         outcome.output_tokens += int(result.cost.get("output_tokens", 0))
@@ -136,9 +141,7 @@ def run(
                 blob_id=blob_id,
                 capture_id=capture_id,
                 image_span_id=image_span_id,
-                display=DisplayGeometry(
-                    w=facts.display_width, h=facts.display_height, rotation=0
-                ),
+                display=DisplayGeometry(w=facts.display_width, h=facts.display_height, rotation=0),
                 key=key,
                 ledger=ledger,
             )
