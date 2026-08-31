@@ -2,7 +2,7 @@
 
 Neither setting is optional, and neither is a convenience.
 
-*   **``orimera.workspace_id``.** 31 tables are under FORCE row-level security keyed on
+*   **``orimera.workspace_id``.** 32 tables are under FORCE row-level security keyed on
     ``current_workspace()``, whose policy is ``workspace_id = current_workspace()`` and which
     reads exactly this setting. A twenty-third, ``consent_record``, is forced too and keyed on
     the tenant instead, which is why the number here counts the workspace-keyed ones rather than
@@ -122,7 +122,7 @@ class Database:
         that is false for the role the composition actually uses.
 
         *   **As a role row-level security reaches**, which ``orimera_app`` is, every one of the
-            thirty-one forced tables reads empty. The policy is ``workspace_id =
+            thirty-two forced tables reads empty. The policy is ``workspace_id =
             current_workspace()``, ``current_workspace()`` is NULL with nothing declared, and
             ``NULL = anything`` is not true. So a caller that wanted workspace data and reached
             for this gets an empty result rather than another workspace's rows.
@@ -134,9 +134,10 @@ class Database:
 
         Both halves are asserted against a live schema in ``tests/test_row_level_security.py``,
         one per role, because a sentence that was false once should not be a sentence again.
-        ``compose.yaml`` points ``ORIMERA_DATABASE_URL`` at the owner, so it is the second bullet
-        that describes the composition today; ``docs/deployment.md`` section 5.1.3 says what that
-        costs and what closing it takes.
+        ``compose.yaml`` gives the API and derivative worker ``orimera_app`` and reserves the
+        owner URL for the one-shot migration container. Production startup also refuses a
+        superuser, a BYPASSRLS role, or an owner of a row-level-security table, so deployment
+        drift cannot silently select the second bullet.
 
         **The migration path relies on neither bullet.** It needs DDL rights and
         ``schema_migrations``, which carries no row-level security at all, so it works under

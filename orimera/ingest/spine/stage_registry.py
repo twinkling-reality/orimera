@@ -18,8 +18,29 @@ __all__ = ["register"]
 
 
 def register(scope: WorkspaceScope, specs: Mapping[str, Any]) -> None:
-    """Upsert one row per stage. ``model_ref`` carries the role, never a model identifier."""
+    """Register reviewed definitions additively, then move each stage's current pointer.
+
+    ``stage_definition`` is the replay-safe history. ``stage_registry`` remains the convenient
+    current pointer used by existing readers. A parameter edit may keep the semantic version but
+    gets its own definition digest, which is deliberate: the vision prompt digest is a parameter
+    so forgetting to bump a version cannot silently preserve old results.
+    """
     for key, spec in specs.items():
+        scope.connection.execute(
+            "insert into stage_definition (stage_key, stage_version, params_digest, params, "
+            "model_role, deterministic, output_kind, review_status) "
+            "values (%s, %s, %s, %s, %s, %s, %s, 'reviewed') "
+            "on conflict (stage_key, stage_version, params_digest) do nothing",
+            (
+                key,
+                spec.version,
+                spec.params_digest,
+                Jsonb(spec.params),
+                spec.model_role,
+                spec.deterministic,
+                spec.output_kind,
+            ),
+        )
         scope.connection.execute(
             "insert into stage_registry (stage_key, current_version, model_ref, "
             "params_schema, deterministic, output_kind, updated_at) "

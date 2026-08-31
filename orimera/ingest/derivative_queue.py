@@ -50,7 +50,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from typing import Final
+from decimal import Decimal
+from typing import Any, Final
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -65,6 +66,10 @@ __all__ = [
     "enqueue",
     "finish",
     "heartbeat",
+    "record_capture",
+    "record_lease_lost",
+    "record_worker_event",
+    "retry",
 ]
 
 #: The ``job.kind`` of a queued derivative run. One string, in one place, because ``kind`` is
@@ -101,6 +106,8 @@ class QueuedDerivatives:
     #: never inspected: a caller that read it would be deciding for itself whether it still holds
     #: the job, and the database is the only thing that can answer that.
     claim_token: uuid.UUID
+    #: True when the claim recovered an expired running row rather than taking queued work.
+    reclaimed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,13 +141,15 @@ def enqueue(
     if not capture_ids:
         raise ValueError("a derivative job needs at least one capture; queueing none is a lie")
     row = connection.execute(
-        "insert into job (workspace_id, kind, payload, batch_id) values (%s, %s, %s, %s) "
+        "insert into job (workspace_id, kind, payload, batch_id, progress_total) "
+        "values (%s, %s, %s, %s, %s) "
         "returning job_id",
         (
             workspace_id,
             DERIVATIVES,
             Jsonb({"capture_ids": [str(capture_id) for capture_id in capture_ids]}),
             batch_id,
+            len(capture_ids),
         ),
     ).fetchone()
     assert row is not None
@@ -176,33 +185,46 @@ def claim(
     compute it is the caller that knows what the claimant will be doing between two beats. See
     :func:`orimera.ingest.worker.lease_seconds_for`.
     """
-    row = connection.execute(
-        "update job set state = 'running', claimed_by = %s, claimed_at = now(), "
-        "  attempts = attempts + 1, claim_token = gen_random_uuid(), "
-        "  lease_expires_at = now() + make_interval(secs => %s) "
-        "where job_id = ("
-        "  select job_id from job "
-        "   where workspace_id = %s and kind = %s and state = 'running' "
-        "     and lease_expires_at < now() and attempts < %s "
-        "   order by priority, job_id for update skip locked limit 1) "
-        "returning job_id, batch_id, payload, attempts, claim_token",
-        (worker, lease_seconds, workspace_id, DERIVATIVES, MAX_CLAIMS),
-    ).fetchone()
-    if row is None:
+    reclaimed = False
+    with connection.transaction():
         row = connection.execute(
             "update job set state = 'running', claimed_by = %s, claimed_at = now(), "
             "  attempts = attempts + 1, claim_token = gen_random_uuid(), "
             "  lease_expires_at = now() + make_interval(secs => %s) "
             "where job_id = ("
             "  select job_id from job "
-            "   where workspace_id = %s and kind = %s and state = 'queued' "
-            "     and run_after <= now() "
+            "   where workspace_id = %s and kind = %s and state = 'running' "
+            "     and lease_expires_at < now() and attempts < %s "
             "   order by priority, job_id for update skip locked limit 1) "
             "returning job_id, batch_id, payload, attempts, claim_token",
-            (worker, lease_seconds, workspace_id, DERIVATIVES),
+            (worker, lease_seconds, workspace_id, DERIVATIVES, MAX_CLAIMS),
         ).fetchone()
-    if row is None:
-        return None
+        if row is not None:
+            reclaimed = True
+        else:
+            row = connection.execute(
+                "update job set state = 'running', claimed_by = %s, claimed_at = now(), "
+                "  attempts = attempts + 1, claim_token = gen_random_uuid(), "
+                "  lease_expires_at = now() + make_interval(secs => %s) "
+                "where job_id = ("
+                "  select job_id from job "
+                "   where workspace_id = %s and kind = %s and state = 'queued' "
+                "     and run_after <= now() "
+                "   order by priority, job_id for update skip locked limit 1) "
+                "returning job_id, batch_id, payload, attempts, claim_token",
+                (worker, lease_seconds, workspace_id, DERIVATIVES),
+            ).fetchone()
+        if row is None:
+            return None
+        _event(
+            connection,
+            workspace_id,
+            worker=worker,
+            event_type="claim_reclaimed" if reclaimed else "claim_acquired",
+            job_id=row["job_id"],
+            claim_token=row["claim_token"],
+            attempt=row["attempts"],
+        )
     payload = row["payload"] or {}
     return QueuedDerivatives(
         job_id=row["job_id"],
@@ -210,6 +232,7 @@ def claim(
         capture_ids=tuple(uuid.UUID(value) for value in payload.get("capture_ids", ())),
         attempts=row["attempts"],
         claim_token=row["claim_token"],
+        reclaimed=reclaimed,
     )
 
 
@@ -220,6 +243,7 @@ def heartbeat(
     job_id: uuid.UUID,
     claim_token: uuid.UUID,
     lease_seconds: float,
+    worker: str = "unknown",
 ) -> bool:
     """Push this claimant's lease forward. False means the job is no longer theirs.
 
@@ -229,12 +253,25 @@ def heartbeat(
     row out of ``running`` altogether. A caller that gets False must not finish the job and must
     not close its batch: something else now owns both.
     """
-    updated = connection.execute(
-        "update job set lease_expires_at = now() + make_interval(secs => %s) "
-        "where job_id = %s and workspace_id = %s and state = 'running' and claim_token = %s",
-        (lease_seconds, job_id, workspace_id, claim_token),
-    )
-    return updated.rowcount == 1
+    with connection.transaction():
+        row = connection.execute(
+            "update job set lease_expires_at = now() + make_interval(secs => %s) "
+            "where job_id = %s and workspace_id = %s and state = 'running' and claim_token = %s "
+            "returning attempts",
+            (lease_seconds, job_id, workspace_id, claim_token),
+        ).fetchone()
+        if row is None:
+            return False
+        _event(
+            connection,
+            workspace_id,
+            worker=worker,
+            event_type="lease_renewed",
+            job_id=job_id,
+            claim_token=claim_token,
+            attempt=row["attempts"],
+        )
+        return True
 
 
 def finish(
@@ -245,6 +282,10 @@ def finish(
     state: str,
     claim_token: uuid.UUID,
     error: str | None = None,
+    failure_class: str | None = None,
+    cost: dict[str, Any] | None = None,
+    progress_completed: int | None = None,
+    worker: str = "unknown",
 ) -> bool:
     """Close a claimed job with what happened. False means the caller no longer held it.
 
@@ -261,19 +302,144 @@ def finish(
     The lease is cleared as the row leaves ``running``: a terminal row holding a token would be a
     second opinion about who owns work that is over.
     """
-    if state not in ("done", "failed", "cancelled"):
+    if state not in ("done", "failed", "cancelled", "missing", "unavailable"):
         raise ValueError(f"a claimed job cannot be closed as {state!r}")
-    updated = connection.execute(
-        "update job set state = %s, last_error = %s, lease_expires_at = null, "
-        "  claim_token = null "
-        "where job_id = %s and workspace_id = %s and state = 'running' and claim_token = %s",
-        (state, error, job_id, workspace_id, claim_token),
-    )
-    return updated.rowcount == 1
+    event_type = {
+        "done": "job_succeeded",
+        "failed": "job_failed",
+        "cancelled": "job_cancelled",
+        "missing": "job_missing",
+        "unavailable": "job_unavailable",
+    }[state]
+    with connection.transaction():
+        held = connection.execute(
+            "select cost from job where job_id = %s and workspace_id = %s "
+            "and state = 'running' and claim_token = %s for update",
+            (job_id, workspace_id, claim_token),
+        ).fetchone()
+        if held is None:
+            return False
+        cumulative_cost = _merge_cost(held["cost"], cost)
+        row = connection.execute(
+            "update job set state = %s, last_error = %s, failure_class = %s, cost = %s, "
+            "  completed_at = now(), "
+            "  duration_ms = greatest(0, "
+            "    (extract(epoch from (now() - created_at)) * 1000)::bigint), "
+            "  progress_completed = greatest("
+            "    progress_completed, coalesce(%s, progress_completed)), "
+            "  lease_expires_at = null, claim_token = null "
+            "where job_id = %s and workspace_id = %s and state = 'running' and claim_token = %s "
+            "returning attempts, duration_ms, progress_completed, progress_total",
+            (
+                state,
+                error,
+                failure_class,
+                Jsonb(cumulative_cost) if cumulative_cost else None,
+                progress_completed,
+                job_id,
+                workspace_id,
+                claim_token,
+            ),
+        ).fetchone()
+        if row is None:
+            return False
+        _event(
+            connection,
+            workspace_id,
+            worker=worker,
+            event_type=event_type,
+            job_id=job_id,
+            claim_token=claim_token,
+            attempt=row["attempts"],
+            duration_ms=row["duration_ms"],
+            progress_completed=row["progress_completed"],
+            progress_total=row["progress_total"],
+            cost=cumulative_cost,
+            failure_class=failure_class,
+            message=error,
+        )
+        return True
+
+
+def retry(
+    connection: psycopg.Connection,
+    workspace_id: uuid.UUID,
+    *,
+    job_id: uuid.UUID,
+    claim_token: uuid.UUID,
+    delay_seconds: float,
+    error: str,
+    failure_class: str,
+    worker: str,
+    cost: dict[str, Any] | None = None,
+) -> bool:
+    """Release a held claim back to the queue after a measured, retryable failure."""
+    with connection.transaction():
+        held = connection.execute(
+            "select cost from job where job_id = %s and workspace_id = %s "
+            "and state = 'running' and claim_token = %s for update",
+            (job_id, workspace_id, claim_token),
+        ).fetchone()
+        if held is None:
+            return False
+        cumulative_cost = _merge_cost(held["cost"], cost)
+        row = connection.execute(
+            "update job set state = 'queued', run_after = now() + make_interval(secs => %s), "
+            "  last_error = %s, failure_class = %s, cost = %s, claimed_by = null, "
+            "  lease_expires_at = null, claim_token = null "
+            "where job_id = %s and workspace_id = %s and state = 'running' and claim_token = %s "
+            "returning attempts, progress_completed, progress_total",
+            (
+                delay_seconds,
+                error,
+                failure_class,
+                Jsonb(cumulative_cost) if cumulative_cost else None,
+                job_id,
+                workspace_id,
+                claim_token,
+            ),
+        ).fetchone()
+        if row is None:
+            return False
+        _event(
+            connection,
+            workspace_id,
+            worker=worker,
+            event_type="retry_scheduled",
+            job_id=job_id,
+            claim_token=claim_token,
+            attempt=row["attempts"],
+            progress_completed=row["progress_completed"],
+            progress_total=row["progress_total"],
+            cost=cost,
+            failure_class=failure_class,
+            message=error,
+        )
+        return True
+
+
+def _merge_cost(previous: dict[str, Any] | None, current: dict[str, Any] | None) -> dict[str, Any]:
+    """Add measured attempt cost without inventing values for fields no provider returned."""
+    if not previous and not current:
+        return {}
+    merged: dict[str, Any] = dict(previous or {})
+    current = current or {}
+    for key in ("model_calls", "input_tokens", "output_tokens"):
+        if key in merged or key in current:
+            merged[key] = int(merged.get(key, 0)) + int(current.get(key, 0))
+    if "usd_estimate" in merged or "usd_estimate" in current:
+        merged["usd_estimate"] = str(
+            Decimal(str(merged.get("usd_estimate", "0")))
+            + Decimal(str(current.get("usd_estimate", "0")))
+        )
+    for key, value in current.items():
+        if key not in {"model_calls", "input_tokens", "output_tokens", "usd_estimate"}:
+            merged[key] = value
+    return merged
 
 
 def abandon(
-    connection: psycopg.Connection, workspace_id: uuid.UUID
+    connection: psycopg.Connection, workspace_id: uuid.UUID, *, worker: str = "unknown"
 ) -> AbandonedDerivatives | None:
     """End one job that has been stranded :data:`MAX_CLAIMS` times, or None when there is none.
 
@@ -286,20 +452,180 @@ def abandon(
 
     ``failed`` rather than ``cancelled``: the work did not happen and nobody withdrew it.
     """
-    row = connection.execute(
-        "update job set state = 'failed', lease_expires_at = null, claim_token = null, "
-        "  last_error = 'claimed ' || attempts || ' times and stranded every time; the lease "
-        "expired with no worker saying anything and the job has used every claim it is allowed' "
-        "where job_id = ("
-        "  select job_id from job "
-        "   where workspace_id = %s and kind = %s and state = 'running' "
-        "     and lease_expires_at < now() and attempts >= %s "
-        "   order by priority, job_id for update skip locked limit 1) "
-        "returning job_id, batch_id, attempts",
-        (workspace_id, DERIVATIVES, MAX_CLAIMS),
-    ).fetchone()
-    if row is None:
-        return None
+    with connection.transaction():
+        row = connection.execute(
+            "update job set state = 'failed', lease_expires_at = null, claim_token = null, "
+            "  completed_at = now(), failure_class = 'retry_exhausted_after_process_death', "
+            "  duration_ms = greatest("
+            "    0, (extract(epoch from (now() - created_at)) * 1000)::bigint), "
+            "  last_error = 'claimed ' || attempts || ' times and stranded every time; the lease "
+            "expired with no worker saying anything and the job has used every claim it is "
+            "allowed' "
+            "where job_id = ("
+            "  select job_id from job "
+            "   where workspace_id = %s and kind = %s and state = 'running' "
+            "     and lease_expires_at < now() and attempts >= %s "
+            "   order by priority, job_id for update skip locked limit 1) "
+            "returning job_id, batch_id, attempts, duration_ms, progress_completed, "
+            "progress_total, last_error",
+            (workspace_id, DERIVATIVES, MAX_CLAIMS),
+        ).fetchone()
+        if row is None:
+            return None
+        _event(
+            connection,
+            workspace_id,
+            worker=worker,
+            event_type="job_failed",
+            job_id=row["job_id"],
+            attempt=row["attempts"],
+            duration_ms=row["duration_ms"],
+            progress_completed=row["progress_completed"],
+            progress_total=row["progress_total"],
+            failure_class="retry_exhausted_after_process_death",
+            message=row["last_error"],
+        )
     return AbandonedDerivatives(
         job_id=row["job_id"], batch_id=row["batch_id"], attempts=row["attempts"]
+    )
+
+
+def record_worker_event(
+    connection: psycopg.Connection,
+    workspace_id: uuid.UUID,
+    *,
+    worker: str,
+    event_type: str,
+    message: str | None = None,
+) -> None:
+    """Record a process lifecycle fact once per workspace the worker is allowed to drain."""
+    if event_type not in ("worker_started", "shutdown_requested", "worker_stopped"):
+        raise ValueError(f"{event_type!r} is not a worker lifecycle event")
+    _event(
+        connection,
+        workspace_id,
+        worker=worker,
+        event_type=event_type,
+        message=message,
+    )
+
+
+def record_capture(
+    connection: psycopg.Connection,
+    workspace_id: uuid.UUID,
+    *,
+    worker: str,
+    claimed: QueuedDerivatives,
+    capture_id: uuid.UUID,
+    event_type: str,
+    progress_completed: int,
+    progress_total: int,
+    duration_ms: int | None = None,
+    cost: dict[str, Any] | None = None,
+    failure_class: str | None = None,
+    message: str | None = None,
+) -> bool:
+    """Record capture-level progress only while this claimant still owns the delivery."""
+    allowed = {
+        "capture_started",
+        "capture_succeeded",
+        "capture_failed",
+        "capture_cancelled",
+        "capture_missing",
+        "capture_unavailable",
+    }
+    if event_type not in allowed:
+        raise ValueError(f"{event_type!r} is not a capture progress event")
+    with connection.transaction():
+        held = connection.execute(
+            "select 1 from job where job_id = %s and workspace_id = %s and state = 'running' "
+            "and claim_token = %s for update",
+            (claimed.job_id, workspace_id, claimed.claim_token),
+        ).fetchone()
+        if held is None:
+            return False
+        connection.execute(
+            "update job set progress_completed = greatest(progress_completed, %s) "
+            "where job_id = %s",
+            (progress_completed, claimed.job_id),
+        )
+        _event(
+            connection,
+            workspace_id,
+            worker=worker,
+            event_type=event_type,
+            job_id=claimed.job_id,
+            claim_token=claimed.claim_token,
+            attempt=claimed.attempts,
+            capture_id=capture_id,
+            progress_completed=progress_completed,
+            progress_total=progress_total,
+            duration_ms=duration_ms,
+            cost=cost,
+            failure_class=failure_class,
+            message=message,
+        )
+        return True
+
+
+def record_lease_lost(
+    connection: psycopg.Connection,
+    workspace_id: uuid.UUID,
+    *,
+    worker: str,
+    claimed: QueuedDerivatives,
+    message: str,
+) -> None:
+    """Record withdrawal after a token mismatch without touching the new claimant's job row."""
+    _event(
+        connection,
+        workspace_id,
+        worker=worker,
+        event_type="lease_lost",
+        job_id=claimed.job_id,
+        claim_token=claimed.claim_token,
+        attempt=claimed.attempts,
+        failure_class="lease_lost",
+        message=message,
+    )
+
+
+def _event(
+    connection: psycopg.Connection,
+    workspace_id: uuid.UUID,
+    *,
+    worker: str,
+    event_type: str,
+    job_id: uuid.UUID | None = None,
+    claim_token: uuid.UUID | None = None,
+    attempt: int | None = None,
+    capture_id: uuid.UUID | None = None,
+    progress_completed: int | None = None,
+    progress_total: int | None = None,
+    duration_ms: int | None = None,
+    cost: dict[str, Any] | None = None,
+    failure_class: str | None = None,
+    message: str | None = None,
+) -> None:
+    """Append one delivery fact. Callers own any transaction that must include a state change."""
+    connection.execute(
+        "insert into derivative_job_event (workspace_id, job_id, worker_id, event_type, "
+        "claim_token, attempt, capture_id, progress_completed, progress_total, duration_ms, "
+        "cost, failure_class, message) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+        "%s, %s, %s)",
+        (
+            workspace_id,
+            job_id,
+            worker,
+            event_type,
+            claim_token,
+            attempt,
+            capture_id,
+            progress_completed,
+            progress_total,
+            duration_ms,
+            Jsonb(cost) if cost else None,
+            failure_class,
+            message[:2000] if message else None,
+        ),
     )

@@ -20,7 +20,12 @@ ended on the first.
 from __future__ import annotations
 
 import json
+import multiprocessing
+import threading
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -31,7 +36,9 @@ from orimera.ingest import derivative_queue
 from orimera.ingest.batch import IntakeBatch
 from orimera.ingest.pipeline import PhotoIngestPipeline
 from orimera.ingest.worker import MINIMUM_LEASE_SECONDS, DerivativeWorker, lease_seconds_for
+from orimera.models.errors import TransportError
 from orimera.models.manifest import Role
+from orimera.reconstruction.testing import FlatDepthModel
 from orimera.store.local import LocalContentAddressedStore
 
 from conftest import CountingVisionModel, photo_bytes
@@ -40,6 +47,94 @@ from tests_support_api import scratch_database
 #: Long enough that nothing in a test expires by accident, short enough to be pushed into the
 #: past by hand. Every test that wants an expired lease writes one rather than waiting.
 _LEASE = 300.0
+
+
+class _BlockingVision:
+    model_id = "MiniMaxAI/MiniMax-M3"
+
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.calls = 0
+
+    def observe(self, *, image_bytes: bytes, media_type: str):
+        self.calls += 1
+        self.entered.set()
+        assert self.release.wait(10), "test did not release the blocking vision call"
+        return CountingVisionModel().observe(image_bytes=image_bytes, media_type=media_type)
+
+
+class _AlwaysTransientFailure:
+    model_id = "MiniMaxAI/MiniMax-M3"
+
+    def __init__(self, *, fail_for: int | None = None) -> None:
+        self.calls = 0
+        self.fail_for = fail_for
+
+    def observe(self, *, image_bytes: bytes, media_type: str):
+        self.calls += 1
+        if self.fail_for is None or self.calls <= self.fail_for:
+            raise TransportError("temporary upstream timeout", retryable=True)
+        return CountingVisionModel().observe(image_bytes=image_bytes, media_type=media_type)
+
+
+class _ProcessVision:
+    model_id = "MiniMaxAI/MiniMax-M3"
+
+    def __init__(self, counter: str, *, block_before_result: bool) -> None:
+        self._counter = Path(counter)
+        self._block = block_before_result
+
+    def observe(self, *, image_bytes: bytes, media_type: str):
+        if self._block:
+            time.sleep(60)
+        with self._counter.open("a", encoding="utf-8") as stream:
+            stream.write("paid-result\n")
+        return CountingVisionModel().observe(image_bytes=image_bytes, media_type=media_type)
+
+
+class _ProcessDepth:
+    model_id = "flat-plane-double"
+
+    def __init__(self, *, block_before_result: bool) -> None:
+        self._block = block_before_result
+
+    def predict(self, image):
+        if self._block:
+            time.sleep(60)
+        return FlatDepthModel().predict(image)
+
+
+def _process_drain(
+    database_url: str,
+    store_root: str,
+    workspace_id: str,
+    counter: str,
+    block_after: str | None,
+) -> None:
+    import orimera.ingest.worker as worker_module
+
+    if block_after == "intake":
+        original = worker_module.PhotoIngestPipeline.ingest_derivatives
+
+        def wait_after_intake(self, *args, **kwargs):
+            time.sleep(60)
+            return original(self, *args, **kwargs)
+
+        worker_module.PhotoIngestPipeline.ingest_derivatives = wait_after_intake
+    if block_after == "depth":
+        worker_module.run_continuity = lambda *args, **kwargs: time.sleep(60)
+    worker = DerivativeWorker(
+        Database(database_url),
+        LocalContentAddressedStore(store_root),
+        frozenset({uuid.UUID(workspace_id)}),
+        vision=_ProcessVision(counter, block_before_result=block_after == "rendition"),
+        depth=_ProcessDepth(block_before_result=block_after == "vision"),
+        name=f"process-{block_after or 'restart'}-{multiprocessing.current_process().pid}",
+        lease_seconds=30,
+        heartbeat_seconds=0.1,
+    )
+    worker.drain()
 
 
 class Queued:
@@ -154,6 +249,62 @@ def test_a_stranded_running_row_is_claimed_again_and_says_it_was(queued):
     assert row["claimed_by"] == "second"
     assert row["lease_expires_at"] is not None
     assert row["claim_token"] == claimed.claim_token
+
+
+def test_two_workers_contending_on_real_connections_issue_one_claim(queued):
+    """`skip locked` is exercised concurrently, not inferred from a sequential second read."""
+    barrier = threading.Barrier(2)
+
+    def compete(name: str):
+        with queued.database.session(queued.workspace_id) as connection:
+            barrier.wait()
+            return derivative_queue.claim(
+                connection,
+                queued.workspace_id,
+                worker=name,
+                lease_seconds=_LEASE,
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        claims = list(pool.map(compete, ("contender-a", "contender-b")))
+
+    winners = [claim for claim in claims if claim is not None]
+    assert len(winners) == 1
+    assert winners[0].job_id == queued.job_id
+    events = queued.rows(
+        "select event_type from derivative_job_event where job_id = %s", queued.job_id
+    )
+    assert [row["event_type"] for row in events] == ["claim_acquired"]
+
+
+def test_a_slow_stage_renews_its_lease_on_an_independent_connection(queued):
+    """A model call longer than the lease is live work, not a process-death signal."""
+    blocking = _BlockingVision()
+    queued.vision = blocking
+    worker = queued.worker(lease_seconds=0.18, heartbeat_seconds=0.03)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        running = pool.submit(worker.drain)
+        assert blocking.entered.wait(5)
+        time.sleep(0.25)
+        assert (
+            derivative_queue.claim(
+                queued.connection,
+                queued.workspace_id,
+                worker="would-be-reclaimer",
+                lease_seconds=0.18,
+            )
+            is None
+        )
+        blocking.release.set()
+        outcomes = running.result(timeout=10)
+
+    assert outcomes[0].succeeded == 2
+    renewals = queued.rows(
+        "select count(*) as n from derivative_job_event "
+        "where job_id = %s and event_type = 'lease_renewed'",
+        queued.job_id,
+    )[0]["n"]
+    assert renewals >= 2
 
 
 def test_a_claimant_that_keeps_beating_is_not_reclaimed_and_claimed_at_alone_would_have(queued):
@@ -357,8 +508,8 @@ def test_the_reclaim_arm_is_served_by_an_index_that_can_see_running(queued):
 
     Asserted through EXPLAIN rather than through a timing, because a timing over two rows is
     noise. The second half is what makes the first half mean something: with the index dropped
-    inside this test's transaction, the same plan falls back to a sequential scan even with
-    `enable_seqscan` off, which is the pre-0016 shape.
+    inside this test's transaction, the same plan loses its ordered partial scan and has to sort
+    a broader access path, which is the defect 0016 closed.
     """
     queued.strand()
 
@@ -387,7 +538,8 @@ def test_the_reclaim_arm_is_served_by_an_index_that_can_see_running(queued):
             raise psycopg.Rollback
     finally:
         queued.connection.execute("set enable_seqscan = on")
-    assert "Seq Scan on job" in without_index, without_index
+    assert "job_reclaim_idx" not in without_index, without_index
+    assert "Sort" in without_index, without_index
 
 
 def test_a_running_job_without_a_lease_is_refused_by_the_schema(queued):
@@ -494,6 +646,206 @@ def test_a_live_job_at_the_bound_is_not_abandoned(queued):
     )
     assert derivative_queue.abandon(queued.connection, queued.workspace_id) is None
     assert queued.job()["state"] == "running"
+
+
+def test_a_transient_failure_is_retried_and_the_retry_is_free_for_completed_stages(queued):
+    transient = _AlwaysTransientFailure(fail_for=1)
+    queued.vision = transient
+    worker = queued.worker()
+
+    first = worker.drain()
+    assert first[0].retry_scheduled
+    assert queued.job()["state"] == "queued"
+    queued.connection.execute(
+        "update job set run_after = now() - interval '1 second' where job_id = %s",
+        (queued.job_id,),
+    )
+
+    second = worker.drain()
+    assert second[0].succeeded == 2
+    assert queued.job()["state"] == "done"
+    assert transient.calls == 3, "one failed call plus one result for each of two photographs"
+    cost = queued.rows("select cost from job where job_id = %s", queued.job_id)[0]["cost"]
+    assert cost["model_calls"] == 2, "the retry must not erase the first attempt's measured cost"
+    events = [
+        row["event_type"]
+        for row in queued.rows(
+            "select event_type from derivative_job_event where job_id = %s order by event_id",
+            queued.job_id,
+        )
+    ]
+    assert events.count("retry_scheduled") == 1
+    assert events.count("job_succeeded") == 1
+
+
+def test_retry_exhaustion_has_one_terminal_failure_and_a_failure_class(queued):
+    failing = _AlwaysTransientFailure()
+    queued.vision = failing
+    worker = queued.worker()
+    outcomes = []
+    for attempt in range(1, derivative_queue.MAX_CLAIMS + 1):
+        outcomes.extend(worker.drain())
+        if attempt < derivative_queue.MAX_CLAIMS:
+            assert outcomes[-1].retry_scheduled
+            queued.connection.execute(
+                "update job set run_after = now() - interval '1 second' where job_id = %s",
+                (queued.job_id,),
+            )
+
+    assert outcomes[-1].retry_exhausted
+    row = queued.rows(
+        "select state, attempts, failure_class, completed_at from job where job_id = %s",
+        queued.job_id,
+    )[0]
+    assert row["state"] == "failed"
+    assert row["attempts"] == derivative_queue.MAX_CLAIMS
+    assert row["failure_class"] == "retry_exhausted"
+    assert row["completed_at"] is not None
+    terminal = queued.rows(
+        "select event_type, failure_class from derivative_job_event "
+        "where job_id = %s and event_type = 'job_failed'",
+        queued.job_id,
+    )
+    assert terminal == [{"event_type": "job_failed", "failure_class": "retry_exhausted"}]
+    assert failing.calls == derivative_queue.MAX_CLAIMS * len(queued.capture_ids)
+
+
+def test_graceful_shutdown_stops_claiming_and_finishes_the_held_job(queued):
+    blocking = _BlockingVision()
+    queued.vision = blocking
+    worker = queued.worker(name="graceful", poll_seconds=0.01)
+
+    worker.start()
+    assert blocking.entered.wait(5)
+    assert not worker.stop(timeout=0.05), "shutdown reported complete while a stage was still held"
+    blocking.release.set()
+    assert worker.stop(timeout=10)
+
+    assert queued.job()["state"] == "done"
+    lifecycle = [
+        row["event_type"]
+        for row in queued.rows(
+            "select event_type from derivative_job_event "
+            "where worker_id = 'graceful' and job_id is null order by occurred_at, event_id"
+        )
+    ]
+    assert lifecycle == ["worker_started", "shutdown_requested", "worker_stopped"]
+
+
+def _wait_until(description: str, predicate, *, timeout: float = 10.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.02)
+    raise AssertionError(f"timed out waiting for {description}")
+
+
+@pytest.mark.parametrize("boundary", ["intake", "rendition", "vision", "depth"])
+def test_process_death_at_each_real_stage_boundary_replays_to_one_canonical_result(
+    queued, tmp_path, boundary
+):
+    """The Phase 1 acceptance gate, with an actual killed process and two restarters.
+
+    Intake has already committed before a derivative claim exists, so its boundary is the first
+    capture event. The other three boundaries wait for their durable successful stage event.
+    A paid-result line is written only after the fake provider returns; seeing exactly two lines
+    proves that a committed vision result is content-addressed and reused after recovery.
+    """
+    context = multiprocessing.get_context("fork")
+    counter = tmp_path / f"paid-results-{boundary}.log"
+    counter.touch()
+    args = (
+        queued.database.url,
+        str(queued.store.root),
+        str(queued.workspace_id),
+        str(counter),
+    )
+    doomed = context.Process(target=_process_drain, args=(*args, boundary))
+    doomed.start()
+
+    if boundary == "intake":
+        _wait_until(
+            "the post-intake capture boundary",
+            lambda: queued.rows(
+                "select count(*) as n from derivative_job_event "
+                "where job_id = %s and event_type = 'capture_started'",
+                queued.job_id,
+            )[0]["n"]
+            == 1,
+        )
+    else:
+        _wait_until(
+            f"the {boundary} stage boundary",
+            lambda: queued.rows(
+                "select count(*) as n from pipeline_event pe "
+                "join pipeline_run pr on pr.run_id = pe.run_id "
+                "where pr.delivery_job_id = %s and pe.stage_key = %s "
+                "and pe.type = 'stage_succeeded'",
+                queued.job_id,
+                boundary,
+            )[0]["n"]
+            >= 1,
+        )
+
+    doomed.kill()
+    doomed.join(timeout=5)
+    assert doomed.exitcode is not None and doomed.exitcode < 0
+    queued.connection.execute(
+        "update job set lease_expires_at = now() - interval '1 second' where job_id = %s",
+        (queued.job_id,),
+    )
+
+    restarters = [
+        context.Process(target=_process_drain, args=(*args, None)) for _ in range(2)
+    ]
+    for process in restarters:
+        process.start()
+    for process in restarters:
+        process.join(timeout=20)
+        assert process.exitcode == 0
+
+    job = queued.rows(
+        "select state, attempts, completed_at from job where job_id = %s", queued.job_id
+    )[0]
+    assert job["state"] == "done"
+    assert job["attempts"] == 2
+    assert job["completed_at"] is not None
+    assert counter.read_text(encoding="utf-8").splitlines() == ["paid-result", "paid-result"]
+
+    artifacts = {
+        row["stage_key"]: row["n"]
+        for row in queued.rows(
+            "select a.stage_key, count(*) as n from artifact a "
+            "join capture c on c.workspace_id = a.workspace_id "
+            "and c.blob_sha256 = a.source_blob_sha256 "
+            "where c.capture_id = any(%s) group by a.stage_key",
+            queued.capture_ids,
+        )
+    }
+    assert artifacts == {
+        "intake": len(queued.capture_ids),
+        "rendition": len(queued.capture_ids),
+        "vision": len(queued.capture_ids),
+        "depth": len(queued.capture_ids),
+    }
+    assert queued.rows(
+        "select count(*) as n from pipeline_run "
+        "where delivery_job_id = %s and status = 'running'",
+        queued.job_id,
+    )[0]["n"] == 0
+    events = [
+        row["event_type"]
+        for row in queued.rows(
+            "select event_type from derivative_job_event "
+            "where job_id = %s order by occurred_at, event_id",
+            queued.job_id,
+        )
+    ]
+    assert events.count("claim_acquired") == 1
+    assert events.count("claim_reclaimed") == 1
+    assert events.count("job_succeeded") == 1
+    assert sum(event.startswith("job_") for event in events) == 1
 
 
 # -- where the lease comes from ---------------------------------------------------------------

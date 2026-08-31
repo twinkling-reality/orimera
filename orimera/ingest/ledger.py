@@ -121,6 +121,8 @@ class Ledger:
         capture_id: uuid.UUID | None = None,
         pipeline_digest: str | None = None,
         batch_id: uuid.UUID | None = None,
+        delivery_job_id: uuid.UUID | None = None,
+        delivery_claim_token: uuid.UUID | None = None,
     ) -> Ledger:
         """Open a run, optionally inside a watched intake batch.
 
@@ -130,9 +132,17 @@ class Ledger:
         column would appear in the formation stream as somebody's upload.
         """
         row = repository.connection.execute(
-            'insert into pipeline_run (workspace_id, capture_id, "trigger", status, batch_id) '
-            "values (%s, %s, %s, 'running', %s) returning run_id",
-            (repository.workspace_id, capture_id, trigger, batch_id),
+            'insert into pipeline_run (workspace_id, capture_id, "trigger", status, batch_id, '
+            "delivery_job_id, delivery_claim_token) "
+            "values (%s, %s, %s, 'running', %s, %s, %s) returning run_id",
+            (
+                repository.workspace_id,
+                capture_id,
+                trigger,
+                batch_id,
+                delivery_job_id,
+                delivery_claim_token,
+            ),
         ).fetchone()
         assert row is not None
         run_id = row["run_id"]
@@ -309,6 +319,41 @@ class Ledger:
             input_blob=input_blob,
         )
 
+    def skipped(self, spec: StageSpec, *, reason: str) -> None:
+        """Record a reviewed stage deliberately omitted by policy.
+
+        No duration or cost is attached because no work ran. This is intentionally different
+        from reuse and unavailability; all three used to collapse into an absent event.
+        """
+        self.event(
+            "stage_skipped",
+            stage=spec,
+            error_class="skipped",
+            error_message=reason,
+        )
+
+    def unavailable(
+        self, spec: StageSpec, *, reason: str, input_blob: BlobId | None = None
+    ) -> None:
+        """Record that a real stage had no configured implementation to run."""
+        self.event(
+            "stage_unavailable",
+            stage=spec,
+            input_blob=input_blob,
+            error_class="unavailable",
+            error_message=reason,
+        )
+
+    def missing(self, spec: StageSpec, *, reason: str, input_blob: BlobId | None = None) -> None:
+        """Record that a stage's required durable input was absent."""
+        self.event(
+            "stage_missing",
+            stage=spec,
+            input_blob=input_blob,
+            error_class="missing_input",
+            error_message=reason,
+        )
+
     def emitted(self, kind: str, ids: Sequence[uuid.UUID], stage: StageSpec) -> None:
         """Record that assertions or proposals were written, and how many.
 
@@ -324,12 +369,60 @@ class Ledger:
             output_artifact_ids=ids,
         )
 
-    def finish(self, status: str) -> None:
-        self.event(f"run_{status}")
-        self._db.execute(
-            "update pipeline_run set status = %s, ended_at = now() where run_id = %s",
-            (status, self.run_id),
-        )
+    def finish(self, status: str) -> bool:
+        """Write the run's one terminal event. False means a reclaim already closed it."""
+        with self._db.transaction():
+            row = self._db.execute(
+                "select status from pipeline_run where run_id = %s for update", (self.run_id,)
+            ).fetchone()
+            if row is None or row["status"] != "running":
+                return False
+            self.event(f"run_{status}")
+            self._db.execute(
+                "update pipeline_run set status = %s, ended_at = now() where run_id = %s",
+                (status, self.run_id),
+            )
+        return True
+
+    @classmethod
+    def close_interrupted_delivery_runs(
+        cls,
+        repository: IngestRepository,
+        *,
+        job_id: uuid.UUID,
+        current_claim_token: uuid.UUID,
+    ) -> int:
+        """Close runs left open by an expired claim before a reclaim starts new work."""
+        rows = repository.connection.execute(
+            "select run_id from pipeline_run where workspace_id = %s and delivery_job_id = %s "
+            "and status = 'running' and delivery_claim_token <> %s order by started_at, run_id",
+            (repository.workspace_id, job_id, current_claim_token),
+        ).fetchall()
+        closed = 0
+        for row in rows:
+            ledger = cls(repository, row["run_id"])
+            with repository.connection.transaction():
+                locked = repository.connection.execute(
+                    "select status from pipeline_run where run_id = %s for update",
+                    (ledger.run_id,),
+                ).fetchone()
+                if locked is None or locked["status"] != "running":
+                    continue
+                ledger.event(
+                    "run_failed",
+                    error_class="worker_process_lost",
+                    error_message=(
+                        f"delivery job {job_id} was reclaimed after its lease expired; the "
+                        "previous process left this run open"
+                    ),
+                )
+                repository.connection.execute(
+                    "update pipeline_run set status = 'failed', ended_at = now() "
+                    "where run_id = %s",
+                    (ledger.run_id,),
+                )
+                closed += 1
+        return closed
 
     # -- replay -------------------------------------------------------------------------
 

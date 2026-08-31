@@ -1,0 +1,177 @@
+"""The production derivative worker command.
+
+It owns no HTTP surface and accepts no bytes. Workspaces are deployment configuration, jobs carry
+capture identifiers, and the content-addressed store is the only place source bytes are read.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import platform
+import signal
+import sys
+import threading
+import uuid
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any, Final
+
+from orimera.db.migrate import verify_schema
+from orimera.db.roles import assert_runtime_role
+from orimera.db.session import Database
+from orimera.ingest.vision import NebiusVisionModel
+from orimera.ingest.worker import DerivativeWorker, lease_seconds_for
+from orimera.models.client import ModelClient
+from orimera.models.manifest import Role
+from orimera.store.local import LocalContentAddressedStore
+
+__all__ = ["WORKSPACES_ENV", "main", "parse_workspaces"]
+
+WORKSPACES_ENV: Final = "ORIMERA_WORKSPACE_IDS"
+DATA_DIR_ENV: Final = "ORIMERA_DATA_DIR"
+MODEL_KEY_ENV: Final = "NEBIUS_API_KEY"
+
+
+def parse_workspaces(values: list[str], environ: Mapping[str, str]) -> frozenset[uuid.UUID]:
+    """Resolve explicit flags plus a comma-separated deployment value, refusing an empty set."""
+    raw = list(values)
+    raw.extend(part.strip() for part in environ.get(WORKSPACES_ENV, "").split(",") if part.strip())
+    try:
+        workspaces = frozenset(uuid.UUID(value) for value in raw)
+    except ValueError as exc:
+        raise ValueError(f"{WORKSPACES_ENV} and --workspace accept UUIDs only: {exc}") from exc
+    if not workspaces:
+        raise ValueError(
+            f"no workspace was configured. Set {WORKSPACES_ENV} or pass --workspace; a worker "
+            "that silently drains nothing is not healthy."
+        )
+    return workspaces
+
+
+def _worker_name(value: str | None) -> str:
+    if value:
+        return value
+    host = platform.node() or "unknown"
+    return f"{host}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+
+
+def _emit(stream: Any, event: str, **fields: Any) -> None:
+    print(
+        json.dumps({"component": "derivative-worker", "event": event, **fields}, sort_keys=True),
+        file=stream,
+        flush=True,
+    )
+
+
+def _build_worker(args: argparse.Namespace, environ: Mapping[str, str]) -> DerivativeWorker:
+    database = Database.from_env(environ)
+    verify_schema(database)
+    with database.unscoped() as connection:
+        assert_runtime_role(connection)
+
+    client = ModelClient(max_attempts=1) if environ.get(MODEL_KEY_ENV) else None
+    vision = NebiusVisionModel(client) if client is not None else None
+    lease_seconds = lease_seconds_for(
+        client.worst_case_seconds(Role.VISION) if client is not None else None
+    )
+    data_dir = Path(environ.get(DATA_DIR_ENV, ".orimera/local"))
+    return DerivativeWorker(
+        database,
+        LocalContentAddressedStore(data_dir / "blobs"),
+        parse_workspaces(args.workspace, environ),
+        vision=vision,
+        name=_worker_name(args.name),
+        poll_seconds=args.poll_seconds,
+        lease_seconds=lease_seconds,
+    )
+
+
+def main(
+    argv: list[str] | None = None,
+    *,
+    environ: Mapping[str, str] | None = None,
+    stream: Any = None,
+) -> int:
+    parser = argparse.ArgumentParser(
+        prog="orimera-derivative-worker",
+        description="Drain PostgreSQL derivative jobs with renewable leases and durable events.",
+    )
+    parser.add_argument(
+        "--workspace", action="append", default=[], help="workspace UUID; repeatable"
+    )
+    parser.add_argument("--name", help="stable worker identifier; generated when omitted")
+    parser.add_argument("--poll-seconds", type=float, default=2.0)
+    parser.add_argument("--grace-seconds", type=float, default=900.0)
+    parser.add_argument(
+        "--once", action="store_true", help="drain currently eligible work and exit"
+    )
+    args = parser.parse_args(argv)
+    output = stream or sys.stdout
+    environment = os.environ if environ is None else environ
+
+    try:
+        worker = _build_worker(args, environment)
+    except Exception as exc:
+        _emit(output, "startup_failed", failure_class=type(exc).__name__, message=str(exc))
+        return 1
+
+    _emit(
+        output,
+        "startup",
+        worker=worker.name,
+        workspaces=worker.workspace_count,
+        mode="once" if args.once else "daemon",
+    )
+    if args.once:
+        try:
+            outcomes = worker.drain_observed()
+        except Exception as exc:
+            _emit(output, "pass_failed", failure_class=type(exc).__name__, message=str(exc))
+            return 1
+        _emit(
+            output,
+            "stopped",
+            jobs=len(outcomes),
+            failed=sum(outcome.failed for outcome in outcomes),
+            cancelled=sum(outcome.cancelled for outcome in outcomes),
+            unavailable=sum(outcome.unavailable for outcome in outcomes),
+        )
+        return 0
+
+    requested = threading.Event()
+
+    def request_shutdown(signum: int, _frame: Any) -> None:
+        _emit(output, "shutdown_requested", signal=signal.Signals(signum).name)
+        requested.set()
+
+    previous = {
+        signum: signal.signal(signum, request_shutdown)
+        for signum in (signal.SIGTERM, signal.SIGINT)
+    }
+    worker.start()
+    try:
+        while not requested.wait(0.5):
+            if not worker.alive:
+                _emit(output, "worker_stopped_unexpectedly", last_error=worker.last_error)
+                return 1
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+
+    clean = worker.stop(timeout=args.grace_seconds)
+    if not clean:
+        _emit(
+            output,
+            "shutdown_timed_out",
+            grace_seconds=args.grace_seconds,
+            message="the held lease will expire and another worker will reclaim the job",
+        )
+        return 2
+    _emit(output, "stopped", failed_passes=worker.failed_passes)
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

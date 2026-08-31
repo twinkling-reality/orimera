@@ -24,26 +24,30 @@ at the end of a directory. Inside the batch, so continuity search appears in the
 as the stage it is: left out, a watched upload would stop after entity indexing and finish with
 no account of the gap.
 
-**A claim is a lease this worker keeps saying it still holds.** It beats before every capture and
-before ``run_continuity``, so the longest a job can be silent while alive is one gap: a rendition,
-a vision call, a depth forward, and for the last gap the two continuity passes as well. When a
-beat answers False the lease has been taken, and this worker then does nothing at all to that job:
-it does not finish it and it does not close its batch, because the worker that took the lease owns
-both. Measured without that check, with two real processes: two terminal events for one batch
-4.5 seconds apart, `succeeded` then `failed`, the second contradicting the first.
+**A claim is a lease this worker keeps saying it still holds.** An independent connection renews
+it while a rendition, model call, depth forward or continuity pass is running, and stage
+boundaries check the same token. When either path says the lease has been taken, this worker does
+nothing further to that job: it does not finish it and it does not close its batch, because the
+worker that took the lease owns both. Measured without that check, with two real processes: two
+terminal events for one batch 4.5 seconds apart, `succeeded` then `failed`, the second
+contradicting the first.
 
-**One thread, and it says so.** This is a synchronous worker over a synchronous driver, polling
-one indexed query. That is right for a demonstration with one person uploading, and it is not a
-job system: there is no backoff schedule and no dead-letter queue, and the only recovery for a
-job that has stranded :data:`~orimera.ingest.derivative_queue.MAX_CLAIMS` times is to fail it so
-its batch can close.
+**One delivery thread plus one lease thread, and both say what they did.** Delivery remains a
+synchronous worker over a synchronous driver, polling the measured tenant-and-kind queue index.
+PostgreSQL is the job system: bounded exponential retries, expired-lease reclaim and terminal
+exhaustion stay in the same transactions as the job row and durable delivery ledger. A separate
+broker would add a second source of truth without evidence that this queue misses its contract.
 """
 
 from __future__ import annotations
 
 import threading
+import time
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Final
 
 import psycopg
@@ -52,6 +56,7 @@ from orimera.db.session import Database
 from orimera.ingest import derivative_queue
 from orimera.ingest.batch import IntakeBatch
 from orimera.ingest.continuity import run_continuity
+from orimera.ingest.ledger import Ledger
 from orimera.ingest.pipeline import PhotoIngestPipeline
 from orimera.ingest.repository import IngestRepository
 from orimera.ingest.vision import VisionModel
@@ -116,6 +121,13 @@ class JobOutcome:
     succeeded: int = 0
     failed: int = 0
     cancelled: int = 0
+    missing: int = 0
+    unavailable: int = 0
+    retryable_failures: int = 0
+    model_calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    usd_estimate: Decimal = Decimal("0")
     errors: list[str] = field(default_factory=list)
     #: This worker's lease was taken while it held the job, so another worker owns the job and
     #: the batch. A separate fact from ``failed``: nothing about the work went wrong here, and
@@ -126,10 +138,84 @@ class JobOutcome:
     #: had used every claim it is allowed. A third fact again, and the one that says a batch was
     #: closed by a worker that never processed a single one of its captures.
     abandoned: bool = False
+    retry_scheduled: bool = False
+    retry_exhausted: bool = False
 
     @property
     def captures(self) -> int:
-        return self.succeeded + self.failed + self.cancelled
+        return self.succeeded + self.failed + self.cancelled + self.missing + self.unavailable
+
+    @property
+    def completed(self) -> int:
+        """Captures with a terminal result in this attempt; retryable failures remain pending."""
+        return self.captures - self.retryable_failures
+
+    @property
+    def cost(self) -> dict[str, int | str]:
+        return {
+            "model_calls": self.model_calls,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "usd_estimate": str(self.usd_estimate),
+        }
+
+
+class _LeaseKeeper:
+    """Renew one claim on an independent connection while a slow stage is running."""
+
+    def __init__(
+        self,
+        database: Database,
+        workspace_id: uuid.UUID,
+        claimed: derivative_queue.QueuedDerivatives,
+        *,
+        worker: str,
+        lease_seconds: float,
+        interval_seconds: float,
+    ) -> None:
+        self._database = database
+        self._workspace_id = workspace_id
+        self._claimed = claimed
+        self._worker = worker
+        self._lease_seconds = lease_seconds
+        self._interval_seconds = interval_seconds
+        self._stop = threading.Event()
+        self.lost = threading.Event()
+        self.last_error: str | None = None
+        self._thread = threading.Thread(
+            target=self._run,
+            name=f"{worker}-lease-{str(claimed.job_id)[:8]}",
+            daemon=True,
+        )
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=max(1.0, self._interval_seconds + 1.0))
+
+    def _run(self) -> None:
+        while not self._stop.wait(self._interval_seconds):
+            try:
+                with self._database.session(self._workspace_id) as connection:
+                    held = derivative_queue.heartbeat(
+                        connection,
+                        self._workspace_id,
+                        job_id=self._claimed.job_id,
+                        claim_token=self._claimed.claim_token,
+                        lease_seconds=self._lease_seconds,
+                        worker=self._worker,
+                    )
+                self.last_error = None
+            except Exception as exc:
+                # A database blink is not proof the lease was lost. Keep trying; the main worker
+                # will either reconnect before expiry or discover the rotated token at a boundary.
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                continue
+            if not held:
+                self.lost.set()
+                return
 
 
 class DerivativeWorker:
@@ -146,6 +232,7 @@ class DerivativeWorker:
         name: str = "derivatives",
         poll_seconds: float = _POLL_SECONDS,
         lease_seconds: float = MINIMUM_LEASE_SECONDS,
+        heartbeat_seconds: float | None = None,
     ) -> None:
         """``lease_seconds`` is a value rather than something read off the vision model.
 
@@ -168,7 +255,12 @@ class DerivativeWorker:
         self._name = name
         self._poll_seconds = poll_seconds
         self._lease_seconds = lease_seconds
+        computed_heartbeat = min(30.0, lease_seconds / 3.0)
+        interval = computed_heartbeat if heartbeat_seconds is None else heartbeat_seconds
+        self._heartbeat_seconds = max(0.1, interval)
         self._stop = threading.Event()
+        self._started = threading.Event()
+        self._lifecycle_lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._last_error: str | None = None
         self._failed_passes = 0
@@ -214,20 +306,51 @@ class DerivativeWorker:
                 outcomes.extend(self._abandon_stranded(connection, repository))
         return outcomes
 
+    def drain_observed(self) -> list[JobOutcome]:
+        """Run one finite pass with the same durable lifecycle events as daemon mode."""
+        self._record_worker_lifecycle("worker_started")
+        try:
+            return self.drain()
+        finally:
+            self._record_worker_lifecycle("worker_stopped")
+
     def start(self) -> None:
         """Run the loop on a daemon thread. Idempotent."""
         if self._thread is not None:
             return
         self._stop.clear()
+        self._started.clear()
         self._thread = threading.Thread(target=self._loop, name=self._name, daemon=True)
         self._thread.start()
+        self._started.wait()
 
-    def stop(self, *, timeout: float = 10.0) -> None:
-        """Ask the loop to finish the job it is on and stop. Idempotent."""
-        self._stop.set()
-        thread, self._thread = self._thread, None
+    def stop(self, *, timeout: float = 10.0) -> bool:
+        """Stop claiming, let the held job finish, and report whether shutdown completed."""
+        thread = self._thread
+        if thread is not None:
+            with self._lifecycle_lock:
+                if not self._stop.is_set():
+                    # Set the event before the database write so the delivery loop cannot claim
+                    # another row while shutdown observability is being persisted. The lifecycle
+                    # lock keeps worker_stopped behind this event in the durable order.
+                    self._stop.set()
+                    self._record_worker_lifecycle("shutdown_requested")
+        else:
+            self._stop.set()
         if thread is not None:
             thread.join(timeout=timeout)
+            if thread.is_alive():
+                return False
+            self._thread = None
+        return True
+
+    def wait(self, timeout: float | None = None) -> bool:
+        """Wait for the poll loop. True means it stopped within the requested time."""
+        thread = self._thread
+        if thread is None:
+            return True
+        thread.join(timeout=timeout)
+        return not thread.is_alive()
 
     def _loop(self) -> None:
         """Poll until asked to stop, and **survive anything one pass throws**.
@@ -243,17 +366,40 @@ class DerivativeWorker:
         nobody drains and a queue drained elsewhere must not look identical from outside, and a
         wedged thread is the third case that used to look like both.
         """
-        while not self._stop.is_set():
+        with self._lifecycle_lock:
+            self._record_worker_lifecycle("worker_started")
+            self._started.set()
+        try:
+            while not self._stop.is_set():
+                try:
+                    self.drain()
+                    self._last_error = None
+                except Exception as exc:
+                    self._last_error = f"{type(exc).__name__}: {exc}"
+                    self._failed_passes += 1
+                # Waiting on the event rather than sleeping, so stop() is immediate rather than up
+                # to one poll interval late. A shutdown that takes two seconds per worker is a
+                # deployment that looks hung.
+                self._stop.wait(self._poll_seconds)
+        finally:
+            with self._lifecycle_lock:
+                self._record_worker_lifecycle("worker_stopped")
+
+    def _record_worker_lifecycle(self, event_type: str) -> None:
+        """Persist lifecycle per workspace; leave a failed write visible on the worker itself."""
+        for workspace_id in sorted(self._workspaces):
             try:
-                self.drain()
-                self._last_error = None
+                with self._database.session(workspace_id) as connection:
+                    derivative_queue.record_worker_event(
+                        connection,
+                        workspace_id,
+                        worker=self._name,
+                        event_type=event_type,
+                        message=self._last_error,
+                    )
             except Exception as exc:
                 self._last_error = f"{type(exc).__name__}: {exc}"
                 self._failed_passes += 1
-            # Waiting on the event rather than sleeping, so stop() is immediate rather than up
-            # to one poll interval late. A shutdown that takes two seconds per worker is a
-            # deployment that looks hung.
-            self._stop.wait(self._poll_seconds)
 
     # -- what /readyz asks -----------------------------------------------------------------
 
@@ -277,6 +423,16 @@ class DerivativeWorker:
         """How many polls have failed since the worker started. A count, never a guess."""
         return self._failed_passes
 
+    @property
+    def name(self) -> str:
+        """Stable identifier written into delivery events and process logs."""
+        return self._name
+
+    @property
+    def workspace_count(self) -> int:
+        """Number of explicitly authorised workspace queues this process can drain."""
+        return len(self._workspaces)
+
     # -- one job ------------------------------------------------------------------------
 
     def _claim_one(
@@ -295,12 +451,26 @@ class DerivativeWorker:
         if claimed is None:
             return None
         outcome = JobOutcome(job_id=claimed.job_id, batch_id=claimed.batch_id)
+        if claimed.reclaimed:
+            Ledger.close_interrupted_delivery_runs(
+                repository,
+                job_id=claimed.job_id,
+                current_claim_token=claimed.claim_token,
+            )
         try:
-            self._run_job(repository, claimed, outcome)
+            with self._renewing_lease(repository.workspace_id, claimed) as keeper:
+                self._run_job(repository, claimed, outcome, keeper)
         except _LeaseLost:
             # **Withdraw, and touch nothing.** Another worker holds this job and this batch now.
             # Writing either would be the second opinion the token exists to prevent.
             outcome.lease_lost = True
+            derivative_queue.record_lease_lost(
+                connection,
+                workspace_id,
+                worker=self._name,
+                claimed=claimed,
+                message="claim token no longer matches; worker withdrew without a terminal write",
+            )
             return outcome
         except Exception as exc:
             outcome.errors.append(f"{type(exc).__name__}: {exc}")
@@ -311,6 +481,10 @@ class DerivativeWorker:
                 state="failed",
                 claim_token=claimed.claim_token,
                 error="; ".join(outcome.errors)[:2000],
+                failure_class=type(exc).__name__,
+                cost=outcome.cost,
+                progress_completed=outcome.captures,
+                worker=self._name,
             )
             if not held:
                 outcome.lease_lost = True
@@ -322,6 +496,38 @@ class DerivativeWorker:
             # failed would tell the person watching that their upload finished cleanly.
             self._close_batch(repository, claimed.batch_id, "failed")
             return outcome
+
+        if outcome.retryable_failures:
+            error = "; ".join(outcome.errors)[:2000]
+            failure_class = self._failure_class(outcome, default="retryable_stage_failure")
+            if claimed.attempts < derivative_queue.MAX_CLAIMS:
+                held = derivative_queue.retry(
+                    connection,
+                    workspace_id,
+                    job_id=claimed.job_id,
+                    claim_token=claimed.claim_token,
+                    delay_seconds=self._retry_delay(claimed.attempts),
+                    error=error,
+                    failure_class=failure_class,
+                    worker=self._name,
+                    cost=outcome.cost,
+                )
+                if not held:
+                    outcome.lease_lost = True
+                    derivative_queue.record_lease_lost(
+                        connection,
+                        workspace_id,
+                        worker=self._name,
+                        claimed=claimed,
+                        message="claim was lost while scheduling a retry",
+                    )
+                else:
+                    outcome.retry_scheduled = True
+                return outcome
+            outcome.retry_exhausted = True
+            outcome.errors.append(
+                f"retry budget exhausted after {claimed.attempts} delivery attempts"
+            )
         held = derivative_queue.finish(
             connection,
             workspace_id,
@@ -332,17 +538,17 @@ class DerivativeWorker:
             state=self._job_state(outcome),
             claim_token=claimed.claim_token,
             error="; ".join(outcome.errors)[:2000] or None,
+            failure_class=self._failure_class(outcome),
+            cost=outcome.cost,
+            progress_completed=outcome.captures,
+            worker=self._name,
         )
         if not held:
             # The lease went between the last beat and this write. The job is somebody else's and
             # so is its terminal event.
             outcome.lease_lost = True
             return outcome
-        self._close_batch(
-            repository,
-            claimed.batch_id,
-            IntakeBatch.outcome_for(succeeded=outcome.succeeded, failed=outcome.failed),
-        )
+        self._close_batch(repository, claimed.batch_id, self._batch_state(outcome))
         return outcome
 
     def _abandon_stranded(
@@ -351,7 +557,9 @@ class DerivativeWorker:
         """End the jobs that have used every claim, and close the batches waiting on them."""
         outcomes: list[JobOutcome] = []
         while not self._stop.is_set():
-            stranded = derivative_queue.abandon(connection, repository.workspace_id)
+            stranded = derivative_queue.abandon(
+                connection, repository.workspace_id, worker=self._name
+            )
             if stranded is None:
                 return outcomes
             outcomes.append(
@@ -373,22 +581,80 @@ class DerivativeWorker:
         repository: IngestRepository,
         claimed: derivative_queue.QueuedDerivatives,
         outcome: JobOutcome,
+        keeper: _LeaseKeeper,
     ) -> None:
         pipeline = PhotoIngestPipeline(
             repository, self._store, vision=self._vision, depth=self._depth
         )
+        total = len(claimed.capture_ids)
         for capture_id in claimed.capture_ids:
             # Before the capture rather than after it, so the lease covers the work that follows
             # the beat rather than the work that preceded it.
-            self._beat(repository, claimed)
-            result = pipeline.ingest_derivatives(capture_id, batch_id=claimed.batch_id)
+            self._beat(repository, claimed, keeper)
+            started = time.monotonic()
+            if not derivative_queue.record_capture(
+                repository.connection,
+                repository.workspace_id,
+                worker=self._name,
+                claimed=claimed,
+                capture_id=capture_id,
+                event_type="capture_started",
+                progress_completed=outcome.captures,
+                progress_total=total,
+            ):
+                raise _LeaseLost
+            result = pipeline.ingest_derivatives(
+                capture_id,
+                batch_id=claimed.batch_id,
+                delivery_job_id=claimed.job_id,
+                delivery_claim_token=claimed.claim_token,
+            )
+            outcome.model_calls += result.model_calls
+            outcome.input_tokens += result.input_tokens
+            outcome.output_tokens += result.output_tokens
+            outcome.usd_estimate += result.usd_estimate
             if result.tombstoned:
                 outcome.cancelled += 1
+                event_type = "capture_cancelled"
+            elif result.missing:
+                outcome.missing += 1
+                if result.error:
+                    outcome.errors.append(f"{capture_id}: {result.error}")
+                event_type = "capture_missing"
+            elif result.unavailable:
+                outcome.unavailable += 1
+                if result.error:
+                    outcome.errors.append(f"{capture_id}: {result.error}")
+                event_type = "capture_unavailable"
             elif result.error is not None:
                 outcome.failed += 1
+                outcome.retryable_failures += int(result.retryable)
                 outcome.errors.append(f"{capture_id}: {result.error}")
+                event_type = "capture_failed"
             else:
                 outcome.succeeded += 1
+                event_type = "capture_succeeded"
+
+            if not derivative_queue.record_capture(
+                repository.connection,
+                repository.workspace_id,
+                worker=self._name,
+                claimed=claimed,
+                capture_id=capture_id,
+                event_type=event_type,
+                progress_completed=outcome.completed,
+                progress_total=total,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                cost={
+                    "model_calls": result.model_calls,
+                    "input_tokens": result.input_tokens,
+                    "output_tokens": result.output_tokens,
+                    "usd_estimate": str(result.usd_estimate),
+                },
+                failure_class=result.failure_class,
+                message=result.error,
+            ):
+                raise _LeaseLost
 
         # The whole corpus, once, rather than per photograph: continuity is a relation between
         # captures and cannot be computed from one. Inside the batch so it appears in the
@@ -397,32 +663,83 @@ class DerivativeWorker:
         #
         # The last beat, and the only one whose gap carries two passes over the whole corpus
         # rather than one photograph. Nothing bounds how long those take; see `lease_seconds_for`.
-        self._beat(repository, claimed)
+        self._beat(repository, claimed, keeper)
         run_continuity(repository, batch_id=claimed.batch_id)
 
     def _beat(
-        self, repository: IngestRepository, claimed: derivative_queue.QueuedDerivatives
+        self,
+        repository: IngestRepository,
+        claimed: derivative_queue.QueuedDerivatives,
+        keeper: _LeaseKeeper | None = None,
     ) -> None:
         """Say this worker is still here, and stop the job when the answer is that it is not."""
+        if keeper is not None and keeper.lost.is_set():
+            raise _LeaseLost
         if not derivative_queue.heartbeat(
             repository.connection,
             repository.workspace_id,
             job_id=claimed.job_id,
             claim_token=claimed.claim_token,
             lease_seconds=self._lease_seconds,
+            worker=self._name,
         ):
             raise _LeaseLost(
                 f"job {claimed.job_id} was reclaimed while this worker held it; withdrawing "
                 "without finishing it and without closing its batch"
             )
 
+    @contextmanager
+    def _renewing_lease(
+        self, workspace_id: uuid.UUID, claimed: derivative_queue.QueuedDerivatives
+    ) -> Iterator[_LeaseKeeper]:
+        keeper = _LeaseKeeper(
+            self._database,
+            workspace_id,
+            claimed,
+            worker=self._name,
+            lease_seconds=self._lease_seconds,
+            interval_seconds=self._heartbeat_seconds,
+        )
+        keeper.start()
+        try:
+            yield keeper
+        finally:
+            keeper.stop()
+
     @staticmethod
     def _job_state(outcome: JobOutcome) -> str:
-        if outcome.failed:
+        if outcome.failed or outcome.retry_exhausted:
             return "failed"
+        if outcome.missing:
+            return "missing"
+        if outcome.unavailable:
+            return "unavailable"
         if outcome.cancelled and not outcome.succeeded:
             return "cancelled"
         return "done"
+
+    @staticmethod
+    def _batch_state(outcome: JobOutcome) -> str:
+        if outcome.failed or outcome.missing or outcome.retry_exhausted:
+            return "failed"
+        if outcome.unavailable:
+            return "partial"
+        return IntakeBatch.outcome_for(succeeded=outcome.succeeded, failed=outcome.failed)
+
+    @staticmethod
+    def _failure_class(outcome: JobOutcome, *, default: str | None = None) -> str | None:
+        if outcome.retry_exhausted:
+            return "retry_exhausted"
+        if outcome.missing:
+            return "missing_input"
+        if outcome.unavailable:
+            return "unavailable"
+        return default
+
+    @staticmethod
+    def _retry_delay(attempt: int) -> float:
+        """Small bounded exponential delay; attempts is the claim that just failed."""
+        return min(60.0, float(2 ** max(0, attempt - 1)))
 
     @staticmethod
     def _close_batch(

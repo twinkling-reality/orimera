@@ -1,7 +1,7 @@
 # Deployment
 
 - Status: mixed, labelled per claim. See [README.md](README.md) for the status convention.
-- Date: 2026-08-28.
+- Date: 2026-08-31.
 - Relationship to other documents: this expands
   [architecture-overview.md](architecture-overview.md) sections 2, 2.1, 4 and 7 into an operational
   plan. Where a platform fact appears in both, the architecture overview is the source and this
@@ -43,9 +43,10 @@ deployment" are different facts and only the first one is true.
 
 What exists in the repository, and is checked by `tests/test_deployment.py`:
 
-*   `Dockerfile`, one image for all three commands: uvicorn serves the API, `orimera-db` migrates
-    and provisions the two roles, `orimera-ingest` ingests a directory. Non-root, no apt packages,
-    liveness on `/healthz` and never on `/readyz`.
+*   `Dockerfile`, one image for the API and console commands: uvicorn serves the API, `orimera-db`
+    migrates and provisions runtime roles, `orimera-ingest` ingests a directory, and
+    `orimera-derivative-worker` drains uploads. Non-root, no apt packages, liveness on `/healthz`
+    and never on `/readyz`.
 *   `.dockerignore`, an allowlist rather than a denylist, because `credentials.py` walks up from
     the working directory looking for a `.env` and a denylist is one forgotten line away from an
     image that carries a credential.
@@ -63,8 +64,8 @@ carries a hostname or an account identifier, so a value typed in by accident fai
 image was exercised rather than only weighed:
 
 *   `uvicorn` serves. The container's own `HEALTHCHECK` reaches `/healthz` and gets 200.
-*   `orimera-ingest --help` and `orimera-db --help` both run, which is the claim at the top of the
-    Dockerfile that one image carries three commands.
+*   `orimera-ingest --help` and `orimera-db --help` both ran in that image. The current image also
+    carries `orimera-derivative-worker`; its import and command contract are checked in the suite.
 *   `POST /intake` accepted a photograph through the container and returned 202, and the
     derivative worker inside it drained the queue: intake and rendition ran, and vision did not,
     because no model credential was passed. That is the correct behaviour and the honest half of
@@ -342,7 +343,7 @@ is done, no claim is made here about range requests being on the browser path.
 
 | Variable | Purpose | Consumed by |
 | --- | --- | --- |
-| `ORIMERA_DATABASE_URL` | **The connection string the API, the ingest command and both workers actually open.** `orimera_app` is the role that belongs behind it, and the composition does not put it there: 5.1.3. No default: `Database.from_env` raises `DatabaseNotConfigured` naming this variable, because a default would connect to something nobody chose | `orimera/db/session.py`, which sets `DATABASE_URL_ENV = "ORIMERA_DATABASE_URL"`. Every connection in the process comes from here. Local socket or loopback, since section 3 puts the database on the same host |
+| `ORIMERA_DATABASE_URL` | **The connection string the API, ingest command and derivative worker open.** The API and worker must use a non-owner role such as `orimera_app`; startup refuses a superuser, BYPASSRLS role, or owner of an RLS table. No default: `Database.from_env` raises rather than connecting somewhere nobody chose | `orimera/db/session.py` and `orimera/db/roles.py`. The one-shot migration service deliberately uses the bootstrap owner URL instead |
 | `NEBIUS_API_KEY` | Bearer credential for Token Factory | The model client. Named in `models.manifest.json` as `api_key_env`, so even the environment variable name is manifest data rather than a literal in code |
 | `TAVILY_API_KEY` | Credential for the public entity lookup | The lookup path only. The feature is opt in and is on the cut list if its egress gate does not hold |
 | `ORIMERA_TEST_DATABASE_URL` | Points the database backed tests at a live PostgreSQL 18 server | Tests only. Unset means those tests skip, which is why the suite runs without a database |
@@ -350,6 +351,7 @@ is done, no claim is made here about range requests being on the browser path.
 | `ORIMERA_API_TOKENS` | Bearer token to workspace grant | No default, because a default would be a credential in a repository |
 | `ORIMERA_READONLY_DATABASE_URL` | The Selection executor's role | Optional, and `/readyz` says so when it is absent |
 | `ORIMERA_DERIVATIVE_WORKER` | Whether this process drains what `POST /intake` queues | Defaults to **on**. Off is for an instance that leaves the queue to somebody else, and `/readyz` reports which it is: a queue nobody drains and a queue drained elsewhere look identical from outside |
+| `ORIMERA_WORKSPACE_IDS` | Comma-separated UUIDs the dedicated derivative worker is authorised to drain | Required by the worker command unless one or more `--workspace` flags are supplied. An empty set is a startup failure, not a healthy idle process |
 | `ORIMERA_APP_ROLE_PASSWORD`, `ORIMERA_EXECUTOR_ROLE_PASSWORD`, `ORIMERA_PURGE_ROLE_PASSWORD` | Passwords for the three roles `orimera-db` provisions | Optional. Set only when supplied, because a deployment authenticating by certificate or by peer has none, and inventing one would create a credential nobody asked for |
 | `ORIMERA_PURGE_DATABASE_URL` | The connection `orimera-purge` uses | No default and **no fallback to the writer**. The purge role holds a cross-workspace read the runtime role must never have, and the runtime role holds writes the purger must never need. Running as the wrong one either destroys another tenant's photograph or cannot tell that it would |
 
@@ -422,34 +424,22 @@ file parts really are unbounded there, and the route's own `MAX_PART_BYTES` chec
 Authentication really is a dependency: `current_session` in `orimera/api/dependencies.py` is
 resolved by `Depends`, and FastAPI resolves dependencies after it has read and parsed the body.
 
-### 5.1.3 Which role belongs behind `ORIMERA_DATABASE_URL`, and which one is there instead
+### 5.1.3 Runtime row-level security is active and checked
 
-`orimera_app` belongs behind it, for the reason 5.1.1 gives in one line: row-level security is
-inert for an owner. **The composition does not do that.** `compose.yaml` sets
-`POSTGRES_USER: orimera`, which is the bootstrap superuser the image's `initdb` creates, and then
-hands both the API and the worker
-`ORIMERA_DATABASE_URL: postgresql://orimera:${POSTGRES_PASSWORD}@postgres:5432/orimera`. So the
-runtime connects as the owner, and three things follow.
+`compose.yaml` now keeps the bootstrap owner URL in the one-shot `migrate` service. The API and
+dedicated derivative worker receive `orimera_app`; the Selection executor receives `orimera_ro`.
+This order matters: migrate as the owner, provision the roles, then start runtime containers with
+credentials that own no table and hold neither SUPERUSER nor BYPASSRLS.
 
-- **The thirty-one `ws_isolation` policies are inert.** `force row level security` makes an ordinary
-  owner subject to a policy; it does not reach a superuser, and PostgreSQL states that a
-  superuser or a role with BYPASSRLS always bypasses row security. What still holds is the
-  trigger half: `assert_workspace_context()` raises for a superuser too, so a WRITE naming the
-  wrong workspace is still refused. Reads are the half with no trigger behind them, so a
-  forgotten `set_config` reads as a cross-workspace SELECT rather than as an empty result.
-- **`Database.unscoped` hides nothing.** Its docstring names the role each half belongs to, and
-  `tests/test_row_level_security.py` asserts both: as `orimera_app` the forced tables read empty,
-  as the owner the same call on the same schema returns the row.
-- **5.4.3's "97 are usable" is a floor, not a ceiling.** `superuser_reserved_connections` reserves
-  slots *for* superusers, so a superuser runtime can take all 100 and leave an administrator
-  unable to connect to the cluster they need in order to fix it.
+The connection string remains the deployment choice, but it is no longer trusted as proof of the
+role behind it. Production startup queries `pg_roles` and the current schema and refuses to serve or
+drain when the current role is a superuser, has BYPASSRLS, or owns any row-level-security table.
+`tests/test_row_level_security.py` exercises both directions against PostgreSQL: the application
+role starts and cannot see another workspace, while the bootstrap owner is rejected. The same
+check runs in the API lifespan and the dedicated worker command before either accepts work.
 
-Nothing in `orimera/api/` or in `orimera/db/session.py` issues a `set role` or looks at
-`RUNTIME_ROLE`, so the connection string is the only thing that decides this. Closing it is a
-compose change and `ORIMERA_APP_ROLE_PASSWORD`, in the order 5.1.1 already fixes: migrate as the
-owner, `orimera-db` provisions the three roles, then point the runtime at `orimera_app`. **It has
-not been done**, and this section exists so that the state is written down rather than inferred
-from a docstring that used to omit it.
+There are now thirty-two workspace-keyed FORCE RLS tables. `derivative_job_event` is the latest;
+its operational replay is scoped by the same session workspace as the job it describes.
 
 
 ### 5.2 What a deployment additionally needs
@@ -551,9 +541,10 @@ where they are actually counted.
 #### 5.4.3 Connection slots, which are what actually runs out
 
 `max_connections = 100` and `superuser_reserved_connections = 3` on the documented target, so 97
-are usable by a role that is not a superuser, and 5.1.3 records that the composition's runtime
-role is one, which means it can take the other three as well. One process holds one backend per in-flight request past its connection dependency,
-plus one for the derivative worker and one for the purge worker. **The threadpool does not cap
+are usable by a role that is not a superuser. Section 5.1.3 records that every runtime process is
+now such a role, leaving the three reserved slots available to an administrator. One API process
+holds one backend per in-flight request past its connection dependency. The dedicated derivative
+worker and purge worker use their own process connections. **The threadpool does not cap
 this**: 48 streams held 48 backends against a 40-thread pool, measured. So the real ceiling for a
 single-process deployment is about 95 concurrent connection-holding requests, and two API
 processes against one cluster share those 97.
@@ -572,17 +563,16 @@ at orientation 1. Measured on CPython 3.11.6, Pillow 12.3.0, one fresh process p
 515.4 MB; repeated, 4.011, 4.003, 514.8 MB. The fourth byte shows up directly in the modes: one
 64 megapixel frame is 64.1 MB as `L`, 256.3 MB as `RGB` and 256.2 MB as `RGBA`.
 
-    worst-case bytes = baseline + T x 67 MB + (D + 1) x 512 MB
+    API worst-case bytes = baseline + T x 67 MB + D x 512 MB
 
-where `T` is the threadpool (40), `D` is the number of decodes running at once and the `+ 1` is
-the in-process derivative worker, which decodes off the request path. The 67 MB per thread is the
+where `T` is the threadpool (40) and `D` is the number of request decodes running at once. The
+production composition disables the in-process worker, so it is not part of the API process's
+peak. The 67 MB per thread is the
 encoded part `_read_and_check` reads into memory before it probes anything
-(`MAX_PART_BYTES + 1`). With nothing bounding `D`, `D` is `T`, and the second term is therefore
-41 decodes rather than 40: **20.5 GiB of decode buffers** (20,992 MiB), plus about 2.7 GB of encoded parts.
-The formula is the half that was right. The aggregate under it used to read 20 GB, which both
-dropped the derivative worker the `+ 1` had just been defined as and rounded 40 x 512 MB down
-from 20.5. A section that exists because `decode.py` understated by a third does not get to
-restate its own total by discarding a term.
+(`MAX_PART_BYTES + 1`). With nothing bounding `D`, `D` is `T`: **20 GiB of decode buffers**
+(20,480 MiB), plus about 2.7 GB of encoded parts. The dedicated derivative worker is a separate
+process with one delivery thread, so budget about another 512 MB per worker process instead of
+silently adding its decode to the API process.
 
 **A semaphore around the decode was proposed and is not implemented.** It bounds the right thing
 by the wrong mechanism: acquiring it inside a synchronous handler blocks a thread that is already
@@ -910,7 +900,7 @@ has happened at least once with a stopwatch running.
 | D-11 | Whether a preview grade service survives the window at all | The canary endpoint's outage log |
 | D-14 | Nothing limits in-flight requests, so a single process can demand more backends than the cluster has slots. Section 5.4.3 measured 48 concurrent streams holding 48 backends against a 40-thread pool and 97 usable slots | Setting `uvicorn --limit-concurrency`, which is the only lever that counts requests where they are actually held. Not set today, and not urgent at one person watching one upload |
 | D-15 | Section 5.4.2's container-restart consequence is arithmetic over a measured latency and the Dockerfile. No container was built or run to observe it | Running the image, saturating it, and watching whether Docker restarts it |
-| D-16 | The runtime connects as the database owner, who is a superuser, so the thirty-one `ws_isolation` policies are inert in the composition. Section 5.1.3 says what still holds, which is the write triggers, and what does not, which is every read | Setting `ORIMERA_APP_ROLE_PASSWORD` and pointing `ORIMERA_DATABASE_URL` at `orimera_app`, in the order 5.1.1 fixes |
+| D-16 | ~~The runtime connects as the database owner, bypassing row-level security~~ **CLOSED 2026-08-31.** The owner credential is confined to migrations; API and derivative-worker composition URLs name `orimera_app`, and both processes refuse unsafe roles at startup | PostgreSQL role tests plus deployment text contract |
 
 ---
 
@@ -1053,7 +1043,7 @@ direction that made the aggregate look smaller, and that has been corrected.
 The derivative worker polls every 2 s and the purge worker every 30 s. Both are cheap at the
 workspace counts this deployment has, and neither interval is worth touching.
 
-**But the claim index has the wrong columns, and this is a defect rather than a tuning knob.**
+**The claim index had the wrong columns, and that defect is closed.**
 `orimera/ingest/derivative_queue.py` selects `where workspace_id = ? and kind = ? and state =
 'queued' and run_after <= now() order by priority, job_id ... limit 1`, and `job_queue_idx` is
 `(state, run_after, priority, job_id) where state = 'queued'`, which carries neither
@@ -1062,7 +1052,7 @@ workspace and 100,000 in two others:
 
 | Index | Plan | Buffers | Time |
 | --- | --- | --- | --- |
-| `job_queue_idx`, as the schema ships | Bitmap Heap Scan, Rows Removed by Filter: 100000 | 1616 | 4.744 ms |
+| old `job_queue_idx` | Bitmap Heap Scan, Rows Removed by Filter: 100000 | 1616 | 4.744 ms |
 | `(workspace_id, kind, run_after, priority, job_id) where state = 'queued'` | Bitmap Heap Scan of all 5,000 matches, then a quicksort | 1672 | 1.835 ms |
 | `(workspace_id, kind, priority, job_id) where state = 'queued'` | **Index Scan**, `run_after` as a filter | **5** | **0.027 ms** |
 
@@ -1072,6 +1062,6 @@ and sorting. That defect is invisible against an empty queue, which is the only 
 benchmark exercises and also the only case that does no work. The third row is the shape to
 build.
 
-**This is coordination, not an instruction.** The index belongs to whoever is editing
-`derivative_queue.py` and the next migration, and it is recorded here so that the one that lands
-is the one that helps.
+Migration 0016 installs the third shape as `job_queue_idx`. The PostgreSQL contract test populates
+8,000 mixed workspace/kind rows, requires that index, requires no sort, and caps touched buffers at
+eight. `run_after` remains a filter so the index preserves `order by priority, job_id` exactly.

@@ -74,6 +74,9 @@ class Upload:
             name="test-drain",
         ).drain()
 
+    def get(self, path: str):
+        return self.client.get(path, headers={"Authorization": f"Bearer {_TOKEN}"})
+
     def rows(self, sql: str, *params):
         return self.repository.connection.execute(sql, params).fetchall()
 
@@ -670,6 +673,35 @@ def test_the_worker_finishes_the_upload_and_closes_the_batch(upload):
     assert upload.rows("select state from job")[0]["state"] == "done"
 
 
+def test_operational_api_reports_measured_queue_metrics_and_complete_delivery_replay(upload):
+    upload.one()
+    queued = upload.get("/operations/derivative-jobs")
+    assert queued.status_code == 200
+    assert queued.json()["depth"] == {"queued": 1, "running": 0}
+    assert queued.json()["oldest_queued_age_ms"] is not None
+
+    upload.drain()
+    job = upload.rows("select job_id from job")[0]["job_id"]
+    metrics = upload.get("/operations/derivative-jobs").json()
+    assert metrics["depth"] == {"queued": 0, "running": 0}
+    assert metrics["states"] == {"done": 1}
+    assert metrics["attempts"] == {"maximum": 1}
+    assert metrics["duration_ms"]["maximum"] is not None
+    assert metrics["cost"]["model_calls"] == 1
+
+    replay = upload.get(f"/operations/derivative-jobs/{job}/events").json()
+    event_types = [event["event_type"] for event in replay]
+    assert event_types[0] == "claim_acquired"
+    assert event_types[-1] == "job_succeeded"
+    assert event_types.count("job_succeeded") == 1
+    assert "lease_renewed" in event_types
+    assert "capture_started" in event_types
+    assert "capture_succeeded" in event_types
+    assert upload.get(
+        f"/operations/derivative-jobs/{uuid.uuid4()}/events"
+    ).json() == [], "an unknown job must not disclose any operational row"
+
+
 def test_no_run_is_left_saying_it_is_still_running(upload):
     """The ledger is the one thing in this system that is supposed to be true about what happened.
 
@@ -723,6 +755,46 @@ def test_a_capture_deleted_between_the_two_halves_cancels_rather_than_fails(uplo
     assert upload.vision.calls == 0, "a model was paid to look at a deleted photograph"
     assert upload.rows("select artifact_id from artifact where stage_key = 'rendition'") == []
     assert upload.rows("select state from job")[0]["state"] == "cancelled"
+
+
+def test_a_deletion_committed_during_a_paid_stage_cancels_the_job_without_an_effect(upload):
+    body = upload.one().json()
+    capture_id = uuid.UUID(body["accepted"][0]["capture_id"])
+
+    class DeletesBeforeReturning:
+        model_id = "MiniMaxAI/MiniMax-M3"
+
+        def __init__(self):
+            self.calls = 0
+
+        def observe(self, *, image_bytes, media_type):
+            self.calls += 1
+            upload.repository.connection.execute(
+                "update capture set deleted_at = now() where capture_id = %s", (capture_id,)
+            )
+            upload.repository.insert_tombstone(
+                scope="capture",
+                capture_id=capture_id,
+                requested_by=uuid.uuid4(),
+                reason="deleted while the vision stage was running",
+            )
+            return CountingVisionModel().observe(
+                image_bytes=image_bytes, media_type=media_type
+            )
+
+    deleting = DeletesBeforeReturning()
+    upload.vision = deleting
+    outcomes = upload.drain()
+
+    assert deleting.calls == 1, "the already-started provider result cannot be unbilled"
+    assert outcomes[0].cancelled == 1
+    assert outcomes[0].failed == 0
+    assert upload.rows("select artifact_id from artifact where stage_key = 'vision'") == []
+    assert upload.rows("select state from job")[0]["state"] == "cancelled"
+    terminal = upload.rows(
+        "select event_type from derivative_job_event where event_type like 'job_%%'"
+    )
+    assert terminal == [{"event_type": "job_cancelled"}]
 
 
 def test_a_capture_soft_deleted_with_no_tombstone_also_cancels(upload):

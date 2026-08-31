@@ -69,7 +69,7 @@ def provision(stream: Any) -> int:
 
 def main(argv: list[str] | None = None, stream: Any = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="orimera-db", description="Apply pending migrations, then grant the two roles."
+        prog="orimera-db", description="Apply pending migrations, then grant runtime roles."
     )
     parser.parse_args(argv)
     return provision(stream or sys.stdout)

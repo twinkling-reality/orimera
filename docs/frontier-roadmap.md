@@ -61,8 +61,8 @@ The status terms in this table describe repository state, not aspiration.
 
 | Capability | Status | What exists | Remaining boundary |
 | --- | --- | --- | --- |
-| Evidence-addressed spine | **BUILT** | Canonical source addresses, spans, assertions, artifacts, tombstones, row-level security, and provenance ledger | Production role configuration and restore rehearsal |
-| Photograph intake | **BUILT** | Idempotent intake, upright normalization, rendition, durable derivative queue, leases, retries, and formation events | Dedicated production worker, measured backpressure, and deployment job adapter |
+| Evidence-addressed spine | **BUILT** | Canonical source addresses, spans, assertions, artifacts, tombstones, active row-level security, and provenance ledger | Backup restore rehearsal |
+| Photograph intake | **BUILT** | Idempotent intake, upright normalization, rendition, dedicated derivative worker, leases, bounded retries, durable delivery replay, and measured queue metrics | Hosted load and backpressure rehearsal |
 | Vision observation | **BUILT** | Strict structured observation schema, evidence-linked inference rows, model manifest, cost and attempt provenance | Real-corpus accuracy and failure measurements |
 | Semantic memory and selection | **BUILT/PARTIAL** | Occurrences, entities, confirmation boundaries, identity proposals, graph snapshots, and validated selection plans | Complete answer path, real-corpus retrieval evaluation, and long-term memory maintenance |
 | Rung 4 source-first region | **BUILT/PARTIAL** | Honest source-first contract and renderer fixtures | Authorized production source delivery and measured envelopes |
@@ -74,7 +74,7 @@ The status terms in this table describe repository state, not aspiration.
 | Adaptive interaction | **PARTIAL** | Proposal tiers, Companion/Settings origin model, comfort settings, choice contracts, and confirmation rules | Durable versioned interaction preferences, learning policy, evaluation, and rollback |
 | World Memory Package | **DECIDED, NOT BUILT** | RO-Crate 1.2 profile direction, Croissant/RAI node, fetch semantics, signed Merkle root, and export privacy rules | Profile schema, projector, signer, verifier, diff, import inspection, and deletion/re-export tests |
 | Evaluation | **BUILT/PARTIAL** | Deterministic corpus tooling, methodology, metrics, authorization checks, and model preflight | Gold labels, real reconstruction results, end-to-end build report, and fixed demo acceptance run |
-| Hosted operation | **PARTIAL** | Container, health/readiness routes, deployment design, and failure policy | Non-owner runtime role, clean deploy, backup restore, external monitor, and production rehearsal |
+| Hosted operation | **PARTIAL** | Container, health/readiness routes, non-owner runtime role, separate derivative worker, deployment design, and failure policy | Clean deploy, backup restore, external monitor, and production rehearsal |
 
 Per-scene Gaussian-splat optimization is therefore already in the roadmap. It appears in the
 product reconstruction ladder, deployment topology, model/service selection, license matrix, and
@@ -244,7 +244,7 @@ style writer cannot bypass the registry or protected topology digest.
 
 ### Phase 1: production asynchronous processing
 
-Status: **NEXT**.
+Status: **BUILT 2026-08-31**.
 
 Deliverables:
 
@@ -263,9 +263,18 @@ Deliverables:
 Exit gate: kill a worker at every stage boundary, restart with two workers, and obtain one canonical
 artifact set, one terminal job state, no duplicate paid model result, and a complete replay ledger.
 
+The gate is executable in `tests/test_derivative_reclaim.py`. It terminates a real worker process
+after the committed intake, rendition, vision, and depth boundaries, expires the abandoned lease,
+then starts two competing processes. Each case finishes with one content-addressed artifact per
+stage and capture, one terminal delivery event, no open pipeline run, and one paid vision result per
+capture. The same PostgreSQL suite covers live lease renewal, retry exhaustion, deletion during a
+paid stage, graceful shutdown, and runtime refusal of an owner or BYPASSRLS-capable database role.
+Operational behavior and the boundary of the guarantee are in
+`derivative-worker-operations.md`.
+
 ### Phase 2: real corpus and evaluation baseline
 
-Status: **NEXT, can overlap Phase 1 after schemas settle**.
+Status: **NEXT; the Phase 1 event schema is settled**.
 
 Deliverables:
 
@@ -529,8 +538,8 @@ The stronger Orimera demonstration is not “AI generated a pretty scene.” It 
 Frontend UI/UX work can continue independently while the backend proceeds in separate worktrees.
 Shared migrations and public schemas have one owner at a time.
 
-1. **Backend processing task:** Phase 1 from `codex/adaptive-world-backend`.
-2. **Corpus/evaluation task:** Phase 2 after the worker event schema is stable; corpus artifacts stay
+1. **Backend processing task:** Phase 1 is complete on `codex/adaptive-world-backend`.
+2. **Corpus/evaluation task:** Phase 2 may begin now that the worker event schema is stable; corpus artifacts stay
    outside Git when they contain personal media.
 3. **Reconstruction task:** Phase 3 behind an artifact/job interface fixed by Phase 1. It does not
    modify Atlas UI.
@@ -550,8 +559,7 @@ the contract accidentally.
 The shortest credible path to the frontier demonstration is:
 
 ```text
-production worker integrity
-  -> real corpus and baseline
+real corpus and baseline
   -> real rung-3 and rung-1 experiment
   -> durable spatial snapshots
   -> adaptive interaction integration

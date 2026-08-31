@@ -40,11 +40,15 @@ from typing import Final
 import psycopg
 from psycopg import sql
 
+from orimera.errors import OrimeraError
+
 __all__ = [
     "EXECUTOR_ROLE",
     "PURGE_ROLE",
     "READ_ONLY_TABLES",
     "RUNTIME_ROLE",
+    "RuntimeRoleUnsafe",
+    "assert_runtime_role",
     "grant_workspace_partition",
     "provision_purge_role",
     "provision_runtime_role",
@@ -125,6 +129,44 @@ _CROSS_WORKSPACE_POLICY: Final = "purge_sees_every_holder_of_these_bytes"
 #: concurrently updated" rather than one of them waiting. Observed with four test processes
 #: against one database, which is what a CI runner is.
 _ROLE_LOCK_KEY: Final = 119_622_309
+
+
+class RuntimeRoleUnsafe(OrimeraError):
+    """The process connected as an owner, superuser, or BYPASSRLS role."""
+
+
+def assert_runtime_role(connection: psycopg.Connection) -> None:
+    """Refuse a runtime connection for which FORCE row-level security is not a boundary.
+
+    The exact role name is not the guarantee; owning nothing, lacking superuser and lacking
+    BYPASSRLS are. This permits certificate- or environment-specific role names while refusing
+    the bootstrap owner the old composition handed to both the API and worker.
+    """
+    row = connection.execute(
+        "select current_user as role_name, r.rolsuper, r.rolbypassrls, "
+        "exists ("
+        "  select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace "
+        "   where n.nspname = current_schema() and c.relrowsecurity "
+        "     and c.relowner = r.oid"
+        ") as owns_rls_table "
+        "from pg_roles r where r.rolname = current_user"
+    ).fetchone()
+    if row is None:
+        raise RuntimeRoleUnsafe("the current database role is absent from pg_roles")
+    unsafe = [
+        name
+        for name, active in (
+            ("SUPERUSER", row["rolsuper"]),
+            ("BYPASSRLS", row["rolbypassrls"]),
+            ("owner of a row-level-security table", row["owns_rls_table"]),
+        )
+        if active
+    ]
+    if unsafe:
+        raise RuntimeRoleUnsafe(
+            f"database role {row['role_name']} is {' and '.join(unsafe)}. The API and derivative "
+            f"worker must connect as a non-owner role without BYPASSRLS; use {RUNTIME_ROLE}."
+        )
 
 
 def provision_runtime_role(

@@ -35,7 +35,13 @@ import uuid
 import psycopg
 import pytest
 from orimera.db.migrate import provision_workspace
-from orimera.db.roles import EXECUTOR_ROLE, RUNTIME_ROLE, provision_runtime_role
+from orimera.db.roles import (
+    EXECUTOR_ROLE,
+    RUNTIME_ROLE,
+    RuntimeRoleUnsafe,
+    assert_runtime_role,
+    provision_runtime_role,
+)
 from orimera.db.session import Database
 from orimera.identity import IdentityRepository
 from psycopg.rows import dict_row
@@ -169,6 +175,39 @@ def test_the_runtime_roles_cannot_bypass_row_level_security(scoped):
         assert row["who"] == role
         assert row["rolsuper"] is False, role
         assert row["rolbypassrls"] is False, role
+
+
+def test_runtime_startup_accepts_the_non_owner_application_role(scoped):
+    connection = scoped.connect(_APP_ROLE, scoped.workspace_a)
+    assert_runtime_role(connection)
+
+
+def test_runtime_startup_refuses_the_bootstrap_owner(scoped):
+    base = os.environ["ORIMERA_TEST_DATABASE_URL"]
+    connection = psycopg.connect(base, autocommit=True, row_factory=dict_row)
+    scoped._open.append(connection)
+    connection.execute(f'set search_path to "{scoped.scratch}", public')
+    with pytest.raises(RuntimeRoleUnsafe, match="must connect as a non-owner"):
+        assert_runtime_role(connection)
+
+
+def test_delivery_replay_cannot_name_a_job_from_another_workspace(scoped):
+    """The event's RLS key and referenced job must describe the same authorization boundary."""
+    from tests_support_api import scratch_database
+
+    with scratch_database(scoped.scratch).session(scoped.workspace_a) as connection:
+        job_id = connection.execute(
+            "insert into job (workspace_id, kind, payload) values (%s, 'derivatives', '{}') "
+            "returning job_id",
+            (scoped.workspace_a,),
+        ).fetchone()["job_id"]
+        with pytest.raises(psycopg.errors.ForeignKeyViolation):
+            connection.execute(
+                "insert into derivative_job_event "
+                "(workspace_id, job_id, worker_id, event_type) "
+                "values (%s, %s, 'boundary-probe', 'claim_acquired')",
+                (scoped.workspace_b, job_id),
+            )
 
 
 @pytest.mark.parametrize("table", ["capture", "evidence_span", "embedding"])
@@ -360,7 +399,8 @@ def test_unscoped_hides_nothing_from_a_role_row_level_security_does_not_reach(sc
     """The second bullet, and the reason the first one has to name a role.
 
     ``Database.unscoped`` opens a connection and declines to declare a workspace. That is all it
-    does. Whether the thirty-one forced tables then read empty is a property of the ROLE:
+    does. Whether the thirty-two workspace-keyed forced tables then read empty is a property of
+    the ROLE:
     PostgreSQL
     bypasses row security outright for a superuser or a role holding BYPASSRLS, and ``force row
     level security`` does not reach either, so the same method on the same schema hands the owner
@@ -368,10 +408,10 @@ def test_unscoped_hides_nothing_from_a_role_row_level_security_does_not_reach(sc
     row-level security is invisible through this connection" with no role attached, and that
     sentence was false for the owner.
 
-    Which matters here rather than in the abstract, because ``compose.yaml`` sets
-    ``ORIMERA_DATABASE_URL`` to the bootstrap superuser: the composition runs on the role this
-    test measures, not on the one the test above measures. ``docs/deployment.md`` section 5.1.3
-    is where that is written down; this is where it is checked.
+    This remains worth measuring after the deployment fix because the bootstrap owner still exists
+    for migrations and maintenance. ``compose.yaml`` no longer hands it to runtime services, and
+    startup rejects it if configuration drifts; this test holds the database fact that makes both
+    safeguards necessary.
 
     Skipped rather than asserted when the owner is an ordinary role, because then there is
     nothing to show: it is subject to FORCE row-level security like any other and the test above

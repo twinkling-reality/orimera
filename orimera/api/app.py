@@ -50,11 +50,13 @@ from orimera.api.routes import (
     health,
     identity,
     intake,
+    operations,
     selection,
     world,
 )
 from orimera.api.services import Services, build_services
 from orimera.db.migrate import verify_schema
+from orimera.db.roles import assert_runtime_role
 from orimera.errors import (
     BlobNotFoundError,
     EpistemicViolation,
@@ -107,6 +109,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     services: Services = app.state.services
     if app.state.verify_schema_at_boot:
         verify_schema(services.database)
+        with services.database.unscoped() as connection:
+            assert_runtime_role(connection)
     worker = services.build_derivative_worker()
     app.state.derivative_worker = worker
     if worker is not None:
@@ -145,6 +149,7 @@ def create_app(services: Services | None = None, *, verify: bool = True) -> Fast
     app.include_router(evidence.router)
     app.include_router(formation.router)
     app.include_router(intake.router)
+    app.include_router(operations.router)
     app.include_router(world.router)
 
     @app.exception_handler(BodyTooLarge)

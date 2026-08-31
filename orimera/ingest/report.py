@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
 
 from orimera.evidence.blob import BlobId
@@ -31,10 +32,19 @@ class IngestOutcome:
     stages_run: list[str] = field(default_factory=list)
     stages_reused: list[str] = field(default_factory=list)
     stages_skipped: list[str] = field(default_factory=list)
+    #: Reviewed stages that could not run because their configured implementation or input was
+    #: unavailable. Kept beside ``stages_skipped`` for compatibility with existing summaries;
+    #: the durable ledger records the sharper state.
+    stages_unavailable: list[str] = field(default_factory=list)
     model_calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    usd_estimate: Decimal = Decimal("0")
     error: str | None = None
+    failure_class: str | None = None
+    retryable: bool = False
+    missing: bool = False
+    unavailable: bool = False
     #: True when the run stopped because the user had deleted these bytes. A separate fact from
     #: ``error``, which it also sets: "the user deleted this" and "this broke" are different
     #: things and only one of them is worth retrying. The ledger has recorded the distinction

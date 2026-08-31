@@ -176,7 +176,9 @@ def test_bumping_a_stage_version_regenerates_only_that_stage(bench, monkeypatch)
     # became a no-op and the assertion below turned into "nothing was reprocessed".
     bumped = STAGES["vision"].version + 1
     monkeypatch.setitem(STAGES, "vision", dataclasses.replace(STAGES["vision"], version=bumped))
-    third = pipeline.ingest_directory(photos)
+    # A stage definition is reviewed at process startup. Rebuild the pipeline as the new
+    # deployment would, so the additive definition is registered before its first event.
+    third = PhotoIngestPipeline(repository, store, vision=vision).ingest_directory(photos)
 
     assert vision.calls == 4, "a version bump must reprocess"
     assert third.model_calls == 2
@@ -204,7 +206,7 @@ def test_changing_a_stage_parameter_changes_the_key_without_a_version_bump(bench
     )
 
     assert pipeline_digest() != digest_before
-    fourth = pipeline.ingest_directory(photos)
+    fourth = PhotoIngestPipeline(repository, store, vision=vision).ingest_directory(photos)
     assert [o.stages_run for o in fourth.outcomes] == [["rendition"]] * 2
     assert vision.calls == calls_before
 
@@ -224,7 +226,7 @@ def test_a_rendition_change_that_does_change_the_pixels_does_rebill_vision(
     monkeypatch.setitem(
         STAGES, "rendition", dataclasses.replace(STAGES["rendition"], params=params)
     )
-    again = pipeline.ingest_directory(photo_dir)
+    again = PhotoIngestPipeline(repository, store, vision=vision).ingest_directory(photo_dir)
     assert again.outcomes[0].stages_run == ["rendition", "vision"]
     assert vision.calls == 2
 
@@ -286,12 +288,37 @@ def test_ingest_without_a_vision_model_records_capture_facts_and_says_vision_did
     # reported as skipped rather than as failed. The capture is complete for
     # capture-supported facts and incomplete for inference, which is two different things.
     assert outcome.stages_skipped == ["vision", "depth"]
+    assert outcome.stages_unavailable == ["vision", "depth"]
     assert outcome.model_calls == 0
+    unavailable = repository.connection.execute(
+        "select stage_key, duration_ms, cost, error_class from pipeline_event "
+        "where run_id = %s and type = 'stage_unavailable' order by seq",
+        (outcome.run_id,),
+    ).fetchall()
+    assert [row["stage_key"] for row in unavailable] == ["vision", "depth"]
+    assert all(row["duration_ms"] is None and row["cost"] is None for row in unavailable)
+    assert all(row["error_class"] == "unavailable" for row in unavailable)
     kinds = [
         row["kind"]
         for row in repository.connection.execute("select kind from assertion").fetchall()
     ]
     assert kinds and set(kinds) == {"capture"}
+
+
+def test_every_current_stage_definition_has_a_reviewed_additive_registration(
+    tmp_path, repository
+):
+    PhotoIngestPipeline(repository, LocalContentAddressedStore(tmp_path / "blobs"))
+    definitions = {
+        (row["stage_key"], row["stage_version"], bytes(row["params_digest"]))
+        for row in repository.connection.execute(
+            "select stage_key, stage_version, params_digest from stage_definition "
+            "where review_status = 'reviewed'"
+        ).fetchall()
+    }
+    assert definitions == {
+        (spec.key, spec.version, spec.params_digest) for spec in STAGES.values()
+    }
 
 
 def test_the_pipeline_digest_is_computed_from_the_registry_not_maintained_by_hand():
@@ -347,7 +374,7 @@ def test_editing_the_prompt_reprocesses_the_corpus(bench, monkeypatch):
         STAGES, "vision", dataclasses.replace(STAGES["vision"], params=vision_stage_params())
     )
 
-    report = pipeline.ingest_directory(photos)
+    report = PhotoIngestPipeline(repository, store, vision=model).ingest_directory(photos)
 
     assert model.calls == 4, "editing the prompt made no model call; the corpus never reprocessed"
     assert report.model_calls == 2

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from decimal import Decimal
 from typing import Any, Final
 
 from orimera.evidence import PHOTOGRAPH_INTERVAL, EvidenceAddress
@@ -60,6 +61,12 @@ def run(
         # is no key to look an artifact up by. Reporting this as skipped rather than reused
         # is also the more honest of the two: this run did not process vision.
         outcome.stages_skipped.append(spec.key)
+        outcome.stages_unavailable.append(spec.key)
+        ledger.unavailable(
+            spec,
+            reason="no vision model is configured for this worker",
+            input_blob=blob_id,
+        )
         return
     input_digest = input_digest_of([rendition.content_sha256])
     key = idempotency_key(blob_id, spec, input_digest, binding=binding)
@@ -83,6 +90,7 @@ def run(
         outcome.model_calls += 1
         outcome.input_tokens += int(result.cost.get("input_tokens", 0))
         outcome.output_tokens += int(result.cost.get("output_tokens", 0))
+        outcome.usd_estimate += Decimal(str(result.cost.get("usd_estimate", "0")))
 
         document = {
             "header": {

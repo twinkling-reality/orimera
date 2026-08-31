@@ -8,7 +8,10 @@ Four stages, each one idempotent by construction and each one a module in ``stag
     rendition  a 768 px display-space JPEG with no EXIF, the only pixels a model ever sees
     vision     one structured call, producing model inferences that each carry an evidence
                address and are filed as inference and never as anything else
-    scene      time and GPS clustering across captures, producing PROPOSALS (see scenes.py)
+    depth      one optional point-map prediction, producing a derived reconstruction artifact
+
+Scene grouping runs once over the corpus after these per-capture stages, from the worker or
+directory command, and produces proposals rather than pretending to be a fifth capture stage.
 
 This module sequences them and owns the two things they share: the transaction whose object
 store writes land after it commits, and the artifact writer. What a stage is allowed to reach
@@ -44,7 +47,7 @@ from typing import Final
 from PIL import Image
 
 from orimera.canonical import sha256_digest
-from orimera.errors import TombstonedError
+from orimera.errors import BlobNotFoundError, TombstonedError
 from orimera.evidence import EvidenceAddress
 from orimera.evidence.blob import BlobId
 from orimera.ingest.batch import IntakeBatch
@@ -65,6 +68,13 @@ from orimera.ingest.stages import rendition as rendition_stage
 from orimera.ingest.stages import vision as vision_stage
 from orimera.ingest.stages.writes import StageResult
 from orimera.ingest.vision import VisionModel
+from orimera.models.errors import (
+    ModelUnavailableError,
+    NoFallbackError,
+    StructuredOutputError,
+    TransportError,
+    TruncatedResponseError,
+)
 from orimera.reconstruction import DepthModel
 from orimera.store.base import ContentAddressedStore
 
@@ -336,7 +346,12 @@ class PhotoIngestPipeline:
         return outcome
 
     def ingest_derivatives(
-        self, capture_id: uuid.UUID, *, batch_id: uuid.UUID | None = None
+        self,
+        capture_id: uuid.UUID,
+        *,
+        batch_id: uuid.UUID | None = None,
+        delivery_job_id: uuid.UUID | None = None,
+        delivery_claim_token: uuid.UUID | None = None,
     ) -> IngestOutcome:
         """Run rendition, vision and depth for a capture whose intake has already committed.
 
@@ -353,7 +368,12 @@ class PhotoIngestPipeline:
         """
         outcome = IngestOutcome(path=Path(str(capture_id)))
         outcome.capture_id = capture_id
-        with self._recorded_run(outcome, batch_id=batch_id) as ledger:
+        with self._recorded_run(
+            outcome,
+            batch_id=batch_id,
+            delivery_job_id=delivery_job_id,
+            delivery_claim_token=delivery_claim_token,
+        ) as ledger:
             capture = self._repository.capture(capture_id)
             if capture is None:
                 raise LookupError(f"this workspace has no capture {capture_id}")
@@ -371,6 +391,14 @@ class PhotoIngestPipeline:
 
             intake = self._repository.find_artifact(intake_stage.key_for(blob_id))
             if intake is None or intake.content_sha256 is None:
+                ledger.missing(
+                    STAGES["intake"],
+                    reason=(
+                        f"capture {capture_id} has no committed intake artifact, so derivative "
+                        "processing cannot begin"
+                    ),
+                    input_blob=blob_id,
+                )
                 raise LookupError(
                     f"capture {capture_id} has no committed intake artifact, so there is nothing "
                     "to derive from. Ingest the photograph rather than resuming it."
@@ -399,7 +427,12 @@ class PhotoIngestPipeline:
 
     @contextmanager
     def _recorded_run(
-        self, outcome: IngestOutcome, *, batch_id: uuid.UUID | None
+        self,
+        outcome: IngestOutcome,
+        *,
+        batch_id: uuid.UUID | None,
+        delivery_job_id: uuid.UUID | None = None,
+        delivery_claim_token: uuid.UUID | None = None,
     ) -> Iterator[Ledger]:
         """Open a run, and close it with what happened rather than with what was attempted.
 
@@ -414,16 +447,23 @@ class PhotoIngestPipeline:
             trigger="ingest",
             pipeline_digest=self.pipeline_digest,
             batch_id=batch_id,
+            delivery_job_id=delivery_job_id,
+            delivery_claim_token=delivery_claim_token,
         )
         outcome.run_id = ledger.run_id
         try:
             yield ledger
         except TombstonedError as exc:
             outcome.error = f"tombstoned: {exc}"
+            outcome.failure_class = "cancelled"
             outcome.tombstoned = True
             ledger.finish("cancelled")
         except Exception as exc:
             outcome.error = f"{type(exc).__name__}: {exc}"
+            outcome.failure_class = type(exc).__name__
+            outcome.missing = isinstance(exc, (BlobNotFoundError, LookupError))
+            outcome.unavailable = isinstance(exc, (ModelUnavailableError, NoFallbackError))
+            outcome.retryable = _retryable(exc)
             ledger.finish("failed")
         else:
             ledger.finish("succeeded")
@@ -494,6 +534,18 @@ def _decode(data: bytes) -> tuple[Image.Image, ExifFacts]:
         return open_upright(data)
     except UNREADABLE as exc:
         raise ValueError(f"not a readable image: {exc}") from exc
+
+
+def _retryable(exc: Exception) -> bool:
+    """Whether running the same reviewed stage later can plausibly change the outcome.
+
+    Retry only failures whose types carry that meaning. Configuration, missing input, budget
+    refusal, integrity failure and programmer errors are terminal; treating every exception as
+    transient is an automated spend loop disguised as resilience.
+    """
+    if isinstance(exc, TransportError):
+        return exc.retryable
+    return isinstance(exc, (StructuredOutputError, TruncatedResponseError))
 
 
 def _iter_images(directory: Path, *, recursive: bool) -> Iterator[Path]:

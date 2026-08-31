@@ -10,9 +10,10 @@ inference-class assertion on the capture, which is the only class it could hones
 model looked at a photograph and reported how much of it could be placed. It supports no
 historical clause and could not, because the vocabulary refuses.
 
-With no depth model configured the stage is reported as SKIPPED rather than run, exactly as
-vision is. A capture with no point map is a rung 4 region, which is a real rung with a real
-experience, and the absence of a stage is not the same fact as a stage that failed.
+With no depth model configured the compatibility summary still lists the stage as skipped, while
+the durable ledger records the sharper `stage_unavailable` fact. A capture with no point map is a
+rung 4 region, which is a real rung with a real experience, and the absence of an implementation
+is not the same fact as a stage that failed.
 """
 
 from __future__ import annotations
@@ -54,6 +55,12 @@ def run(
     spec = stage("depth")
     if model is None:
         outcome.stages_skipped.append(spec.key)
+        outcome.stages_unavailable.append(spec.key)
+        ledger.unavailable(
+            spec,
+            reason="no depth model is configured for this worker",
+            input_blob=blob_id,
+        )
         return
 
     input_digest = input_digest_of([intake.content_sha256])

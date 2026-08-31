@@ -58,6 +58,8 @@ ROUTE_PROBES: dict[tuple[str, str], dict] = {
     ("GET", "/evidence/{span_id}"): {},
     ("GET", "/evidence/{span_id}/region"): {},
     ("GET", "/identity/events"): {},
+    ("GET", "/operations/derivative-jobs"): {},
+    ("GET", "/operations/derivative-jobs/{job_id}/events"): {},
     ("GET", "/world/styles/catalog"): {},
     ("GET", "/world/styles/current"): {},
     ("GET", "/world/styles/versions"): {},
@@ -153,6 +155,8 @@ class Deployment:
             "{batch_id}", str(self.batch_id)
         ).replace("{preview_id}", str(uuid.uuid4())).replace(
             "{source_id}", str(uuid.uuid4())
+        ).replace(
+            "{job_id}", str(uuid.uuid4())
         )
 
 

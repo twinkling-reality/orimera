@@ -38,8 +38,10 @@ import pytest
 from orimera.errors import EpistemicViolation, TombstonedError
 from orimera.evidence import Modality
 from orimera.ingest import pipeline as pipeline_module
+from orimera.ingest.ledger import Ledger
 from orimera.ingest.pipeline import PhotoIngestPipeline
 from orimera.ingest.resolve import resolve_region_image
+from orimera.ingest.stages import StageSpec
 from orimera.store.base import PurgeAuthorization, privileged_purger
 from orimera.store.local import LocalContentAddressedStore
 from orimera.store.resolve import address_from_span_row, resolve_original_bytes
@@ -594,6 +596,20 @@ def test_the_ledger_records_every_stage_with_timing_and_its_inputs(ingested):
         assert event["params_digest"] is not None
 
 
+def test_the_ledger_refuses_an_unreviewed_stage_definition(tmp_path, repository):
+    PhotoIngestPipeline(repository, LocalContentAddressedStore(tmp_path / "blobs"))
+    ledger = Ledger.start_run(repository, trigger="manual")
+    invented = StageSpec(
+        key="publication",
+        version=1,
+        output_kind="invented",
+        deterministic=True,
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="is not registered"):
+        ledger.skipped(invented, reason="a caller tried to invent a stage")
+    assert ledger.finish("failed")
+
+
 def test_the_ledger_records_the_model_and_its_token_usage(ingested):
     repository, _store, _pipeline, _path, outcome = ingested
     vision = next(
@@ -979,13 +995,13 @@ def _annotations_naming_a_connection() -> list[str]:
 def test_every_spine_function_takes_a_workspace_scope():
     """Nothing in the spine package is reachable by a session that named no workspace.
 
-    31 tables are under FORCE row-level security keyed on ``current_workspace()``, which is what
+    32 tables are under FORCE row-level security keyed on ``current_workspace()``, which is what
     those policies compare against, and the tombstone and epistemic guards go further: they call
     ``assert_workspace_context()`` and raise when it is unset, because a guard that silently sees
     no tombstones is worse than no guard. So no path into the spine package may begin with a
     connection that has not declared one, and ``WorkspaceScope`` has no constructor that skips
     the declaration. ``test_the_prose_count_of_workspace_isolated_tables_matches_the_schema``
-    is what keeps that 22 a measurement rather than a memory.
+    is what keeps that 32 a measurement rather than a memory.
 
     This is checked structurally because there is nothing else to check it with. There is no
     ``[tool.mypy]`` and no pyright configuration in ``pyproject.toml``, so the parameter type is

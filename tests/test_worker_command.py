@@ -1,0 +1,76 @@
+"""The dedicated derivative-worker process contract, without starting a signal loop."""
+
+from __future__ import annotations
+
+import io
+import json
+import uuid
+from types import SimpleNamespace
+
+import pytest
+from orimera.ingest import worker_command
+
+
+def test_workspace_configuration_is_explicit_deduplicated_and_validated():
+    first, second = uuid.uuid4(), uuid.uuid4()
+    resolved = worker_command.parse_workspaces(
+        [str(first)], {worker_command.WORKSPACES_ENV: f"{first}, {second}"}
+    )
+    assert resolved == frozenset({first, second})
+    with pytest.raises(ValueError, match="silently drains nothing"):
+        worker_command.parse_workspaces([], {})
+    with pytest.raises(ValueError, match="UUIDs only"):
+        worker_command.parse_workspaces(["all"], {})
+
+
+def test_startup_failure_is_machine_readable_and_returns_failure():
+    output = io.StringIO()
+    result = worker_command.main(
+        ["--once", "--workspace", str(uuid.uuid4())], environ={}, stream=output
+    )
+    assert result == 1
+    event = json.loads(output.getvalue())
+    assert event["component"] == "derivative-worker"
+    assert event["event"] == "startup_failed"
+    assert event["failure_class"] == "DatabaseNotConfigured"
+
+
+def test_once_mode_uses_observed_lifecycle_and_reports_terminal_counts(monkeypatch):
+    class FakeWorker:
+        name = "worker-a"
+        workspace_count = 2
+
+        def __init__(self):
+            self.observed = False
+
+        def drain_observed(self):
+            self.observed = True
+            return [
+                SimpleNamespace(failed=1, cancelled=2, unavailable=3),
+                SimpleNamespace(failed=0, cancelled=0, unavailable=0),
+            ]
+
+    worker = FakeWorker()
+    monkeypatch.setattr(worker_command, "_build_worker", lambda args, environ: worker)
+    output = io.StringIO()
+
+    assert worker_command.main(["--once"], environ={}, stream=output) == 0
+    assert worker.observed
+    events = [json.loads(line) for line in output.getvalue().splitlines()]
+    assert events == [
+        {
+            "component": "derivative-worker",
+            "event": "startup",
+            "mode": "once",
+            "worker": "worker-a",
+            "workspaces": 2,
+        },
+        {
+            "cancelled": 2,
+            "component": "derivative-worker",
+            "event": "stopped",
+            "failed": 1,
+            "jobs": 2,
+            "unavailable": 3,
+        },
+    ]

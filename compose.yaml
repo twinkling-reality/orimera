@@ -35,8 +35,8 @@ services:
     command: ["orimera-db"]
     environment:
       ORIMERA_DATABASE_URL: postgresql://orimera:${POSTGRES_PASSWORD}@postgres:5432/orimera
-      ORIMERA_APP_ROLE_PASSWORD: ${ORIMERA_APP_ROLE_PASSWORD:-}
-      ORIMERA_EXECUTOR_ROLE_PASSWORD: ${ORIMERA_EXECUTOR_ROLE_PASSWORD:-}
+      ORIMERA_APP_ROLE_PASSWORD: ${ORIMERA_APP_ROLE_PASSWORD:?set ORIMERA_APP_ROLE_PASSWORD; the runtime must not use the owner}
+      ORIMERA_EXECUTOR_ROLE_PASSWORD: ${ORIMERA_EXECUTOR_ROLE_PASSWORD:?set ORIMERA_EXECUTOR_ROLE_PASSWORD; the executor has its own read-only role}
     depends_on:
       postgres:
         condition: service_healthy
@@ -44,19 +44,37 @@ services:
   api:
     build: .
     environment:
-      ORIMERA_DATABASE_URL: postgresql://orimera:${POSTGRES_PASSWORD}@postgres:5432/orimera
-      # Set this and /readyz stops warning that the Selection executor runs as the write role.
-      # Left unset the API still works; it reports what it is running without, which is the
-      # point of the warning rather than a nag.
-      ORIMERA_READONLY_DATABASE_URL: ${ORIMERA_READONLY_DATABASE_URL:-}
+      # Runtime processes never receive the bootstrap owner credential. PostgreSQL superusers
+      # bypass row-level security even on FORCE tables, so this role choice is a data boundary.
+      ORIMERA_DATABASE_URL: postgresql://orimera_app:${ORIMERA_APP_ROLE_PASSWORD}@postgres:5432/orimera
+      ORIMERA_READONLY_DATABASE_URL: postgresql://orimera_ro:${ORIMERA_EXECUTOR_ROLE_PASSWORD}@postgres:5432/orimera
       # No default. `load_token_directory` raises when it is unset, and an API that started with
       # an empty token directory would accept nobody while looking healthy.
       ORIMERA_API_TOKENS: ${ORIMERA_API_TOKENS:?set ORIMERA_API_TOKENS; there is no default}
       ORIMERA_DATA_DIR: /var/lib/orimera
+      # Production delivery belongs to the separate worker service below. The in-process worker
+      # remains available for a one-process development run, but this composition does not use it.
+      ORIMERA_DERIVATIVE_WORKER: "off"
+      NEBIUS_API_KEY: ${NEBIUS_API_KEY:-}
     volumes:
       - media:/var/lib/orimera
     ports:
       - "${ORIMERA_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  derivative-worker:
+    build: .
+    command: ["orimera-derivative-worker"]
+    restart: unless-stopped
+    environment:
+      ORIMERA_DATABASE_URL: postgresql://orimera_app:${ORIMERA_APP_ROLE_PASSWORD}@postgres:5432/orimera
+      ORIMERA_WORKSPACE_IDS: ${ORIMERA_WORKSPACE_IDS:?set ORIMERA_WORKSPACE_IDS to the comma-separated workspaces this worker may drain}
+      ORIMERA_DATA_DIR: /var/lib/orimera
+      NEBIUS_API_KEY: ${NEBIUS_API_KEY:-}
+    volumes:
+      - media:/var/lib/orimera
     depends_on:
       migrate:
         condition: service_completed_successfully

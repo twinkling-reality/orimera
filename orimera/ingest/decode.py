@@ -64,9 +64,10 @@ synchronous route runs in the ASGI server's threadpool, so the aggregate is that
 number of threads, and nothing here limits how many decode at once. Measured against uvicorn
 rather than read from anyio: 120 concurrent requests to a synchronous handler ran 40 at a time
 across 40 distinct worker threads, which is anyio's hard-coded default and nothing in this
-deployment chose it. The in-process derivative worker decodes off the request path and makes a
-forty-first, so the worst case is 41 x 512 MB, about 21 GB, and ``docs/deployment.md`` section
-5.4.4 carries that arithmetic and the sizing it implies.
+deployment chose it. The production composition disables the in-process derivative worker, so
+the API-process worst case is 40 x 512 MB, about 20 GiB. Its dedicated derivative worker is a
+separate process with one delivery thread and roughly one more 512 MB decode peak.
+``docs/deployment.md`` section 5.4.4 carries that arithmetic and the sizing it implies.
 
 **A semaphore around the decode is the wrong repair and was rejected on measurement.** Acquiring
 one inside a synchronous handler blocks a thread that is *already* holding one of anyio's 40

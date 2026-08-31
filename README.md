@@ -237,7 +237,7 @@ Three environment variables, and the API refuses to start without the first two 
 defaulting to something:
 
 ```bash
-export ORIMERA_DATABASE_URL=postgresql://localhost:5433/orimera
+export ORIMERA_DATABASE_URL=postgresql://orimera_app:<password>@localhost:5433/orimera
 export ORIMERA_API_TOKENS='{"<a long random token>":{"workspace_id":"<uuid>","actor":"<uuid>"}}'
 export ORIMERA_DATA_DIR=.orimera/local          # where the content-addressed store lives
 uv run uvicorn --factory orimera.api.app:create_app --port 8000
@@ -250,9 +250,21 @@ silent is worse than one that is absent:
   SELECT and nothing else. Without it the executor runs as the write role.
 - `NEBIUS_API_KEY` enables the two endpoints that need a model. Without it they return 503 and
   every other endpoint works.
-- `ORIMERA_DERIVATIVE_WORKER=off` serves the API without draining what `POST /intake` queues.
-  It defaults to on, because an instance serving that route with nothing draining the queue is
-  an upload that never finishes.
+- `ORIMERA_DERIVATIVE_WORKER=off` leaves `POST /intake` jobs to the dedicated production worker.
+  The local composition sets it off and runs that worker as a separately restartable service.
+
+For the production process shape, give both commands the same non-owner database URL and data
+directory, then run:
+
+```bash
+export ORIMERA_WORKSPACE_IDS=<workspace-uuid>[,<workspace-uuid>...]
+uv run orimera-derivative-worker
+```
+
+The command refuses an owner, superuser, or BYPASSRLS database role and refuses an empty workspace
+set. SIGTERM and SIGINT stop new claims, allow the held claim to finish for the configured grace
+period, and record startup, shutdown, claims, lease renewal, retries, reclaim, progress, and the one
+terminal result durably. See [the derivative worker runbook](docs/derivative-worker-operations.md).
 
 ### Uploading photographs
 
@@ -331,7 +343,7 @@ that starts Orimera end to end.
 | `orimera/ingest/` | The photograph ingest pipeline: EXIF, orientation, derivatives, vision, scene grouping, the provenance ledger, the CLI, the derivative queue and the worker that drains it |
 | `orimera/models/` | The Token Factory client, the model manifest, preflight, the budget guard, the response cache, strict json_schema handling, reasoning-token stripping |
 | `orimera/store/` | Content-addressed storage |
-| `orimera/migrations/` | The forward-only PostgreSQL schema history, from `0001_spine.sql` through migration 0016 |
+| `orimera/migrations/` | The forward-only PostgreSQL schema history, from `0001_spine.sql` through migration 0018 |
 | `orimera/db/` | Connections carrying the workspace context, the migration runner, the runtime roles |
 | `orimera/epistemics/` | Writing a claim under exactly one of the four provenance classes |
 | `orimera/identity/` | Occurrence keys, the identity tables, and the user decisions that promote an occurrence to a person |

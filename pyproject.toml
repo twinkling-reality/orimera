@@ -100,6 +100,9 @@ orimera-eval = "orimera.evaluation.cli:main"
 # refuses to run without it, because the runtime role cannot see whether another workspace still
 # holds the bytes and would destroy them anyway.
 orimera-purge = "orimera.deletion.cli:main"
+# `uv run orimera-derivative-worker`. The production queue consumer: a separate process with
+# renewable leases, signal-aware shutdown and a durable delivery ledger.
+orimera-derivative-worker = "orimera.ingest.worker_command:main"
 
 [dependency-groups]
 dev = [

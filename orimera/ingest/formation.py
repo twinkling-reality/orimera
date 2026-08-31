@@ -282,7 +282,7 @@ def _event_for(
     index = FORMATION_STAGES.index(phase)
     at = _ms(row["occurred_at"])
 
-    if row["type"] == "stage_failed":
+    if row["type"] in ("stage_failed", "stage_unavailable", "stage_missing"):
         # A failure is an event in the stream and carries the pipeline's own message in the slot
         # marked as coming from the pipeline. The honest label is written client-side from the
         # numbers; this is the note beside it, never merged into it.
@@ -389,10 +389,11 @@ def _terminal(
         "select count(*) as n from match_proposal where workspace_id = %s and outcome = 'surfaced'",
         (workspace_id,),
     ).fetchone()
-    failed = connection.execute(
-        "select pe.stage_key, pe.error_class from pipeline_event pe "
+    stopped = connection.execute(
+        "select pe.type, pe.stage_key, pe.error_class from pipeline_event pe "
         "join pipeline_run pr on pr.run_id = pe.run_id "
-        "where pr.workspace_id = %s and pr.batch_id = %s and pe.type = 'stage_failed' "
+        "where pr.workspace_id = %s and pr.batch_id = %s "
+        "and pe.type in ('stage_failed','stage_unavailable','stage_missing') "
         "order by pe.event_id desc limit 1",
         (workspace_id, batch["batch_id"]),
     ).fetchone()
@@ -414,11 +415,15 @@ def _terminal(
         "openQuestions": questions,
         "photographsAvailable": int(available["n"]) if available else 0,
     }
-    if phase in ("partial", "failed") and failed is not None:
-        stopped = PHASE_OF_STAGE.get(failed["stage_key"] or "")
-        if stopped is not None:
-            outcome["stoppedAt"] = stopped
-        outcome["reason"] = "cancelled" if status == "cancelled" else "stage_error"
+    if phase in ("partial", "failed") and stopped is not None:
+        stopped_phase = PHASE_OF_STAGE.get(stopped["stage_key"] or "")
+        if stopped_phase is not None:
+            outcome["stoppedAt"] = stopped_phase
+        reason = {
+            "stage_unavailable": "unavailable",
+            "stage_missing": "missing",
+        }.get(stopped["type"], "stage_error")
+        outcome["reason"] = "cancelled" if status == "cancelled" else reason
 
     return FormationEvent(
         event_id=f"batch:{batch['batch_id']}:{status}",
