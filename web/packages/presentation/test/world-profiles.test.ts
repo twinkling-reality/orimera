@@ -5,6 +5,8 @@ import {
   ORIGIN_LANDSCAPE,
   SURVEY_RELIEF,
   WORLD_ART_PROFILES,
+  contrastRatio,
+  deriveWorldUiColors,
   resolveWorldStyleParameters,
   worldStyleControls,
   worldArtProfile,
@@ -20,6 +22,37 @@ describe('world art profiles', () => {
     expect(ORIGIN_LANDSCAPE.compatibilityKey).toBe(SURVEY_RELIEF.compatibilityKey);
     expect(ORIGIN_LANDSCAPE.semanticChannels).toEqual(SURVEY_RELIEF.semanticChannels);
     expect(ORIGIN_LANDSCAPE.palette.sky).not.toBe(ORIGIN_LANDSCAPE.palette.terrain);
+  });
+
+  it('derives a coherent interface language from each world without replacing topology', () => {
+    expect(ORIGIN_LANDSCAPE.ui.colors).not.toEqual(SURVEY_RELIEF.ui.colors);
+    expect(ORIGIN_LANDSCAPE.ui.typography).not.toEqual(SURVEY_RELIEF.ui.typography);
+    expect(ORIGIN_LANDSCAPE.ui).not.toHaveProperty('geometry');
+    expect(SURVEY_RELIEF.ui).not.toHaveProperty('geometry');
+    expect(ORIGIN_LANDSCAPE.ui.material.companionBlur).toBeGreaterThan(
+      SURVEY_RELIEF.ui.material.companionBlur,
+    );
+    expect(ORIGIN_LANDSCAPE.ui.texture.kind).toBe('paper-grain');
+    expect(SURVEY_RELIEF.ui.texture.kind).toBe('contour-grid');
+    expect(ORIGIN_LANDSCAPE.ui.motion).not.toEqual(SURVEY_RELIEF.ui.motion);
+    expect(ORIGIN_LANDSCAPE.compatibilityKey).toBe(SURVEY_RELIEF.compatibilityKey);
+  });
+
+  it('does not accept an independently authored interface palette and guarantees readable roles', () => {
+    expect(ORIGIN_LANDSCAPE.ui.colors).toEqual(deriveWorldUiColors(ORIGIN_LANDSCAPE.palette));
+    expect(SURVEY_RELIEF.ui.colors).toEqual(deriveWorldUiColors(SURVEY_RELIEF.palette));
+    expect(contrastRatio(
+      ORIGIN_LANDSCAPE.ui.colors.ink,
+      ORIGIN_LANDSCAPE.ui.colors.raised,
+    )).toBeGreaterThanOrEqual(7);
+    expect(contrastRatio(
+      ORIGIN_LANDSCAPE.ui.colors.body,
+      ORIGIN_LANDSCAPE.ui.colors.surface,
+    )).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(
+      ORIGIN_LANDSCAPE.ui.colors.companionText,
+      ORIGIN_LANDSCAPE.ui.colors.companionSurface,
+    )).toBeGreaterThanOrEqual(7);
   });
 
   it('keeps exposure and art profile as orthogonal axes', () => {
@@ -42,6 +75,8 @@ describe('world art profiles', () => {
 
   it('gives each style its own capability-backed controls and resolves dynamic Aeroheart values', () => {
     expect(worldStyleControls('origin-landscape').map((control) => control.capability)).toContain('material.transmission');
+    expect(worldStyleControls('origin-landscape').map((control) => control.capability)).toContain('surface.finish');
+    expect(worldStyleControls('origin-landscape').map((control) => control.capability)).toContain('motion.tempo');
     expect(worldStyleControls('survey-relief').map((control) => control.capability)).toContain('detail.contours');
     expect(worldStyleControls('origin-landscape')).not.toEqual(worldStyleControls('survey-relief'));
 
@@ -51,10 +86,17 @@ describe('world art profiles', () => {
       vitality: 0.1,
       glass: 0.2,
       'garden-density': 0.1,
+      'surface-finish': 'clear-lens',
+      'world-tempo': 1.25,
     });
     expect(tuned.palette.terrain).not.toBe(ORIGIN_LANDSCAPE.palette.terrain);
     expect(tuned.material.gloss).toBeLessThan(ORIGIN_LANDSCAPE.material.gloss);
     expect(tuned.geometry.detailCount).toBeLessThan(ORIGIN_LANDSCAPE.geometry.detailCount);
+    expect(tuned.ui.colors).not.toEqual(ORIGIN_LANDSCAPE.ui.colors);
+    expect(tuned.ui.colors).toEqual(deriveWorldUiColors(tuned.palette));
+    expect(tuned.ui.texture.kind).toBe('none');
+    expect(tuned.ui.material.textureOpacity).toBe(0);
+    expect(tuned.ui.motion.idleCycleMs).toBe(4_160);
     expect(worldArtProfile('origin-landscape', 1, defaults)).toEqual(
       worldArtProfile('origin-landscape', 1, defaults),
     );
@@ -72,5 +114,19 @@ describe('world art profiles', () => {
       defaultValue: 0.5,
     }])).toContainEqual(expect.objectContaining({ key: 'vitality' }));
     expect(validateWorldStyleControlManifest(worldStyleControls('origin-landscape'))).toEqual([]);
+    expect(validateWorldStyleControlManifest([{
+      key: 'finish', capability: 'surface.finish', kind: 'choice', group: 'material',
+      label: 'Finish', description: 'Unsupported remote material.',
+      options: [
+        { value: 'source-paper', label: 'Source paper' },
+        { value: 'remote-css', label: 'Remote CSS' },
+      ],
+      defaultValue: 'source-paper',
+    }])).toContainEqual(expect.objectContaining({ key: 'finish' }));
+    expect(validateWorldStyleControlManifest([{
+      key: 'tempo', capability: 'motion.tempo', kind: 'range', group: 'motion',
+      label: 'Tempo', description: 'Invalid generated default.', min: 0.75, max: 1.25,
+      step: 0.05, defaultValue: 8,
+    }])).toContainEqual(expect.objectContaining({ key: 'tempo' }));
   });
 });
