@@ -1,13 +1,6 @@
 /**
- * The chrome: one top bar, built once, shown on every surface.
- *
- * It used to be built inside the landing pane, which meant the Method sheet and the Atlas each had
- * their own idea of what the top of the screen looks like, and the sheet had no way home except a
- * button that said Close. Three surfaces with three different headers is three designs.
- *
- * So the bar lives outside all of them and above all of them. It always shows the same
- * destinations in the same order and in the same style; what changes between surfaces is only
- * which one is marked as current, and whether Home is offered.
+ * One signed-out top bar, built once and shared by the title and Method surfaces. Destinations
+ * keep the same order and interaction; only the current marker and Home affordance change.
  */
 
 import { el } from './dom.js';
@@ -17,7 +10,7 @@ export const REPOSITORY_URL = 'https://github.com/twinkling-reality/orimera';
 export const DOCS_URL = `${REPOSITORY_URL}/tree/main/docs`;
 
 /** Where the visitor is. The bar marks the current one and offers Home from everywhere else. */
-export type Surface = 'title' | 'method' | 'atlas';
+export type Surface = 'title' | 'method';
 
 export interface ChromeActions {
   onHome(): void;

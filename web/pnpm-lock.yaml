@@ -136,12 +136,6 @@ importers:
 
   packages/landing:
     dependencies:
-      '@orimera/atlas-core':
-        specifier: workspace:*
-        version: link:../atlas-core
-      '@orimera/formation':
-        specifier: workspace:*
-        version: link:../formation
       '@orimera/presentation':
         specifier: workspace:*
         version: link:../presentation

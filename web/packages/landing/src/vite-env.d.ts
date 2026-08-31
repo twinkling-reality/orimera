@@ -4,3 +4,12 @@
  * or DOM-adjacent globals), so the module shape is declared here rather than pulled in wholesale.
  */
 declare module '*.css';
+
+interface ImportMetaEnv {
+  readonly DEV: boolean;
+  readonly VITE_ATLAS_URL?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}

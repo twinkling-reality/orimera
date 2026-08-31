@@ -1,10 +1,8 @@
 /*
  * The landing surface.
  *
- * Two grounds, one set of tokens. `[data-ground="pale"]` is the signed-out page and
- * `[data-ground="deep"]` is the Atlas interior, and the canvas behind the DOM lerps between the
- * same two palettes continuously. The DOM flips its tokens behind the pane fade, so the change of
- * ground is only ever seen as one continuous move.
+ * The signed-out title and Method share one pale Orimera ground. The Atlas owns its own world
+ * identity in `@orimera/app`; this package does not duplicate or imitate that surface.
  *
  * Typography is a system stack at light weights rather than a web font: no network request on
  * first paint, no layout shift when a face arrives, and on the stated target machine it resolves
@@ -13,16 +11,12 @@
 
 :root {
   --rule: color-mix(in srgb, var(--ink) 14%, transparent);
-  --panel: color-mix(in srgb, var(--raised) 55%, transparent);
-  --panel-line: color-mix(in srgb, var(--ink) 10%, transparent);
-  --scrim: color-mix(in srgb, var(--ground) 84%, transparent);
 
   --step: clamp(0.6rem, 1.4vh, 1.1rem);
   --measure: 34rem;
 
   --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial,
     sans-serif;
-  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
 }
 
 * {
@@ -88,34 +82,6 @@ body {
 }
 
 /*
- * The deep ground is the SAME directional field, relit.
- *
- * Not a different background and not the light one dimmed. It is the same arrangement of light in
- * the same places with the values inverted, which is what makes entering the Atlas read as the
- * lights going down in a room you are already standing in rather than as a page swap. The planes
- * keep the same directions on purpose; that correspondence is the whole effect.
- */
-#mesh-deep {
-  --field-key-color: var(--blue-hour-field-key);
-  --field-crosslight-color: var(--blue-hour-field-crosslight);
-  --field-afterimage-color: var(--blue-hour-field-afterimage);
-  --field-bounce-color: var(--blue-hour-field-bounce);
-  --field-rim-color: var(--blue-hour-field-rim);
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0;
-  background-color: var(--blue-hour-ground);
-  background-image: var(--field-image);
-  transition: opacity 900ms cubic-bezier(0.65, 0, 0.35, 1);
-}
-
-:root[data-ground='deep'] #mesh-deep {
-  opacity: 1;
-}
-
-/*
  * The grain, over whichever ground is showing.
  *
  * An inline SVG turbulence rather than a raster tile: no request, no cache entry, and it resolves
@@ -130,12 +96,6 @@ body {
   mix-blend-mode: multiply;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.22'/%3E%3C/svg%3E");
   transition: opacity 900ms ease;
-}
-
-/* Multiply over near-black would erase the grain, so on the deep ground it lightens instead. */
-:root[data-ground='deep'] #grain {
-  mix-blend-mode: screen;
-  opacity: 0.32;
 }
 
 #overlay {
@@ -164,9 +124,8 @@ body {
 /*
  * The landing page is not a column, so it opts out of the shared pane box.
  *
- * `.pane` centres a 62rem column and is right for the Atlas. Here the hero is centred over the
- * full frame and only the reading matter below it is measured, so the constraint moves down to
- * `.below` where it belongs.
+ * The hero is centred over the full frame and Method measures its own reading column, so both
+ * signed-out surfaces opt out of the base pane width and padding.
  */
 .pane-title,
 .pane-method {
@@ -410,9 +369,6 @@ body {
  * rather than starting there, which is the only reveal on the screen: one property, on one
  * element, moving nothing else.
  */
-/* Named `proposition`, not `headline`: the formation console already owns `.headline` for a
-   capture's status line, and two unrelated things under one class is how a stylesheet starts
-   fighting itself. */
 .proposition {
   margin: 0;
   /*
@@ -447,9 +403,8 @@ body {
 /*
  * The start prompt.
  *
- * A real button, not just a key hint. Pointer lock does not exist on iOS Safari or Android
- * Chrome (interaction-model.md 2.1) and neither does a keyboard, so a title screen whose only
- * way in is a keystroke has no way in at all on the devices most likely to open it.
+ * A real navigation link, not just a key hint. Pointer and keyboard input follow the same URL,
+ * and the link keeps the browser's native open, copy, history, and accessibility semantics.
  */
 .start {
   appearance: none;
@@ -467,10 +422,19 @@ body {
   text-indent: 0.3em;
   text-transform: uppercase;
   color: var(--ink-soft);
+  text-decoration: none;
   cursor: pointer;
   opacity: 0;
   animation: rise 1100ms cubic-bezier(0.22, 1, 0.36, 1) 860ms forwards;
   transition: color 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.entry-status {
+  margin: clamp(1rem, 2vh, 1.8rem) 0 0;
+  font-size: 0.78rem;
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
 }
 
 .start:hover,
@@ -499,127 +463,6 @@ body {
 @keyframes breathe {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.58; }
-}
-
-/* --------------------------------------------------------------- companion */
-
-/*
- * The Companion panel, anchored lower left.
- *
- * This signed-out surface has no Atlas material from which to form the screen-space mote body.
- * The panel therefore keeps a quiet fixed position and does not pretend that a memory presence
- * exists before any memories are available.
- *
- * There is no tether because there is no separate body to associate with the panel here.
- */
-.companion {
-  position: fixed;
-  left: clamp(1.5rem, 4vw, 3rem);
-  bottom: clamp(1.5rem, 4vh, 2.5rem);
-  z-index: 4;
-  width: min(24rem, calc(100vw - 3rem));
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.9rem;
-}
-
-.companion-body {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  padding: 1.2rem 1.3rem 1.25rem;
-  border: 1px solid var(--panel-line);
-  border-radius: 3px;
-  background: var(--panel);
-  backdrop-filter: blur(20px) saturate(1.05);
-  animation: companion-in 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes companion-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: none; }
-}
-
-.companion-line {
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 300;
-  line-height: 1.68;
-  color: var(--ink);
-}
-
-.companion-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.1rem;
-}
-
-/*
- * Options are text, and the dismissal is quieter than the offer.
- *
- * Not equal-weight buttons. "Later" costs nothing and is always available, but it is not the
- * thing being offered, and styling the two identically would make the panel read as a dialog
- * asking permission rather than as somebody offering something.
- */
-.companion-option,
-.companion-summon {
-  position: relative;
-  appearance: none;
-  border: 0;
-  background: none;
-  font: inherit;
-  font-size: 0.86rem;
-  font-weight: 300;
-  color: var(--ink);
-  padding: 0.25rem 0;
-  cursor: pointer;
-  transition: color 420ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.companion-option-quiet {
-  color: var(--ink-faint);
-}
-
-.companion-option::after,
-.companion-summon::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: currentColor;
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.companion-option:hover::after,
-.companion-option:focus-visible::after,
-.companion-summon:hover::after,
-.companion-summon:focus-visible::after {
-  transform: scaleX(1);
-}
-
-.companion-option:hover,
-.companion-option:focus-visible,
-.companion-summon:hover,
-.companion-summon:focus-visible {
-  color: var(--ink);
-}
-
-.companion-summon {
-  color: var(--ink-soft);
-}
-
-/* The origin marker on a region, beside the rung it earned rather than over the whole surface. */
-.region-origin {
-  margin: 0;
-  font-size: 0.78rem;
-  font-weight: 300;
-  letter-spacing: 0.02em;
-  color: var(--ink-faint);
 }
 
 /* ---------------------------------------------------------------- boundary */
@@ -810,293 +653,6 @@ body {
 .steps p,
 /* The four provenance classes. Distinguishable by mark shape as well as by colour, because a
    colour-only distinction is not a distinction for every reader. */
-
-/* ------------------------------------------------------------- atlas pane */
-
-/*
- * The Atlas surface, in the same register as everything else.
- *
- * It used to be a boxed console: a panel with a border, a dashed monospace warning, a bulleted
- * stage list and a row of buttons. Every one of those is a debugging affordance, and together
- * they read as scaffolding somebody forgot to take out. What it is actually showing is honest and
- * worth showing, so it is set as text in a column, the way the rest of the product is.
- *
- * Nothing it says has changed. The mock disclosure is still first and still unmissable, because
- * product-specification.md 4.1 requires a pre-ingested replay to disclose itself on the surface it
- * appears on.
- */
-.pane-atlas {
-  display: block;
-  height: 100dvh;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0;
-}
-
-.pane-atlas > * {
-  max-width: 38rem;
-  margin-inline: auto;
-  padding-inline: clamp(1.5rem, 5vw, 3rem);
-}
-
-.atlas-head {
-  display: grid;
-  gap: 0.7rem;
-  padding-top: clamp(7rem, 18vh, 11rem);
-}
-
-.atlas-lede {
-  margin: 0;
-  font-size: clamp(1rem, 1.15vw, 1.08rem);
-  font-weight: 300;
-  line-height: 1.78;
-  color: var(--ink-soft);
-}
-
-.arrival {
-  margin: 0;
-  font-size: 0.84rem;
-  font-weight: 300;
-  color: var(--accent);
-}
-
-.atlas-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1.4rem;
-  padding-bottom: clamp(5rem, 14vh, 9rem);
-  padding-top: clamp(2rem, 6vh, 3.5rem);
-}
-
-.standing-caption {
-  margin: 0;
-  font-size: 0.8rem;
-  font-weight: 300;
-  line-height: 1.6;
-  color: var(--ink-faint);
-}
-
-/* A text control, not a button. Same hairline-from-the-left as everything else that is clickable. */
-.ghost,
-.scenario {
-  position: relative;
-  appearance: none;
-  border: 0;
-  background: none;
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 300;
-  color: var(--ink-soft);
-  padding: 0.3rem 0;
-  cursor: pointer;
-  transition: color 420ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.ghost::after,
-.scenario::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: currentColor;
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.ghost:hover,
-.ghost:focus-visible,
-.scenario:hover,
-.scenario:focus-visible {
-  color: var(--ink);
-}
-
-.ghost:hover::after,
-.ghost:focus-visible::after,
-.scenario:hover::after,
-.scenario:focus-visible::after {
-  transform: scaleX(1);
-}
-
-/* -------------------------------------------------------- formation console */
-
-.console {
-  display: grid;
-  gap: 1.5rem;
-  padding-top: clamp(2.5rem, 7vh, 4rem);
-}
-
-/*
- * The mock disclosure.
- *
- * Still the first thing in the panel and still in a colour nothing else uses, but no longer a
- * dashed monospace box. It is a sentence about what you are looking at, so it is set as one.
- */
-.mock-banner {
-  margin: 0;
-  font-size: 0.84rem;
-  font-weight: 300;
-  line-height: 1.65;
-  color: #a2571a;
-  border-left: 1px solid currentColor;
-  padding-left: 0.9rem;
-}
-
-:root[data-ground='deep'] .mock-banner {
-  color: #e8a45f;
-}
-
-.console-heading,
-.scenarios-head {
-  margin: 0;
-  font-size: 0.7rem;
-  font-weight: 300;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-}
-
-.track {
-  margin: 0.5rem 0 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.42rem;
-}
-
-.track-step {
-  display: grid;
-  grid-template-columns: 0.7rem 1fr;
-  align-items: center;
-  gap: 0.75rem;
-  font-size: 0.84rem;
-  font-weight: 300;
-  color: var(--ink-faint);
-  opacity: 0.5;
-}
-
-.track-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  border: 1px solid currentColor;
-}
-
-.track-step.is-passed {
-  opacity: 0.8;
-}
-
-.track-step.is-passed .track-dot {
-  background: currentColor;
-}
-
-.track-step.is-current {
-  opacity: 1;
-  color: var(--accent);
-}
-
-.track-step.is-current .track-dot {
-  background: currentColor;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
-}
-
-.track-outcome.is-failed,
-.track-outcome.is-partial {
-  color: #c0662a;
-}
-
-.label {
-  display: grid;
-  gap: 0.6rem;
-}
-
-.stage-name {
-  margin: 0;
-  font-size: 0.7rem;
-  font-weight: 300;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--ink-faint);
-}
-
-.headline {
-  margin: 0;
-  font-size: clamp(1.04rem, 1.2vw, 1.14rem);
-  font-weight: 300;
-  line-height: 1.5;
-  color: var(--ink);
-}
-
-.detail {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.35rem;
-  font-size: 0.88rem;
-  font-weight: 300;
-  line-height: 1.7;
-  color: var(--ink-soft);
-}
-
-.idle {
-  margin: 0;
-  font-size: 0.94rem;
-  font-weight: 300;
-  line-height: 1.75;
-  color: var(--ink-soft);
-}
-
-/*
- * Elapsed time and stream notes stay monospace.
- *
- * The only monospace left on the page, and it earns it: these are the two fields that change
- * while you watch, and a proportional face makes a running number jitter as its digits swap
- * width. Everything else that was monospace was monospace for atmosphere.
- */
-.elapsed,
-.note {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: 0.74rem;
-  color: var(--ink-faint);
-  font-variant-numeric: tabular-nums;
-}
-
-.meter {
-  height: 1px;
-  background: var(--rule);
-  overflow: hidden;
-}
-
-.meter-fill {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: var(--accent);
-  transition: width 220ms linear;
-}
-
-/* Contact lost: the panel says so, and nothing in it moves. */
-.console[data-stream='lost'] .meter-fill {
-  transition: none;
-  background: var(--ink-faint);
-}
-
-.scenarios {
-  display: grid;
-  gap: 0.7rem;
-  padding-top: 0.4rem;
-}
-
-.scenario-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.2rem;
-}
 
 /* ------------------------------------------------------------------ focus */
 

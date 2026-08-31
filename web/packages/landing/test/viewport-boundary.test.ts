@@ -33,7 +33,7 @@ describe('the viewport boundary', () => {
 describe('the landing atmosphere', () => {
   it('uses the shared directional field without decorative gradient circles', () => {
     const style = readFileSync('packages/landing/src/style.css', 'utf8');
-    expect(style.match(/var\(--field-image\)/g)).toHaveLength(2);
+    expect(style.match(/var\(--field-image\)/g)).toHaveLength(1);
     expect(style).not.toContain('radial-gradient');
   });
 });

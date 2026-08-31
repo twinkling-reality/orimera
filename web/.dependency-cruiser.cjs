@@ -233,18 +233,16 @@ module.exports = {
 
     // ---- landing: the signed-out surface -----------------------------------------------------
     {
-      name: 'landing-imports-atlas-core-and-formation-only',
+      name: 'landing-imports-presentation-only',
       severity: 'error',
       comment:
-        'The landing page and the entrance transition must not depend on the ADR-0003 outcome, ' +
-        'and must not pay for a 3D engine on first paint. It may import atlas-core (for the ' +
-        'epistemic vocabulary, the rung ladder and the same phyllotaxis seed the layout solver ' +
-        'uses) and formation (the stage-event contract it demonstrates), and nothing else in the ' +
-        'workspace. The renderer ban is already covered by ' +
+        'The landing page is the signed-out title and Method surface. It links to the canonical ' +
+        'app instead of composing another Atlas, so its only workspace dependency is the shared ' +
+        'semantic presentation contract. The renderer ban is already covered by ' +
         'engine-specific-code-stays-behind-the-binding, which does not list landing among the ' +
         'packages allowed to name an engine.',
       from: { path: pkg('landing') },
-      to: { path: notPkgRef('landing', 'atlas-core', 'formation', 'presentation') },
+      to: { path: notPkgRef('landing', 'presentation') },
     },
 
     // ---- app: the composition root ---------------------------------------------------------
