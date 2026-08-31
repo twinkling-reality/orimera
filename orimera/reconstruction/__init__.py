@@ -32,6 +32,12 @@ from orimera.reconstruction.pose import (
     SourceFrame,
     run_colmap_pose_job,
 )
+from orimera.reconstruction.splat import (
+    SplatBuildManifest,
+    SplatJobResult,
+    SplatQuality,
+    run_gsplat_job,
+)
 from orimera.reconstruction.validation import (
     OpmIntegrityError,
     OpmIntegrityReport,
@@ -56,10 +62,14 @@ __all__ = [
     "RungDecision",
     "Segment",
     "SourceFrame",
+    "SplatBuildManifest",
+    "SplatJobResult",
+    "SplatQuality",
     "Viewpoint",
     "build_point_map",
     "decide_rung",
     "encode_opm",
     "run_colmap_pose_job",
+    "run_gsplat_job",
     "validate_opm",
 ]
