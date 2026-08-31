@@ -110,6 +110,10 @@ orimera-derivative-worker = "orimera.ingest.worker_command:main"
 # `uv run orimera-wmp project ...` creates a signed, independently verifiable World Memory
 # Package; verify, inspect, and diff never open PostgreSQL.
 orimera-wmp = "orimera.world_package.cli:main"
+# `uv run orimera-frontier demonstrate ...` is the Phase 8 source-to-package acceptance path.
+# It composes the existing boundaries and requires explicit confirmation for its one durable
+# source tombstone.
+orimera-frontier = "orimera.orchestration.cli:main"
 
 [dependency-groups]
 dev = [
@@ -207,6 +211,9 @@ type = "layers"
 exhaustive = true
 containers = ["orimera"]
 layers = [
+  # Phase 8 is the one workflow that intentionally composes every lower product boundary.
+  # Nothing imports it; it is an executable acceptance path rather than reusable domain logic.
+  "orchestration",
   # Package projection reads every durable plane, but none of those planes may know about an
   # export representation.  Phase 8 orchestration will sit above this boundary.
   "world_package",

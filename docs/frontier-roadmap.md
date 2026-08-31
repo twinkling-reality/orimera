@@ -73,7 +73,8 @@ The status terms in this table describe repository state, not aspiration.
 | Adaptive appearance | **BUILT** | Reviewed profile registry, validated parameters, immutable global/regional versions, preview/apply/discard/rollback, concurrency, source states, and audit provenance | Frontend client adoption and structural proposal path |
 | Adaptive interaction | **BUILT/PARTIAL** | Reviewed capability registry, immutable versions, Settings and Companion preview paths, direct-choice apply, explicit Companion review, rollback, inspection, recommendations, and cross-device hydration | Real-participant comprehensibility and longitudinal stability evaluation |
 | World Memory Package | **BUILT AND EXIT-GATED** | RO-Crate 1.2 Orimera profile, Croissant/RAI node, honest external references, canonical manifest, signed Merkle root, append-only receipt, offline verify/inspect/diff/import-check, privacy scan, and deletion re-export | Receiver-side transactional import remains intentionally deferred |
-| Evaluation | **BUILT/PARTIAL** | Deterministic corpus tooling, methodology, metrics, authorization checks, and model preflight | Gold labels, real reconstruction results, end-to-end build report, and fixed demo acceptance run |
+| Evaluation | **BUILT/PARTIAL** | Deterministic corpus tooling, methodology, metrics, authorization checks, model preflight, and a generated-fixture end-to-end acceptance run | Gold labels, real reconstruction results, and an authorized personal-corpus frontier run |
+| Frontier demonstration | **IMPLEMENTED/REAL RUN BLOCKED** | Strict versioned manifest, one source-to-package command, real formation/evidence/Selection/world/adaptation/export paths, clean verifier, reuse receipt, and deletion diff | User-authorized ordinary photo directory, selected real credentials/hardware modes, and user-supplied signing key |
 | Hosted operation | **PARTIAL** | Container, health/readiness routes, non-owner runtime role, separate derivative worker, deployment design, and failure policy | Clean deploy, backup restore, external monitor, and production rehearsal |
 
 Per-scene Gaussian-splat optimization is therefore already in the roadmap. It appears in the
@@ -444,7 +445,11 @@ has a new root whose diff names the removed and recomputed state.
 
 ### Phase 8: end-to-end frontier demonstration
 
-Status: **PLANNED**.
+Status: **IMPLEMENTED AND DEVELOPMENT-EXIT-GATED; AUTHORIZED PERSONAL-CORPUS RUN PENDING**. See
+[`frontier-demonstration.md`](frontier-demonstration.md) for the strict manifest, destructive
+boundary, command, output contract, and executable evidence. The PostgreSQL acceptance run uses
+generated photographs and a counting model fake; it proves the orchestration mechanics and does
+not substitute for consented media, live model results, or real reconstruction quality.
 
 The demonstration starts from an ordinary authorized photo directory and runs the real pipeline:
 
@@ -465,6 +470,13 @@ front of cached reconstruction or special-cases the scripted questions.
 Exit gate: one command or one top-level task orchestrates the stages from a versioned manifest,
 produces the runtime world, receipt, evaluation report, and signed package, and stops only when every
 mandatory gate passes or a named honest fallback is terminal.
+
+`orimera-frontier demonstrate` now satisfies that mechanical gate, including exact evidence
+opening, validated deterministic answer, actual-rung world composition, style and structural stale
+rejection, clean-process verification, zero-call artifact reuse, and one-source deletion/re-export.
+The frontier milestone itself remains open until the command is run on a user-authorized personal
+directory with user-owned signing/credential/hardware decisions; none were supplied during this
+implementation.
 
 ### Phase 9: post-MVP learning research
 

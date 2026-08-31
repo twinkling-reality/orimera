@@ -1,0 +1,205 @@
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import uuid
+
+import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from orimera.models.manifest import MANIFEST_PATH as MODEL_MANIFEST_PATH
+from orimera.orchestration import load_build_manifest, run_frontier_demonstration
+from orimera.orchestration.cli import main as frontier_main
+from orimera.orchestration.demonstration import FrontierDemonstrationError
+from orimera.world_package import verify_package
+
+from conftest import CountingVisionModel, write_photo
+
+pytestmark = pytest.mark.postgres
+
+
+def _manifest(tmp_path, photo_dir, workspace_id, actor_id, *, vision="configured"):
+    sources = []
+    for path in sorted(photo_dir.iterdir()):
+        data = path.read_bytes()
+        sources.append(
+            {
+                "path": path.name,
+                "sha256": hashlib.sha256(data).hexdigest(),
+                "bytes": len(data),
+            }
+        )
+    document = {
+        "profile": "orimera-frontier-build/v1",
+        "workspace_id": str(workspace_id),
+        "actor_id": str(actor_id),
+        "world_id": "atlas:default",
+        "sources": sources,
+        "pipeline": {
+            "vision": vision,
+            "depth": "unavailable",
+            "model_manifest_sha256": hashlib.sha256(MODEL_MANIFEST_PATH.read_bytes()).hexdigest(),
+        },
+        "precomputed_artifacts": [],
+        "adaptation": {
+            "profile_id": "origin-landscape",
+            "profile_version": 1,
+            "parameters": {"vitality": 1},
+        },
+        "deletion_demo": {"path": sources[0]["path"]},
+    }
+    path = tmp_path / "frontier-build.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return load_build_manifest(path)
+
+
+def test_frontier_demonstration_runs_every_gate_without_fabricating_reconstruction(
+    repository, tmp_path
+):
+    photo_dir = tmp_path / "authorized-photos"
+    photo_dir.mkdir()
+    write_photo(photo_dir, "a.jpg", when="2026:08:27 10:00:00", make="Orimera-A")
+    write_photo(photo_dir, "b.jpg", when="2026:08:27 10:05:00", make="Orimera-B")
+    actor = uuid.uuid4()
+    manifest = _manifest(tmp_path, photo_dir, repository.workspace_id, actor)
+    vision = CountingVisionModel()
+    output = tmp_path / "frontier-output"
+
+    receipt = run_frontier_demonstration(
+        repository.connection,
+        manifest=manifest,
+        photo_dir=photo_dir,
+        data_dir=tmp_path / "data",
+        output=output,
+        private_key=Ed25519PrivateKey.generate(),
+        confirm_source_deletion=True,
+        vision=vision,
+    )
+
+    assert receipt["status"] == "passed-with-declared-fallbacks"
+    assert vision.calls == 2
+    assert receipt["formation"]["model_calls"] == 2
+    assert receipt["repeat"]["ingest"]["model_calls"] == 0
+    assert receipt["repeat"]["ingest"]["stages_run"] == []
+    assert receipt["repeat"]["world"]["state"] == "reused"
+    assert {"intake", "rendition", "vision"} <= set(receipt["repeat"]["ingest"]["stages_reused"])
+    assert receipt["evidence"]["state"] == "opened-and-hash-verified"
+    assert receipt["evidence"]["uri"].startswith("orimera://blob/")
+    assert receipt["semantic_graph_and_answer"]["packet"]["item_count"] == 2
+    assert receipt["semantic_graph_and_answer"]["answer"]["clauses"]
+    assert receipt["world"]["stale_preview"] == "rejected"
+    assert {value["rung"] for value in receipt["world"]["regions"]} == {4}
+    assert {value["rung_state"] for value in receipt["world"]["regions"]} == {
+        "fallback-no-reconstruction"
+    }
+    assert receipt["adaptation"]["stale_preview"] == "rejected"
+    assert receipt["adaptation"]["current_semantics_restored"] is True
+    assert receipt["deletion"]["remaining_regions"] == 1
+    assert receipt["deletion"]["original_photo_file_deleted"] is False
+    assert receipt["deletion"]["package_diff"]["changed"] is True
+    assert any(
+        change["kind"] == "removed" and "/memory~1graph.json/captures/" in change["pointer"]
+        for change in receipt["deletion"]["package_diff"]["semantic_changes"]
+    )
+    assert photo_dir.joinpath(receipt["deletion"]["manifest_path"]).is_file()
+
+    for name in ("package-initial", "package-repeat", "package-after-deletion"):
+        report = verify_package(output / name)
+        assert report.merkle_root_sha256
+    assert (output / "frontier-receipt.json").read_bytes() == json.dumps(
+        receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode()
+    assert (
+        repository.connection.execute(
+            "select count(*) as n from world_package_export where workspace_id=%s",
+            (repository.workspace_id,),
+        ).fetchone()["n"]
+        == 3
+    )
+    assert (
+        repository.connection.execute(
+            "select count(*) as n from capture where workspace_id=%s and deleted_at is not null",
+            (repository.workspace_id,),
+        ).fetchone()["n"]
+        == 1
+    )
+
+
+def test_frontier_demonstration_requires_explicit_source_deletion_authority(repository, tmp_path):
+    photo_dir = tmp_path / "authorized-photos"
+    photo_dir.mkdir()
+    write_photo(photo_dir, "a.jpg", make="Orimera-A")
+    write_photo(photo_dir, "b.jpg", make="Orimera-B")
+    manifest = _manifest(tmp_path, photo_dir, repository.workspace_id, uuid.uuid4())
+
+    with pytest.raises(FrontierDemonstrationError, match="source_deletion_confirmation_required"):
+        run_frontier_demonstration(
+            repository.connection,
+            manifest=manifest,
+            photo_dir=photo_dir,
+            data_dir=tmp_path / "data",
+            output=tmp_path / "frontier-output",
+            private_key=Ed25519PrivateKey.generate(),
+            confirm_source_deletion=False,
+            vision=CountingVisionModel(),
+        )
+    assert not (tmp_path / "frontier-output").exists()
+
+
+def test_frontier_demonstration_names_the_capture_only_and_source_first_fallbacks(
+    cli_database, tmp_path
+):
+    photo_dir = tmp_path / "authorized-photos"
+    photo_dir.mkdir()
+    write_photo(photo_dir, "a.jpg", when="2026:08:27 10:00:00", make="Orimera-A")
+    write_photo(photo_dir, "b.jpg", when="2026:08:27 10:05:00", make="Orimera-B")
+    workspace_id = uuid.uuid4()
+    _manifest(
+        tmp_path,
+        photo_dir,
+        workspace_id,
+        uuid.uuid4(),
+        vision="unavailable",
+    )
+    key_path = tmp_path / "test-signing-key.pem"
+    key_path.write_bytes(
+        Ed25519PrivateKey.generate().private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    output = tmp_path / "frontier-output"
+
+    status = frontier_main(
+        [
+            "demonstrate",
+            "--manifest",
+            str(tmp_path / "frontier-build.json"),
+            "--photo-dir",
+            str(photo_dir),
+            "--data-dir",
+            str(tmp_path / "data"),
+            "--output",
+            str(output),
+            "--private-key",
+            str(key_path),
+            "--confirm-source-deletion",
+        ],
+        stream=io.StringIO(),
+    )
+    receipt = json.loads((output / "frontier-receipt.json").read_bytes())
+
+    assert status == 0
+    assert receipt["formation"]["model_calls"] == 0
+    assert receipt["semantic_graph_and_answer"]["state"] == "supported-and-validated"
+    assert {value["gate"] for value in receipt["terminal_fallbacks"]} >= {
+        "vision",
+        "reconstruction",
+        "region-rung",
+    }
+    assert all(
+        package["clean_process_verification"]["state"] == "verified"
+        for package in receipt["packages"].values()
+    )
