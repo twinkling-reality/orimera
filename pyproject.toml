@@ -215,7 +215,7 @@ layers = [
   # module the layering says nothing about. It sits one step under the API, which is where an
   # upward import is easiest to write and hardest to notice.
   "graph | selection | ingest",
-  "identity",
+  "world | identity",
   "epistemics",
   # Erasure sits under everything that writes, because everything that writes may have to ask
   # for it: `orimera.ingest` writes the tombstone that fills the queue, and there is one

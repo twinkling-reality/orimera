@@ -98,6 +98,18 @@ def test_every_migration_is_a_single_transaction_with_no_down_path(migration):
         "tombstone",
         "purge_job",
         "job",
+        "world_style_capability_registry",
+        "world_art_profile_registry",
+        "world_art_profile_parameter",
+        "world_topology_contract",
+        "world_topology_region",
+        "world_topology_source",
+        "world_style_version",
+        "world_region_style_version",
+        "world_style_state",
+        "world_style_proposal",
+        "world_style_preview",
+        "world_style_audit_event",
     ],
 )
 def test_every_required_table_exists(table):

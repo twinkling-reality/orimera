@@ -58,6 +58,36 @@ ROUTE_PROBES: dict[tuple[str, str], dict] = {
     ("GET", "/evidence/{span_id}"): {},
     ("GET", "/evidence/{span_id}/region"): {},
     ("GET", "/identity/events"): {},
+    ("GET", "/world/styles/catalog"): {},
+    ("GET", "/world/styles/current"): {},
+    ("GET", "/world/styles/versions"): {},
+    ("GET", "/world/source-media"): {},
+    ("GET", "/world/source-media/{source_id}"): {},
+    ("DELETE", "/world/styles/previews/{preview_id}"): {},
+    ("POST", "/world/styles/previews"): {
+        "json": {
+            "proposal_id": str(uuid.uuid4()),
+            "origin": "user",
+            "scope": {"kind": "global"},
+            "base_style_version_id": str(uuid.uuid4()),
+            "base_topology_digest": "probe-topology",
+            "profile": {"profile_id": "origin-landscape", "profile_version": 1},
+        }
+    },
+    ("POST", "/world/styles/previews/{preview_id}/apply"): {
+        "json": {
+            "base_style_version_id": str(uuid.uuid4()),
+            "base_topology_digest": "probe-topology",
+        }
+    },
+    ("POST", "/world/styles/rollback"): {
+        "json": {
+            "target_version_id": str(uuid.uuid4()),
+            "base_style_version_id": str(uuid.uuid4()),
+            "base_topology_digest": "probe-topology",
+            "origin": "user",
+        }
+    },
     # The stream is opened but never read here: an anonymous or foreign caller is refused
     # before the generator starts, which is the only thing this sweep asks about. Reading it
     # as the owner is `test_formation_stream.py`, which has a batch to read.
@@ -121,6 +151,8 @@ class Deployment:
     def fill(self, path: str) -> str:
         return path.replace("{span_id}", str(self.span_id)).replace(
             "{batch_id}", str(self.batch_id)
+        ).replace("{preview_id}", str(uuid.uuid4())).replace(
+            "{source_id}", str(uuid.uuid4())
         )
 
 

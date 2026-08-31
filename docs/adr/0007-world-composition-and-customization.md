@@ -1,6 +1,7 @@
 # ADR-0007: Versioned world composition and protected customization
 
-Status: **ACCEPTED** for the frontend/core boundary; backend authority remains **OPEN**.
+Status: **ACCEPTED**. The appearance-style backend authority is implemented; structural topology
+editing remains open.
 
 ## Context
 
@@ -61,7 +62,7 @@ Positive:
 
 Costs and open work:
 
-- production needs new backend tables, transactions, migrations, deletion invalidation, and export;
+- world-style export and deletion invalidation beyond honest source availability remain open;
 - structural customization needs a topology-diff preview, not the appearance-only controller;
 - the present readable stable IDs are not yet backend UUIDs;
 - physical asset streaming and renderer batching still sit behind the emitted streaming keys;
@@ -76,3 +77,5 @@ scope, immutable apply/rollback history, and unknown-profile fallback.
 
 The architectural evidence and follow-up gates are in
 [atlas-world-research.md](../atlas-world-research.md).
+The implemented persistence and API contract is in
+[world-style-backend.md](../world-style-backend.md).

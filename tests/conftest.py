@@ -230,7 +230,16 @@ def workspace_id() -> uuid.UUID:
 
 #: Seeded by the migration, not by a test, and every assertion write reads it. Truncating it
 #: would empty the vocabulary and every later insert would be refused by a guard doing its job.
-_PRESERVED_TABLES = frozenset({"predicate", "schema_migrations", "stage_registry"})
+_PRESERVED_TABLES = frozenset(
+    {
+        "predicate",
+        "schema_migrations",
+        "stage_registry",
+        "world_art_profile_parameter",
+        "world_art_profile_registry",
+        "world_style_capability_registry",
+    }
+)
 
 #: Emptied with DELETE rather than TRUNCATE, because migration 0013 puts a BEFORE TRUNCATE
 #: trigger on both. That trigger is not decoration and this is not a workaround for it: measured

@@ -1,0 +1,53 @@
+"""Failures at the protected world-style boundary.
+
+Each class maps to a distinct API problem code.  Callers must be able to tell malformed style
+data from optimistic-concurrency failures, topology protection, and missing bytes; flattening
+them into one conflict would make the recovery action guesswork.
+"""
+
+from __future__ import annotations
+
+from orimera.errors import OrimeraError
+
+__all__ = [
+    "InvalidPreviewState",
+    "InvalidStyleData",
+    "ProtectedTopologyConflict",
+    "StaleStyleVersion",
+    "UnavailableAsset",
+    "UnknownWorldResource",
+    "WorldNotConfigured",
+    "WorldStyleError",
+]
+
+
+class WorldStyleError(OrimeraError):
+    """Base class for errors owned by the world-style service."""
+
+
+class InvalidStyleData(WorldStyleError):
+    """A profile, parameter, scope, or provenance value is not in the reviewed contract."""
+
+
+class StaleStyleVersion(WorldStyleError):
+    """The caller based a mutation on a style version that is no longer current."""
+
+
+class ProtectedTopologyConflict(WorldStyleError):
+    """The protected topology changed after the proposal was created."""
+
+
+class UnavailableAsset(WorldStyleError):
+    """An authorised topology source slot exists but cannot currently supply bytes."""
+
+
+class UnknownWorldResource(WorldStyleError):
+    """A preview, version, or source slot is absent or belongs to another workspace."""
+
+
+class InvalidPreviewState(WorldStyleError):
+    """A preview is known but is not open and applicable."""
+
+
+class WorldNotConfigured(WorldStyleError):
+    """No protected topology has been registered for this workspace and world."""

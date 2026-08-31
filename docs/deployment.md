@@ -431,7 +431,7 @@ hands both the API and the worker
 `ORIMERA_DATABASE_URL: postgresql://orimera:${POSTGRES_PASSWORD}@postgres:5432/orimera`. So the
 runtime connects as the owner, and three things follow.
 
-- **The twenty-two `ws_isolation` policies are inert.** `force row level security` makes an ordinary
+- **The thirty-one `ws_isolation` policies are inert.** `force row level security` makes an ordinary
   owner subject to a policy; it does not reach a superuser, and PostgreSQL states that a
   superuser or a role with BYPASSRLS always bypasses row security. What still holds is the
   trigger half: `assert_workspace_context()` raises for a superuser too, so a WRITE naming the
@@ -910,7 +910,7 @@ has happened at least once with a stopwatch running.
 | D-11 | Whether a preview grade service survives the window at all | The canary endpoint's outage log |
 | D-14 | Nothing limits in-flight requests, so a single process can demand more backends than the cluster has slots. Section 5.4.3 measured 48 concurrent streams holding 48 backends against a 40-thread pool and 97 usable slots | Setting `uvicorn --limit-concurrency`, which is the only lever that counts requests where they are actually held. Not set today, and not urgent at one person watching one upload |
 | D-15 | Section 5.4.2's container-restart consequence is arithmetic over a measured latency and the Dockerfile. No container was built or run to observe it | Running the image, saturating it, and watching whether Docker restarts it |
-| D-16 | The runtime connects as the database owner, who is a superuser, so the twenty-two `ws_isolation` policies are inert in the composition. Section 5.1.3 says what still holds, which is the write triggers, and what does not, which is every read | Setting `ORIMERA_APP_ROLE_PASSWORD` and pointing `ORIMERA_DATABASE_URL` at `orimera_app`, in the order 5.1.1 fixes |
+| D-16 | The runtime connects as the database owner, who is a superuser, so the thirty-one `ws_isolation` policies are inert in the composition. Section 5.1.3 says what still holds, which is the write triggers, and what does not, which is every read | Setting `ORIMERA_APP_ROLE_PASSWORD` and pointing `ORIMERA_DATABASE_URL` at `orimera_app`, in the order 5.1.1 fixes |
 
 ---
 

@@ -1,7 +1,8 @@
 # Atlas world customization contract
 
-Status: **DECISION** and **ACTIVE IMPLEMENTATION**. Appearance transactions and generated
-parameter controls exist; the production persistence adapter and complete multi-style editor do not.
+Status: **DECISION** and **IMPLEMENTED BACKEND FOUNDATION**. Appearance transactions, generated
+parameter controls, PostgreSQL authority, and the HTTP lifecycle exist. A complete multi-style
+editor and structural topology editor do not.
 
 ## 1. Protected topology
 
@@ -15,8 +16,9 @@ A proposal may not silently change any of these values:
 - evidence requirement, evidence binding, reconstruction rung, or provenance;
 - streaming identity and minimum accessible labeling contract.
 
-The topology digest is the optimistic concurrency token for those values. Production must replace
-the draft non-cryptographic digest with a canonical cryptographic digest at the persistence seam.
+The topology digest is the optimistic concurrency token for those values. The backend persists and
+compares the composer-supplied digest but does not claim a non-cryptographic frontend draft is
+cryptographic; canonical digest production remains the topology composer's responsibility.
 
 ## 2. Appearance proposal
 
@@ -24,7 +26,7 @@ An appearance proposal contains:
 
 ```text
 proposalId
-origin: settings | companion
+origin: user | settings | companion
 kind: appearance
 scope: global | region(islandId)
 baseStyleVersionId
@@ -103,5 +105,14 @@ Design references belong to proposal provenance. The intended flow is:
 
 The model may explain which reference traits mapped to which capability. Reference images and
 conversation text are not renderer instructions and never bypass manifest validation.
-Production must persist the resulting immutable style version through the backend boundary rather
-than relying on the present per-device preference.
+The production boundary is `orimera/world/`, migration `0017_adaptive_world_styles.sql`, and the
+`/world/styles` routes. The present Atlas UI remains unchanged and may continue using its per-device
+preference until it adopts that API. See [world-style-backend.md](world-style-backend.md).
+
+## 6. Source-media contract
+
+Source bindings are protected topology values, not style parameters. Each registered source slot
+either names an evidence span from the same workspace or records why no evidence exists. Reads
+distinguish `available`, `unavailable_asset`, and `missing_evidence`; cross-workspace and nonexistent
+source IDs are indistinguishable. Available sources expose only the existing authenticated local
+evidence path, never a remote texture URL.

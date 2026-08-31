@@ -51,6 +51,7 @@ from orimera.api.routes import (
     identity,
     intake,
     selection,
+    world,
 )
 from orimera.api.services import Services, build_services
 from orimera.db.migrate import verify_schema
@@ -68,6 +69,15 @@ from orimera.identity.subjects import (
     UnknownSubject,
 )
 from orimera.selection.validation import RejectionCode, SelectionRejected
+from orimera.world import (
+    InvalidPreviewState,
+    InvalidStyleData,
+    ProtectedTopologyConflict,
+    StaleStyleVersion,
+    UnavailableAsset,
+    UnknownWorldResource,
+    WorldNotConfigured,
+)
 
 __all__ = ["create_app"]
 
@@ -135,6 +145,7 @@ def create_app(services: Services | None = None, *, verify: bool = True) -> Fast
     app.include_router(evidence.router)
     app.include_router(formation.router)
     app.include_router(intake.router)
+    app.include_router(world.router)
 
     @app.exception_handler(BodyTooLarge)
     async def _too_large(_request: Request, exc: BodyTooLarge) -> JSONResponse:
@@ -192,5 +203,35 @@ def create_app(services: Services | None = None, *, verify: bool = True) -> Fast
         # they are stored under means a citation has stopped verifying, and serving anything at
         # all here would hide it.
         return _problem(500, "integrity_failure", str(exc))
+
+    @app.exception_handler(InvalidStyleData)
+    async def _invalid_style(_request: Request, exc: InvalidStyleData) -> JSONResponse:
+        return _problem(422, "invalid_style_data", str(exc))
+
+    @app.exception_handler(StaleStyleVersion)
+    async def _stale_style(_request: Request, exc: StaleStyleVersion) -> JSONResponse:
+        return _problem(409, "stale_style_version", str(exc))
+
+    @app.exception_handler(ProtectedTopologyConflict)
+    async def _protected_topology(
+        _request: Request, exc: ProtectedTopologyConflict
+    ) -> JSONResponse:
+        return _problem(409, "protected_topology_conflict", str(exc))
+
+    @app.exception_handler(UnavailableAsset)
+    async def _unavailable_asset(_request: Request, exc: UnavailableAsset) -> JSONResponse:
+        return _problem(424, "unavailable_asset", str(exc))
+
+    @app.exception_handler(UnknownWorldResource)
+    async def _unknown_world(_request: Request, _exc: UnknownWorldResource) -> JSONResponse:
+        return _problem(404, "unknown_reference", "no such world resource")
+
+    @app.exception_handler(InvalidPreviewState)
+    async def _preview_state(_request: Request, exc: InvalidPreviewState) -> JSONResponse:
+        return _problem(409, "invalid_preview_state", str(exc))
+
+    @app.exception_handler(WorldNotConfigured)
+    async def _world_not_configured(_request: Request, exc: WorldNotConfigured) -> JSONResponse:
+        return _problem(409, "world_not_configured", str(exc))
 
     return app
