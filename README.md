@@ -321,7 +321,8 @@ tests. The boundary rules have each been probed with a deliberate violation, so 
 fire rather than assumed to.
 
 ```bash
-pnpm landing                 # the signed-out landing page and the formation states
+pnpm landing                 # the public title and Method surfaces
+pnpm app                     # the canonical Atlas application
 pnpm synth --out ./fixtures  # generates the renderer bake-off ladder, about ten seconds
 pnpm bakeoff                 # serves the bake-off harness over those fixtures
 ```

@@ -60,7 +60,9 @@ Two further guards worth knowing about:
 ## Fixtures
 
 `pnpm landing` serves the public title and Method surfaces; see
-`packages/landing/README.md`.
+`packages/landing/README.md`. It links to the local app preview on port 5173 by default. If the app
+is running elsewhere, start it with an explicit destination, for example
+`VITE_ATLAS_URL='http://127.0.0.1:5175/?preview=1' pnpm landing`.
 
 For Atlas UI work while the API is unavailable, run `pnpm app` and open
 `http://127.0.0.1:5173/?preview=1`. This is an explicit development preview, not the hosted demo:
