@@ -371,6 +371,14 @@ export {
 } from './world/composer.js';
 
 export type {
+  SpatialAuthorityCandidateDraft,
+  SpatialAuthorityDraftOptions,
+  SpatialDependency,
+  SpatialEvidenceBinding,
+} from './world/persistence.js';
+export { toSpatialAuthorityCandidateDraft } from './world/persistence.js';
+
+export type {
   WorldAppearanceProposal,
   WorldCustomizationControllerOptions,
   WorldCustomizationProposal,

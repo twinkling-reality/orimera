@@ -112,6 +112,16 @@ def test_every_migration_is_a_single_transaction_with_no_down_path(migration):
         "world_style_proposal",
         "world_style_preview",
         "world_style_audit_event",
+        "world_structure_snapshot",
+        "world_structure_state",
+        "world_structure_preview",
+        "world_structure_snapshot_region",
+        "world_structure_element_identity",
+        "world_structure_snapshot_element",
+        "world_structure_dependency",
+        "world_structure_placement_migration",
+        "world_structure_invalidation",
+        "world_structure_audit_event",
     ],
 )
 def test_every_required_table_exists(table):

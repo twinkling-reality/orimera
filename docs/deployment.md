@@ -438,7 +438,8 @@ drain when the current role is a superuser, has BYPASSRLS, or owns any row-level
 role starts and cannot see another workspace, while the bootstrap owner is rejected. The same
 check runs in the API lifespan and the dedicated worker command before either accepts work.
 
-There are now thirty-two workspace-keyed FORCE RLS tables. `derivative_job_event` is the latest;
+There are now forty-two workspace-keyed FORCE RLS tables. The structural authority tables are the
+latest;
 its operational replay is scoped by the same session workspace as the job it describes.
 
 

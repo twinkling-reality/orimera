@@ -11,8 +11,11 @@ from orimera.errors import OrimeraError
 
 __all__ = [
     "InvalidPreviewState",
+    "InvalidStructuralData",
+    "InvalidStructuralPreviewState",
     "InvalidStyleData",
     "ProtectedTopologyConflict",
+    "StaleStructuralBase",
     "StaleStyleVersion",
     "UnavailableAsset",
     "UnknownWorldResource",
@@ -51,3 +54,15 @@ class InvalidPreviewState(WorldStyleError):
 
 class WorldNotConfigured(WorldStyleError):
     """No protected topology has been registered for this workspace and world."""
+
+
+class InvalidStructuralData(WorldStyleError):
+    """A structural candidate is non-canonical, inconsistent, unsafe, or unsupported."""
+
+
+class StaleStructuralBase(WorldStyleError):
+    """A structural preview no longer names every protected current base."""
+
+
+class InvalidStructuralPreviewState(WorldStyleError):
+    """A structural preview is absent, closed, or otherwise cannot become current."""

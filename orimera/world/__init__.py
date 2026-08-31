@@ -2,8 +2,11 @@
 
 from orimera.world.errors import (
     InvalidPreviewState,
+    InvalidStructuralData,
+    InvalidStructuralPreviewState,
     InvalidStyleData,
     ProtectedTopologyConflict,
+    StaleStructuralBase,
     StaleStyleVersion,
     UnavailableAsset,
     UnknownWorldResource,
@@ -25,16 +28,32 @@ from orimera.world.models import (
 )
 from orimera.world.registry import STYLE_REGISTRY, StyleRegistry
 from orimera.world.repository import WorldStyleRepository
+from orimera.world.structure import (
+    PlacementMigration,
+    SpatialCandidate,
+    SpatialDigests,
+    SpatialPreview,
+    SpatialSnapshot,
+)
+from orimera.world.structure_repository import WorldStructureRepository
 
 __all__ = [
     "DEFAULT_WORLD_ID",
     "STYLE_REGISTRY",
     "InvalidPreviewState",
+    "InvalidStructuralData",
+    "InvalidStructuralPreviewState",
     "InvalidStyleData",
+    "PlacementMigration",
     "ProposalOrigin",
     "ProposalProvenance",
     "ProtectedTopologyConflict",
     "SourceMediaState",
+    "SpatialCandidate",
+    "SpatialDigests",
+    "SpatialPreview",
+    "SpatialSnapshot",
+    "StaleStructuralBase",
     "StaleStyleVersion",
     "StylePreview",
     "StyleProposal",
@@ -48,5 +67,6 @@ __all__ = [
     "UnknownWorldResource",
     "WorldNotConfigured",
     "WorldSourceMedia",
+    "WorldStructureRepository",
     "WorldStyleRepository",
 ]

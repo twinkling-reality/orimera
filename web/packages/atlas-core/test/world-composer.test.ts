@@ -7,7 +7,11 @@ import {
   entityId,
   islandId,
   makeIsland,
+  makeAtlasLayoutSnapshot,
+  makeAtlasNeighborhoodSnapshot,
+  neighborhoodId,
   topologyReachability,
+  toSpatialAuthorityCandidateDraft,
   validateWorldTopology,
 } from '../src/index.js';
 import { island, scene } from './fixture.js';
@@ -110,5 +114,56 @@ describe('world topology composition', () => {
     const first = modules[0]!;
     modules[0] = { ...first, fallbackKey: first.key };
     expect(() => new WorldModuleRegistry(2, modules)).toThrow(/fall back to itself/);
+  });
+
+  it('projects the exact layout and neighborhood inputs into fixed-point authority input', () => {
+    const snapshot = composeAtlasWorld(atlas);
+    const layout = makeAtlasLayoutSnapshot({
+      layoutVersion: atlas.layoutVersion,
+      previousLayoutVersion: null,
+      reason: 'initial',
+      entries: atlas.islands.map((value) => ({
+        islandId: value.islandId,
+        creationOrdinal: value.creationOrdinal,
+        placement: value.placement,
+      })),
+    });
+    const neighborhood = makeAtlasNeighborhoodSnapshot({
+      neighborhoodVersion: 1,
+      previousNeighborhoodVersion: null,
+      layoutVersion: atlas.layoutVersion,
+      capacity: 10,
+      reason: 'initial',
+      entries: [{
+        neighborhoodId: neighborhoodId('neighborhood:0'),
+        firstCreationOrdinal: 0,
+        islandIds: atlas.islands.map((value) => value.islandId),
+      }],
+    });
+    const evidenceBindings = new Map(snapshot.instances
+      .filter((value) => value.evidence === 'source-evidence')
+      .map((value) => [
+        value.instanceId,
+        { kind: 'missing' as const, reason: 'no authorised source was recorded' },
+      ]));
+    const draft = toSpatialAuthorityCandidateDraft(snapshot, {
+      graphSha256: 'a'.repeat(64),
+      reconstructionSha256: 'b'.repeat(64),
+      layout,
+      neighborhood,
+      evidenceBindings,
+    });
+    const placement = draft.placement['elements'] as readonly Record<string, unknown>[];
+    expect(draft.topology['world_id']).toBe(snapshot.worldId);
+    expect(placement.every((value) => Number.isSafeInteger(value['x_mm']))).toBe(true);
+    expect(JSON.stringify(draft)).not.toContain(snapshot.topologyDigest);
+
+    expect(() => toSpatialAuthorityCandidateDraft(snapshot, {
+      graphSha256: 'a'.repeat(64),
+      reconstructionSha256: 'b'.repeat(64),
+      layout,
+      neighborhood,
+      evidenceBindings: new Map(),
+    })).toThrow(/explicit span or missing reason/);
   });
 });

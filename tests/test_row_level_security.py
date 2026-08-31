@@ -399,7 +399,7 @@ def test_unscoped_hides_nothing_from_a_role_row_level_security_does_not_reach(sc
     """The second bullet, and the reason the first one has to name a role.
 
     ``Database.unscoped`` opens a connection and declines to declare a workspace. That is all it
-    does. Whether the thirty-two workspace-keyed forced tables then read empty is a property of
+    does. Whether the forty-two workspace-keyed forced tables then read empty is a property of
     the ROLE:
     PostgreSQL
     bypasses row security outright for a superuser or a role holding BYPASSRLS, and ``force row

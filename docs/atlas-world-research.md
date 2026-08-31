@@ -88,8 +88,10 @@ appropriate “as if one at a time” guarantee, with whole-transaction retry on
 - PostgreSQL transaction isolation:
   https://www.postgresql.org/docs/current/transaction-iso.html#XACT-SERIALIZABLE
 
-No backend file was changed in this implementation. Calling the current draft “persisted” would be
-incorrect.
+The original research implementation changed no backend file. Phase 4 now implements the backend
+authority described above: the frontend value remains a draft, while canonical SHA-256 production,
+live dependency validation, immutable persistence, and compare-and-swap belong to
+`WorldStructureRepository`.
 
 ## 4. Navigation and wayfinding
 

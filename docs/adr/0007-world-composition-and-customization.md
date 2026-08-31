@@ -1,7 +1,7 @@
 # ADR-0007: Versioned world composition and protected customization
 
-Status: **ACCEPTED**. The appearance-style backend authority is implemented; structural topology
-editing remains open.
+Status: **ACCEPTED AND IMPLEMENTED** for reviewed structural composition authority and appearance
+authority. Direct user-authored structural editing remains outside the public surface.
 
 ## Context
 
@@ -62,9 +62,12 @@ Positive:
 
 Costs and open work:
 
-- world-style export and deletion invalidation beyond honest source availability remain open;
-- structural customization needs a topology-diff preview, not the appearance-only controller;
-- the present readable stable IDs are not yet backend UUIDs;
+- complete World Memory Package export remains Phase 7 work, while spatial package projection is
+  now emitted per snapshot;
+- structural customization has a protected backend diff preview but remains an internal reviewed
+  composer workflow rather than a public appearance control;
+- readable stable element IDs are now durable backend identities; snapshot and migration records
+  use UUIDs;
 - physical asset streaming and renderer batching still sit behind the emitted streaming keys;
 - reconstructed navigation artifacts must be supplied by the reconstruction pipeline.
 

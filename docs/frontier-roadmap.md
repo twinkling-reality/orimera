@@ -345,7 +345,7 @@ renderer cannot expand the validated movement envelope.
 
 ### Phase 4: durable spatial world authority
 
-Status: **PLANNED; style authority exists, structural authority does not**.
+Status: **BUILT; no production snapshot materialized without authorised real inputs**.
 
 Deliverables:
 

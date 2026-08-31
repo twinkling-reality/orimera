@@ -1,7 +1,7 @@
 # Adaptive world backend
 
 Status: **IMPLEMENTED** for appearance styles and protected source-media metadata. Structural
-topology editing remains out of scope.
+authority is implemented separately in [spatial-world-authority.md](spatial-world-authority.md).
 
 This document is the persistence and HTTP half of
 [ADR-0007](adr/0007-world-composition-and-customization.md) and the
