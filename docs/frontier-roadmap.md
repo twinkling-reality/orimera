@@ -70,7 +70,7 @@ The status terms in this table describe repository state, not aspiration.
 | Rung 2 corridor | **PLANNED** | Product and traversal contract | Pose producer, coverage analysis, trajectory corridor, and nav artifact |
 | Rung 1 splat | **PLANNED** | COLMAP plus `gsplat` selection, deployment shape, license decision, quality-gate concept | Executable reconstruction job, checkpoints, compression, nav proxy, and real-capture result |
 | Spatial world core | **BUILT/PARTIAL** | Deterministic composition, stable identities, protected values, neighborhoods, residency planning, navigation, and renderer binding | Backend topology, layout, placement, and neighborhood authority plus physical streaming |
-| Adaptive appearance | **BUILT** | Reviewed profile registry, validated parameters, immutable global/regional versions, preview/apply/discard/rollback, concurrency, source states, and audit provenance | Frontend client adoption and structural proposal path |
+| Adaptive appearance | **BUILT** | Reviewed profile registry, exact frontend handshake, validated parameters, immutable global/regional versions, global preview/apply/discard/refine/rollback UI, stale recovery, authenticated source states, and audit provenance | Upstream conversational proposal service, regional renderer preview, and structural proposal path |
 | Adaptive interaction | **BUILT/PARTIAL** | Reviewed capability registry, immutable versions, Settings and Companion preview paths, direct-choice apply, explicit Companion review, rollback, inspection, recommendations, and cross-device hydration | Real-participant comprehensibility and longitudinal stability evaluation |
 | World Memory Package | **BUILT AND EXIT-GATED** | RO-Crate 1.2 Orimera profile, Croissant/RAI node, honest external references, canonical manifest, signed Merkle root, append-only receipt, offline verify/inspect/diff/import-check, privacy scan, and deletion re-export | Receiver-side transactional import remains intentionally deferred |
 | Evaluation | **BUILT/PARTIAL** | Deterministic corpus tooling, methodology, metrics, authorization checks, model preflight, and a generated-fixture end-to-end acceptance run | Gold labels, real reconstruction results, and an authorized personal-corpus frontier run |
@@ -397,10 +397,11 @@ separate confirmation call applies the review handle. No real-participant study 
 repository does not claim that explanation copy is understandable or that adaptations remain
 desirable across repeated weeks. See [interaction-policy-backend.md](interaction-policy-backend.md).
 
-The frontend execution half exists on the divergent `55b1236` → `5c95cb3` history and remains an
-explicit integration dependency for this worktree. This branch implements and tests only the
-shared inert catalog/recipe-binding and lifecycle payloads; it does not cherry-pick or replace the
-frontend registry, modules, contrast/accessibility correction, protected geometry, or preview UI.
+The reviewed `55b1236` → `5c95cb3` frontend execution half is integrated with the backend through
+one tested adapter. Settings and typed upstream Companion proposals use the backend lifecycle while
+the local registry, modules, contrast/accessibility correction, protected geometry, and rendering
+remain frontend authority. The browser does not invent the still-missing conversational proposal
+service, and it refuses regional proposals until a reviewed regional renderer preview exists.
 
 No neural fine-tuning is required for this phase. Personalization is explicit, versioned world state.
 

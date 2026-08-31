@@ -1,9 +1,10 @@
 # Atlas world customization contract
 
-Status: **DECISION** and **ACTIVE IMPLEMENTATION**. PostgreSQL appearance transactions, the HTTP
-lifecycle, style-specific generated controls, shared world/interface visual DNA, and local
-preview/apply/undo UI exist. The production frontend persistence adapter, conversational authoring
-service, complete multi-style library, and structural topology editor do not.
+Status: **DECISION** and **IMPLEMENTED** for global appearance customization. PostgreSQL appearance
+transactions, the HTTP lifecycle, exact frontend recipe handshake, generated controls, transient
+preview, apply/discard/refine/rollback review, provenance/history, and authenticated source-media
+loading exist. The upstream conversational authoring service, regional renderer preview, complete
+multi-style library, and structural topology editor do not.
 
 ## 1. Protected topology
 
@@ -166,9 +167,9 @@ stroke, and focus uses contrast + outline.
 Settings and Companion are proposal origins, not separate rule engines. Settings exposes the
 active style's generated parameter controls; a different validated style may expose a different
 manifest. It does not expose the incomplete Survey fixture as a product choice. Input changes are
-live, isolated previews. The person must choose **Apply world design** to persist them, and may use
+live, isolated previews in both the renderer and backend. The person must choose **Apply world design** to persist them, and may use
 **Undo preview** or leave Options to restore the saved style. The visible editor names what is
-protected and truthfully states that conversational style creation is not connected in this build.
+protected and truthfully states that an upstream conversational proposal service is not connected.
 The renderer binding exposes the same Companion-origin preview/apply/discard methods; the separately
 owned Companion behavior is unchanged while its surrounding interface consumes the active world's
 derived semantic roles.
@@ -185,8 +186,9 @@ The production boundary is `orimera/world/`, migrations `0017_adaptive_world_sty
 current pointers live there; live conversation and isolated preview sessions remain separate. See
 [world-style-backend.md](world-style-backend.md).
 
-Production must persist the resulting immutable style version through the backend boundary rather
-than relying on the present per-device preference.
+The production frontend persists the resulting immutable style version through the backend
+boundary. The per-device preference is only a render cache for the server-owned current version;
+it is not a competing current pointer.
 
 The per-device preference now stores both profile ID and profile version. An unknown pair falls
 back to the product default and discards its parameters rather than interpreting old values against
@@ -213,7 +215,38 @@ plus a provenance-bearing asset reference naming the protected source slot and e
 Unavailable states expose no asset reference. Private media remains in the evidence store and
 never enters a style recipe.
 
-## 7. Companion appearance is a separate version family
+The frontend loads the source list with the workspace bearer token, verifies each asset reference's
+local evidence path and source/span provenance, fetches bytes with the same authorization header,
+and gives the renderer a bounded-lifetime blob URL. It revokes those URLs when the application
+session ends. Missing evidence, unavailable bytes, authorization failure, provenance mismatch, and
+network failure remain distinct visible states and never receive replacement imagery.
+
+## 7. Frontend integration boundary
+
+`web/packages/app/src/world-style-api.ts` is the only camel-case/snake-case translation layer. At
+startup it verifies the catalog contract commit, exact profile versions, control manifests, module
+IDs, and capability mappings against the local recipe registry. Current state and history then
+hydrate the renderer from backend values. Unknown or mismatched data fails closed before rendering.
+
+Settings input creates a transient local renderer preview and an isolated backend preview. Apply
+uses the preview's exact style and topology bases. If another writer wins, Atlas reads the new
+current state, creates a refinement-linked preview on that base, and requires review and Apply
+again; it never silently overwrites the competing version. Rollback has the same conflict rule and
+appends a new immutable revision on success.
+
+`web/packages/app/src/world-style-proposals.ts` is the typed conversational handoff. It accepts only
+an already-structured upstream proposal with profile values and provenance. The browser does not
+call a model or translate conversation text. Companion proposals require an origin reference,
+reference IDs, model ID, and prompt version, and refinements retain `refinesProposalId`. The same
+Options review applies or discards them. A production proposal service is still required to supply
+those records.
+
+Regional records remain backend-authoritative and are parsed without reinterpretation, but the
+current renderer has only a reviewed global profile preview. The UI therefore refuses to display a
+regional proposal as a global change. Shipping regional controls requires a reviewed per-region
+renderer path first.
+
+## 8. Companion appearance is a separate version family
 
 Companion appearance is not world appearance and neither is memory-graph state. The versioned V3
 shape lives in `packages/presentation/src/companion-appearance.ts` and includes
