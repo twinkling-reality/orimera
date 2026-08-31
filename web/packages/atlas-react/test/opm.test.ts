@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { decodeOpm, footprintRadiusOf, packedVertexBytes } from '../src/playcanvas/opm.js';
+import {
+  decodeOpm,
+  footprintRadiusOf,
+  packedVertexBytes,
+  sourcePanelEnvelopeOf,
+} from '../src/playcanvas/opm.js';
 import type { OpmHeader } from '../src/playcanvas/opm.js';
 
 /**
@@ -32,8 +37,19 @@ function buildOpm({ count, gap = 0 }: BuildOptions): ArrayBuffer {
       version: 1,
       pointCount: count,
       rung: 3,
+      frame: 'local',
+      up: '+Y',
+      forward: '-Z',
+      units: 'metres',
       metric: true,
-      viewpoint: { position: [0, 1.55, 0], forward: [0, 0, -1], fovYDeg: 55 },
+      viewpoint: {
+        position: [0, 1.55, 0],
+        forward: [0, 0, -1],
+        up: [0, 1, 0],
+        fovYDeg: 55,
+        aspect: 4 / 3,
+      },
+      sourceImage: { width: 400, height: 300 },
       bounds: { min: [-3, 0, -8], max: [4, 2, -1] },
       colorAlpha: 'confidence',
       segments: [
@@ -154,5 +170,31 @@ describe('the .opm loader', () => {
     const map = decodeOpm(buildOpm({ count: 4 }));
     // bounds are x -3..4 and z -8..-1, so the furthest ground-plane corner is (4, -8).
     expect(footprintRadiusOf(map.header)).toBeCloseTo(Math.hypot(4, 8));
+  });
+
+  it('derives an observed panel envelope from source camera facts, not Atlas placement', () => {
+    const envelope = sourcePanelEnvelopeOf(decodeOpm(buildOpm({ count: 4 })).header);
+    expect(envelope.nearDepth).toBeCloseTo(1);
+    expect(envelope.farDepth).toBeCloseTo(8);
+    expect(envelope.farHalfWidth).toBeCloseTo(
+      8 * Math.tan((55 * Math.PI) / 360) * (4 / 3),
+    );
+  });
+
+  it('refuses a structurally valid header whose source aspect contradicts the camera', () => {
+    const buffer = buildOpm({ count: 4 });
+    const view = new DataView(buffer);
+    const length = view.getUint32(4, true);
+    const bytes = new Uint8Array(buffer, 8, length);
+    const header = JSON.parse(new TextDecoder().decode(bytes)) as OpmHeader;
+    const changed = new TextEncoder().encode(JSON.stringify({
+      ...header,
+      viewpoint: { ...header.viewpoint, aspect: 2 },
+    }));
+    expect(changed.length).toBeLessThanOrEqual(length);
+    bytes.fill(0x20);
+    new Uint8Array(buffer).set(changed, 8);
+    view.setUint32(4, changed.length, true);
+    expect(() => decodeOpm(buffer)).toThrow(/aspect/);
   });
 });

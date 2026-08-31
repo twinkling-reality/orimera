@@ -32,12 +32,19 @@ export interface OpmHeader {
   readonly version: number;
   readonly pointCount: number;
   readonly rung: 3;
+  readonly frame: 'local';
+  readonly up: '+Y';
+  readonly forward: '-Z';
+  readonly units: 'metres';
   readonly metric: boolean;
   readonly viewpoint: {
     readonly position: readonly [number, number, number];
     readonly forward: readonly [number, number, number];
+    readonly up: readonly [number, number, number];
     readonly fovYDeg: number;
+    readonly aspect: number;
   };
+  readonly sourceImage: { readonly width: number; readonly height: number };
   readonly bounds: {
     readonly min: readonly [number, number, number];
     readonly max: readonly [number, number, number];
@@ -74,6 +81,52 @@ export interface PointMap {
 
 const MAGIC = 'OPM1';
 
+function finiteVector(value: unknown, name: string): asserts value is readonly [number, number, number] {
+  if (!Array.isArray(value) || value.length !== 3 || value.some((x) => typeof x !== 'number' || !Number.isFinite(x))) {
+    throw new Error(`.opm ${name} must be three finite numbers`);
+  }
+}
+
+function positiveInteger(value: unknown, name: string): asserts value is number {
+  if (!Number.isSafeInteger(value) || (value as number) <= 0) {
+    throw new Error(`.opm ${name} must be a positive integer`);
+  }
+}
+
+function validateHeader(header: OpmHeader): void {
+  if (header.version !== 1) throw new Error(`unsupported .opm version: ${String(header.version)}`);
+  if (header.rung !== 3) throw new Error('.opm point maps must declare rung 3');
+  if (header.frame !== 'local' || header.up !== '+Y' || header.forward !== '-Z' || header.units !== 'metres') {
+    throw new Error('.opm has an unsupported local-frame convention');
+  }
+  if (typeof header.metric !== 'boolean') throw new Error('.opm metric must be an explicit boolean');
+  if (!Number.isSafeInteger(header.pointCount) || header.pointCount < 0) {
+    throw new Error('.opm pointCount must be a non-negative integer');
+  }
+  if (header.colorAlpha !== 'confidence') throw new Error('.opm color alpha is not confidence');
+  finiteVector(header.viewpoint?.position, 'viewpoint.position');
+  finiteVector(header.viewpoint?.forward, 'viewpoint.forward');
+  finiteVector(header.viewpoint?.up, 'viewpoint.up');
+  if (header.viewpoint.forward.some((x, i) => x !== [0, 0, -1][i]) ||
+      header.viewpoint.up.some((x, i) => x !== [0, 1, 0][i])) {
+    throw new Error('.opm source-camera axes do not match the renderer frame');
+  }
+  if (!Number.isFinite(header.viewpoint.fovYDeg) || header.viewpoint.fovYDeg < 1 || header.viewpoint.fovYDeg >= 179) {
+    throw new Error('.opm viewpoint field of view is outside the camera range');
+  }
+  positiveInteger(header.sourceImage?.width, 'sourceImage.width');
+  positiveInteger(header.sourceImage?.height, 'sourceImage.height');
+  const expectedAspect = header.sourceImage.width / header.sourceImage.height;
+  if (!Number.isFinite(header.viewpoint.aspect) || Math.abs(header.viewpoint.aspect - expectedAspect) > expectedAspect * 1e-6) {
+    throw new Error('.opm viewpoint aspect does not match its source image');
+  }
+  finiteVector(header.bounds?.min, 'bounds.min');
+  finiteVector(header.bounds?.max, 'bounds.max');
+  if (header.bounds.min.some((x, i) => x > header.bounds.max[i]!)) {
+    throw new Error('.opm bounds are inverted');
+  }
+}
+
 function sectionOf(header: OpmHeader, name: OpmSection['name']): OpmSection {
   const s = header.sections.find((x) => x.name === name);
   if (s === undefined) throw new Error(`.opm is missing its "${name}" section`);
@@ -81,10 +134,14 @@ function sectionOf(header: OpmHeader, name: OpmSection['name']): OpmSection {
 }
 
 export function decodeOpm(buffer: ArrayBuffer): PointMap {
+  if (buffer.byteLength < 8) throw new Error('not an .opm file: container is shorter than its prefix');
   const magic = new TextDecoder().decode(new Uint8Array(buffer, 0, 4));
   if (magic !== MAGIC) throw new Error(`not an .opm file: magic was "${magic}"`);
 
   const headerLength = new DataView(buffer).getUint32(4, true);
+  if (headerLength === 0 || headerLength > 1_048_576 || 8 + headerLength > buffer.byteLength) {
+    throw new Error('.opm header length is outside the container');
+  }
   const header = JSON.parse(
     new TextDecoder().decode(new Uint8Array(buffer, 8, headerLength)),
   ) as OpmHeader;
@@ -92,11 +149,29 @@ export function decodeOpm(buffer: ArrayBuffer): PointMap {
   if (header.format !== 'orimera-point-map') {
     throw new Error(`unexpected .opm format field: ${String(header.format)}`);
   }
+  validateHeader(header);
 
   const pos = sectionOf(header, 'position');
   const col = sectionOf(header, 'color');
   const seg = sectionOf(header, 'segment');
   const n = header.pointCount;
+
+  const expected = [
+    [pos, 'float32', 3, false, 12],
+    [col, 'uint8', 4, true, 4],
+    [seg, 'uint16', 1, false, 2],
+  ] as const;
+  if (header.sections.length !== 3) throw new Error('.opm requires exactly three sections');
+  for (const [section, type, components, normalized, stride] of expected) {
+    if (section.type !== type || section.components !== components || section.normalized !== normalized ||
+        !Number.isSafeInteger(section.byteOffset) || section.byteOffset < 8 + headerLength ||
+        section.byteLength !== n * stride || section.byteOffset + section.byteLength > buffer.byteLength) {
+      throw new Error(`.opm ${section.name} section layout or range is invalid`);
+    }
+  }
+  if (pos.byteOffset % 4 !== 0 || seg.byteOffset % 2 !== 0) {
+    throw new Error('.opm sections are not typed-array aligned');
+  }
 
   // The engine's packed planar layout, for comparison against the file's actual offsets.
   const stridePos = 12 * n;
@@ -116,6 +191,36 @@ export function decodeOpm(buffer: ArrayBuffer): PointMap {
     packedByteOffset: pos.byteOffset,
     packedByteLength: 18 * n,
   };
+}
+
+export interface SourcePanelEnvelope {
+  readonly nearDepth: number;
+  readonly farDepth: number;
+  readonly nearHalfWidth: number;
+  readonly nearHalfHeight: number;
+  readonly farHalfWidth: number;
+  readonly farHalfHeight: number;
+}
+
+/**
+ * The exact source-camera frustum occupied by an OPM's declared depth range.
+ *
+ * This is an observed source-panel envelope, not a navigation envelope and not Atlas placement.
+ * A renderer may use it to size the panel and initial view; it may not infer traversable space.
+ */
+export function sourcePanelEnvelopeOf(header: OpmHeader): SourcePanelEnvelope {
+  const cameraZ = header.viewpoint.position[2];
+  const nearDepth = Math.max(0, cameraZ - header.bounds.max[2]);
+  const farDepth = Math.max(nearDepth, cameraZ - header.bounds.min[2]);
+  const tangent = Math.tan((header.viewpoint.fovYDeg * Math.PI) / 360);
+  return Object.freeze({
+    nearDepth,
+    farDepth,
+    nearHalfWidth: nearDepth * tangent * header.viewpoint.aspect,
+    nearHalfHeight: nearDepth * tangent,
+    farHalfWidth: farDepth * tangent * header.viewpoint.aspect,
+    farHalfHeight: farDepth * tangent,
+  });
 }
 
 /**

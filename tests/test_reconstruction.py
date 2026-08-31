@@ -24,6 +24,7 @@ from orimera.reconstruction import (
     build_point_map,
     decide_rung,
     encode_opm,
+    validate_opm,
 )
 from orimera.reconstruction.moge import to_opm_frame
 from orimera.reconstruction.testing import FlatDepthModel
@@ -69,6 +70,43 @@ def test_the_container_is_what_the_renderer_reads():
     assert header["rung"] == 3
     assert header["colorAlpha"] == "confidence"
     assert {s["name"] for s in header["sections"]} == {"position", "color", "segment"}
+    report = validate_opm(data)
+    assert report.source_camera_contract_aligned is True
+    assert report.point_count == points.count
+    assert report.metric is True
+
+
+def test_integrity_refuses_a_point_behind_the_declared_source_camera():
+    prediction = FlatDepthModel().predict(_image(4, 3))
+    data = bytearray(
+        encode_opm(
+            build_point_map(prediction, _image(4, 3)),
+            generator="test",
+            viewpoint=Viewpoint(fov_y_degrees=55.0, aspect=4 / 3),
+            source_size=(4, 3),
+            metric=True,
+        )
+    )
+    header = _decode(data)
+    offset = next(s["byteOffset"] for s in header["sections"] if s["name"] == "position")
+    import struct
+
+    struct.pack_into("<f", data, offset + 8, 1.0)
+    with pytest.raises(ValueError, match="not in front"):
+        validate_opm(bytes(data))
+
+
+def test_integrity_refuses_trailing_or_out_of_bounds_container_bytes():
+    prediction = FlatDepthModel().predict(_image(4, 3))
+    data = encode_opm(
+        build_point_map(prediction, _image(4, 3)),
+        generator="test",
+        viewpoint=Viewpoint(fov_y_degrees=55.0, aspect=4 / 3),
+        source_size=(4, 3),
+        metric=False,
+    )
+    with pytest.raises(ValueError, match="follow"):
+        validate_opm(data + b"x")
 
 
 def test_the_sections_are_contiguous_so_the_renderer_takes_its_fast_path():

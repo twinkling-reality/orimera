@@ -24,6 +24,11 @@ from orimera.reconstruction.depth import DepthModel, DepthPrediction
 from orimera.reconstruction.gate import MIN_VALID_FRACTION, RungDecision, decide_rung
 from orimera.reconstruction.opm import OPM_MAGIC, OPM_VERSION, Viewpoint, encode_opm
 from orimera.reconstruction.pointmap import POINT_STRIDE_BYTES, PointMap, Segment
+from orimera.reconstruction.validation import (
+    OpmIntegrityError,
+    OpmIntegrityReport,
+    validate_opm,
+)
 
 __all__ = [
     "DEFAULT_SEGMENT",
@@ -33,6 +38,8 @@ __all__ = [
     "POINT_STRIDE_BYTES",
     "DepthModel",
     "DepthPrediction",
+    "OpmIntegrityError",
+    "OpmIntegrityReport",
     "PointMap",
     "RungDecision",
     "Segment",
@@ -40,4 +47,5 @@ __all__ = [
     "build_point_map",
     "decide_rung",
     "encode_opm",
+    "validate_opm",
 ]

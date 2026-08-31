@@ -11,7 +11,7 @@
  */
 
 export type { OpmHeader, OpmSection, OpmSegment, PointMap } from './opm.js';
-export { decodeOpm, footprintRadiusOf, packedVertexBytes } from './opm.js';
+export { decodeOpm, footprintRadiusOf, packedVertexBytes, sourcePanelEnvelopeOf } from './opm.js';
 
 export type { SegmentSemantics } from './semantics.js';
 export {

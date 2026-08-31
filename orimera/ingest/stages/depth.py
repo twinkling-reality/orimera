@@ -35,6 +35,7 @@ from orimera.reconstruction import (
     build_point_map,
     decide_rung,
     encode_opm,
+    validate_opm,
 )
 
 __all__ = ["run"]
@@ -93,6 +94,9 @@ def run(
             # reason instead of estimating a distance.
             metric=prediction.metric,
         )
+        # Refuse malformed bytes before they can become a durable artifact. The browser validates
+        # again at its trust boundary, but that is not a reason to publish something it will reject.
+        validate_opm(payload)
         with writes.committed_writes() as pending:
             result = writes.persist_artifact(
                 spec=spec,
