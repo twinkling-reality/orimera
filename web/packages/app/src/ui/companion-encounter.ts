@@ -6,6 +6,7 @@ import {
 import type { CompanionPlacement } from './companion-placement.js';
 import { buildCompanionSpeech } from './companion-speech.js';
 import { el, replace } from './dom.js';
+import type { FirstUsePrompt } from './first-use-guidance.js';
 
 export interface CompanionHandlers extends CompanionChoiceHandlers {
   readonly onEvidence: (handleIndex: number) => void;
@@ -19,6 +20,8 @@ export interface CompanionEncounterOptions {
 
 export interface CompanionEncounter {
   readonly root: HTMLElement;
+  setFirstUsePrompt(prompt: FirstUsePrompt | null): void;
+  setConfirming(confirming: boolean): void;
   setState(state: PanelState): void;
   state(): PanelState;
   render(turn: Turn | null): void;
@@ -47,8 +50,23 @@ export function buildCompanionEncounter(
   let state: PanelState = 'enter';
   let lastTurn: Turn | null = null;
   let currentPlacement: CompanionPlacement | null = null;
+  let firstUsePrompt: FirstUsePrompt | null = null;
 
   function renderPrompt(): void {
+    root.toggleAttribute('data-first-use', firstUsePrompt !== null);
+    if (firstUsePrompt !== null) {
+      replace(root, [
+        el('p', { class: 'companion-prompt' }, [
+          el('span', { class: 'companion-prompt-statement', text: firstUsePrompt.statement }),
+          el('span', { class: 'companion-prompt-actions' }, firstUsePrompt.actions.map((action) =>
+            el('span', { class: 'companion-prompt-action' }, [
+              ...(action.key === undefined ? [] : [el('b', { text: action.key })]),
+              action.label,
+            ]))),
+        ]),
+      ]);
+      return;
+    }
     replace(root, [
       el(
         'p',
@@ -70,6 +88,15 @@ export function buildCompanionEncounter(
 
   return {
     root,
+    setFirstUsePrompt(prompt) {
+      firstUsePrompt = prompt;
+      if (state !== 'open') renderPrompt();
+    },
+    setConfirming(confirming) {
+      root.toggleAttribute('data-confirming', confirming);
+      choices.root.inert = confirming;
+      choices.root.setAttribute('aria-hidden', confirming ? 'true' : 'false');
+    },
     state: () => state,
     placement: () => currentPlacement,
     setPlacement(placement) {

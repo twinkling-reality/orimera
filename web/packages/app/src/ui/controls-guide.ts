@@ -46,6 +46,10 @@ export function buildControlsGuide(options: ControlsGuideOptions): ControlsGuide
       ]),
       close,
     ]),
+    el('p', {
+      class: 'controls-intro',
+      text: 'Atlas arranges your memories as a world. Index reads the evidence; Map shows how those memories relate.',
+    }),
     el('dl', { class: 'controls-list' }, rows.flatMap(([key, meaning]) => [
       el('dt', {}, [el('kbd', { text: key })]),
       el('dd', { text: meaning }),

@@ -25,6 +25,8 @@ describe('world-owned interface style contract', () => {
     expect(componentStyles).toContain('var(--ui-companion-blur)');
     expect(componentStyles).toContain('var(--motion-easing)');
     expect(componentStyles).toContain("[data-transparency='reduced']");
+    expect(componentStyles).toContain("[data-contrast='high'] .atlas-command-guide");
+    expect(componentStyles).toContain('color: var(--ui-companion-ink)');
     expect(componentStyles).toContain('background-color: var(--ui-companion-surface)');
     expect(worldStyleAdapter).not.toMatch(/['"]--(?:radius-|ui-choice-radius|ui-speech-radius)['"]\s*:/);
   });

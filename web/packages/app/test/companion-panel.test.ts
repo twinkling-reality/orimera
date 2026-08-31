@@ -215,7 +215,39 @@ describe('a refusal is reported in the words the refusal used', () => {
   });
 });
 
+describe('confirmation suspends duplicate answer controls', () => {
+  it('removes the answer rail from interaction until the proposal is dismissed', () => {
+    const panel = opened();
+    panel.render(turn());
+    const rail = panel.root.querySelector<HTMLElement>('.companion-choice-rail')!;
+
+    panel.setConfirming(true);
+    expect(rail.inert).toBe(true);
+    expect(rail.getAttribute('aria-hidden')).toBe('true');
+
+    panel.setConfirming(false);
+    expect(rail.inert).toBe(false);
+    expect(rail.getAttribute('aria-hidden')).toBe('false');
+  });
+});
+
 describe('nothing stands on screen until it is called', () => {
+  it('uses the existing prompt surface for first-use meaning and action', () => {
+    const panel = buildCompanionPanel(NOOP);
+    panel.setFirstUsePrompt({
+      statement: 'Atlas arranges your memories as a world.',
+      actions: [{ label: 'Click to enter' }],
+    });
+    expect(panel.root.hasAttribute('data-first-use')).toBe(true);
+    expect(panel.root.querySelector('.companion-prompt-statement')?.textContent).toContain(
+      'memories as a world',
+    );
+    expect(panel.root.querySelector('.companion-prompt-actions')?.textContent).toContain(
+      'Click to enter',
+    );
+    expect(panel.root.querySelector('.companion-speech')).toBeNull();
+  });
+
   it('shows how to get into the world while the mouse is free', () => {
     const panel = buildCompanionPanel(NOOP);
     expect(panel.state()).toBe('enter');
@@ -228,6 +260,19 @@ describe('nothing stands on screen until it is called', () => {
     panel.setState('summon');
     expect(panel.root.querySelector('.companion-prompt')?.textContent ?? '').toContain('X');
     expect(panel.root.querySelector('.companion-escapes')).toBeNull();
+  });
+
+  it('returns to the ordinary summon copy after first-use guidance completes', () => {
+    const panel = buildCompanionPanel(NOOP);
+    panel.setState('summon');
+    panel.setFirstUsePrompt({
+      statement: 'Move through this memory.',
+      actions: [{ key: 'X', label: 'Companion' }],
+    });
+    panel.setFirstUsePrompt(null);
+    expect(panel.root.hasAttribute('data-first-use')).toBe(false);
+    expect(panel.root.querySelector('.companion-prompt')?.textContent ?? '').toContain('X');
+    expect(panel.root.textContent).not.toContain('Move through this memory');
   });
 
   it('keeps the turn while dismissed, so summoning resumes rather than re-asks', () => {

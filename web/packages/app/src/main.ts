@@ -55,6 +55,7 @@ import type { CompanionSession, Turn } from '@orimera/companion-runtime';
 import { buildDetail } from './ui/detail.js';
 import { buildFormation } from './ui/formation.js';
 import { el, replace } from './ui/dom.js';
+import { createFirstUseGuidance, type FirstUseMode } from './ui/first-use-guidance.js';
 import { buildLibrary } from './ui/library.js';
 import { buildStatus, MAP_ORIENTATION_CAPTION } from './ui/status.js';
 import { readPreferences, writePreferences, type AtlasPreferences } from './preferences.js';
@@ -307,6 +308,12 @@ async function mount(): Promise<void> {
     });
   companionStage.setAppearance(companionAppearance());
   mountedCompanionStage = companionStage;
+  const firstUse = createFirstUseGuidance(window.localStorage);
+  let inputMode: FirstUseMode = 'converse';
+  let reflectFirstUse = (): void => undefined;
+  const finishFirstUse = (): void => {
+    if (firstUse.complete()) reflectFirstUse();
+  };
 
   function reflectTurnState(turn: Turn | null): void {
     if (turn === null || turn.intent === 'acknowledge') {
@@ -327,6 +334,7 @@ async function mount(): Promise<void> {
       currentSession.discard(proposalId);
       confirm.hide();
     },
+    onVisibilityChange: (visible) => companionPanel.setConfirming(visible),
   });
 
   // The Companion. The controller holds the turn, the panel renders it, and the confirmation
@@ -349,14 +357,17 @@ async function mount(): Promise<void> {
     onSelect: (optionId) => {
       companionController.select(optionId);
       reflectTurnState(companionController.current());
+      finishFirstUse();
     },
     onSubmit: (optionIds) => {
       companionController.submit(optionIds);
       reflectTurnState(companionController.current());
+      finishFirstUse();
     },
     onSay: (text) => {
       companionController.say(text);
       reflectTurnState(companionController.current());
+      finishFirstUse();
     },
     onEvidence: (index) => {
       const handle = companionController.evidenceAt(index);
@@ -462,6 +473,7 @@ async function mount(): Promise<void> {
   const forming = buildFormation();
   const chrome = buildWorldChrome(shell!);
   const handleAtlasCommand = (command: AtlasCommand): void => {
+    if (firstUse.observeCommand()) reflectFirstUse();
     if (companionPanel.state() === 'open') dismissCompanion();
     if (command === 'index') dispatchShell({ type: 'toggle-index' });
     else if (command === 'map') dispatchShell({ type: 'toggle-map' });
@@ -469,6 +481,12 @@ async function mount(): Promise<void> {
     else dispatchShell({ type: 'toggle-controls' });
   };
   const commandBar = buildAtlasCommands(handleAtlasCommand);
+  reflectFirstUse = (): void => {
+    companionPanel.setFirstUsePrompt(firstUse.prompt(inputMode));
+    commandBar.setFirstUseVisible(firstUse.commandLegendVisible());
+    shell!.dataset['firstUse'] = firstUse.phase();
+  };
+  reflectFirstUse();
   const mapCaption = el('p', {
     class: 'map-caption',
     text: `Atlas Map · ${MAP_ORIENTATION_CAPTION} · M to return to ground view`,
@@ -841,6 +859,7 @@ async function mount(): Promise<void> {
       lastMoving = report.moving;
       shell!.setAttribute('data-moving', report.moving ? 'true' : 'false');
     }
+    if (report.moving && firstUse.observeMovement()) reflectFirstUse();
     shell!.setAttribute('data-spatial', report.spatial.phase);
     if (report.recoveryReason !== null) {
       showTravelStatus(
@@ -894,6 +913,7 @@ async function mount(): Promise<void> {
     showTravelStatus(target.kind === 'anchor' ? 'Located the source.' : 'The memory is in focus.');
   };
   function reflectMode(next: 'traverse' | 'converse'): void {
+    inputMode = next;
     chrome.setMode(next);
     if (next === 'traverse' && (shellState.primary !== 'world' || shellState.camera !== 'ground')) {
       dispatchShell({ type: 'show-world' });
@@ -903,6 +923,8 @@ async function mount(): Promise<void> {
     // outranks both and is left alone.
     if (companionPanel.state() === 'open') return;
     companionPanel.setState(next === 'traverse' ? 'summon' : 'enter');
+    firstUse.observeMode(next);
+    reflectFirstUse();
   }
   mounted.binding.controls.onModeChange = reflectMode;
   reflectMode(mounted.binding.controls.mode);

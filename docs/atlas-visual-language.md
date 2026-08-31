@@ -1,8 +1,9 @@
 # Atlas visual language: Aeroheart
 
-Status: **DECISION** and **IMPLEMENTED** for the architecture-only new-user arrival and one
-source-first encounter. Production media loading, reconstructed geometry, backend style authority,
-and final onboarding content remain out of scope.
+Status: **DECISION** and **IMPLEMENTED** for the new-user arrival, one source-first encounter, and
+the minimal world-native first-use orientation described below. Production media loading,
+reconstructed geometry, backend style authority, and validated onboarding language remain out of
+scope.
 
 ## 1. Visual thesis
 
@@ -48,10 +49,14 @@ their bubbles, grass, chrome typography, industrial ornaments, or nostalgic inte
 ## 3. Starter spatial architecture
 
 The opening is deliberately world-only. The rejected rounded onboarding panel, CTA, memory caption,
-and their show/dismiss navigation state were deleted. The only standing control is the restrained
-bottom-centre Companion summon pill. Once called, the presence occupies the upper centre over the
-memory backdrop. Speech spans the bottom centre while individual decision pills occupy a fixed
-right-side rail. The distinguishing mark is
+and their show/dismiss navigation state were deleted. First use reuses the restrained bottom-centre
+Companion prompt to say what Atlas is, then reveals entry, movement, and Companion actions only as
+the user demonstrates the preceding action. A temporary text legend beneath the existing circular
+commands explains that Index reads evidence and Map shows relationships. It disappears after a
+command is used; the same meaning remains recoverable in Controls. Progress is action-based and
+device-local, with no timer, route lock, graph write, or invented completion metric. Once called,
+the Companion occupies the upper centre over the memory backdrop. Speech spans the bottom centre
+while individual decision pills occupy a fixed right-side rail. The distinguishing mark is
 the speaker-name pill physically intersecting the speech lens, not an extra glow, rule, badge, or
 gradient. Index, Map, Options, and Controls become four circular icon buttons around the speech band
 while the encounter is open. The short laptop stress layout keeps the same centre/right/bottom
@@ -120,9 +125,9 @@ fixture. It is not a second product identity.
    pixel wall, or oversized obstruction.
 9. Map is the same topology and same ground pose exposed at a different camera state. It is not a
    separate dashboard world.
-10. Explanatory onboarding content is intentionally deferred. The architecture establishes memory,
-    focus, and spatial continuity; a following UX slice must restore learnability without covering
-    the world with another card.
+10. First-use orientation must reuse world-native surfaces. It may explain Atlas, entry, movement,
+    Companion, Index, and Map in response to demonstrated actions, but may not cover the world with
+    a tour card, lock a route, or imply that memory is ever complete.
 
 ## 6. Palette and material
 
@@ -237,12 +242,14 @@ It is more distinctive and dreamlike than the rejected treatments because exact 
 changes the air and field instead of appearing on scenery. It is not a finished “wow” production
 world. The field is analytic rather than ray-traced, source reflection is approximate, the fixture
 has only one primary image per memory, Map remains deliberately sparse, and the unavailable contour
-needs testing against varied backgrounds and real absence cases. Most importantly, removing the
-rejected onboarding panel also removes explicit first-use instruction. That is the correct trade
-for this architecture pass, not a solved UX.
+needs testing against varied backgrounds and real absence cases. Removing the rejected onboarding
+panel no longer removes all first-use instruction: the existing prompt and command cluster now
+carry a short action-based orientation, and Controls preserves the meaning after those cues recede.
+That implementation closes the documented structural gap; whether the language is sufficient for
+new users still requires observation rather than assumption.
 
 The next production-shaped vertical slice should use real thumbnail lifecycles and mixed aspect
 ratios, test multiple authorized sources per memory, explain focused relationships without a modal
-card, restore first-use learnability with minimal world-native cues, validate large-library Map
-density, and add a first-party world selection verb. It should not add plants, monuments, paths, or
-new atmosphere until those data and interaction questions are resolved.
+card, validate the new first-use language with people unfamiliar with Atlas, validate large-library
+Map density, and add a first-party world selection verb. It should not add plants, monuments,
+paths, or new atmosphere until those data and interaction questions are resolved.
