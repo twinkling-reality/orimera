@@ -438,9 +438,9 @@ drain when the current role is a superuser, has BYPASSRLS, or owns any row-level
 role starts and cannot see another workspace, while the bootstrap owner is rejected. The same
 check runs in the API lifespan and the dedicated worker command before either accepts work.
 
-There are now forty-seven workspace-keyed FORCE RLS tables. The reviewed interaction-policy
-tables are the latest; their versions, previews, proposals, current pointer, and audit trail are
-scoped by the same session workspace as the world they adapt.
+There are now forty-eight workspace-keyed FORCE RLS tables. The package-export receipt is the
+latest; it is append-only and scoped by the same session workspace as the protected world state
+whose Merkle root it records.
 
 
 ### 5.2 What a deployment additionally needs

@@ -72,7 +72,7 @@ The status terms in this table describe repository state, not aspiration.
 | Spatial world core | **BUILT/PARTIAL** | Deterministic composition, stable identities, protected values, neighborhoods, residency planning, navigation, and renderer binding | Backend topology, layout, placement, and neighborhood authority plus physical streaming |
 | Adaptive appearance | **BUILT** | Reviewed profile registry, validated parameters, immutable global/regional versions, preview/apply/discard/rollback, concurrency, source states, and audit provenance | Frontend client adoption and structural proposal path |
 | Adaptive interaction | **BUILT/PARTIAL** | Reviewed capability registry, immutable versions, Settings and Companion preview paths, direct-choice apply, explicit Companion review, rollback, inspection, recommendations, and cross-device hydration | Real-participant comprehensibility and longitudinal stability evaluation |
-| World Memory Package | **DECIDED, NOT BUILT** | RO-Crate 1.2 profile direction, Croissant/RAI node, fetch semantics, signed Merkle root, and export privacy rules | Profile schema, projector, signer, verifier, diff, import inspection, and deletion/re-export tests |
+| World Memory Package | **BUILT AND EXIT-GATED** | RO-Crate 1.2 Orimera profile, Croissant/RAI node, honest external references, canonical manifest, signed Merkle root, append-only receipt, offline verify/inspect/diff/import-check, privacy scan, and deletion re-export | Receiver-side transactional import remains intentionally deferred |
 | Evaluation | **BUILT/PARTIAL** | Deterministic corpus tooling, methodology, metrics, authorization checks, and model preflight | Gold labels, real reconstruction results, end-to-end build report, and fixed demo acceptance run |
 | Hosted operation | **PARTIAL** | Container, health/readiness routes, non-owner runtime role, separate derivative worker, deployment design, and failure policy | Clean deploy, backup restore, external monitor, and production rehearsal |
 
@@ -422,7 +422,8 @@ asset origin is available for the required large-world and network measurements.
 
 ### Phase 7: World Memory Package v1
 
-Status: **FORMAT DECIDED, IMPLEMENTATION PLANNED**.
+Status: **BUILT AND EXIT-GATED**. See `docs/world-memory-package.md` for the frozen v1 profile,
+privacy boundary, commands, transaction semantics, and executable evidence.
 
 Deliverables:
 
@@ -499,7 +500,7 @@ These experiments are the decision points, not optional polish.
 | FR-4 | What are PlayCanvas budgets on target hardware? | Fixed camera paths per rung; record p95 frame time, 1% low, stutter fraction, memory slope, first render, and full detail | Reduce residency/detail budgets; never hide the measured result |
 | FR-5 / deployment D-8 | Does the real loader use range requests usefully? | Foreground network trace over compressed scene assets | Design whole-object loading/caching if it does not |
 | FR-6 | Are adaptive proposals understandable and reversible? | Predeclared user tasks for preview, explanation, apply, discard, rollback, and protected rejection | Narrow proposal scope or keep the capability Settings-only |
-| FR-7 | Is a World Memory Package independently verifiable? | Build, copy to a clean environment, verify offline metadata/digests/signature, mutate one byte, and verify rejection | Package v1 does not ship |
+| FR-7 | Is a World Memory Package independently verifiable? | Build, copy to a clean environment, verify offline metadata/digests/signature, mutate one byte, and verify rejection | **Passed:** clean subprocess with database URLs removed verifies; one-byte payload and manifest mutations fail; PostgreSQL deletion/re-export changes root and names removed state |
 | FR-8 | Does deletion propagate honestly into export? | Export, delete/redact, recompute, re-export, and inspect the root plus semantic diff | Export remains disabled until closure is complete |
 | FR-9 | Does any fine-tuning earn its complexity? | Compare fixed baseline and candidate on untouched blind data, cost, latency, privacy, deletion, and model-lifecycle risk | Use the base model and reviewed pipeline |
 | FR-10 | Does the complete build reproduce? | Run twice from the same manifest and source set; compare canonical state and enumerate expected nondeterministic provider fields | Fix nondeterminism or weaken only the precise affected claim |

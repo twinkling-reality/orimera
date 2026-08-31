@@ -29,7 +29,11 @@ license = { file = "LICENSE" }
 #               mirror carried the ingest path; the mirror is deleted, so nothing in this
 #               package runs without a database and pretending otherwise would just move the
 #               failure to a later import.
+#   cryptography - Ed25519 signing and verification for World Memory Package roots.  The
+#               package verifier uses the reviewed RFC 8032 primitive rather than carrying a
+#               handwritten elliptic-curve implementation in the data portability boundary.
 dependencies = [
+  "cryptography>=43",
   "fastapi>=0.115",
   "httpx>=0.27",
   "jsonschema>=4.23",
@@ -103,6 +107,9 @@ orimera-purge = "orimera.deletion.cli:main"
 # `uv run orimera-derivative-worker`. The production queue consumer: a separate process with
 # renewable leases, signal-aware shutdown and a durable delivery ledger.
 orimera-derivative-worker = "orimera.ingest.worker_command:main"
+# `uv run orimera-wmp project ...` creates a signed, independently verifiable World Memory
+# Package; verify, inspect, and diff never open PostgreSQL.
+orimera-wmp = "orimera.world_package.cli:main"
 
 [dependency-groups]
 dev = [
@@ -200,6 +207,9 @@ type = "layers"
 exhaustive = true
 containers = ["orimera"]
 layers = [
+  # Package projection reads every durable plane, but none of those planes may know about an
+  # export representation.  Phase 8 orchestration will sit above this boundary.
+  "world_package",
   # The evaluation harness is the one module allowed to depend on the HTTP surface, and it is
   # allowed for one reason: M10 specifies its authorisation sweep as "generated from the router",
   # and a harness that cannot see the router hand-enumerates routes, which is the failure that
