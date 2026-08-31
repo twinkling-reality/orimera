@@ -19,6 +19,7 @@ export interface OptionsView {
   preferences(): AtlasPreferences;
   setPreferences(value: AtlasPreferences): void;
   setVisible(visible: boolean): void;
+  reportPersistence(state: 'idle' | 'saving' | 'saved' | 'failed'): void;
 }
 
 interface OptionsCallbacks {
@@ -72,6 +73,11 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
     type: 'range', min: '0.5', max: '2', step: '0.1', 'aria-label': 'Look sensitivity',
   });
   const sensitivityValue = el('output', { class: 'option-value' });
+  const persistence = el('p', {
+    class: 'option-note option-persistence',
+    role: 'status',
+    'aria-live': 'polite',
+  });
   const vignette = el('select', { 'aria-label': 'Comfort vignette' }, [
     option('off', 'Off'),
     option('subtle', 'Subtle'),
@@ -150,9 +156,11 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
     commit({ contrast: contrast.value as ContrastPreference }));
   transparency.addEventListener('change', () =>
     commit({ transparency: transparency.value as TransparencyPreference }));
-  fieldOfView.addEventListener('input', () => commit({ fieldOfView: fieldOfView.valueAsNumber }));
+  fieldOfView.addEventListener('input', () => preview({ fieldOfView: fieldOfView.valueAsNumber }));
+  fieldOfView.addEventListener('change', () => callbacks.onChange(current));
   sensitivity.addEventListener('input', () =>
-    commit({ mouseSensitivity: sensitivity.valueAsNumber }));
+    preview({ mouseSensitivity: sensitivity.valueAsNumber }));
+  sensitivity.addEventListener('change', () => callbacks.onChange(current));
   vignette.addEventListener('change', () =>
     commit({ vignette: vignette.value as VignettePreference }));
   companionSide.addEventListener('change', () =>
@@ -210,7 +218,7 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
       el('h2', { text: 'Companion' }),
       field('Screen side', companionSide),
     ]),
-    el('footer', { class: 'overlay-actions' }, [controls, reset]),
+    el('footer', { class: 'overlay-actions' }, [persistence, controls, reset]),
   );
   render();
 
@@ -224,6 +232,15 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
     },
     setVisible(visible) {
       modalFocus.setVisible(visible);
+    },
+    reportPersistence(state) {
+      persistence.textContent = state === 'saving'
+        ? 'Saving this reviewed choice…'
+        : state === 'saved'
+          ? 'Saved across devices.'
+          : state === 'failed'
+            ? 'Applied on this device, but not saved across devices.'
+            : '';
     },
   };
 }

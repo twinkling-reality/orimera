@@ -23,9 +23,9 @@ So this module creates the role and grants it exactly what it needs:
     for every workspace. It is a lookup table the application reads and an administrator edits.
 *   **SELECT only on ``schema_migrations``.** The application verifies its schema at boot; it
     does not record migrations.
-*   **SELECT only on the world style registries.** Profile and capability registration is a
-    reviewed migration/code change. A runtime process may propose registered values; it cannot
-    register its own executable renderer vocabulary or reactivate a removed profile.
+*   **SELECT only on the world style and interaction registries.** Profile and capability
+    registration is a reviewed migration/code change. A runtime process may propose registered
+    values; it cannot register its own renderer or interaction vocabulary.
 *   **No ownership and no BYPASSRLS**, which is the whole point.
 
 Every statement here is built with :mod:`psycopg.sql` rather than an f-string. Role names,
@@ -69,6 +69,7 @@ PURGE_ROLE: Final = "orimera_purge"
 
 #: Tables the runtime may read and may not write. See the module docstring for why each.
 READ_ONLY_TABLES: Final = (
+    "interaction_capability_registry",
     "predicate",
     "schema_migrations",
     "world_art_profile_parameter",

@@ -122,6 +122,12 @@ def test_every_migration_is_a_single_transaction_with_no_down_path(migration):
         "world_structure_placement_migration",
         "world_structure_invalidation",
         "world_structure_audit_event",
+        "interaction_capability_registry",
+        "world_interaction_policy_version",
+        "world_interaction_policy_state",
+        "world_interaction_policy_proposal",
+        "world_interaction_policy_preview",
+        "world_interaction_policy_audit_event",
     ],
 )
 def test_every_required_table_exists(table):

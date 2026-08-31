@@ -1,17 +1,31 @@
 """Protected topology, reviewed styles, immutable versions, and source availability."""
 
 from orimera.world.errors import (
+    InvalidInteractionData,
+    InvalidInteractionPreviewState,
     InvalidPreviewState,
     InvalidStructuralData,
     InvalidStructuralPreviewState,
     InvalidStyleData,
     ProtectedTopologyConflict,
+    StaleInteractionPolicy,
     StaleStructuralBase,
     StaleStyleVersion,
     UnavailableAsset,
     UnknownWorldResource,
     WorldNotConfigured,
 )
+from orimera.world.interaction import (
+    INTERACTION_POLICY_REGISTRY,
+    InteractionPolicyRegistry,
+    InteractionPolicyState,
+    InteractionPolicyVersion,
+    InteractionPreview,
+    InteractionProposal,
+    InteractionProposalRecord,
+    InteractionRecommendation,
+)
+from orimera.world.interaction_repository import WorldInteractionPolicyRepository
 from orimera.world.models import (
     DEFAULT_WORLD_ID,
     ProposalOrigin,
@@ -39,7 +53,17 @@ from orimera.world.structure_repository import WorldStructureRepository
 
 __all__ = [
     "DEFAULT_WORLD_ID",
+    "INTERACTION_POLICY_REGISTRY",
     "STYLE_REGISTRY",
+    "InteractionPolicyRegistry",
+    "InteractionPolicyState",
+    "InteractionPolicyVersion",
+    "InteractionPreview",
+    "InteractionProposal",
+    "InteractionProposalRecord",
+    "InteractionRecommendation",
+    "InvalidInteractionData",
+    "InvalidInteractionPreviewState",
     "InvalidPreviewState",
     "InvalidStructuralData",
     "InvalidStructuralPreviewState",
@@ -53,6 +77,7 @@ __all__ = [
     "SpatialDigests",
     "SpatialPreview",
     "SpatialSnapshot",
+    "StaleInteractionPolicy",
     "StaleStructuralBase",
     "StaleStyleVersion",
     "StylePreview",
@@ -65,6 +90,7 @@ __all__ = [
     "TopologySourceSlot",
     "UnavailableAsset",
     "UnknownWorldResource",
+    "WorldInteractionPolicyRepository",
     "WorldNotConfigured",
     "WorldSourceMedia",
     "WorldStructureRepository",

@@ -10,11 +10,14 @@ from __future__ import annotations
 from orimera.errors import OrimeraError
 
 __all__ = [
+    "InvalidInteractionData",
+    "InvalidInteractionPreviewState",
     "InvalidPreviewState",
     "InvalidStructuralData",
     "InvalidStructuralPreviewState",
     "InvalidStyleData",
     "ProtectedTopologyConflict",
+    "StaleInteractionPolicy",
     "StaleStructuralBase",
     "StaleStyleVersion",
     "UnavailableAsset",
@@ -66,3 +69,15 @@ class StaleStructuralBase(WorldStyleError):
 
 class InvalidStructuralPreviewState(WorldStyleError):
     """A structural preview is absent, closed, or otherwise cannot become current."""
+
+
+class InvalidInteractionData(WorldStyleError):
+    """An interaction capability, provenance record, explanation, or input is invalid."""
+
+
+class StaleInteractionPolicy(WorldStyleError):
+    """An interaction proposal no longer names the current policy and structural bases."""
+
+
+class InvalidInteractionPreviewState(WorldStyleError):
+    """An interaction preview is absent, closed, or otherwise cannot be applied."""

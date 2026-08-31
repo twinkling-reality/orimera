@@ -130,6 +130,66 @@ def test_catalog_and_current_state_expose_references_not_renderer_programs(world
     assert state["current"]["global_style"]["profile_id"] == "origin-landscape"
 
 
+def test_settings_and_companion_share_the_reviewed_interaction_policy_lifecycle(world_api):
+    initial = world_api.get("/world/interactions/current")
+    assert initial.status_code == 200, initial.text
+    base = initial.json()
+    assert base["current"] is None
+    assert base["parameters"]["comfort.field-of-view-degrees"] == 70
+
+    proposal_id = uuid.uuid4()
+    preview = world_api.post(
+        "/world/interactions/previews",
+        {
+            "proposal_id": str(proposal_id),
+            "origin": "settings",
+            "origin_reference": "options-panel",
+            "base_policy_version_id": None,
+            "base_structure_snapshot_id": base["base_structure_snapshot_id"],
+            "base_topology_sha256": base["base_topology_sha256"],
+            "capability_patch": {"comfort.field-of-view-degrees": 82},
+            "proposal_input": {"control_ids": ["fieldOfView"]},
+            "explanation": "Apply the field-of-view choice made in Settings.",
+        },
+    )
+    assert preview.status_code == 201, preview.text
+    assert preview.json()["candidate_parameters"]["comfort.field-of-view-degrees"] == 82
+
+    applied = world_api.post(
+        f"/world/interactions/previews/{preview.json()['preview_id']}/apply",
+        {
+            "base_policy_version_id": None,
+            "base_structure_snapshot_id": base["base_structure_snapshot_id"],
+            "base_topology_sha256": base["base_topology_sha256"],
+        },
+    )
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["revision"] == 0
+
+    inspected = world_api.get(f"/world/interactions/proposals/{proposal_id}")
+    assert inspected.status_code == 200
+    assert inspected.json()["status"] == "applied"
+    assert inspected.json()["proposal_input"] == {"control_ids": ["fieldOfView"]}
+
+    companion_without_provenance = world_api.post(
+        "/world/interactions/previews",
+        {
+            "proposal_id": str(uuid.uuid4()),
+            "origin": "companion",
+            "origin_reference": "companion-settings-suggestion",
+            "base_policy_version_id": applied.json()["version_id"],
+            "base_structure_snapshot_id": base["base_structure_snapshot_id"],
+            "base_topology_sha256": base["base_topology_sha256"],
+            "capability_patch": {"initiative.mode": "minimal"},
+            "proposal_input": {"observed_choice": "skip"},
+            "explanation": "Offer less initiative after explicit skips.",
+            "reference_ids": ["interaction-event:skip-1"],
+        },
+    )
+    assert companion_without_provenance.status_code == 422
+    assert companion_without_provenance.json()["code"] == "invalid_interaction_data"
+
+
 def test_preview_apply_discard_and_rollback_are_visible_as_immutable_versions(world_api):
     initial = world_api.current()
     preview = world_api.post("/world/styles/previews", world_api.preview_body())

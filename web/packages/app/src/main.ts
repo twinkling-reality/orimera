@@ -54,6 +54,10 @@ import { el, replace } from './ui/dom.js';
 import { buildLibrary } from './ui/library.js';
 import { buildStatus } from './ui/status.js';
 import { readPreferences, writePreferences, type AtlasPreferences } from './preferences.js';
+import {
+  InteractionPolicyClient,
+  preferencesFromInteractionPolicy,
+} from './interaction-policy.js';
 import { applyDocumentAppearance, themeForPreferences } from './theme.js';
 import { worldArtProfile } from '@orimera/presentation';
 import {
@@ -78,6 +82,7 @@ let evidence: EvidenceCache | null = null;
 let companionEngine: CompanionSession | null = null;
 let mountedCompanionStage: CompanionStage | null = null;
 let settingsStylePreviewId: string | null = null;
+let interactionPolicies: InteractionPolicyClient | null = null;
 const systemAppearance = window.matchMedia('(prefers-color-scheme: dark)');
 const systemReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 let preferences = readPreferences(window.localStorage);
@@ -174,6 +179,18 @@ async function start(token: string): Promise<void> {
   snapshot = opened.initial;
   evidence = new EvidenceCache(opened.session.client);
   companionEngine = opened.companion;
+  if (!preview) {
+    interactionPolicies = new InteractionPolicyClient(credentials_);
+    const interactionState = await interactionPolicies.current();
+    if (interactionState.current !== null) {
+      preferences = preferencesFromInteractionPolicy(preferences, interactionState.parameters);
+      try {
+        writePreferences(window.localStorage, preferences);
+      } catch {
+        // The durable server copy is authoritative; private browsing may reject its local cache.
+      }
+    }
+  }
   await mount();
 }
 
@@ -382,7 +399,14 @@ async function mount(): Promise<void> {
     preferences,
     onChange: applyPreferences,
     onPreview: (candidate) => {
+      shell!.setAttribute('data-vignette', candidate.vignette);
+      atlas?.binding.setFieldOfView(candidate.fieldOfView);
+      atlas?.binding.setSensitivityMultiplier(candidate.mouseSensitivity);
       if (atlas === null) return;
+      const styleChanged = candidate.worldArtProfile !== preferences.worldArtProfile ||
+        JSON.stringify(candidate.worldStyleParameters) !==
+          JSON.stringify(preferences.worldStyleParameters);
+      if (!styleChanged) return;
       if (settingsStylePreviewId !== null) {
         atlas.binding.discardArtProfilePreview(settingsStylePreviewId);
         settingsStylePreviewId = null;
@@ -402,7 +426,9 @@ async function mount(): Promise<void> {
     onShowOptions: () => dispatchShell({ type: 'toggle-options' }),
   });
 
+  let latestSettingsSave = 0;
   function applyPreferences(next: AtlasPreferences): void {
+    const previous = preferences;
     preferences = next;
     if (settingsStylePreviewId !== null && atlas !== null) {
       atlas.binding.discardArtProfilePreview(settingsStylePreviewId);
@@ -425,6 +451,19 @@ async function mount(): Promise<void> {
     );
     atlas?.binding.setFieldOfView(preferences.fieldOfView);
     atlas?.binding.setSensitivityMultiplier(preferences.mouseSensitivity);
+    if (interactionPolicies !== null) {
+      latestSettingsSave += 1;
+      const save = latestSettingsSave;
+      optionsView.reportPersistence('saving');
+      void interactionPolicies
+        .syncSettings(previous, preferences, systemReducedMotion.matches)
+        .then(() => {
+          if (save === latestSettingsSave) optionsView.reportPersistence('saved');
+        })
+        .catch(() => {
+          if (save === latestSettingsSave) optionsView.reportPersistence('failed');
+        });
+    }
   }
 
   replace(shell!, [

@@ -50,6 +50,7 @@ from orimera.api.routes import (
     health,
     identity,
     intake,
+    interaction,
     operations,
     selection,
     world,
@@ -72,9 +73,12 @@ from orimera.identity.subjects import (
 )
 from orimera.selection.validation import RejectionCode, SelectionRejected
 from orimera.world import (
+    InvalidInteractionData,
+    InvalidInteractionPreviewState,
     InvalidPreviewState,
     InvalidStyleData,
     ProtectedTopologyConflict,
+    StaleInteractionPolicy,
     StaleStyleVersion,
     UnavailableAsset,
     UnknownWorldResource,
@@ -151,6 +155,7 @@ def create_app(services: Services | None = None, *, verify: bool = True) -> Fast
     app.include_router(intake.router)
     app.include_router(operations.router)
     app.include_router(world.router)
+    app.include_router(interaction.router)
 
     @app.exception_handler(BodyTooLarge)
     async def _too_large(_request: Request, exc: BodyTooLarge) -> JSONResponse:
@@ -212,6 +217,20 @@ def create_app(services: Services | None = None, *, verify: bool = True) -> Fast
     @app.exception_handler(InvalidStyleData)
     async def _invalid_style(_request: Request, exc: InvalidStyleData) -> JSONResponse:
         return _problem(422, "invalid_style_data", str(exc))
+
+    @app.exception_handler(InvalidInteractionData)
+    async def _invalid_interaction(_request: Request, exc: InvalidInteractionData) -> JSONResponse:
+        return _problem(422, "invalid_interaction_data", str(exc))
+
+    @app.exception_handler(StaleInteractionPolicy)
+    async def _stale_interaction(_request: Request, exc: StaleInteractionPolicy) -> JSONResponse:
+        return _problem(409, "stale_interaction_policy", str(exc))
+
+    @app.exception_handler(InvalidInteractionPreviewState)
+    async def _interaction_preview_state(
+        _request: Request, exc: InvalidInteractionPreviewState
+    ) -> JSONResponse:
+        return _problem(409, "invalid_interaction_preview_state", str(exc))
 
     @app.exception_handler(StaleStyleVersion)
     async def _stale_style(_request: Request, exc: StaleStyleVersion) -> JSONResponse:

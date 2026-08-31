@@ -44,7 +44,24 @@ describe('Options', () => {
     const fieldOfView = view.root.querySelector<HTMLInputElement>('[aria-label="Field of view"]')!;
     fieldOfView.value = '82';
     fieldOfView.dispatchEvent(new Event('input'));
+    expect(onPreview).toHaveBeenLastCalledWith(expect.objectContaining({ fieldOfView: 82 }));
+    expect(onChange).not.toHaveBeenLastCalledWith(expect.objectContaining({ fieldOfView: 82 }));
+    fieldOfView.dispatchEvent(new Event('change'));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ fieldOfView: 82 }));
+  });
+
+  it('reports whether a reviewed choice is durable without hiding the live device result', () => {
+    const view = buildOptions({
+      preferences: DEFAULT_PREFERENCES,
+      onChange: vi.fn(),
+      onClose: vi.fn(),
+      onShowControls: vi.fn(),
+    });
+    document.body.append(view.root);
+    view.reportPersistence('saving');
+    expect(view.root.textContent).toContain('Saving this reviewed choice');
+    view.reportPersistence('failed');
+    expect(view.root.textContent).toContain('Applied on this device, but not saved');
   });
 
   it('moves focus into the dialog and restores it on return', () => {

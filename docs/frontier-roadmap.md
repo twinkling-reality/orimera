@@ -71,7 +71,7 @@ The status terms in this table describe repository state, not aspiration.
 | Rung 1 splat | **PLANNED** | COLMAP plus `gsplat` selection, deployment shape, license decision, quality-gate concept | Executable reconstruction job, checkpoints, compression, nav proxy, and real-capture result |
 | Spatial world core | **BUILT/PARTIAL** | Deterministic composition, stable identities, protected values, neighborhoods, residency planning, navigation, and renderer binding | Backend topology, layout, placement, and neighborhood authority plus physical streaming |
 | Adaptive appearance | **BUILT** | Reviewed profile registry, validated parameters, immutable global/regional versions, preview/apply/discard/rollback, concurrency, source states, and audit provenance | Frontend client adoption and structural proposal path |
-| Adaptive interaction | **PARTIAL** | Proposal tiers, Companion/Settings origin model, comfort settings, choice contracts, and confirmation rules | Durable versioned interaction preferences, learning policy, evaluation, and rollback |
+| Adaptive interaction | **BUILT/PARTIAL** | Reviewed capability registry, immutable versions, Settings and Companion preview paths, direct-choice apply, explicit Companion review, rollback, inspection, recommendations, and cross-device hydration | Real-participant comprehensibility and longitudinal stability evaluation |
 | World Memory Package | **DECIDED, NOT BUILT** | RO-Crate 1.2 profile direction, Croissant/RAI node, fetch semantics, signed Merkle root, and export privacy rules | Profile schema, projector, signer, verifier, diff, import inspection, and deletion/re-export tests |
 | Evaluation | **BUILT/PARTIAL** | Deterministic corpus tooling, methodology, metrics, authorization checks, and model preflight | Gold labels, real reconstruction results, end-to-end build report, and fixed demo acceptance run |
 | Hosted operation | **PARTIAL** | Container, health/readiness routes, non-owner runtime role, separate derivative worker, deployment design, and failure policy | Clean deploy, backup restore, external monitor, and production rehearsal |
@@ -363,7 +363,7 @@ value.
 
 ### Phase 5: adaptive world and interaction state
 
-Status: **Appearance built; interaction adaptation partial**.
+Status: **BUILT 2026-08-31; human/longitudinal evaluation blocked on real participants**.
 
 Deliverables:
 
@@ -382,6 +382,13 @@ Deliverables:
 Gate: the same proposal produces the same validated candidate against the same bases; discard is
 state-neutral; rollback appends history; stale bases fail; and a user can inspect why an adaptation
 was proposed.
+
+The deterministic and protected-state parts of this gate are PostgreSQL-, API-, and browser-tested.
+The browser sends range motion only to transient rendering and commits the final user choice through
+the production policy lifecycle. Companion-authored changes stop at an isolated preview until a
+separate confirmation call applies the review handle. No real-participant study is present, so this
+repository does not claim that explanation copy is understandable or that adaptations remain
+desirable across repeated weeks. See [interaction-policy-backend.md](interaction-policy-backend.md).
 
 No neural fine-tuning is required for this phase. Personalization is explicit, versioned world state.
 

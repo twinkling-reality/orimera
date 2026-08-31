@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "capabilities": [
+    {
+      "key": "comfort.field-of-view-degrees",
+      "version": 1,
+      "category": "comfort",
+      "kind": "integer",
+      "minimum": 60,
+      "maximum": 90,
+      "default": 70
+    },
+    {
+      "key": "comfort.look-sensitivity-milli",
+      "version": 1,
+      "category": "comfort",
+      "kind": "integer",
+      "minimum": 500,
+      "maximum": 2000,
+      "default": 1000
+    },
+    {
+      "key": "comfort.vignette",
+      "version": 1,
+      "category": "comfort",
+      "kind": "choice",
+      "choices": ["off", "subtle", "strong"],
+      "default": "subtle"
+    },
+    {
+      "key": "comfort.camera-bob",
+      "version": 1,
+      "category": "comfort",
+      "kind": "toggle",
+      "default": false
+    },
+    {
+      "key": "navigation.turn-mode",
+      "version": 1,
+      "category": "navigation",
+      "kind": "choice",
+      "choices": ["smooth", "snap"],
+      "default": "smooth"
+    },
+    {
+      "key": "navigation.transition-style",
+      "version": 1,
+      "category": "navigation",
+      "kind": "choice",
+      "choices": ["motion", "fade"],
+      "default": "motion"
+    },
+    {
+      "key": "disclosure.provenance-detail",
+      "version": 1,
+      "category": "disclosure",
+      "kind": "choice",
+      "choices": ["standard", "expanded"],
+      "default": "standard"
+    },
+    {
+      "key": "initiative.mode",
+      "version": 1,
+      "category": "initiative",
+      "kind": "choice",
+      "choices": ["normal", "minimal", "off"],
+      "default": "normal"
+    }
+  ]
+}

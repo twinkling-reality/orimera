@@ -2,7 +2,7 @@
 
 Neither setting is optional, and neither is a convenience.
 
-*   **``orimera.workspace_id``.** 42 tables are under FORCE row-level security keyed on
+*   **``orimera.workspace_id``.** 47 tables are under FORCE row-level security keyed on
     ``current_workspace()``, whose policy is ``workspace_id = current_workspace()`` and which
     reads exactly this setting. A twenty-third, ``consent_record``, is forced too and keyed on
     the tenant instead, which is why the number here counts the workspace-keyed ones rather than
@@ -122,7 +122,7 @@ class Database:
         that is false for the role the composition actually uses.
 
         *   **As a role row-level security reaches**, which ``orimera_app`` is, every one of the
-            forty-two forced tables reads empty. The policy is ``workspace_id =
+            forty-seven forced tables reads empty. The policy is ``workspace_id =
             current_workspace()``, ``current_workspace()`` is NULL with nothing declared, and
             ``NULL = anything`` is not true. So a caller that wanted workspace data and reached
             for this gets an empty result rather than another workspace's rows.

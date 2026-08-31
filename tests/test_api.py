@@ -63,6 +63,11 @@ ROUTE_PROBES: dict[tuple[str, str], dict] = {
     ("GET", "/world/styles/catalog"): {},
     ("GET", "/world/styles/current"): {},
     ("GET", "/world/styles/versions"): {},
+    ("GET", "/world/interactions/catalog"): {},
+    ("GET", "/world/interactions/current"): {},
+    ("GET", "/world/interactions/versions"): {},
+    ("GET", "/world/interactions/proposals/{proposal_id}"): {},
+    ("GET", "/world/interactions/recommendations"): {},
     ("GET", "/world/source-media"): {},
     ("GET", "/world/source-media/{source_id}"): {},
     ("DELETE", "/world/styles/previews/{preview_id}"): {},
@@ -88,6 +93,36 @@ ROUTE_PROBES: dict[tuple[str, str], dict] = {
             "base_style_version_id": str(uuid.uuid4()),
             "base_topology_digest": "probe-topology",
             "origin": "user",
+        }
+    },
+    ("DELETE", "/world/interactions/previews/{preview_id}"): {},
+    ("POST", "/world/interactions/previews"): {
+        "json": {
+            "proposal_id": str(uuid.uuid4()),
+            "origin": "settings",
+            "origin_reference": "probe-panel",
+            "base_policy_version_id": None,
+            "base_structure_snapshot_id": None,
+            "base_topology_sha256": None,
+            "capability_patch": {"initiative.mode": "minimal"},
+            "proposal_input": {"control": "initiative"},
+            "explanation": "The user selected less initiative.",
+        }
+    },
+    ("POST", "/world/interactions/previews/{preview_id}/apply"): {
+        "json": {
+            "base_policy_version_id": None,
+            "base_structure_snapshot_id": None,
+            "base_topology_sha256": None,
+        }
+    },
+    ("POST", "/world/interactions/rollback"): {
+        "json": {
+            "target_version_id": str(uuid.uuid4()),
+            "origin": "settings",
+            "base_policy_version_id": str(uuid.uuid4()),
+            "base_structure_snapshot_id": None,
+            "base_topology_sha256": None,
         }
     },
     # The stream is opened but never read here: an anonymous or foreign caller is refused
@@ -153,9 +188,9 @@ class Deployment:
     def fill(self, path: str) -> str:
         return path.replace("{span_id}", str(self.span_id)).replace(
             "{batch_id}", str(self.batch_id)
-        ).replace("{preview_id}", str(uuid.uuid4())).replace(
-            "{source_id}", str(uuid.uuid4())
-        ).replace(
+        ).replace("{proposal_id}", str(uuid.uuid4())).replace(
+            "{preview_id}", str(uuid.uuid4())
+        ).replace("{source_id}", str(uuid.uuid4())).replace(
             "{job_id}", str(uuid.uuid4())
         )
 
