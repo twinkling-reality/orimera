@@ -43,6 +43,7 @@ questions in both.
 | **Product** | | |
 | [product-specification.md](product-specification.md) | What Orimera is, the defining loop, the scoped MVP, the reconstruction fallback ladder, what is excluded, and the known limitations | Mixed, labelled per claim |
 | [interaction-model.md](interaction-model.md) | Atlas and coordinate model, navigation and the two platform limits that force it, the two verbs, the Companion, update proposals and confirmation tiers, World Index and Atlas Map, recomposition, formation, accessibility | Mixed, labelled per claim |
+| [frontier-roadmap.md](frontier-roadmap.md) | Exit-gated plan from source media through memory, reconstruction, protected adaptation, runtime publication, independent evaluation, and the signed World Memory Package | DECISION and IMPLEMENTATION PLAN |
 | **Architecture** | | |
 | [architecture-overview.md](architecture-overview.md) | System shape, platform split and deployment topology, storage and one consistency domain, object storage limits, query and answer safety, prompt injection posture, the 46 day uptime obligation | DECISION, with OPEN and ASSUMPTION items inline |
 | [atlas-spatial-architecture.md](atlas-spatial-architecture.md) | Grounded memory archipelago, navigation, neighborhoods, residency, Map correspondence, and phased spatial roadmap | DECISION and ACTIVE IMPLEMENTATION |
