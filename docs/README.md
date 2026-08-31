@@ -61,6 +61,7 @@ questions in both.
 | [evaluation-methodology.md](evaluation-methodology.md) | Gold corpus adapted to a photograph corpus, metrics with their measurement procedures, the honesty constraint, learning evaluation, adversarial suite | DECISION and ASSUMPTION, labelled |
 | [evaluation-corpus-contract.md](evaluation-corpus-contract.md) | Private OGC-1 bundle, immutable split, consent-index, blind-access, and local blocker contract | IMPLEMENTED INPUT BOUNDARY; REAL INPUTS BLOCKED |
 | [evaluation-run-archive.md](evaluation-run-archive.md) | Write-once, digest-verifiable reports with exact repository, model, stage, migration, ledger, timing, cost, and reuse provenance | IMPLEMENTED; REAL REPLAY BLOCKED |
+| [evaluation-clean-replay.md](evaluation-clean-replay.md) | New-database, non-owner, purpose-scoped two-pass corpus replay and gate receipt | REPLAY MECHANICS IMPLEMENTED; REAL BASELINE BLOCKED |
 | **Project** | | |
 | [demo-runbook.md](demo-runbook.md) | What can be demonstrated today and what cannot, audited against the build rather than against the plan, with the remaining gaps named | Mixed, buildability audited 2026-08-28 |
 | [demo-integrity.md](demo-integrity.md) | What is pre-seeded versus computed live and the prohibitions that follow, the hosted topology and its per-visitor reset, unattended operation, the failure modes with a fallback for each, and the pre-demonstration checklist | Mixed, DECISION with OPEN items inline |

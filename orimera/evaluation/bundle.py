@@ -183,6 +183,14 @@ class CorpusBundle:
     def synthetic(self) -> bool:
         return bool(self.document["synthetic"])
 
+    def contract_files(self) -> dict[str, bytes]:
+        """Return frozen metadata and label bytes, never source media."""
+        files = {"CORPUS.json": (self._root / "CORPUS.json").read_bytes()}
+        for entry in self.document["files"]:
+            relative = pathlib.PurePosixPath(str(entry["path"]))
+            files[relative.as_posix()] = self._root.joinpath(*relative.parts).read_bytes()
+        return files
+
     @classmethod
     def read(cls, directory: str | pathlib.Path) -> CorpusBundle:
         root = pathlib.Path(directory).resolve()
@@ -234,6 +242,12 @@ class CorpusBundle:
         if absent:
             raise CorpusContractError(
                 f"required files are absent from the inventory: {sorted(absent)}"
+            )
+        extra = set(expected) - declared
+        if extra:
+            raise CorpusContractError(
+                "corpus inventory may contain contract and label files only; "
+                f"unexpected paths={sorted(extra)}"
             )
         for relative, wanted in expected.items():
             contract_file = root / relative

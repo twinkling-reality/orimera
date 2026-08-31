@@ -442,15 +442,16 @@ def test_a_row_that_carries_no_sentence_is_a_row_something_scores():
     assert "NOT MEASURED" in report
 
 
-def test_the_harness_writes_nothing():
-    """``cli.py`` opens by saying this package holds no INSERT, no UPDATE and no DELETE.
+def test_the_scoring_package_contains_no_direct_product_write_sql():
+    """The package holds no direct INSERT, UPDATE or DELETE that could bypass the pipeline.
 
-    It is the load-bearing sentence of the whole harness. A Selection filters on confirmed entity
+    It is the load-bearing rule of the scoring path. A Selection filters on confirmed entity
     ids, an entity exists only where a person confirmed an occurrence, and the tempting way to
     make such a metric computable is for the harness to confirm one out of ``MANIFEST.json``. That
     is a machine performing a user-class act, invariant 3 forbids it, and no flag or dedicated
-    workspace changes what is being written. So the refusal is scanned rather than asserted in
-    prose: every SQL string this package holds is read, and a write in any of them fails here.
+    workspace changes what is being written. ``replay-bundle`` invokes the normal pipeline only
+    after checking a new empty database; it does not carry SQL around this boundary. So every SQL
+    string this package owns is scanned, and a direct write in any of them fails here.
     """
     import ast
     import re

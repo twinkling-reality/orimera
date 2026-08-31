@@ -27,7 +27,12 @@ def _write(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, sort_keys=True, indent=2), encoding="utf-8")
 
 
-def _bundle(tmp_path: Path, *, synthetic: bool = False) -> tuple[Path, str]:
+def _bundle(
+    tmp_path: Path,
+    *,
+    synthetic: bool = False,
+    source_payloads: dict[str, bytes] | None = None,
+) -> tuple[Path, str]:
     secret = "blind-fixture-key"
     items = []
     media = []
@@ -35,7 +40,11 @@ def _bundle(tmp_path: Path, *, synthetic: bool = False) -> tuple[Path, str]:
     for split, subject in (("train", "P1"), ("development", "P2"), ("blind", "P3")):
         source = tmp_path / "media" / f"{split}.jpg"
         source.parent.mkdir(parents=True, exist_ok=True)
-        source.write_bytes(f"not an image; contract fixture {split}".encode())
+        source.write_bytes(
+            source_payloads[split]
+            if source_payloads is not None
+            else f"not an image; contract fixture {split}".encode()
+        )
         digest = _sha(source)
         consent_id = f"CONSENT-{subject}"
         items.append(
@@ -109,6 +118,15 @@ def test_the_bundle_freezes_every_contract_file_and_source(tmp_path: Path):
 
     (root / "labels/L8.json").write_text("{}", encoding="utf-8")
     with pytest.raises(CorpusContractError, match="immutable corpus file changed"):
+        CorpusBundle.read(root)
+
+
+def test_inventory_cannot_smuggle_source_media_into_an_archive(tmp_path: Path):
+    root, _secret = _bundle(tmp_path)
+    corpus = json.loads((root / "CORPUS.json").read_text())
+    corpus["files"].append({"path": "media/train.jpg", "sha256": _sha(root / "media/train.jpg")})
+    _write(root / "CORPUS.json", corpus)
+    with pytest.raises(CorpusContractError, match="contract and label files only"):
         CorpusBundle.read(root)
 
 

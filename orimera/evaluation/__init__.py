@@ -39,6 +39,13 @@ from orimera.evaluation.provenance import (
     create_archive,
     verify_archive,
 )
+from orimera.evaluation.replay import (
+    CleanDatabaseError,
+    ReplayError,
+    ReplayReceipt,
+    assert_pristine_database,
+    run_clean_replay,
+)
 from orimera.evaluation.report import BANNED, banned_words_in, render_report
 
 __all__ = [
@@ -49,6 +56,7 @@ __all__ = [
     "ArchiveError",
     "ArchiveReceipt",
     "AuthorizedSource",
+    "CleanDatabaseError",
     "Component",
     "CorpusBundle",
     "CorpusContractError",
@@ -57,12 +65,16 @@ __all__ = [
     "Frame",
     "GroundTruth",
     "NamedCase",
+    "ReplayError",
+    "ReplayReceipt",
     "Sample",
+    "assert_pristine_database",
     "banned_words_in",
     "create_archive",
     "execution_snapshot",
     "render",
     "render_report",
+    "run_clean_replay",
     "verify_archive",
     "wilson",
 ]

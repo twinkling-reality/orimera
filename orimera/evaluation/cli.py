@@ -1,12 +1,15 @@
 """``orimera-eval``. Run what can be measured and say plainly what cannot.
 
-It reads through the database and the HTTP application and WRITES NOTHING. There is no INSERT,
-no UPDATE and no DELETE anywhere in this package, ``tests/test_evaluation.py`` scans for one, and
-every number here is computed from rows somebody else put there.
+The ``run`` scoring path reads through the database and HTTP application and writes no product
+state. There is no direct INSERT, UPDATE or DELETE in this package, and every product number is
+computed from rows the real pipeline put there. ``replay-bundle`` is the explicit orchestration
+exception: it applies migrations and invokes that real pipeline, only after proving its target is a
+new empty evaluation database. It never confirms an entity or performs another user-class act.
 
-That is a rule rather than an accident of what happens to be implemented. Every metric this
-harness has had to turn down for want of a write needed a CONFIRMED ENTITY, and an entity exists
-only where a person confirmed an occurrence. A harness that confirmed one out of ``MANIFEST.json``
+Read-only scoring is a rule rather than an accident of what happens to be implemented. Every
+metric this harness has had to turn down for want of a write needed a CONFIRMED ENTITY, and an
+entity exists only where a person confirmed an occurrence. A harness that confirmed one out of
+``MANIFEST.json``
 to make its own number computable would be a machine performing a user-class act, which invariant
 3 forbids and which no flag or dedicated workspace would change. So such a metric is a blocked row
 in ``metrics.py`` carrying the sentence that names what is missing, and it is never bought with a
@@ -18,6 +21,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -26,7 +30,8 @@ from typing import Any, Final
 
 from orimera.api.routes import routable_paths
 from orimera.db.session import Database
-from orimera.evaluation.bundle import CorpusBundle, CorpusContractError
+from orimera.errors import OrimeraError
+from orimera.evaluation.bundle import AccessPurpose, CorpusBundle, CorpusContractError
 from orimera.evaluation.counts import Count, Sample
 from orimera.evaluation.coverage import what_the_corpus_cannot_support
 from orimera.evaluation.execution import execution_snapshot
@@ -41,6 +46,7 @@ from orimera.evaluation.provenance import (
     repository_snapshot,
     verify_archive,
 )
+from orimera.evaluation.replay import ReplayError, run_clean_replay
 from orimera.evaluation.report import render_report
 from orimera.evaluation.scorers import (
     score_authorisation,
@@ -66,6 +72,7 @@ SCORED: Final[tuple[str, ...]] = (
 )
 
 _PUBLIC = {"/healthz", "/readyz", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+_EVALUATION_OWNER_DATABASE_URL_ENV = "ORIMERA_EVALUATION_OWNER_DATABASE_URL"
 
 
 def _cmd_inspect_corpus(args: argparse.Namespace, stream: Any) -> int:
@@ -117,6 +124,76 @@ def _cmd_verify_archive(args: argparse.Namespace, stream: Any) -> int:
     print(f"  root sha256  {receipt.root_sha256}", file=stream)
     print(f"  files        {receipt.files}", file=stream)
     return 0
+
+
+def _cmd_replay_bundle(args: argparse.Namespace, stream: Any) -> int:
+    """Replay one authorized bundle split into a brand-new database."""
+    try:
+        repository_state = repository_snapshot(args.repository)
+        bundle = CorpusBundle.read(args.corpus)
+        purpose = AccessPurpose(args.purpose)
+        blind_key = None
+        if args.blind_key_file:
+            blind_key = pathlib.Path(args.blind_key_file).read_text(encoding="utf-8").rstrip("\r\n")
+        owner_url = os.environ.get(_EVALUATION_OWNER_DATABASE_URL_ENV)
+        if not owner_url:
+            raise ReplayError(
+                f"{_EVALUATION_OWNER_DATABASE_URL_ENV} is not set to a new empty database"
+            )
+        owner_database = Database(owner_url)
+        runtime_database = Database.from_env()
+        vision = _replay_vision(args, bundle, stream)
+        receipt = run_clean_replay(
+            bundle=bundle,
+            owner_database=owner_database,
+            runtime_database=runtime_database,
+            data_dir=pathlib.Path(args.data_dir),
+            audit_path=pathlib.Path(args.access_audit),
+            archive_parent=pathlib.Path(args.archive_parent),
+            repository_state=repository_state,
+            purpose=purpose,
+            actor=args.actor,
+            blind_key=blind_key,
+            vision=vision,
+        )
+    except (
+        ArchiveError,
+        CorpusContractError,
+        OrimeraError,
+        ReplayError,
+        RuntimeError,
+        OSError,
+    ) as exc:
+        print(f"clean evaluation replay: FAILED: {exc}", file=stream)
+        return 2
+    print(f"clean evaluation replay: {'PASS' if receipt.gate_passed else 'BLOCKED'}", file=stream)
+    for blocker in receipt.blockers:
+        print(f"  blocker: {blocker}", file=stream)
+    print(f"  archive      {receipt.archive.path}", file=stream)
+    print(f"  root sha256  {receipt.archive.root_sha256}", file=stream)
+    return 0
+
+
+def _replay_vision(args: argparse.Namespace, bundle: CorpusBundle, stream: Any) -> Any:
+    if args.offline:
+        if not bundle.synthetic:
+            raise ReplayError("--offline is refused for a real evaluation bundle")
+        print("vision: disabled for an explicitly synthetic replay fixture", file=stream)
+        return None
+    from orimera.ingest.vision import NebiusVisionModel
+    from orimera.models.cache import FileResponseCache
+    from orimera.models.client import ModelClient
+    from orimera.models.preflight import run_preflight
+
+    preflight = run_preflight()
+    if not preflight.ok:
+        failures = "; ".join(str(issue) for issue in preflight.failures)
+        raise ReplayError(f"model preflight failed before replay: {failures}")
+    client = ModelClient(
+        cache=FileResponseCache(pathlib.Path(args.data_dir) / "model-cache"),
+        max_attempts=3,
+    )
+    return NebiusVisionModel(client)
 
 
 def _git_commit() -> str:
@@ -333,6 +410,35 @@ def main(argv: list[str] | None = None, stream: Any = None) -> int:
     verify.add_argument("--archive", required=True)
     verify.add_argument("--root-sha256", required=True)
     verify.set_defaults(handler=_cmd_verify_archive)
+    replay_bundle = sub.add_parser(
+        "replay-bundle",
+        help="replay an authorized CORPUS.json split in a new empty database",
+    )
+    replay_bundle.add_argument("--corpus", required=True)
+    replay_bundle.add_argument("--archive-parent", required=True)
+    replay_bundle.add_argument("--access-audit", required=True)
+    replay_bundle.add_argument("--data-dir", required=True)
+    replay_bundle.add_argument("--repository", default=".")
+    replay_bundle.add_argument("--actor", required=True, help="opaque evaluation operator id")
+    replay_bundle.add_argument(
+        "--purpose",
+        choices=(
+            AccessPurpose.DEVELOPMENT_EVALUATION.value,
+            AccessPurpose.BLIND_EVALUATION.value,
+        ),
+        required=True,
+    )
+    replay_bundle.add_argument(
+        "--blind-key-file",
+        default=None,
+        help="file containing the external blind key; never pass the key on the command line",
+    )
+    replay_bundle.add_argument(
+        "--offline",
+        action="store_true",
+        help="synthetic contract tests only; refused for a real bundle",
+    )
+    replay_bundle.set_defaults(handler=_cmd_replay_bundle)
     run = sub.add_parser("run", help="measure what can be measured against a corpus")
     run.add_argument("--corpus", required=True, help="the directory holding MANIFEST.json")
     run.add_argument("--workspace", required=True, help="the workspace uuid the corpus is in")
