@@ -775,6 +775,11 @@ def test_process_death_at_each_real_stage_boundary_replays_to_one_canonical_resu
             == 1,
         )
     else:
+        # The depth boundary is the pause in ``run_continuity`` after every capture has completed.
+        # Waiting for merely the first depth event lets the parent kill the worker while the
+        # second capture's paid vision result is between provider return and commit.  That is a
+        # different boundary, and makes this test's two-result assertion scheduler-dependent.
+        required_successes = len(queued.capture_ids) if boundary == "depth" else 1
         _wait_until(
             f"the {boundary} stage boundary",
             lambda: queued.rows(
@@ -785,7 +790,7 @@ def test_process_death_at_each_real_stage_boundary_replays_to_one_canonical_resu
                 queued.job_id,
                 boundary,
             )[0]["n"]
-            >= 1,
+            >= required_successes,
         )
 
     doomed.kill()
