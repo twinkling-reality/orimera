@@ -59,6 +59,21 @@ describe('the transport', () => {
     });
   });
 
+  it('sends authenticated deletes without trying to parse an empty response', async () => {
+    let seen: RequestInit | undefined;
+    const transport = new Transport({
+      baseUrl: 'https://example.invalid',
+      token: 'secret',
+      fetch: async (_url, init) => {
+        seen = init;
+        return new Response(null, { status: 204 });
+      },
+    });
+    await transport.delete('/world/styles/previews/p1');
+    expect(seen?.method).toBe('DELETE');
+    expect((seen?.headers as Record<string, string>).authorization).toBe('Bearer secret');
+  });
+
   it('reads the modality and the clock uncertainty the evidence response carries', async () => {
     const client = new OrimeraClient({
       baseUrl: 'https://example.invalid',

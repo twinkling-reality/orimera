@@ -12,7 +12,7 @@ from orimera.world import STYLE_REGISTRY, InvalidStyleData, StyleReference, Styl
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 REGISTRY_PATH = ROOT / "orimera" / "world" / "style-registry.v1.json"
-PROFILES_TS = ROOT / "web" / "packages" / "presentation" / "src" / "world-profiles.ts"
+RECIPES_TS = ROOT / "web" / "packages" / "presentation" / "src" / "world-style-recipes.ts"
 FRONTEND_RECIPE_COMMIT = "55b123627314d328fba3850eb607d8a7682a8cad"
 FRONTEND_CAPABILITIES = {
     "world.vitality",
@@ -44,8 +44,8 @@ def registry_document():
 
 
 def test_the_backend_adapter_is_pinned_to_the_reviewed_frontend_recipe_contract():
-    # This backend branch diverges before the recipe files exist.  These exact identities are the
-    # renderer-neutral contract inspected from FRONTEND_RECIPE_COMMIT, not copied renderer code.
+    # These exact identities are the renderer-neutral contract pinned to
+    # FRONTEND_RECIPE_COMMIT, not copied renderer code.
     assert len(FRONTEND_RECIPE_COMMIT) == 40
     assert STYLE_REGISTRY.frontend_contract_commit == FRONTEND_RECIPE_COMMIT
     assert set(STYLE_REGISTRY.capabilities) == FRONTEND_CAPABILITIES
@@ -91,10 +91,8 @@ def test_the_backend_adapter_is_pinned_to_the_reviewed_frontend_recipe_contract(
 
 
 def test_the_backend_registry_matches_the_committed_world_profile_versions():
-    source = PROFILES_TS.read_text(encoding="utf-8")
-    declared_ids = set(
-        re.findall(r"profileId: '([^']+)'", source.split("export const WORLD_ART_PROFILES")[0])
-    )
+    source = RECIPES_TS.read_text(encoding="utf-8")
+    declared_ids = set(re.findall(r"profileId: '([^']+)'", source))
     assert declared_ids == {profile_id for profile_id, _version in STYLE_REGISTRY.profiles}
     assert {version for _profile_id, version in STYLE_REGISTRY.profiles} == {1}
 

@@ -59,6 +59,15 @@ import { buildLibrary } from './ui/library.js';
 import { buildStatus, MAP_ORIENTATION_CAPTION } from './ui/status.js';
 import { readPreferences, writePreferences, type AtlasPreferences } from './preferences.js';
 import {
+  WorldStyleClient,
+  WorldStyleContractError,
+  type ActiveWorldStylePreview,
+  type WorldStyleConnection,
+  type WorldStyleVersionRecord,
+} from './world-style-api.js';
+import { SourceMediaClient, type SourceMediaSession } from './source-media-api.js';
+import { worldStyleProposalInbox } from './world-style-proposals.js';
+import {
   InteractionPolicyClient,
   preferencesFromInteractionPolicy,
 } from './interaction-policy.js';
@@ -92,6 +101,13 @@ let mountedCompanionStage: CompanionStage | null = null;
 let settingsStylePreviewId: string | null = null;
 let interactionPolicies: InteractionPolicyClient | null = null;
 let previewSourceMedia: SourceMediaCatalog | undefined;
+let worldStyles: WorldStyleClient | null = null;
+let worldStyleConnection: WorldStyleConnection | null = null;
+let worldStyleFailure: string | null = null;
+let sourceMediaSession: SourceMediaSession | null = null;
+let sourceMediaNotices: readonly string[] = Object.freeze([]);
+let stopWorldStyleProposalInbox: (() => void) | null = null;
+window.addEventListener('pagehide', () => sourceMediaSession?.dispose(), { once: true });
 const systemAppearance = window.matchMedia('(prefers-color-scheme: dark)');
 const systemReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 systemReducedMotion.addEventListener('change', (event) => {
@@ -201,6 +217,19 @@ async function start(token: string): Promise<void> {
   evidence = new EvidenceCache(opened.session.client);
   companionEngine = opened.companion;
   if (!preview) {
+    worldStyles = new WorldStyleClient(credentials_);
+    try {
+      worldStyleConnection = await worldStyles.connect();
+      preferences = preferencesForWorldVersion(
+        preferences,
+        worldStyleConnection.state.current,
+      );
+      worldStyleFailure = null;
+    } catch (error) {
+      worldStyleFailure = describeWorldStyleFailure(error);
+      worldStyleConnection = null;
+      worldStyles = null;
+    }
     interactionPolicies = new InteractionPolicyClient(credentials_);
     const interactionState = await interactionPolicies.current();
     if (interactionState.current !== null) {
@@ -210,6 +239,34 @@ async function start(token: string): Promise<void> {
       } catch {
         // The durable server copy is authoritative; private browsing may reject its local cache.
       }
+    }
+    sourceMediaSession?.dispose();
+    sourceMediaSession = null;
+    try {
+      const profile = worldArtProfile(
+        preferences.worldArtProfile,
+        preferences.worldArtProfileVersion,
+        preferences.worldStyleParameters,
+      );
+      sourceMediaSession = await new SourceMediaClient(credentials_).load(
+        profile.palette.stoneShadow,
+      );
+      previewSourceMedia = sourceMediaSession.catalog;
+      sourceMediaNotices = Object.freeze(sourceMediaSession.issues.map((issue) => {
+        const state = issue.state === 'missing_evidence'
+          ? 'Missing source evidence'
+          : issue.state === 'unavailable_asset'
+            ? 'Source asset unavailable'
+            : issue.state === 'unauthorized'
+              ? 'Source not authorized'
+              : 'Source loading error';
+        return `${state}: ${issue.reason}`;
+      }));
+    } catch (error) {
+      previewSourceMedia = new Map();
+      sourceMediaNotices = Object.freeze([
+        `Source media unavailable: ${error instanceof Error ? error.message : 'the request failed'}`,
+      ]);
     }
   }
   await mount();
@@ -429,38 +486,96 @@ async function mount(): Promise<void> {
         'Widen this window to at least 60rem to continue.',
     }),
   ]);
-  const optionsView = buildOptions({
+  let optionsView: ReturnType<typeof buildOptions>;
+  let serverPreviewTimer: number | null = null;
+  let previewSequence = 0;
+
+  const reflectLocalWorldPreview = (
+    candidate: AtlasPreferences,
+    origin: 'settings' | 'companion' = 'settings',
+  ): boolean => {
+    if (atlas === null) return false;
+    const styleChanged = candidate.worldArtProfile !== preferences.worldArtProfile ||
+      candidate.worldArtProfileVersion !== preferences.worldArtProfileVersion ||
+      JSON.stringify(candidate.worldStyleParameters) !==
+        JSON.stringify(preferences.worldStyleParameters);
+    if (!styleChanged) return false;
+    if (settingsStylePreviewId !== null) {
+      atlas.binding.discardArtProfilePreview(settingsStylePreviewId);
+      settingsStylePreviewId = null;
+    }
+    const candidateProfile = worldArtProfile(
+      candidate.worldArtProfile,
+      candidate.worldArtProfileVersion,
+      candidate.worldStyleParameters,
+    );
+    const previewSession = atlas.binding.previewArtProfile(
+      candidateProfile,
+      origin,
+      candidate.worldStyleParameters,
+    );
+    if (!previewSession.validation.ok) return false;
+    settingsStylePreviewId = previewSession.sessionId;
+    applyDocumentWorldStyle(candidateProfile);
+    return true;
+  };
+
+  const previewOnServer = async (candidate: AtlasPreferences): Promise<ActiveWorldStylePreview | null> => {
+    const client = worldStyles;
+    if (client === null) {
+      optionsView.reportWorldLifecycle(
+        'failed',
+        worldStyleFailure ?? 'World style authority is unavailable. This preview cannot be saved.',
+      );
+      return null;
+    }
+    const sequence = ++previewSequence;
+    optionsView.reportWorldLifecycle('checking');
+    try {
+      const active = await client.previewSettings({
+        profileId: candidate.worldArtProfile,
+        profileVersion: candidate.worldArtProfileVersion,
+        parameters: candidate.worldStyleParameters,
+      });
+      if (sequence === previewSequence) {
+        syncWorldStyleConnection(client);
+        presentWorldStyleAuthority(optionsView, worldStyleConnection, worldStyleFailure, active);
+        optionsView.reportWorldLifecycle(
+          active.recoveredFromStale ? 'stale' : 'ready',
+        );
+      }
+      return active;
+    } catch (error) {
+      if (sequence === previewSequence) {
+        optionsView.reportWorldLifecycle('failed', describeWorldStyleFailure(error));
+      }
+      return null;
+    }
+  };
+
+  const queueServerPreview = (candidate: AtlasPreferences): void => {
+    if (serverPreviewTimer !== null) window.clearTimeout(serverPreviewTimer);
+    serverPreviewTimer = window.setTimeout(() => {
+      serverPreviewTimer = null;
+      void previewOnServer(candidate);
+    }, 220);
+  };
+
+  optionsView = buildOptions({
     preferences,
     onChange: applyPreferences,
     onPreview: (candidate) => {
       shell!.setAttribute('data-vignette', candidate.vignette);
       atlas?.binding.setFieldOfView(candidate.fieldOfView);
       atlas?.binding.setSensitivityMultiplier(candidate.mouseSensitivity);
-      if (atlas === null) return;
-      const styleChanged = candidate.worldArtProfile !== preferences.worldArtProfile ||
-        JSON.stringify(candidate.worldStyleParameters) !==
-          JSON.stringify(preferences.worldStyleParameters);
-      if (!styleChanged) return;
-      if (settingsStylePreviewId !== null) {
-        atlas.binding.discardArtProfilePreview(settingsStylePreviewId);
-        settingsStylePreviewId = null;
-      }
-      const candidateProfile = worldArtProfile(
-        candidate.worldArtProfile,
-        candidate.worldArtProfileVersion,
-        candidate.worldStyleParameters,
-      );
-      const previewSession = atlas.binding.previewArtProfile(
-        candidateProfile,
-        'settings',
-        candidate.worldStyleParameters,
-      );
-      if (previewSession.validation.ok) {
-        settingsStylePreviewId = previewSession.sessionId;
-        applyDocumentWorldStyle(candidateProfile);
-      }
+      if (reflectLocalWorldPreview(candidate)) queueServerPreview(candidate);
     },
     onWorldDiscard: (restored) => {
+      if (serverPreviewTimer !== null) {
+        window.clearTimeout(serverPreviewTimer);
+        serverPreviewTimer = null;
+      }
+      previewSequence += 1;
       if (settingsStylePreviewId !== null && atlas !== null) {
         atlas.binding.discardArtProfilePreview(settingsStylePreviewId);
         settingsStylePreviewId = null;
@@ -470,9 +585,122 @@ async function mount(): Promise<void> {
         restored.worldArtProfileVersion,
         restored.worldStyleParameters,
       ));
+      const client = worldStyles;
+      if (client !== null) {
+        void client.discardActive().then(() => {
+          syncWorldStyleConnection(client);
+          presentWorldStyleAuthority(optionsView, worldStyleConnection, worldStyleFailure, null);
+          optionsView.reportWorldLifecycle('idle');
+        }).catch((error) => optionsView.reportWorldLifecycle(
+          'failed', describeWorldStyleFailure(error),
+        ));
+      }
+    },
+    onWorldApply: async (candidate) => {
+      if (serverPreviewTimer !== null) {
+        window.clearTimeout(serverPreviewTimer);
+        serverPreviewTimer = null;
+      }
+      const client = worldStyles;
+      if (client === null) {
+        optionsView.reportWorldLifecycle(
+          'failed',
+          worldStyleFailure ?? 'World style authority is unavailable. No durable change was made.',
+        );
+        return false;
+      }
+      const existing = client.activePreview();
+      const active = existing !== null && worldStylePreviewMatches(existing, candidate)
+        ? existing
+        : await previewOnServer(candidate);
+      if (active === null) return false;
+      optionsView.reportWorldLifecycle('checking', 'Applying the reviewed preview…');
+      try {
+        const result = await client.applyActive();
+        syncWorldStyleConnection(client);
+        if (result.kind === 'stale-recovered') {
+          presentWorldStyleAuthority(
+            optionsView, worldStyleConnection, worldStyleFailure, result.preview,
+          );
+          optionsView.reportWorldLifecycle('stale');
+          return false;
+        }
+        presentWorldStyleAuthority(optionsView, worldStyleConnection, worldStyleFailure, null);
+        optionsView.reportWorldLifecycle('saved');
+        return true;
+      } catch (error) {
+        optionsView.reportWorldLifecycle('failed', describeWorldStyleFailure(error));
+        return false;
+      }
+    },
+    onWorldRollback: async (targetVersionId) => {
+      const client = worldStyles;
+      if (client === null) {
+        optionsView.reportWorldLifecycle(
+          'failed', worldStyleFailure ?? 'World style authority is unavailable.',
+        );
+        return null;
+      }
+      optionsView.reportWorldLifecycle('checking', 'Restoring the selected saved design…');
+      try {
+        const result = await client.rollback(targetVersionId);
+        syncWorldStyleConnection(client);
+        presentWorldStyleAuthority(optionsView, worldStyleConnection, worldStyleFailure, null);
+        if (result.kind === 'stale') {
+          const latest = preferencesForWorldVersion(preferences, result.state.current);
+          applyPreferences(latest);
+          optionsView.reportWorldLifecycle(
+            'stale',
+            'The saved world changed elsewhere. The latest version is shown; choose the restore target again.',
+          );
+          return null;
+        }
+        optionsView.reportWorldLifecycle('saved', `Restored as revision ${result.version.revision}.`);
+        return preferencesForWorldVersion(preferences, result.version);
+      } catch (error) {
+        optionsView.reportWorldLifecycle('failed', describeWorldStyleFailure(error));
+        return null;
+      }
     },
     onClose: () => dispatchShell({ type: 'toggle-options' }),
     onShowControls: () => dispatchShell({ type: 'toggle-controls' }),
+  });
+  presentWorldStyleAuthority(optionsView, worldStyleConnection, worldStyleFailure, null);
+  stopWorldStyleProposalInbox?.();
+  stopWorldStyleProposalInbox = worldStyleProposalInbox.subscribe(async (proposal) => {
+    const client = worldStyles;
+    if (client === null) {
+      optionsView.reportWorldLifecycle(
+        'failed',
+        worldStyleFailure ?? 'World style authority is unavailable. The proposal was not previewed.',
+      );
+      return;
+    }
+    if (proposal.scope?.kind === 'region') {
+      optionsView.reportWorldLifecycle(
+        'failed',
+        'Regional style proposals require a regional renderer preview and are not shown as a global change.',
+      );
+      return;
+    }
+    try {
+      optionsView.reportWorldLifecycle('checking', 'Validating the upstream proposal…');
+      const active = await client.previewUpstream(proposal);
+      const candidate = preferencesForWorldReference(
+        preferences,
+        active.preview.candidate.globalStyle,
+      );
+      optionsView.setPreferences(candidate);
+      reflectLocalWorldPreview(
+        candidate,
+        proposal.origin === 'companion' ? 'companion' : 'settings',
+      );
+      syncWorldStyleConnection(client);
+      presentWorldStyleAuthority(optionsView, worldStyleConnection, worldStyleFailure, active);
+      optionsView.reportWorldLifecycle(active.recoveredFromStale ? 'stale' : 'ready');
+    } catch (error) {
+      optionsView.reportWorldLifecycle('failed', describeWorldStyleFailure(error));
+    }
   });
   const controlsGuide = buildControlsGuide({
     onClose: () => dispatchShell({ type: 'toggle-controls' }),
@@ -539,10 +767,11 @@ async function mount(): Promise<void> {
     optionsView.root,
     controlsGuide.root,
     viewportBoundary,
-    buildStatus({
-      omittedRegionCount: built.omitted.length,
-      undrawable: built.undrawable,
-    }),
+      buildStatus({
+        omittedRegionCount: built.omitted.length,
+        undrawable: built.undrawable,
+        sourceMediaNotices,
+      }),
   ]);
 
   reflectShell = (): void => {
@@ -551,12 +780,9 @@ async function mount(): Promise<void> {
     chrome.setIndexOpen(shellState.primary === 'index');
     library.root.inert = shellState.primary !== 'index';
     library.root.setAttribute('aria-hidden', shellState.primary === 'index' ? 'false' : 'true');
-    optionsView.setVisible(shellState.primary === 'options');
-    controlsGuide.setVisible(shellState.primary === 'controls');
     const systemSurfaceOpen = shellState.primary === 'options' || shellState.primary === 'controls';
-    for (const surface of [
+    const modalBackground = [
       stage,
-      library.root,
       detail.root,
       forming.root,
       companionPanel.root,
@@ -564,9 +790,13 @@ async function mount(): Promise<void> {
       commandBar.root,
       mapCaption,
       travelStatus,
-    ]) {
-      surface.inert = systemSurfaceOpen;
-    }
+    ];
+    // On close, release the command bar before the dialog restores focus to its trigger. On open,
+    // move focus into the dialog before making that same trigger inert.
+    if (!systemSurfaceOpen) for (const surface of modalBackground) surface.inert = false;
+    optionsView.setVisible(shellState.primary === 'options');
+    controlsGuide.setVisible(shellState.primary === 'controls');
+    if (systemSurfaceOpen) for (const surface of modalBackground) surface.inert = true;
     commandBar.reflect(shellState.primary, shellState.camera);
     mapCaption.hidden = shellState.camera !== 'map';
     detail.root.hidden = shellState.primary !== 'index' || shellState.detailId === null;
@@ -868,6 +1098,125 @@ function panelFailure(confirm: ReturnType<typeof buildConfirm>, error: unknown):
         ? error.message
         : 'the write was refused',
   );
+}
+
+function preferencesForWorldVersion(
+  local: AtlasPreferences,
+  version: WorldStyleVersionRecord,
+): AtlasPreferences {
+  return preferencesForWorldReference(local, version.globalStyle);
+}
+
+function preferencesForWorldReference(
+  local: AtlasPreferences,
+  reference: WorldStyleVersionRecord['globalStyle'],
+): AtlasPreferences {
+  return Object.freeze({
+    ...local,
+    worldArtProfile: reference.profileId,
+    worldArtProfileVersion: reference.profileVersion,
+    worldStyleParameters: reference.parameters,
+  });
+}
+
+function worldStylePreviewMatches(
+  active: ActiveWorldStylePreview,
+  candidate: AtlasPreferences,
+): boolean {
+  const profile = active.request.profile;
+  if (
+    active.request.scope.kind !== 'global' ||
+    profile.profileId !== candidate.worldArtProfile ||
+    profile.profileVersion !== candidate.worldArtProfileVersion
+  ) return false;
+  const keys = new Set([
+    ...Object.keys(profile.parameters),
+    ...Object.keys(candidate.worldStyleParameters),
+  ]);
+  return [...keys].every(
+    (key) => profile.parameters[key] === candidate.worldStyleParameters[key],
+  );
+}
+
+function syncWorldStyleConnection(client: WorldStyleClient): void {
+  const state = client.state();
+  if (state === null) return;
+  worldStyleConnection = Object.freeze({ state, versions: client.versions() });
+}
+
+function presentWorldStyleAuthority(
+  view: ReturnType<typeof buildOptions>,
+  connection: WorldStyleConnection | null,
+  failure: string | null,
+  active: ActiveWorldStylePreview | null,
+): void {
+  if (connection === null) {
+    view.setWorldAuthority({
+      state: failure === null ? 'unavailable' : 'failed',
+      detail: failure ?? 'World style authority is unavailable. Local previews cannot be saved.',
+    });
+    return;
+  }
+  const current = connection.state.current;
+  const provenance = current.provenance === null
+    ? 'Authored initial version'
+    : [
+        `${current.provenance.origin} by ${current.provenance.actor}`,
+        current.provenance.originReference,
+        current.modelId,
+        current.promptVersion,
+        current.refinesProposalId === null ? null : `refines ${current.refinesProposalId}`,
+      ].filter((item): item is string => item !== null).join(' · ');
+  view.setWorldAuthority({
+    state: 'ready',
+    detail: 'Connected to immutable world style history.',
+    currentVersionId: current.versionId,
+    revision: current.revision,
+    provenance,
+    warnings: current.warnings,
+    versions: connection.versions.map((version) => ({
+      versionId: version.versionId,
+      label: [
+        `Revision ${version.revision}`,
+        version.rollbackTargetVersionId === null ? null : 'rollback',
+        version.provenance?.origin ?? 'authored',
+        version.createdAt.slice(0, 10),
+      ].filter((item): item is string => item !== null).join(' · '),
+      current: version.versionId === current.versionId,
+    })),
+    ...(active === null
+      ? {}
+      : {
+          proposal: {
+            origin: active.request.origin,
+            model: active.request.modelId,
+            promptVersion: active.request.promptVersion,
+            referenceCount: active.request.referenceIds.length,
+            refinesProposalId: active.request.refinesProposalId,
+          },
+        }),
+  });
+}
+
+function describeWorldStyleFailure(error: unknown): string {
+  if (error instanceof WorldStyleContractError) return error.message;
+  if (error instanceof ApiError) {
+    if (error.isUnauthenticated) return 'This session is no longer authorized to manage world design.';
+    if (error.code === 'invalid_style_data') {
+      return 'The proposal did not match the reviewed profile, capability, or parameter contract.';
+    }
+    if (error.code === 'protected_topology_conflict') {
+      return 'The protected world layout changed. Reopen the design against the current Atlas.';
+    }
+    if (error.code === 'stale_style_version') {
+      return 'The saved world changed elsewhere. Refresh and review a new preview.';
+    }
+    if (error.code === 'invalid_preview_state') {
+      return 'That preview is already closed. Create and review a new preview.';
+    }
+    return `${error.code}: ${error.message.replace(`${error.code}: `, '')}`;
+  }
+  return error instanceof Error ? error.message : 'The world style request failed.';
 }
 
 /**

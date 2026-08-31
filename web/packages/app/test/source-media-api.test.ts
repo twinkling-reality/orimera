@@ -1,0 +1,119 @@
+import { describe, expect, it, vi } from 'vitest';
+import { SourceMediaClient } from '../src/source-media-api.js';
+
+const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), {
+  status,
+  headers: { 'content-type': 'application/json' },
+});
+
+const source = (overrides: Record<string, unknown> = {}) => ({
+  source_id: 'source-1',
+  slot_key: 'hero-memory',
+  region_id: 'region-a',
+  state: 'available',
+  reason: null,
+  evidence_span_id: 'span-1',
+  evidence_path: '/evidence/span-1',
+  modality: 'frame_region',
+  media_type: 'image/jpeg',
+  byte_size: 2,
+  width: 800,
+  height: 600,
+  captured_at: '2026-08-30T10:00:00Z',
+  captured_at_uncertainty_ms: 0,
+  asset_reference: {
+    href: '/evidence/span-1',
+    authorization: 'workspace-bearer',
+    provenance: { source_id: 'source-1', evidence_span_id: 'span-1' },
+  },
+  ...overrides,
+});
+
+describe('production source media boundary', () => {
+  it('fetches available bytes with bearer authorization and revokes its blob URL', async () => {
+    const requests: { path: string; init: RequestInit }[] = [];
+    const revoke = vi.fn();
+    const fetch = vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
+      const path = new URL(String(input)).pathname;
+      requests.push({ path, init });
+      if (path.endsWith('/world/source-media')) return json([source()]);
+      return new Response(new Uint8Array([0xff, 0xd8]), {
+        status: 200, headers: { 'content-type': 'image/jpeg' },
+      });
+    });
+    const client = new SourceMediaClient({
+      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      createObjectURL: () => 'blob:source-1', revokeObjectURL: revoke,
+    });
+    const session = await client.load('#7c71b5');
+    expect(session.catalog.get('span-1')).toMatchObject({
+      available: true, url: 'blob:source-1', evidenceRef: 'span-1',
+    });
+    expect(requests.map((request) => request.path)).toEqual([
+      '/api/world/source-media', '/api/evidence/span-1',
+    ]);
+    expect((requests[1]!.init.headers as Record<string, string>).authorization)
+      .toBe('Bearer private-token');
+    session.dispose();
+    session.dispose();
+    expect(revoke).toHaveBeenCalledOnce();
+  });
+
+  it('keeps missing, unavailable, and unauthorized sources distinct without replacement art', async () => {
+    const values = [
+      source({
+        source_id: 'missing', state: 'missing_evidence', evidence_span_id: null,
+        evidence_path: null, asset_reference: null, reason: 'no evidence was recorded',
+      }),
+      source({
+        source_id: 'unavailable', evidence_span_id: 'span-2', state: 'unavailable_asset',
+        evidence_path: null, asset_reference: null, reason: 'capture was purged',
+      }),
+      source({ source_id: 'unauthorized', evidence_span_id: 'span-3', evidence_path: '/evidence/span-3',
+        asset_reference: {
+          href: '/evidence/span-3', authorization: 'workspace-bearer',
+          provenance: { source_id: 'unauthorized', evidence_span_id: 'span-3' },
+        } }),
+    ];
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith('/world/source-media')) return json(values);
+      return json({ code: 'not_authenticated', detail: 'token expired' }, 401);
+    });
+    const session = await new SourceMediaClient({
+      baseUrl: 'https://orimera.test/api', token: 't', fetch,
+      createObjectURL: () => 'never', revokeObjectURL: vi.fn(),
+    }).load('#7c71b5');
+    expect(session.issues.map((issue) => issue.state)).toEqual([
+      'missing_evidence', 'unavailable_asset', 'unauthorized',
+    ]);
+    expect(session.catalog.get('span-2')).toMatchObject({ available: false, url: null });
+    expect(session.catalog.get('span-3')?.alt).toContain('not authorized');
+  });
+
+  it('rejects remote or mismatched asset references before fetching bytes', async () => {
+    const fetch = vi.fn(async () => json([source({
+      evidence_path: 'https://assets.example.test/private.jpg',
+      asset_reference: {
+        href: 'https://assets.example.test/private.jpg',
+        authorization: 'workspace-bearer',
+        provenance: { source_id: 'source-1', evidence_span_id: 'span-1' },
+      },
+    })]));
+    const session = await new SourceMediaClient({
+      baseUrl: 'https://orimera.test/api', token: 't', fetch,
+      createObjectURL: () => 'never', revokeObjectURL: vi.fn(),
+    }).load('#7c71b5');
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(session.issues[0]).toMatchObject({ state: 'error' });
+    expect(session.catalog.get('span-1')).toMatchObject({ available: false, url: null });
+  });
+
+  it('surfaces list loading failures instead of fabricating an empty successful catalog', async () => {
+    const client = new SourceMediaClient({
+      baseUrl: 'https://orimera.test/api', token: 't',
+      fetch: vi.fn(async () => { throw new TypeError('network offline'); }),
+    });
+    await expect(client.load('#7c71b5')).rejects.toThrow('network offline');
+  });
+});

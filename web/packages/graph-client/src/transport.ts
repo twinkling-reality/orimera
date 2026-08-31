@@ -80,6 +80,11 @@ export class Transport {
     return (await response.json()) as T;
   }
 
+  /** Successful DELETE routes may deliberately return no response body. */
+  async delete(path: string): Promise<void> {
+    await this.#request('DELETE', path, {});
+  }
+
   /**
    * Raw bytes, for evidence. Returns the response rather than the body so a caller can read the
    * content type, and so a large original can be streamed rather than buffered.

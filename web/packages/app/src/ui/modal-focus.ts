@@ -44,7 +44,23 @@ export function createModalFocus(root: HTMLElement, initial: HTMLElement): Modal
         initial.focus();
       } else {
         root.hidden = true;
-        if (restoreFocus?.isConnected) restoreFocus.focus();
+        const target = restoreFocus;
+        if (target?.isConnected) {
+          target.focus();
+          // The Atlas command bar remains inert until the shell finishes closing this modal.
+          // Retry once after that synchronous shell reflection without stealing focus from a
+          // different modal that may have opened in the meantime.
+          if (document.activeElement !== target) {
+            queueMicrotask(() => {
+              if (
+                target.isConnected &&
+                (document.activeElement === document.body || document.activeElement === null)
+              ) {
+                target.focus();
+              }
+            });
+          }
+        }
         restoreFocus = null;
       }
     },

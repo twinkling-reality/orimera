@@ -230,6 +230,20 @@ describe('the Map orientation caption', () => {
     const warnings = [...bar.querySelectorAll('.status-warning')].map((n) => n.textContent ?? '');
     expect(warnings).toEqual(['3 regions and 7 detections not shown in the Atlas.']);
   });
+
+  it('states authenticated source failures without substituting media', () => {
+    const bar = buildStatus({
+      omittedRegionCount: 0,
+      undrawable: new Map(),
+      sourceMediaNotices: [
+        'Missing source evidence: no evidence was recorded',
+        'Source not authorized: this session cannot load the source',
+      ],
+    });
+    expect(bar.textContent).toContain('Missing source evidence');
+    expect(bar.textContent).toContain('Source not authorized');
+    expect(bar.querySelectorAll('img, video, canvas')).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------------------------

@@ -24,6 +24,29 @@ export interface OptionsView {
   setPreferences(value: AtlasPreferences): void;
   setVisible(visible: boolean): void;
   reportPersistence(state: 'idle' | 'saving' | 'saved' | 'failed'): void;
+  setWorldAuthority(value: WorldStyleAuthorityPresentation): void;
+  reportWorldLifecycle(state: 'idle' | 'checking' | 'ready' | 'saved' | 'stale' | 'failed', detail?: string): void;
+}
+
+export interface WorldStyleAuthorityPresentation {
+  readonly state: 'ready' | 'unavailable' | 'failed';
+  readonly detail: string;
+  readonly currentVersionId?: string;
+  readonly revision?: number;
+  readonly provenance?: string;
+  readonly warnings?: readonly string[];
+  readonly versions?: readonly {
+    readonly versionId: string;
+    readonly label: string;
+    readonly current: boolean;
+  }[];
+  readonly proposal?: {
+    readonly origin: string;
+    readonly model: string | null;
+    readonly promptVersion: string | null;
+    readonly referenceCount: number;
+    readonly refinesProposalId: string | null;
+  };
 }
 
 interface OptionsCallbacks {
@@ -31,6 +54,8 @@ interface OptionsCallbacks {
   readonly onChange: (preferences: AtlasPreferences) => void;
   readonly onPreview?: (preferences: AtlasPreferences) => void;
   readonly onWorldDiscard?: (preferences: AtlasPreferences) => void;
+  readonly onWorldApply?: (preferences: AtlasPreferences) => Promise<boolean>;
+  readonly onWorldRollback?: (versionId: string) => Promise<AtlasPreferences | null>;
   readonly onClose: () => void;
   readonly onShowControls: () => void;
 }
@@ -47,6 +72,7 @@ function field(label: string, control: HTMLElement, note?: string): HTMLElement 
 
 const sameWorldStyle = (left: AtlasPreferences, right: AtlasPreferences): boolean => {
   if (left.worldArtProfile !== right.worldArtProfile) return false;
+  if (left.worldArtProfileVersion !== right.worldArtProfileVersion) return false;
   const keys = new Set([
     ...Object.keys(left.worldStyleParameters),
     ...Object.keys(right.worldStyleParameters),
@@ -133,6 +159,20 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
   const styleControls = worldStyleControls(activeStyle.profileId, activeStyle.profileVersion);
   const styleName = el('strong', { class: 'world-style-name' });
   const styleState = el('span', { class: 'world-style-state', role: 'status', 'aria-live': 'polite' });
+  const worldAuthority = el('p', {
+    class: 'option-note world-style-authority', role: 'status', 'aria-live': 'polite',
+  });
+  const worldLifecycle = el('p', {
+    class: 'option-note world-style-lifecycle', role: 'status', 'aria-live': 'polite',
+  });
+  const worldVersion = el('p', { class: 'option-note world-style-version' });
+  const worldProvenance = el('p', { class: 'option-note world-style-provenance' });
+  const proposalReview = el('div', { class: 'world-style-proposal-review' });
+  proposalReview.hidden = true;
+  const history = el('select', { 'aria-label': 'World design history' });
+  const rollbackWorld = el('button', {
+    type: 'button', class: 'text-action', text: 'Restore selected version', disabled: true,
+  });
   const styleSwatches = [
     ['Open air', 'sky'],
     ['Continuity field', 'terrain'],
@@ -177,13 +217,19 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
 
   let applied = callbacks.preferences;
   let current = callbacks.preferences;
+  let worldBusy = false;
   let render = (): void => {};
   const worldDirty = (): boolean => !sameWorldStyle(current, applied);
   const discardWorldPreview = (): void => {
-    if (!worldDirty()) return;
+    worldLifecycle.textContent = '';
+    if (!worldDirty()) {
+      callbacks.onWorldDiscard?.(applied);
+      return;
+    }
     current = normalisePreferences({
       ...current,
       worldArtProfile: applied.worldArtProfile,
+      worldArtProfileVersion: applied.worldArtProfileVersion,
       worldStyleParameters: applied.worldStyleParameters,
     });
     render();
@@ -195,11 +241,13 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
   });
   const commit = (patch: Partial<AtlasPreferences>): void => {
     const draftProfile = current.worldArtProfile;
+    const draftProfileVersion = current.worldArtProfileVersion;
     const draftParameters = current.worldStyleParameters;
     applied = normalisePreferences({ ...applied, ...patch });
     current = normalisePreferences({
       ...applied,
       worldArtProfile: draftProfile,
+      worldArtProfileVersion: draftProfileVersion,
       worldStyleParameters: draftParameters,
     });
     render();
@@ -246,8 +294,11 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
         ? 'Authored default'
         : 'Personal variation';
     root.dataset['worldDirty'] = worldDirty() ? 'true' : 'false';
-    applyWorld.toggleAttribute('disabled', !worldDirty());
     undoWorld.toggleAttribute('disabled', !worldDirty());
+    applyWorld.toggleAttribute('disabled', !worldDirty() || worldBusy);
+    undoWorld.toggleAttribute('disabled', !worldDirty() || worldBusy);
+    resetWorld.toggleAttribute('disabled', worldBusy);
+    for (const { input } of styleInputs.values()) input.toggleAttribute('disabled', worldBusy);
     const palette = liveStyle.palette as unknown as Record<string, string>;
     for (const swatch of styleSwatches) {
       const role = swatch.dataset['paletteRole'];
@@ -302,14 +353,32 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
 
   applyWorld.addEventListener('click', () => {
     if (!worldDirty()) return;
-    applied = normalisePreferences({
-      ...applied,
-      worldArtProfile: current.worldArtProfile,
-      worldStyleParameters: current.worldStyleParameters,
-    });
-    current = applied;
+    const candidate = current;
+    const commitApplied = (): void => {
+      applied = normalisePreferences({
+        ...applied,
+        worldArtProfile: candidate.worldArtProfile,
+        worldArtProfileVersion: candidate.worldArtProfileVersion,
+        worldStyleParameters: candidate.worldStyleParameters,
+      });
+      current = applied;
+      render();
+      callbacks.onChange(applied);
+    };
+    if (callbacks.onWorldApply === undefined) {
+      commitApplied();
+      return;
+    }
+    worldBusy = true;
     render();
-    callbacks.onChange(applied);
+    void callbacks.onWorldApply(candidate).then((accepted) => {
+      worldBusy = false;
+      if (accepted) commitApplied();
+      else render();
+    }).catch(() => {
+      worldBusy = false;
+      render();
+    });
   });
   undoWorld.addEventListener('click', discardWorldPreview);
   resetWorld.addEventListener('click', () => preview({
@@ -324,10 +393,38 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
   controls.addEventListener('click', callbacks.onShowControls);
   const reset = el('button', { type: 'button', class: 'text-action', text: 'Restore defaults' });
   reset.addEventListener('click', () => {
-    applied = DEFAULT_PREFERENCES;
+    const worldWasChanged = !sameWorldStyle(applied, DEFAULT_PREFERENCES);
+    applied = worldWasChanged
+      ? normalisePreferences({
+          ...DEFAULT_PREFERENCES,
+          worldArtProfile: applied.worldArtProfile,
+          worldArtProfileVersion: applied.worldArtProfileVersion,
+          worldStyleParameters: applied.worldStyleParameters,
+        })
+      : DEFAULT_PREFERENCES;
     current = DEFAULT_PREFERENCES;
     render();
-    callbacks.onChange(DEFAULT_PREFERENCES);
+    callbacks.onChange(applied);
+    if (worldWasChanged) callbacks.onPreview?.(current);
+  });
+  rollbackWorld.addEventListener('click', () => {
+    if (callbacks.onWorldRollback === undefined || history.value.length === 0) return;
+    worldBusy = true;
+    render();
+    void callbacks.onWorldRollback(history.value).then((restored) => {
+      worldBusy = false;
+      if (restored !== null) {
+        applied = normalisePreferences(restored);
+        current = applied;
+        render();
+        callbacks.onChange(applied);
+      } else {
+        render();
+      }
+    }).catch(() => {
+      worldBusy = false;
+      render();
+    });
   });
 
   root.append(
@@ -349,6 +446,10 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
         styleName,
         el('p', { class: 'option-note', text: activeStyle.description }),
         styleState,
+        worldAuthority,
+        worldVersion,
+        worldProvenance,
+        worldLifecycle,
       ]),
       el('div', {
         class: 'world-dna-strip', role: 'img',
@@ -367,9 +468,15 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
       ]),
       el('p', {
         class: 'world-style-future',
-        text: 'Conversation-made designs are not connected in this build. When they are, they use this same bounded system and may offer different controls.',
+        text: 'Companion designs can be reviewed here when an upstream proposal service supplies bounded profile values. Atlas does not generate recipes or execute model output in the browser.',
       }),
+      proposalReview,
       el('div', { class: 'world-style-actions' }, [undoWorld, resetWorld, applyWorld]),
+      el('div', { class: 'world-style-history' }, [
+        el('h3', { text: 'Version history' }),
+        field('Saved version', history, 'Restoring creates a new immutable version; it never rewrites history.'),
+        rollbackWorld,
+      ]),
     ]),
     el('div', { class: 'option-group view-options' }, [
       el('h2', { text: 'View' }),
@@ -394,12 +501,14 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
     setPreferences(value) {
       const preserveDraft = worldDirty() && sameWorldStyle(value, applied);
       const draftProfile = current.worldArtProfile;
+      const draftProfileVersion = current.worldArtProfileVersion;
       const draftParameters = current.worldStyleParameters;
       applied = normalisePreferences(value);
       current = preserveDraft
         ? normalisePreferences({
             ...applied,
             worldArtProfile: draftProfile,
+            worldArtProfileVersion: draftProfileVersion,
             worldStyleParameters: draftParameters,
           })
         : applied;
@@ -417,6 +526,72 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
           : state === 'failed'
             ? 'Applied on this device, but not saved across devices.'
             : '';
+    },
+    setWorldAuthority(value) {
+      worldAuthority.textContent = value.detail;
+      worldAuthority.dataset['state'] = value.state;
+      worldVersion.textContent = value.revision === undefined || value.currentVersionId === undefined
+        ? ''
+        : `Current revision ${value.revision} · ${value.currentVersionId}`;
+      worldProvenance.textContent = [
+        value.provenance,
+        ...(value.warnings ?? []),
+      ].filter((item): item is string => item !== undefined && item.length > 0).join(' · ');
+      history.replaceChildren(...(value.versions ?? []).map((version) => option(
+        version.versionId,
+        version.label,
+      )));
+      const selected = (value.versions ?? []).find((version) => version.current) ?? value.versions?.at(-1);
+      history.value = selected?.versionId ?? '';
+      const selectedIsCurrent = (value.versions ?? []).find(
+        (version) => version.versionId === history.value,
+      )?.current ?? true;
+      rollbackWorld.toggleAttribute(
+        'disabled',
+        value.state !== 'ready' || callbacks.onWorldRollback === undefined || selectedIsCurrent,
+      );
+      history.onchange = () => {
+        const chosen = (value.versions ?? []).find((version) => version.versionId === history.value);
+        rollbackWorld.toggleAttribute(
+          'disabled',
+          value.state !== 'ready' || callbacks.onWorldRollback === undefined || chosen?.current !== false,
+        );
+      };
+      proposalReview.hidden = value.proposal === undefined;
+      if (value.proposal !== undefined) {
+        const refinement = value.proposal.refinesProposalId === null
+          ? 'Original proposal'
+          : `Refines ${value.proposal.refinesProposalId}`;
+        proposalReview.replaceChildren(
+          el('strong', { text: `${value.proposal.origin} proposal ready for review` }),
+          el('span', {
+            text: `${value.proposal.referenceCount} provenance references · ${refinement}`,
+          }),
+          el('span', {
+            text: value.proposal.model === null
+              ? 'No model provenance'
+              : `${value.proposal.model} · ${value.proposal.promptVersion ?? 'prompt version unavailable'}`,
+          }),
+        );
+      } else {
+        proposalReview.replaceChildren();
+      }
+    },
+    reportWorldLifecycle(state, detail = '') {
+      worldLifecycle.dataset['state'] = state;
+      worldLifecycle.textContent = detail.length > 0
+        ? detail
+        : state === 'checking'
+          ? 'Checking this preview against the current saved world…'
+          : state === 'ready'
+            ? 'Preview validated. Apply when it looks right.'
+            : state === 'saved'
+              ? 'World design saved as a new immutable version.'
+              : state === 'stale'
+                ? 'The saved world changed elsewhere. A fresh preview is ready; review it and apply again.'
+                : state === 'failed'
+                  ? 'The preview could not be validated or saved.'
+                  : '';
     },
   };
 }

@@ -48,6 +48,10 @@ export const WORLD_STYLE_REGISTRY = new WorldStyleRegistry({
   defaultProfile: { profileId: 'origin-landscape', profileVersion: 1 },
 });
 
+/** Exact inert recipe contract mirrored by the backend registry handshake. */
+export const WORLD_STYLE_CONTRACT_COMMIT =
+  '55b123627314d328fba3850eb607d8a7682a8cad';
+
 /** The authored Aeroheart base and developer comparison stay topology-compatible. */
 export const ORIGIN_LANDSCAPE = WORLD_STYLE_REGISTRY.profile('origin-landscape', 1);
 export const SURVEY_RELIEF = WORLD_STYLE_REGISTRY.profile('survey-relief', 1);

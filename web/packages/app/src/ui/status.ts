@@ -10,6 +10,7 @@ export const MAP_ORIENTATION_CAPTION =
 export interface StatusInput {
   readonly omittedRegionCount: number;
   readonly undrawable: ReadonlyMap<OccurrenceKind, number>;
+  readonly sourceMediaNotices?: readonly string[];
 }
 
 function counted(count: number, singular: string, plural: string): string {
@@ -39,6 +40,10 @@ export function buildStatus(input: StatusInput): HTMLElement {
         text: `${missing.join(' and ')} not shown in the Atlas.`,
       }),
     );
+  }
+
+  for (const notice of input.sourceMediaNotices ?? []) {
+    bar.append(el('p', { class: 'status-warning source-status', text: notice }));
   }
 
   return bar;

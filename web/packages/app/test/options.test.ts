@@ -38,7 +38,8 @@ describe('Options', () => {
     }));
     expect(view.root.textContent).toContain('Previewing · not saved');
     expect(view.root.textContent).toContain('Always protected');
-    expect(view.root.textContent).toContain('Conversation-made designs are not connected');
+    expect(view.root.textContent).toContain('upstream proposal service');
+    expect(view.root.textContent).toContain('does not generate recipes');
     expect(view.root.querySelector('[aria-label="Surface finish"]')).not.toBeNull();
     [...view.root.querySelectorAll('button')]
       .find((button) => button.textContent === 'Apply world design')!
@@ -112,6 +113,75 @@ describe('Options', () => {
     expect(view.root.textContent).toContain('Applied on this device, but not saved');
   });
 
+  it('does not mark a world preview saved until backend authority accepts it', async () => {
+    const onChange = vi.fn();
+    const onWorldApply = vi.fn(async () => false);
+    const view = buildOptions({
+      preferences: DEFAULT_PREFERENCES,
+      onChange,
+      onWorldApply,
+      onClose: vi.fn(),
+      onShowControls: vi.fn(),
+    });
+    document.body.append(view.root);
+    const vitality = view.root.querySelector<HTMLInputElement>('[aria-label="Color vitality"]')!;
+    vitality.value = '0.4';
+    vitality.dispatchEvent(new Event('input'));
+    [...view.root.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Apply world design')!
+      .click();
+    await vi.waitFor(() => expect(onWorldApply).toHaveBeenCalledOnce());
+    expect(onChange).not.toHaveBeenCalled();
+    expect(view.root.textContent).toContain('Previewing · not saved');
+  });
+
+  it('renders immutable history, proposal provenance, and rollback as explicit actions', async () => {
+    const onWorldRollback = vi.fn(async () => ({
+      ...DEFAULT_PREFERENCES,
+      worldStyleParameters: { ...DEFAULT_PREFERENCES.worldStyleParameters, vitality: 0.3 },
+    }));
+    const view = buildOptions({
+      preferences: DEFAULT_PREFERENCES,
+      onChange: vi.fn(),
+      onWorldRollback,
+      onClose: vi.fn(),
+      onShowControls: vi.fn(),
+    });
+    document.body.append(view.root);
+    view.setWorldAuthority({
+      state: 'ready',
+      detail: 'Connected to immutable world style history.',
+      currentVersionId: 'v1',
+      revision: 1,
+      provenance: 'settings by actor-1 · appearance-panel',
+      warnings: ['Stored parameters were resolved through the reviewed fallback.'],
+      versions: [
+        { versionId: 'v0', label: 'Revision 0 · authored', current: false },
+        { versionId: 'v1', label: 'Revision 1 · settings', current: true },
+      ],
+      proposal: {
+        origin: 'companion',
+        model: 'reviewed-personalizer-v1',
+        promptVersion: 'world-style-v1',
+        referenceCount: 2,
+        refinesProposalId: 'proposal-0',
+      },
+    });
+    expect(view.root.textContent).toContain('Current revision 1 · v1');
+    expect(view.root.textContent).toContain('settings by actor-1');
+    expect(view.root.textContent).toContain('companion proposal ready for review');
+    expect(view.root.textContent).toContain('2 provenance references');
+    expect(view.root.textContent).toContain('Refines proposal-0');
+
+    const history = view.root.querySelector<HTMLSelectElement>('[aria-label="World design history"]')!;
+    history.value = 'v0';
+    history.dispatchEvent(new Event('change'));
+    [...view.root.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === 'Restore selected version')!
+      .click();
+    await vi.waitFor(() => expect(onWorldRollback).toHaveBeenCalledWith('v0'));
+  });
+
   it('moves focus into the dialog and restores it on return', () => {
     const prior = document.createElement('button');
     document.body.append(prior);
@@ -128,6 +198,54 @@ describe('Options', () => {
     expect(document.activeElement).toBe(view.root.querySelector('.overlay-close'));
     view.setVisible(false);
     expect(document.activeElement).toBe(prior);
+  });
+
+  it('restores focus after the shell releases an inert command surface', async () => {
+    const commandSurface = document.createElement('nav');
+    const prior = document.createElement('button');
+    commandSurface.append(prior);
+    document.body.append(commandSurface);
+    prior.focus();
+    const view = buildOptions({
+      preferences: DEFAULT_PREFERENCES,
+      onChange: vi.fn(),
+      onClose: vi.fn(),
+      onShowControls: vi.fn(),
+    });
+    document.body.append(view.root);
+    view.setVisible(true);
+
+    const focus = prior.focus.bind(prior);
+    let inert = true;
+    vi.spyOn(prior, 'focus').mockImplementation(() => {
+      if (!inert) focus();
+    });
+    view.setVisible(false);
+    (document.activeElement as HTMLElement).blur();
+    inert = false;
+    await Promise.resolve();
+
+    expect(document.activeElement).toBe(prior);
+  });
+
+  it('clears a failed lifecycle message when its preview is discarded', () => {
+    const view = buildOptions({
+      preferences: DEFAULT_PREFERENCES,
+      onChange: vi.fn(),
+      onClose: vi.fn(),
+      onShowControls: vi.fn(),
+    });
+    document.body.append(view.root);
+    const vitality = view.root.querySelector<HTMLInputElement>('[aria-label="Color vitality"]')!;
+    vitality.value = '0.4';
+    vitality.dispatchEvent(new Event('input'));
+    view.reportWorldLifecycle('failed', 'No durable change was made.');
+    expect(view.root.textContent).toContain('No durable change was made.');
+
+    [...view.root.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Undo preview')!
+      .click();
+    expect(view.root.textContent).not.toContain('No durable change was made.');
   });
 
   it('keeps Tab inside the modal without taking Escape', () => {
