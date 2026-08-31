@@ -25,6 +25,7 @@ from typing import Any, Final
 
 from orimera.api.routes import routable_paths
 from orimera.db.session import Database
+from orimera.evaluation.bundle import CorpusBundle, CorpusContractError
 from orimera.evaluation.counts import Count, Sample
 from orimera.evaluation.coverage import what_the_corpus_cannot_support
 from orimera.evaluation.ground_truth import GroundTruth
@@ -53,6 +54,44 @@ SCORED: Final[tuple[str, ...]] = (
 )
 
 _PUBLIC = {"/healthz", "/readyz", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+
+
+def _cmd_inspect_corpus(args: argparse.Namespace, stream: Any) -> int:
+    """Validate public metadata without opening any private source media."""
+    try:
+        bundle = CorpusBundle.read(args.corpus)
+    except CorpusContractError as exc:
+        print(f"corpus contract: FAILED: {exc}", file=stream)
+        return 2
+    counts = {
+        split: sum(item.split == split for item in bundle.items)
+        for split in ("train", "development", "blind")
+    }
+    result = {
+        "profile": bundle.document["profile"],
+        "corpus_id": bundle.corpus_id,
+        "synthetic": bundle.synthetic,
+        "corpus_sha256": bundle.corpus_digest,
+        "split_manifest_sha256": bundle.split_digest,
+        "consent_index_sha256": bundle.consent_digest,
+        "items": counts,
+        "sources_opened": 0,
+    }
+    if args.json:
+        json.dump(result, stream, indent=2, sort_keys=True)
+        print(file=stream)
+    else:
+        print(f"corpus contract: {bundle.corpus_id}", file=stream)
+        print(f"  corpus sha256   {bundle.corpus_digest}", file=stream)
+        print(f"  splits sha256   {bundle.split_digest}", file=stream)
+        print(f"  consent sha256  {bundle.consent_digest}", file=stream)
+        print(
+            "  items            "
+            + ", ".join(f"{split}={count}" for split, count in counts.items()),
+            file=stream,
+        )
+        print("  source media     not opened", file=stream)
+    return 0
 
 
 def _git_commit() -> str:
@@ -193,6 +232,13 @@ def main(argv: list[str] | None = None, stream: Any = None) -> int:
     stream = stream or sys.stdout
     parser = argparse.ArgumentParser(prog="orimera-eval", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
+    inspect = sub.add_parser(
+        "inspect-corpus",
+        help="validate a Phase 2 CORPUS.json bundle without opening private media",
+    )
+    inspect.add_argument("--corpus", required=True)
+    inspect.add_argument("--json", action="store_true")
+    inspect.set_defaults(handler=_cmd_inspect_corpus)
     run = sub.add_parser("run", help="measure what can be measured against a corpus")
     run.add_argument("--corpus", required=True, help="the directory holding MANIFEST.json")
     run.add_argument("--workspace", required=True, help="the workspace uuid the corpus is in")

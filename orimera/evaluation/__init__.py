@@ -21,6 +21,14 @@ against it, and the report says all of that above the results rather than in a f
 
 from __future__ import annotations
 
+from orimera.evaluation.bundle import (
+    AccessPurpose,
+    AccessReceipt,
+    AuthorizedSource,
+    CorpusBundle,
+    CorpusContractError,
+    CorpusItem,
+)
 from orimera.evaluation.counts import Count, NamedCase, Sample, render, wilson
 from orimera.evaluation.ground_truth import Frame, GroundTruth
 from orimera.evaluation.metrics import METRICS, Component
@@ -29,7 +37,13 @@ from orimera.evaluation.report import BANNED, banned_words_in, render_report
 __all__ = [
     "BANNED",
     "METRICS",
+    "AccessPurpose",
+    "AccessReceipt",
+    "AuthorizedSource",
     "Component",
+    "CorpusBundle",
+    "CorpusContractError",
+    "CorpusItem",
     "Count",
     "Frame",
     "GroundTruth",
