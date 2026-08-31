@@ -8,9 +8,6 @@ import {
   type WorldArtProfile,
 } from '@orimera/presentation';
 
-const MAX_REGIONS = 5;
-const MAX_TRACES = 10;
-
 interface ShaderDesc {
   uniqueName: string;
   attributes?: Record<string, string>;
@@ -35,7 +32,8 @@ void main(void) {
 }
 `;
 
-const FRAGMENT_GLSL = /* glsl */ `
+function fragmentGlsl(regionCapacity: number, traceCapacity: number): string {
+  return /* glsl */ `
 precision highp float;
 
 varying vec3 vWorld;
@@ -46,11 +44,12 @@ uniform vec3 uSurface;
 uniform vec3 uAtmosphere;
 uniform vec3 uTraceColour;
 uniform vec4 uField;
-uniform vec4 uRegions[${MAX_REGIONS}];
-uniform vec4 uTraceA[${MAX_TRACES}];
-uniform vec4 uTraceB[${MAX_TRACES}];
+uniform vec4 uRegions[${regionCapacity}];
+uniform vec4 uTraceA[${traceCapacity}];
+uniform vec4 uTraceB[${traceCapacity}];
 uniform vec2 uCounts;
 uniform float uMapMode;
+uniform vec2 uRenderOrigin;
 
 float segmentDistance(vec2 p, vec2 a, vec2 b) {
     vec2 ab = b - a;
@@ -59,7 +58,7 @@ float segmentDistance(vec2 p, vec2 a, vec2 b) {
 }
 
 void main(void) {
-    vec2 p = vWorld.xz;
+    vec2 p = vWorld.xz + uRenderOrigin;
     vec2 local = p - uField.xy;
     float directional = 0.5 + 0.5 * dot(normalize(local + vec2(0.01)), normalize(vec2(0.47, -0.88)));
     float longWave = 0.5 + 0.5 * sin(p.x * 0.018 + p.y * 0.011);
@@ -75,7 +74,7 @@ void main(void) {
     // Lift the field toward the atmospheric glass color so relationship ink remains legible.
     colour = mix(colour, mix(uGround, uAtmosphere, 0.7), uMapMode * 0.58);
 
-    for (int i = 0; i < ${MAX_REGIONS}; i++) {
+    for (int i = 0; i < ${regionCapacity}; i++) {
         if (float(i) >= uCounts.x) break;
         vec4 region = uRegions[i];
         vec2 delta = p - region.xy;
@@ -93,7 +92,7 @@ void main(void) {
         colour = mix(colour, uTraceColour, mapNode * uMapMode * 0.96);
     }
 
-    for (int i = 0; i < ${MAX_TRACES}; i++) {
+    for (int i = 0; i < ${traceCapacity}; i++) {
         if (float(i) >= uCounts.y) break;
         float d = segmentDistance(p, uTraceA[i].xy, uTraceB[i].xy);
         float trace = 1.0 - smoothstep(0.12, 0.34 + uTraceA[i].z * 0.28, d);
@@ -108,13 +107,29 @@ void main(void) {
     gl_FragColor = vec4(colour, 1.0);
 }
 `;
+}
 
 export interface WorldField {
   readonly entity: pc.Entity;
   setTheme(theme: PresentationTheme): void;
   setProfile(profile: WorldArtProfile): void;
   setMapGroundPose(pose: NavigationPose | null): void;
+  setRenderOrigin(x: number, z: number): void;
   destroy(): void;
+}
+
+export function worldFieldBufferShape(world: NavigationWorld): {
+  readonly regionCapacity: number;
+  readonly traceCapacity: number;
+  readonly regionFloats: number;
+  readonly traceFloats: number;
+} {
+  return Object.freeze({
+    regionCapacity: Math.max(1, world.regions.length),
+    traceCapacity: Math.max(1, world.traces.length),
+    regionFloats: world.regions.length * 4,
+    traceFloats: world.traces.length * 8,
+  });
 }
 
 function createLandscapeMesh(
@@ -162,31 +177,32 @@ export function createWorldField(
   theme: PresentationTheme = DAWN_THEME,
 ): WorldField {
   const entity = new pc.Entity('atlas-world-field');
+  const buffers = worldFieldBufferShape(world);
   // The navigable/recovery radii remain visible in the material, but the physical draw surface
   // extends beyond the far clip so its square edge can never masquerade as a platform boundary.
   const visualHalfExtent = Math.max(420, world.recoveryRadius * 2.6);
   const mesh = createLandscapeMesh(device, world, visualHalfExtent);
   const material = new pc.ShaderMaterial({
-    uniqueName: 'orimera-grounded-world-field',
+    uniqueName: `orimera-grounded-world-field:${buffers.regionCapacity}:${buffers.traceCapacity}`,
     attributes: { aPosition: pc.SEMANTIC_POSITION, aNormal: pc.SEMANTIC_NORMAL },
     vertexGLSL: VERTEX_GLSL,
-    fragmentGLSL: FRAGMENT_GLSL,
+    fragmentGLSL: fragmentGlsl(buffers.regionCapacity, buffers.traceCapacity),
   } as ShaderDesc);
   material.cull = pc.CULLFACE_NONE;
   material.depthWrite = true;
   material.blendType = pc.BLEND_NONE;
 
-  const regions = new Float32Array(MAX_REGIONS * 4);
-  for (let i = 0; i < Math.min(MAX_REGIONS, world.regions.length); i += 1) {
+  const regions = new Float32Array(buffers.regionCapacity * 4);
+  for (let i = 0; i < world.regions.length; i += 1) {
     const region = world.regions[i]!;
     regions.set(
       [region.centre.x, region.centre.z, region.footprintRadius, region.dissolveStartRadius],
       i * 4,
     );
   }
-  const traceA = new Float32Array(MAX_TRACES * 4);
-  const traceB = new Float32Array(MAX_TRACES * 4);
-  for (let i = 0; i < Math.min(MAX_TRACES, world.traces.length); i += 1) {
+  const traceA = new Float32Array(buffers.traceCapacity * 4);
+  const traceB = new Float32Array(buffers.traceCapacity * 4);
+  for (let i = 0; i < world.traces.length; i += 1) {
     const trace = world.traces[i]!;
     traceA.set([trace.start.x, trace.start.z, trace.strength, 0], i * 4);
     traceB.set([trace.end.x, trace.end.z, 0, 0], i * 4);
@@ -201,10 +217,11 @@ export function createWorldField(
   material.setParameter('uTraceA[0]', traceA);
   material.setParameter('uTraceB[0]', traceB);
   material.setParameter('uCounts', new Float32Array([
-    Math.min(MAX_REGIONS, world.regions.length),
-    Math.min(MAX_TRACES, world.traces.length),
+    world.regions.length,
+    world.traces.length,
   ]));
   material.setParameter('uMapMode', 0);
+  material.setParameter('uRenderOrigin', new Float32Array([0, 0]));
 
   const setProfile = (profile: WorldArtProfile): void => {
     material.setParameter('uGround', new Float32Array(unitRgb(profile.palette.terrain)));
@@ -275,6 +292,9 @@ export function createWorldField(
       if (pose === null) return;
       marker.setPosition(pose.position.x - world.centre.x, 0.09, pose.position.z - world.centre.z);
       marker.setEulerAngles(0, (pose.yaw * 180) / Math.PI, 0);
+    },
+    setRenderOrigin(x, z) {
+      material.setParameter('uRenderOrigin', new Float32Array([x, z]));
     },
     destroy() {
       markerMesh.destroy();

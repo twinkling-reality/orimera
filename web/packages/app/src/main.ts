@@ -632,6 +632,18 @@ async function mount(): Promise<void> {
 
   mountListeners?.abort();
   mountListeners = new AbortController();
+  (canvas as HTMLCanvasElement).addEventListener(
+    'webglcontextlost',
+    (event) => {
+      event.preventDefault();
+      dispatchShell({ type: 'show-index' });
+      showTravelStatus(
+        'The 3D renderer became unavailable. The complete World Index remains available.',
+        'failure',
+      );
+    },
+    { signal: mountListeners.signal },
+  );
   window.addEventListener(
     'keydown',
     (event) => {

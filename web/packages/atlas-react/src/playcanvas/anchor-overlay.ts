@@ -82,6 +82,7 @@ export interface OverlayFrame {
   readonly heightCss: number;
   /** Epoch milliseconds for the anchor whose presence marker is being stamped. */
   readonly capturedAt: number;
+  readonly renderOrigin: readonly [number, number, number];
 }
 
 export class AnchorOverlay {
@@ -158,7 +159,7 @@ export class AnchorOverlay {
   }
 
   update(frame: OverlayFrame): void {
-    const { table, emphasis, camera, widthCss: w, heightCss: h } = frame;
+    const { table, emphasis, camera, widthCss: w, heightCss: h, renderOrigin } = frame;
     this.vp.mul2(camera.projectionMatrix, camera.viewMatrix);
 
     let calloutUsed = 0;
@@ -175,7 +176,13 @@ export class AnchorOverlay {
       const px = table.atlasPositions[i * 3]!;
       const py = table.atlasPositions[i * 3 + 1]!;
       const pz = table.atlasPositions[i * 3 + 2]!;
-      const projected = this.project(px, py, pz, w, h);
+      const projected = this.project(
+        px - renderOrigin[0],
+        py - renderOrigin[1],
+        pz - renderOrigin[2],
+        w,
+        h,
+      );
       const scalar = emphasis.anchorEmphasis[i]!;
 
       if (projected === null) continue;

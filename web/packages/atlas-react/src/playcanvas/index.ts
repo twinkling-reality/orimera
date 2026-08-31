@@ -44,6 +44,8 @@ export { AnchorOverlay } from './anchor-overlay.js';
 
 export { MapRegionOverlay } from './map-region-overlay.js';
 
+export { worldFieldBufferShape } from './world-field.js';
+
 export type { ComposedWorld } from './composed-world.js';
 export { createComposedWorld } from './composed-world.js';
 
@@ -57,6 +59,20 @@ export type {
   PlacementCheck,
 } from './atlas-binding.js';
 export { AtlasBinding, mapCameraState } from './atlas-binding.js';
+
+export type {
+  AssetAvailability,
+  AssetBytes,
+  AuthenticatedAssetFetchOptions,
+  PhysicalAssetDescriptor,
+  PhysicalResidencyAdapter,
+  RangeOutcome,
+  ResidencyPhysicalEvent,
+} from './physical-residency.js';
+export {
+  PhysicalResidencyRuntime,
+  fetchAuthenticatedAsset,
+} from './physical-residency.js';
 
 export type { BakeoffResult, HarnessConfig, HarnessHandle, PathMode } from './harness.js';
 export { POINT_LADDER, fixtureName, parseConfig, runBakeoff } from './harness.js';

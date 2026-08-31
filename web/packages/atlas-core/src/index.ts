@@ -268,6 +268,18 @@ export type {
   ResidencyState,
   ResidencyView,
 } from './residency.js';
+
+export type {
+  PressureSample,
+  RepresentationPressureState,
+} from './performance-pressure.js';
+export { RepresentationPressureController } from './performance-pressure.js';
+
+export type { RenderOriginState } from './render-origin.js';
+export {
+  INITIAL_RENDER_ORIGIN,
+  renderOriginForNeighborhood,
+} from './render-origin.js';
 export {
   DEFAULT_RESIDENCY_GRACE_REVISIONS,
   EMPTY_RESIDENCY_STATE,

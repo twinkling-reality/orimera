@@ -31,6 +31,8 @@ export interface ResidencyAsset {
 export interface ResidencyBudget {
   readonly maxCost: number;
   readonly graceRevisions?: number;
+  /** Measurement-driven ceiling. A pressure controller may lower it; device sniffing may not. */
+  readonly maxStage?: ResidencyStage;
 }
 
 export interface ResidencyDemand {
@@ -145,6 +147,8 @@ export function planResidency(
   if (!Number.isSafeInteger(grace) || grace < 0) {
     throw new RangeError('residency graceRevisions must be a non-negative safe integer');
   }
+  const maxStage = budget.maxStage ?? 'full';
+  if (stageRank(maxStage) < 0) throw new RangeError(`unknown residency stage: ${String(maxStage)}`);
   const assets = validateCatalog(catalog);
   const requested = combineDemands(demands);
   for (const id of requested.keys()) {
@@ -166,7 +170,8 @@ export function planResidency(
   for (const demand of ranked) {
     const asset = assets.get(demand.islandId)!;
     let granted: ResidencyStage = 'stub';
-    for (let rank = stageRank(demand.desired); rank > 0; rank -= 1) {
+    const desiredRank = Math.min(stageRank(demand.desired), stageRank(maxStage));
+    for (let rank = desiredRank; rank > 0; rank -= 1) {
       const candidate = RESIDENCY_STAGE_ORDER[rank]!;
       if (reservedCost + asset.cost[candidate] <= budget.maxCost) {
         granted = candidate;

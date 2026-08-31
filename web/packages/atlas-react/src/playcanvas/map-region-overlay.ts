@@ -61,11 +61,21 @@ export class MapRegionOverlay {
     this.root.hidden = !active;
   }
 
-  update(camera: pc.CameraComponent, widthCss: number, heightCss: number): void {
+  update(
+    camera: pc.CameraComponent,
+    widthCss: number,
+    heightCss: number,
+    renderOrigin: readonly [number, number, number] = [0, 0, 0],
+  ): void {
     if (!this.active) return;
     this.vp.mul2(camera.projectionMatrix, camera.viewMatrix);
     for (const region of this.regions) {
-      this.p.set(region.position.x, region.position.y, region.position.z, 1);
+      this.p.set(
+        region.position.x - renderOrigin[0],
+        region.position.y - renderOrigin[1],
+        region.position.z - renderOrigin[2],
+        1,
+      );
       this.vp.transformVec4(this.p, this.p);
       if (this.p.w <= 1e-6) {
         region.button.hidden = true;

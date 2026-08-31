@@ -27,6 +27,13 @@ describe('the Atlas shell', () => {
       updateWorldShell(initialWorldShell(), { type: 'show-detail', id: 'entity-1' }),
     ).toEqual(initialWorldShell());
   });
+
+  it('has an unconditional complete-Index recovery transition for renderer loss', () => {
+    const map = updateWorldShell(initialWorldShell(), { type: 'toggle-map' });
+    expect(updateWorldShell(map, { type: 'show-index' })).toEqual({
+      primary: 'index', camera: 'ground', detailId: null, returnTo: null,
+    });
+  });
 });
 
 describe('shell command ownership', () => {

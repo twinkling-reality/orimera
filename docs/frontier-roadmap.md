@@ -394,7 +394,7 @@ No neural fine-tuning is required for this phase. Personalization is explicit, v
 
 ### Phase 6: physical streaming and rendering hardening
 
-Status: **PLANNED; logical residency exists**.
+Status: **RENDERER CONTRACT BUILT 2026-08-31; production publication and hardware gate blocked**.
 
 Deliverables:
 
@@ -410,6 +410,15 @@ Deliverables:
 Exit gate: a large fixed topology remains navigable under declared CPU, GPU, and network budgets;
 cancelled/stale fetches never become current; and performance degradation lowers representation
 without losing evidence access or changing world identity.
+
+The local implementation now executes cancel-safe fetch/decode/upload/publication and physical
+disposal, distinguishes asset fallback states, observes rather than assumes Range responses,
+rebases GPU coordinates by durable neighborhood, sizes world-field buffers from exact topology,
+opens the complete World Index on context loss, and lowers representation from measured frame and
+resource pressure. Its deterministic contracts are tested. The full exit gate is not claimed:
+Phase 3 produced no authorised real published asset, and no declared target hardware or deployed
+asset origin is available for the required large-world and network measurements. See
+[physical-streaming-runtime.md](physical-streaming-runtime.md).
 
 ### Phase 7: World Memory Package v1
 

@@ -20,6 +20,8 @@ import type {
   ResidencyAsset,
   ResidencyStage,
   ResidencyState,
+  RepresentationPressureState,
+  RenderOriginState,
   SpatialClassification,
   TierState,
   ViewManifest,
@@ -60,6 +62,9 @@ import {
   completeResidencyRequest,
   composeAtlasWorld,
   WorldCustomizationController,
+  RepresentationPressureController,
+  INITIAL_RENDER_ORIGIN,
+  renderOriginForNeighborhood,
 } from '@orimera/atlas-core';
 import {
   DAWN_THEME,
@@ -145,6 +150,8 @@ export interface FrameReport {
   readonly activeNeighborhood: NeighborhoodId | null;
   readonly navigating: boolean;
   readonly recoveryReason: 'outside-field' | 'no-surface' | 'unsafe-surface' | null;
+  readonly representationPressure: RepresentationPressureState;
+  readonly renderOrigin: RenderOriginState;
 }
 
 /** A tiny structural check that the presentation transform survived the trip into the engine. */
@@ -179,6 +186,7 @@ export class AtlasBinding {
   readonly composedWorld: ComposedWorld;
   readonly customization: WorldCustomizationController;
   readonly neighborhoodIndex: NeighborhoodIndex;
+  readonly renderRoot: pc.Entity;
 
   private tierState: TierState = EMPTY_TIER_STATE;
   private focusState: FocusState = INITIAL_FOCUS_STATE;
@@ -196,6 +204,8 @@ export class AtlasBinding {
   private residencyState: ResidencyState = EMPTY_RESIDENCY_STATE;
   private residencyAllocated: ReadonlyMap<IslandId, ResidencyStage> = new Map();
   private residencySignature = '';
+  private readonly representationPressure = new RepresentationPressureController();
+  private renderOriginState: RenderOriginState = INITIAL_RENDER_ORIGIN;
   private activeNeighborhood: NeighborhoodId | null = null;
   private navigationTransition: DirectNavigationTransition | null = null;
   private navigationElapsedMs = 0;
@@ -207,6 +217,22 @@ export class AtlasBinding {
   onResidencyActions: ((actions: readonly ResidencyAction[]) => void) | null = null;
   onNavigationArrive: ((target: DirectNavigationTarget) => void) | null = null;
   onMapTarget: ((islandId: IslandId) => void) | null = null;
+
+  /** Called by the physical residency executor after its checked publish or terminal fallback. */
+  settleResidencyRequest(requestId: string, ok: boolean): void {
+    this.residencyState = completeResidencyRequest(this.residencyState, requestId, ok);
+    this.residencyAllocated = new Map(
+      [...this.residencyState.entries].map(([id, entry]) => [id, entry.current]),
+    );
+    this.applyResidencyPresentation();
+  }
+
+  private applyResidencyPresentation(): void {
+    this.sourceFirst.setResidency(this.residencyAllocated, this.mapState !== null);
+    for (const visual of this.islands) {
+      visual.entity.enabled = this.residencyAllocated.get(visual.island.islandId) !== 'stub';
+    }
+  }
 
   private constructor(
     app: pc.AppBase,
@@ -225,6 +251,7 @@ export class AtlasBinding {
     composedWorld: ComposedWorld,
     customization: WorldCustomizationController,
     neighborhoodIndex: NeighborhoodIndex,
+    renderRoot: pc.Entity,
     residencyCatalog: readonly ResidencyAsset[],
     residencyBudget: number,
   ) {
@@ -248,6 +275,7 @@ export class AtlasBinding {
     this.composedWorld = composedWorld;
     this.customization = customization;
     this.neighborhoodIndex = neighborhoodIndex;
+    this.renderRoot = renderRoot;
     this.residencyCatalog = residencyCatalog;
     this.residencyBudget = residencyBudget;
     this.emphasis = neutralEmphasis(table);
@@ -313,6 +341,8 @@ export class AtlasBinding {
     app.root.addChild(worldLight);
 
     const table = buildAnchorTable(options.scene);
+    const renderRoot = new pc.Entity('atlas-render-origin');
+    app.root.addChild(renderRoot);
     const navigationWorld = buildNavigationWorld(options.scene, atlasLandscapeSurface());
     const neighborhoodIndex = buildNeighborhoodIndex(options.scene);
     const residencyCatalog: ResidencyAsset[] = options.scene.islands.map((island) => ({
@@ -322,9 +352,9 @@ export class AtlasBinding {
         : Object.freeze({ stub: 0, proxy: 2, coarse: 2, full: 2 }),
     }));
     const field = createWorldField(device, navigationWorld, initialArtProfile, theme);
-    app.root.addChild(field.entity);
+    renderRoot.addChild(field.entity);
     const sourceFirst = createSourceFirstGrove(device, options.scene, initialArtProfile, theme);
-    app.root.addChild(sourceFirst.entity);
+    renderRoot.addChild(sourceFirst.entity);
     const topology = composeAtlasWorld(options.scene, {
       availableReconstruction: new Set(options.pointMaps.keys()),
     });
@@ -353,7 +383,7 @@ export class AtlasBinding {
         appliedFromProposalId: null,
       }),
     });
-    app.root.addChild(composedWorld.entity);
+    renderRoot.addChild(composedWorld.entity);
     const visuals: IslandVisual[] = [];
 
     for (const island of options.scene.islands) {
@@ -376,7 +406,7 @@ export class AtlasBinding {
         entity.addComponent('render', { meshInstances: [instance] });
       }
 
-      app.root.addChild(entity);
+      renderRoot.addChild(entity);
 
       if (cloud !== null) {
         visuals.push({
@@ -445,7 +475,7 @@ export class AtlasBinding {
       moteEntity.addComponent('render', {
         meshInstances: [new pc.MeshInstance(motes.mesh, motes.material, moteEntity)],
       });
-      app.root.addChild(moteEntity);
+      renderRoot.addChild(moteEntity);
     }
 
     return new AtlasBinding(
@@ -465,6 +495,7 @@ export class AtlasBinding {
       composedWorld,
       customization,
       neighborhoodIndex,
+      renderRoot,
       Object.freeze(residencyCatalog),
       options.residencyBudget ?? 96,
     );
@@ -699,7 +730,11 @@ export class AtlasBinding {
         const expected = localToAtlas(visual.island.placement, probe);
         v.set(probe.x, probe.y, probe.z);
         visual.entity.getWorldTransform().transformPoint(v, v);
-        worst = Math.max(worst, Math.hypot(v.x - expected.x, v.y - expected.y, v.z - expected.z));
+        worst = Math.max(worst, Math.hypot(
+          v.x + this.renderOriginState.origin.x - expected.x,
+          v.y + this.renderOriginState.origin.y - expected.y,
+          v.z + this.renderOriginState.origin.z - expected.z,
+        ));
       }
       out.push({ islandId: visual.island.islandId, maxErrorMetres: worst });
     }
@@ -788,12 +823,20 @@ export class AtlasBinding {
    */
   update(dt: number, nowMs: number): void {
     this.elapsed += dt;
+    if (document.visibilityState !== 'hidden' && Number.isFinite(dt) && dt > 0) {
+      const pressure = this.representationPressure.record({ frameTimeMs: dt * 1000 });
+      if (pressure.changed) this.residencySignature = '';
+    }
     const navigating = this.navigationTransition !== null;
     if (navigating) this.advanceDirectNavigation(dt * 1000);
     else this.controls.update(dt);
 
     const s = this.controls.state;
-    this.pose.position.set(s.x, s.y, s.z);
+    this.pose.position.set(
+      s.x - this.renderOriginState.origin.x,
+      s.y - this.renderOriginState.origin.y,
+      s.z - this.renderOriginState.origin.z,
+    );
     this.camera.setPosition(this.pose.position);
     this.qYaw.setFromAxisAngle(pc.Vec3.UP, (s.yaw * 180) / Math.PI);
     this.qPitch.setFromAxisAngle(pc.Vec3.RIGHT, (s.pitch * 180) / Math.PI);
@@ -811,6 +854,20 @@ export class AtlasBinding {
       spatial.islandId === null
         ? (this.activeNeighborhood ?? this.neighborhoodIndex.neighborhoods[0]?.neighborhoodId ?? null)
         : (this.neighborhoodIndex.neighborhoodOf.get(spatial.islandId) ?? this.activeNeighborhood);
+    const nextOrigin = renderOriginForNeighborhood(
+      this.scene,
+      this.neighborhoodIndex,
+      this.activeNeighborhood,
+      this.renderOriginState,
+    );
+    if (nextOrigin !== this.renderOriginState) {
+      this.renderOriginState = nextOrigin;
+      const origin = nextOrigin.origin;
+      this.renderRoot.setPosition(-origin.x, -origin.y, -origin.z);
+      this.field.setRenderOrigin(origin.x, origin.z);
+      this.pose.position.set(s.x - origin.x, s.y - origin.y, s.z - origin.z);
+      this.camera.setPosition(this.pose.position);
+    }
     const signature = [
       this.mapState === null ? 'ground' : 'map',
       this.activeNeighborhood ?? '',
@@ -827,27 +884,34 @@ export class AtlasBinding {
           tier: this.tierState,
           target: this.navigationTargetIsland,
         }),
-        { maxCost: this.residencyBudget },
+        {
+          maxCost: this.residencyBudget * this.representationPressure.state.budgetScale,
+          maxStage: this.representationPressure.state.maxStage,
+        },
         this.residencyState,
       );
+      this.residencyState = plan.state;
+      // Install pending ids before handing actions to an executor: an honest missing/unsupported
+      // descriptor may settle synchronously, and settling against the previous state would leave
+      // the new request pending forever.
       this.onResidencyActions?.(plan.actions);
-      let settled = plan.state;
-      // Every visual passed to this binding is already constructed. A future streaming loader
-      // consumes the same actions asynchronously; the current binding acknowledges them now.
-      for (const action of plan.actions) {
-        if (action.type === 'load') {
-          settled = completeResidencyRequest(settled, action.request.requestId, true);
+      if (this.onResidencyActions === null) {
+        // Predecoded fixture mode has no I/O to await. Production installs a physical executor
+        // and settles only after checked fetch, decode, upload, and publication.
+        for (const action of plan.actions) {
+          if (action.type === 'load') {
+            this.residencyState = completeResidencyRequest(
+              this.residencyState,
+              action.request.requestId,
+              true,
+            );
+          }
         }
       }
-      this.residencyState = settled;
-      this.residencyAllocated = plan.allocated;
-      this.sourceFirst.setResidency(plan.allocated, this.mapState !== null);
-      // Residency transitions are sparse state changes, unlike tier changes. Stub point maps stop
-      // issuing draw calls; the caller-owned decoded map remains available until a future loader
-      // consumes the same release action and disposes it physically.
-      for (const visual of this.islands) {
-        visual.entity.enabled = plan.allocated.get(visual.island.islandId) !== 'stub';
-      }
+      this.residencyAllocated = new Map(
+        [...this.residencyState.entries].map(([id, entry]) => [id, entry.current]),
+      );
+      this.applyResidencyPresentation();
     }
 
     // Representation density, as one uniform write per island. No material swap, no scene-graph
@@ -909,9 +973,23 @@ export class AtlasBinding {
         widthCss: this.device.canvas.clientWidth,
         heightCss: this.device.canvas.clientHeight,
         capturedAt: this.scene.islands[0]?.createdAt ?? Date.now(),
+        renderOrigin: [
+          this.renderOriginState.origin.x,
+          this.renderOriginState.origin.y,
+          this.renderOriginState.origin.z,
+        ],
       });
       if (this.mapState !== null) {
-        this.mapOverlay?.update(cameraComponent, this.device.canvas.clientWidth, this.device.canvas.clientHeight);
+        this.mapOverlay?.update(
+          cameraComponent,
+          this.device.canvas.clientWidth,
+          this.device.canvas.clientHeight,
+          [
+            this.renderOriginState.origin.x,
+            this.renderOriginState.origin.y,
+            this.renderOriginState.origin.z,
+          ],
+        );
       }
     }
 
@@ -926,6 +1004,8 @@ export class AtlasBinding {
       activeNeighborhood: this.activeNeighborhood,
       navigating,
       recoveryReason: this.controls.consumeRecoveryReason(),
+      representationPressure: this.representationPressure.state,
+      renderOrigin: this.renderOriginState,
     });
   }
 

@@ -28,6 +28,7 @@ export type WorldShellEvent =
   | { readonly type: 'toggle-map' }
   | { readonly type: 'toggle-options' }
   | { readonly type: 'toggle-controls' }
+  | { readonly type: 'show-index' }
   | { readonly type: 'show-world' }
   | { readonly type: 'show-detail'; readonly id: string }
   | { readonly type: 'close-detail' };
@@ -79,6 +80,8 @@ export function updateWorldShell(
       return openSystemSurface(state, 'controls');
     case 'show-world':
       return initialWorldShell();
+    case 'show-index':
+      return Object.freeze({ primary: 'index', camera: 'ground', detailId: null, returnTo: null });
     case 'show-detail':
       return state.primary === 'index'
         ? Object.freeze({ ...state, detailId: event.id })
