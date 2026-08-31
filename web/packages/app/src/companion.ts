@@ -1,11 +1,13 @@
-import type {
-  CompanionSession,
-  ConfirmationSummary,
-  SelectionOutcome,
-  Turn,
+import {
+  findOption,
+  type CompanionSession,
+  type ConfirmationSummary,
+  type SelectionOutcome,
+  type Turn,
 } from '@orimera/companion-runtime';
 import type { EvidenceHandle, GraphSnapshot } from '@orimera/graph-client';
 import type { CompanionEncounter } from './ui/companion-encounter.js';
+import { say } from './ui/copy.js';
 
 /**
  * The turn loop. What turns the Companion's engine into a conversation.
@@ -59,7 +61,7 @@ export function createCompanionController(
 
   const render = (): void => panel?.render(turn);
 
-  function handle(outcome: SelectionOutcome): void {
+  function handle(outcome: SelectionOutcome, answer: string): void {
     switch (outcome.kind) {
       case 'advanced':
         turn = outcome.turn;
@@ -69,7 +71,7 @@ export function createCompanionController(
         options.onAwaitingConfirmation(
           outcome.proposal.proposalId,
           outcome.confirmation,
-          turn?.utterance ?? '',
+          answer,
         );
         return;
       case 'refused':
@@ -79,6 +81,12 @@ export function createCompanionController(
         return;
     }
   }
+
+  const optionAnswer = (optionId: string): string => {
+    if (turn === null) return '';
+    const option = findOption(turn, optionId);
+    return option === null ? '' : (option.phrasing ?? say(option.textKey));
+  };
 
   return {
     attach(next) {
@@ -108,9 +116,12 @@ export function createCompanionController(
     observeSnapshot(snapshot) {
       companion.observeSnapshot(snapshot);
     },
-    select: (optionId) => handle(companion.select(optionId, Date.now())),
-    submit: (optionIds) => handle(companion.submit(optionIds, Date.now())),
-    say: (text) => handle(companion.say(text, Date.now())),
+    select: (optionId) => handle(companion.select(optionId, Date.now()), optionAnswer(optionId)),
+    submit: (optionIds) => handle(
+      companion.submit(optionIds, Date.now()),
+      optionIds.map(optionAnswer).filter(Boolean).join(', '),
+    ),
+    say: (text) => handle(companion.say(text, Date.now()), text),
     evidenceAt: (index) => turn?.evidence[index] ?? null,
     active: () => panel?.state() === 'open',
   };
