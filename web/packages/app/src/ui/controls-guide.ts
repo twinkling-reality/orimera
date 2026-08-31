@@ -19,7 +19,7 @@ const rows: readonly (readonly [string, string])[] = [
   ['X · Right click', 'Call the Companion'],
   ['I', 'Open the World Index'],
   ['M', 'Move between ground view and Atlas Map'],
-  ['O', 'Open Options'],
+  ['O', 'Open the Atlas instrument'],
   ['?', 'Show this guide'],
   ['Escape', 'Release look, or dismiss the Companion when it is open'],
 ];
@@ -36,7 +36,7 @@ export function buildControlsGuide(options: ControlsGuideOptions): ControlsGuide
     type: 'button', class: 'overlay-close', 'aria-label': 'Return to Atlas', text: 'Return  ?',
   });
   close.addEventListener('click', options.onClose);
-  const settings = el('button', { type: 'button', class: 'text-action', text: 'Open Options  O' });
+  const settings = el('button', { type: 'button', class: 'text-action', text: 'Open Atlas  O' });
   settings.addEventListener('click', options.onShowOptions);
   root.append(
     el('header', { class: 'overlay-head' }, [

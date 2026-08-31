@@ -10,6 +10,8 @@ import type { FirstUsePrompt } from './first-use-guidance.js';
 
 export interface CompanionHandlers extends CompanionChoiceHandlers {
   readonly onEvidence: (handleIndex: number) => void;
+  readonly onCustomizeCompanion?: () => void;
+  readonly onCustomizeWorld?: () => void;
 }
 
 export type PanelState = 'enter' | 'summon' | 'open';
@@ -47,6 +49,17 @@ export function buildCompanionEncounter(
     onEvidence: handlers.onEvidence,
   });
   const choices = buildCompanionChoiceRail(handlers);
+  const utilities = el('nav', { class: 'companion-utilities', 'aria-label': 'Companion deep links' });
+  if (handlers.onCustomizeCompanion !== undefined) {
+    const customize = el('button', { type: 'button', text: 'Design Companion' });
+    customize.addEventListener('click', handlers.onCustomizeCompanion);
+    utilities.append(customize);
+  }
+  if (handlers.onCustomizeWorld !== undefined) {
+    const customize = el('button', { type: 'button', text: 'Design World' });
+    customize.addEventListener('click', handlers.onCustomizeWorld);
+    utilities.append(customize);
+  }
   let state: PanelState = 'enter';
   let lastTurn: Turn | null = null;
   let currentPlacement: CompanionPlacement | null = null;
@@ -81,7 +94,7 @@ export function buildCompanionEncounter(
   function renderTurn(turn: Turn): void {
     speech.render(turn);
     choices.render(turn);
-    replace(root, [speech.root, choices.root]);
+    replace(root, [speech.root, choices.root, ...(utilities.childElementCount === 0 ? [] : [utilities])]);
   }
 
   renderPrompt();

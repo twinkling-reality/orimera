@@ -35,7 +35,7 @@ export function buildAtlasCommands(onCommand: (command: AtlasCommand) => void): 
   const entries: readonly (readonly [AtlasCommand, string, string])[] = [
     ['index', 'Index', 'I'],
     ['map', 'Map', 'M'],
-    ['options', 'Options', 'O'],
+    ['options', 'Atlas', 'O'],
     ['controls', 'Controls', '?'],
   ];
   const buttons = new Map<AtlasCommand, HTMLButtonElement>();

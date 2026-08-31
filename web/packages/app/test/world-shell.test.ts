@@ -16,10 +16,27 @@ describe('the Atlas shell', () => {
     expect(updateWorldShell(options, { type: 'toggle-options' })).toEqual(detail);
   });
 
-  it('models Map as a camera presentation of the live world', () => {
+  it('models Map as a camera presentation and restores the exact prior Index context', () => {
+    const index = updateWorldShell(initialWorldShell(), { type: 'toggle-index' });
+    const detail = updateWorldShell(index, { type: 'show-detail', id: 'entity-1' });
+    const map = updateWorldShell(detail, { type: 'toggle-map' });
+    expect(map).toMatchObject({ primary: 'world', camera: 'map', detailId: null });
+    expect(updateWorldShell(map, { type: 'toggle-map' })).toEqual(detail);
+  });
+
+  it('models Map as a camera presentation of the live world from the ground', () => {
     const map = updateWorldShell(initialWorldShell(), { type: 'toggle-map' });
-    expect(map).toEqual({ primary: 'world', camera: 'map', detailId: null, returnTo: null });
+    expect(map).toMatchObject({ primary: 'world', camera: 'map', detailId: null });
     expect(updateWorldShell(map, { type: 'toggle-map' })).toEqual(initialWorldShell());
+  });
+
+  it('unwinds a system surface to Map and then to the Index context below it', () => {
+    const index = updateWorldShell(initialWorldShell(), { type: 'toggle-index' });
+    const detail = updateWorldShell(index, { type: 'show-detail', id: 'entity-1' });
+    const map = updateWorldShell(detail, { type: 'toggle-map' });
+    const controls = updateWorldShell(map, { type: 'toggle-controls' });
+    expect(updateWorldShell(controls, { type: 'toggle-controls' })).toEqual(map);
+    expect(updateWorldShell(map, { type: 'toggle-map' })).toEqual(detail);
   });
 
   it('refuses to create an orphaned detail outside the Index', () => {

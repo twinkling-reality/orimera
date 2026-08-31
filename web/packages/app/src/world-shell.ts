@@ -10,17 +10,16 @@
 export type PrimarySurface = 'world' | 'index' | 'options' | 'controls';
 export type CameraPresentation = 'ground' | 'map';
 
-export interface WorldShellState {
+export interface WorldSurfaceContext {
   readonly primary: PrimarySurface;
   readonly camera: CameraPresentation;
   /** A detail belongs to the Index. It is illegal on every other primary surface. */
   readonly detailId: string | null;
-  /** System surfaces return to the exact place from which they were opened. */
-  readonly returnTo: {
-    readonly primary: 'world' | 'index';
-    readonly camera: CameraPresentation;
-    readonly detailId: string | null;
-  } | null;
+}
+
+export interface WorldShellState extends WorldSurfaceContext {
+  /** Temporary major surfaces unwind in order, preserving the exact prior product context. */
+  readonly returnStack: readonly WorldSurfaceContext[];
 }
 
 export type WorldShellEvent =
@@ -52,7 +51,7 @@ export function initialWorldShell(): WorldShellState {
     primary: 'world',
     camera: 'ground',
     detailId: null,
-    returnTo: null,
+    returnStack: Object.freeze([]),
   });
 }
 
@@ -64,20 +63,20 @@ export function updateWorldShell(
   switch (event.type) {
     case 'toggle-index':
       return state.primary === 'index'
-        ? initialWorldShell()
-        : Object.freeze({ primary: 'index', camera: 'ground', detailId: null, returnTo: null });
+        ? restoreSurface(state)
+        : openTemporarySurface(state, { primary: 'index', camera: 'ground', detailId: null });
     case 'toggle-map':
       return state.camera === 'map'
-        ? initialWorldShell()
-        : Object.freeze({ primary: 'world', camera: 'map', detailId: null, returnTo: null });
+        ? restoreSurface(state)
+        : openTemporarySurface(state, { primary: 'world', camera: 'map', detailId: null });
     case 'toggle-options':
       if (state.primary === 'options') return restoreSurface(state);
       if (state.primary === 'controls') return Object.freeze({ ...state, primary: 'options' });
-      return openSystemSurface(state, 'options');
+      return openTemporarySurface(state, { primary: 'options', camera: 'ground', detailId: null });
     case 'toggle-controls':
       if (state.primary === 'controls') return restoreSurface(state);
       if (state.primary === 'options') return Object.freeze({ ...state, primary: 'controls' });
-      return openSystemSurface(state, 'controls');
+      return openTemporarySurface(state, { primary: 'controls', camera: 'ground', detailId: null });
     case 'show-world':
       return initialWorldShell();
     case 'show-index':
@@ -91,27 +90,29 @@ export function updateWorldShell(
   }
 }
 
-function openSystemSurface(
+function openTemporarySurface(
   state: WorldShellState,
-  primary: 'options' | 'controls',
+  next: WorldSurfaceContext,
 ): WorldShellState {
+  const current: WorldSurfaceContext = Object.freeze({
+    primary: state.primary,
+    camera: state.camera,
+    detailId: state.detailId,
+  });
   return Object.freeze({
-    primary,
-    camera: 'ground',
-    detailId: null,
-    returnTo: Object.freeze({
-      primary: state.primary === 'index' ? 'index' : 'world',
-      camera: state.camera,
-      detailId: state.primary === 'index' ? state.detailId : null,
-    }),
+    ...next,
+    returnStack: Object.freeze([...state.returnStack, current]),
   });
 }
 
 function restoreSurface(state: WorldShellState): WorldShellState {
-  const prior = state.returnTo;
-  return prior === null
+  const prior = state.returnStack.at(-1);
+  return prior === undefined
     ? initialWorldShell()
-    : Object.freeze({ ...prior, returnTo: null });
+    : Object.freeze({
+        ...prior,
+        returnStack: Object.freeze(state.returnStack.slice(0, -1)),
+      });
 }
 
 /**

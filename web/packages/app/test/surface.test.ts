@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { BAND_ORDER } from '@orimera/companion-runtime';
 import type { EntityRecord, GraphSnapshot, OccurrenceRecord } from '@orimera/graph-client';
@@ -171,6 +171,62 @@ describe('the desktop viewport boundary', () => {
     const appearance = readFileSync('packages/app/src/appearance.css', 'utf8');
     expect(appearance).toContain('var(--field-image)');
     expect(appearance).not.toContain('radial-gradient');
+  });
+});
+
+describe('the Index evidence workspace', () => {
+  it('exposes the existing four facet contracts and emits a typed facet change', () => {
+    const onFacets = vi.fn();
+    const rail = buildLibrary({
+      onEntity: () => undefined,
+      onOccurrence: () => undefined,
+      onSearch: () => undefined,
+      onFacets,
+    });
+    rail.render(snapshot([entity({ kind: 'person' })], [occurrence('o1', 'e1')]), '', null);
+
+    expect([...rail.root.querySelectorAll('fieldset legend')].map((node) => node.textContent)).toEqual([
+      'Kind', 'Status', 'Presence', 'Source of knowledge',
+    ]);
+    const people = rail.root.querySelector<HTMLInputElement>('input[value="person"]')!;
+    people.checked = true;
+    people.dispatchEvent(new Event('change'));
+    expect(onFacets).toHaveBeenCalledWith(expect.objectContaining({ kinds: ['person'] }));
+    expect(rail.root.textContent).toContain('Knowledge marks');
+  });
+
+  it('preserves keyboard focus while a presence facet rerenders the results', () => {
+    const graph = snapshot([entity({ kind: 'person' })], [occurrence('o1', 'e1')]);
+    let rail: ReturnType<typeof buildLibrary>;
+    rail = buildLibrary({
+      onEntity: () => undefined,
+      onOccurrence: () => undefined,
+      onSearch: () => undefined,
+      onFacets: (facets) => rail.render(graph, facets, null),
+    });
+    document.body.append(rail.root);
+    rail.render(graph, '', null);
+
+    const presence = rail.root.querySelector<HTMLInputElement>('.index-presence-facet input')!;
+    presence.focus();
+    presence.checked = true;
+    presence.dispatchEvent(new Event('change'));
+    expect(document.activeElement).toBe(presence);
+    rail.root.remove();
+  });
+
+  it('identifies keyboard row activation so focus can move into the detail pane', () => {
+    const onEntity = vi.fn();
+    const rail = buildLibrary({
+      onEntity,
+      onOccurrence: () => undefined,
+      onSearch: () => undefined,
+    });
+    rail.render(snapshot([entity({ displayName: 'Mara' })], [occurrence('o1', 'e1')]), '', null);
+    rail.root.querySelector<HTMLButtonElement>('.rail-row')?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, detail: 0 }),
+    );
+    expect(onEntity).toHaveBeenCalledWith('e1', 'keyboard');
   });
 });
 

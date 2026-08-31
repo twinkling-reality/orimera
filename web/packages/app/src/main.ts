@@ -27,7 +27,14 @@ import './appearance.css';
 import type { GraphSnapshot, OccurrenceRecord } from '@orimera/graph-client';
 import { ApiError } from '@orimera/graph-client';
 import { anchorId as toAnchorId, islandId as toIslandId } from '@orimera/atlas-core';
-import { confirmationFor, draftEdit } from '@orimera/world-index';
+import {
+  FACET_KEYS,
+  confirmationFor,
+  decodeFacets,
+  draftEdit,
+  encodeFacets,
+  type IndexFacets,
+} from '@orimera/world-index';
 import { mountAtlas, type MountedAtlas } from './atlas.js';
 import type { SourceMediaCatalog } from '@orimera/atlas-react/playcanvas';
 import {
@@ -47,7 +54,7 @@ import { buildCompanionEncounter } from './ui/companion-encounter.js';
 import { resolveCompanionPlacement } from './ui/companion-placement.js';
 import { buildAtlasCommands, type AtlasCommand } from './ui/atlas-commands.js';
 import { buildControlsGuide } from './ui/controls-guide.js';
-import { buildOptions } from './ui/options.js';
+import { buildOptions, type AtlasInstrumentSection } from './ui/options.js';
 import { buildWorldChrome } from './ui/world-chrome.js';
 import { buildCompanionStage, type CompanionStage } from './ui/companion-stage.js';
 import { createCompanionController } from './companion.js';
@@ -125,7 +132,7 @@ applyDocumentAppearance(preferences, systemAppearance.matches);
  * does nothing.
  */
 let mountListeners: AbortController | null = null;
-let search = '';
+let indexFacets: IndexFacets = decodeFacets(window.location.search);
 let selected: string | null = null;
 /** Monotonic, so two proposals in one session never share an id. Not a clock and not random. */
 let issued = 0;
@@ -347,6 +354,7 @@ async function mount(): Promise<void> {
       confirm.show(proposalId, summary, utterance);
     },
   });
+  let openInstrumentSection = (_section: AtlasInstrumentSection): void => undefined;
   function dismissCompanion(): void {
     companionController.dismiss();
     companionStage.setState('resting');
@@ -373,14 +381,41 @@ async function mount(): Promise<void> {
       const handle = companionController.evidenceAt(index);
       if (handle !== null) void currentEvidence.open(handle);
     },
+    onCustomizeCompanion: () => openInstrumentSection('companion'),
+    onCustomizeWorld: () => openInstrumentSection('world'),
   });
   companionController.attach(companionPanel);
 
   let shellState = initialWorldShell();
+  const returnFocus: Array<HTMLElement | null> = [];
   let reflectShell = (): void => undefined;
   const dispatchShell = (event: WorldShellEvent): void => {
-    shellState = updateWorldShell(shellState, event);
+    const priorDepth = shellState.returnStack.length;
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const next = updateWorldShell(shellState, event);
+    const nextDepth = next.returnStack.length;
+
+    if (nextDepth > priorDepth) {
+      returnFocus.push(active);
+    }
+
+    let restore: HTMLElement | null = null;
+    while (returnFocus.length > nextDepth) restore = returnFocus.pop() ?? null;
+
+    shellState = next;
     reflectShell();
+
+    if (restore !== null) {
+      window.setTimeout(() => {
+        if (
+          restore?.isConnected === true &&
+          restore.closest('[inert]') === null &&
+          restore.getClientRects().length > 0
+        ) {
+          restore.focus({ preventScroll: true });
+        }
+      });
+    }
   };
 
   const travelStatus = el('p', {
@@ -442,28 +477,40 @@ async function mount(): Promise<void> {
   });
 
   const library = buildLibrary({
-    onEntity: (entityId) => {
+    onEntity: (entityId, activation) => {
       selected = entityId;
       const entity = current.entities.find((e) => e.entityId === entityId);
       if (entity !== undefined) {
         detail.showEntity(current, entity);
         dispatchShell({ type: 'show-detail', id: entityId });
       }
-      library.render(current, search, selected);
+      library.render(current, indexFacets, selected);
+      if (activation === 'keyboard') {
+        window.setTimeout(() => detail.root.querySelector<HTMLElement>('button')?.focus(), 0);
+      }
     },
-    onOccurrence: (occurrenceId) => {
+    onOccurrence: (occurrenceId, activation) => {
       selected = occurrenceId;
       const occurrence = current.occurrences.find((o) => o.occurrenceId === occurrenceId);
       if (occurrence !== undefined) {
         detail.showOccurrence(occurrence);
         dispatchShell({ type: 'show-detail', id: occurrenceId });
       }
-      library.render(current, search, selected);
+      library.render(current, indexFacets, selected);
+      if (activation === 'keyboard') {
+        window.setTimeout(() => detail.root.querySelector<HTMLElement>('button')?.focus(), 0);
+      }
     },
     onSearch: (text) => {
-      search = text;
-      library.render(current, search, selected);
+      indexFacets = Object.freeze({ ...indexFacets, text });
+      library.render(current, indexFacets, selected);
     },
+    onFacets: (next) => {
+      indexFacets = next;
+      syncIndexRoute(next);
+      library.render(current, indexFacets, selected);
+    },
+    onClose: () => dispatchShell({ type: 'toggle-index' }),
   }, { preview });
 
   // The canvas stays where the document put it: fixed, behind everything, outside the shell.
@@ -474,7 +521,11 @@ async function mount(): Promise<void> {
   const chrome = buildWorldChrome(shell!);
   const handleAtlasCommand = (command: AtlasCommand): void => {
     if (companionPanel.state() === 'open') dismissCompanion();
-    if (command === 'index') dispatchShell({ type: 'toggle-index' });
+    if (command === 'index') {
+      const opening = shellState.primary !== 'index';
+      dispatchShell({ type: 'toggle-index' });
+      if (opening) window.setTimeout(() => library.focusSearch(), 0);
+    }
     else if (command === 'map') dispatchShell({ type: 'toggle-map' });
     else if (command === 'options') dispatchShell({ type: 'toggle-options' });
     else dispatchShell({ type: 'toggle-controls' });
@@ -485,10 +536,16 @@ async function mount(): Promise<void> {
     shell!.dataset['firstUse'] = firstUse.phase();
   };
   reflectFirstUse();
-  const mapCaption = el('p', {
+  const mapReturn = el('button', { type: 'button', text: 'Return  M' });
+  mapReturn.addEventListener('click', () => handleAtlasCommand('map'));
+  const mapCaption = el('section', {
     class: 'map-caption',
-    text: `Atlas Map · ${MAP_ORIENTATION_CAPTION} · M to return to ground view`,
-  });
+    'aria-label': 'Atlas Map orientation',
+  }, [
+    el('strong', { text: 'Atlas Map' }),
+    el('span', { text: MAP_ORIENTATION_CAPTION }),
+    mapReturn,
+  ]);
   mapCaption.hidden = true;
   const viewportBoundary = el('aside', {
     class: 'viewport-boundary',
@@ -718,6 +775,11 @@ async function mount(): Promise<void> {
       optionsView.reportWorldLifecycle('failed', describeWorldStyleFailure(error));
     }
   });
+  openInstrumentSection = (section): void => {
+    if (companionPanel.state() === 'open') dismissCompanion();
+    optionsView.showSection(section);
+    if (shellState.primary !== 'options') dispatchShell({ type: 'toggle-options' });
+  };
   const controlsGuide = buildControlsGuide({
     onClose: () => dispatchShell({ type: 'toggle-controls' }),
     onShowOptions: () => dispatchShell({ type: 'toggle-options' }),
@@ -832,7 +894,7 @@ async function mount(): Promise<void> {
   shell!.setAttribute('data-vignette', preferences.vignette);
   reflectShell();
 
-  library.render(current, search, selected);
+  library.render(current, indexFacets, selected);
   forming.render(null, null);
 
   // What there is to watch. There is no upload endpoint yet, so an intake starts from the command
@@ -1038,6 +1100,14 @@ async function mount(): Promise<void> {
     },
     { signal: mountListeners.signal },
   );
+  window.addEventListener(
+    'popstate',
+    () => {
+      indexFacets = decodeFacets(window.location.search);
+      library.render(current, indexFacets, selected);
+    },
+    { signal: mountListeners.signal },
+  );
   systemAppearance.addEventListener(
     'change',
     () => applyPreferences(preferences),
@@ -1108,6 +1178,14 @@ async function mount(): Promise<void> {
     selected = null;
     await mount();
   }
+}
+
+function syncIndexRoute(facets: IndexFacets): void {
+  const url = new URL(window.location.href);
+  for (const key of FACET_KEYS) url.searchParams.delete(key);
+  const encoded = new URLSearchParams(encodeFacets(facets));
+  for (const [key, value] of encoded) url.searchParams.set(key, value);
+  window.history.replaceState(window.history.state, '', url);
 }
 
 function panelFailure(confirm: ReturnType<typeof buildConfirm>, error: unknown): void {

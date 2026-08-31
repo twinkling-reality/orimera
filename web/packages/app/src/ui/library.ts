@@ -1,83 +1,232 @@
 /**
- * The left rail: what is in this library, and what is not identified yet.
+ * The keyboard-first World Index binding.
  *
- * Two lists, and the second one is the interesting one. `world-index` models ENTITIES, because
- * the World Index is a list of people, places and things. A library nobody has named yet has no
- * entities at all, and rendering only the index would show an empty product on top of a full
- * one: 312 detections that the user cannot reach.
- *
- * So the second list is bare occurrences, composed here rather than in `world-index`, because an
- * unidentified detection is not an index row and giving it one would be giving an anonymous
- * occurrence the shape of a named thing. id-1: the occurrence is anonymous and the entity holds
- * the name.
- *
- * The empty state of the first list says which zero it is. "Nothing has been identified yet" and
- * "nothing matched your filters" are different facts and only one of them means the library is
- * empty.
+ * `@orimera/world-index` owns filtering, row semantics, ranking, and URL encoding. This file only
+ * turns that existing view model into the protected three-part evidence workspace described by
+ * interaction-model.md 6.1. Bare occurrences remain a separate list because an anonymous
+ * occurrence is not an entity and must not be given entity-shaped facet state.
  */
 
-import type { GraphSnapshot, OccurrenceRecord } from '@orimera/graph-client';
-import type { IndexRow, IndexView } from '@orimera/world-index';
-import { buildIndexView } from '@orimera/world-index';
+import type {
+  AssertionKind,
+  EntityKind,
+  GraphSnapshot,
+  IndexStatus,
+  OccurrenceRecord,
+} from '@orimera/graph-client';
+import type { IndexFacets, IndexRow, IndexView } from '@orimera/world-index';
+import { ALL_FACETS, FACET_VALUES, buildIndexView } from '@orimera/world-index';
 import { say } from './copy.js';
 import { el, replace } from './dom.js';
 
 export interface LibraryHandlers {
-  onEntity(entityId: string): void;
-  onOccurrence(occurrenceId: string): void;
+  onEntity(entityId: string, activation?: 'keyboard' | 'pointer'): void;
+  onOccurrence(occurrenceId: string, activation?: 'keyboard' | 'pointer'): void;
   onSearch(text: string): void;
+  onFacets?(facets: IndexFacets): void;
+  onClose?(): void;
 }
 
 export interface LibraryPane {
   readonly root: HTMLElement;
-  render(snapshot: GraphSnapshot, search: string, selected: string | null): void;
+  render(snapshot: GraphSnapshot, state: string | IndexFacets, selected: string | null): void;
+  focusSearch(): void;
 }
 
 export interface LibraryPresentation {
   readonly preview?: boolean;
 }
 
-/** How many bare detections are listed before the rail stops and says how many are left. */
+/** How many bare detections are listed before the workspace states the remainder. */
 const DETECTION_PAGE = 60;
+
+const KIND_LABELS: Readonly<Record<EntityKind, string>> = Object.freeze({
+  person: 'People', place: 'Places', object: 'Objects', event: 'Events', region: 'Regions',
+});
+const STATUS_LABELS: Readonly<Record<IndexStatus, string>> = Object.freeze({
+  confirmed: 'Confirmed',
+  needs_review: 'Needs review',
+  inferred_only: 'Inferred only',
+  user_asserted: 'User asserted',
+  rejected: 'Rejected',
+  merged_away: 'Merged away',
+});
+const SOURCE_LABELS: Readonly<Record<AssertionKind, string>> = Object.freeze({
+  user: 'You provided',
+  capture: 'Capture supported',
+  inference: 'System inferred',
+  external: 'External, present only',
+});
 
 export function buildLibrary(
   handlers: LibraryHandlers,
   presentation: LibraryPresentation = {},
 ): LibraryPane {
-  const root = el('nav', { class: 'rail', 'aria-label': 'Library' });
+  const root = el('section', {
+    class: 'rail index-workspace',
+    'aria-label': 'World Index',
+  });
+  const titleId = 'world-index-title';
+  root.setAttribute('aria-labelledby', titleId);
 
   const search = el('input', {
     type: 'search',
     class: 'rail-search',
-    placeholder: 'Search',
-    'aria-label': 'Search the library',
+    placeholder: 'Search names and evidence',
+    'aria-label': 'Search the World Index',
   });
-  search.addEventListener('input', () => handlers.onSearch(search.value));
-
   const counter = el('p', { class: 'rail-counter', 'aria-live': 'polite' });
-  const identified = el('ul', { class: 'rail-list', 'aria-label': 'Identified' });
-  const detections = el('ul', { class: 'rail-list', 'aria-label': 'Unidentified detections' });
+  const resultSummary = el('p', { class: 'index-result-summary', 'aria-live': 'polite' });
+  const filterState = el('p', { class: 'index-filter-state' });
+  const clear = el('button', { type: 'button', class: 'text-action index-clear', text: 'Clear filters' });
+  const close = el('button', {
+    type: 'button', class: 'index-close', 'aria-label': 'Close the World Index', text: 'Return  I',
+  });
+  close.addEventListener('click', () => handlers.onClose?.());
+
+  const identified = el('ul', { class: 'rail-list', 'aria-label': 'Index results' });
+  const detections = el('ul', { class: 'rail-list detection-list', 'aria-label': 'Unidentified detections' });
   const detectionsNote = el('p', { class: 'rail-note' });
+  const presenceGroup = el('fieldset', { class: 'index-facet-group index-presence-facet' });
+  const presenceInputs = new Map<string, HTMLInputElement>();
+  let presenceSignature = '';
+  let currentFacets: IndexFacets = ALL_FACETS;
+
+  const emit = (facets: IndexFacets): void => {
+    if (handlers.onFacets === undefined) {
+      handlers.onSearch(facets.text);
+      return;
+    }
+    handlers.onFacets(Object.freeze({
+      kinds: Object.freeze([...facets.kinds]),
+      statuses: Object.freeze([...facets.statuses]),
+      islands: Object.freeze([...facets.islands]),
+      sources: Object.freeze([...facets.sources]),
+      text: facets.text,
+    }));
+  };
+
+  const kinds = facetGroup(
+    'Kind',
+    FACET_VALUES.kinds,
+    KIND_LABELS,
+    () => currentFacets.kinds,
+    (values) => emit({ ...currentFacets, kinds: values }),
+  );
+  const statuses = facetGroup(
+    'Status',
+    FACET_VALUES.statuses,
+    STATUS_LABELS,
+    () => currentFacets.statuses,
+    (values) => emit({ ...currentFacets, statuses: values }),
+  );
+  const sources = facetGroup(
+    'Source of knowledge',
+    FACET_VALUES.sources,
+    SOURCE_LABELS,
+    () => currentFacets.sources,
+    (values) => emit({ ...currentFacets, sources: values }),
+  );
+
+  search.addEventListener('input', () => emit({ ...currentFacets, text: search.value }));
+  clear.addEventListener('click', () => emit(ALL_FACETS));
+
+  const legend = el('section', { class: 'provenance-legend', 'aria-label': 'Provenance legend' }, [
+    el('h2', { text: 'Knowledge marks' }),
+    legendItem('user', 'You provided'),
+    legendItem('capture', 'Capture supported'),
+    legendItem('inference', 'System inferred'),
+    el('p', {
+      class: 'legend-note',
+      text: 'A missing mark means that source does not support this entity. Confidence appears only while an entity remains inferred.',
+    }),
+  ]);
 
   root.append(
-    search,
-    counter,
-    el('h2', { class: 'rail-head', text: 'Identified' }),
-    identified,
-    el('h2', { class: 'rail-head', text: 'Not identified' }),
-    detectionsNote,
-    detections,
+    el('header', { class: 'index-head' }, [
+      el('div', {}, [
+        el('p', { class: 'overlay-kicker', text: 'Evidence workspace' }),
+        el('h1', { id: titleId, text: 'Index' }),
+      ]),
+      el('div', { class: 'index-head-state' }, [counter, close]),
+    ]),
+    el('aside', { class: 'index-facets', 'aria-label': 'Index filters' }, [
+      el('div', { class: 'index-search-wrap' }, [search, filterState, clear]),
+      kinds.root,
+      statuses.root,
+      presenceGroup,
+      sources.root,
+      legend,
+    ]),
+    el('section', { class: 'index-results', 'aria-label': 'Index entries' }, [
+      el('header', { class: 'index-results-head' }, [
+        el('div', {}, [
+          el('p', { class: 'index-section-label', text: 'Entities' }),
+          resultSummary,
+        ]),
+        el('p', { class: 'index-column-guide', text: 'Identity · presence · provenance' }),
+      ]),
+      identified,
+      el('section', { class: 'detection-section', 'aria-label': 'Not identified' }, [
+        el('h2', { class: 'rail-head', text: 'Not identified' }),
+        detectionsNote,
+        detections,
+      ]),
+    ]),
   );
+
+  const renderPresence = (snapshot: GraphSnapshot): void => {
+    const options = snapshot.islands.map((island, index) => ({
+      value: island.islandId,
+      label: `Region ${String(index + 1).padStart(2, '0')} · ${island.captureIds.length} ${island.captureIds.length === 1 ? 'capture' : 'captures'}`,
+    }));
+    const signature = options.map(({ value, label }) => `${value}\u0000${label}`).join('\u0001');
+    if (signature !== presenceSignature) {
+      presenceSignature = signature;
+      presenceInputs.clear();
+      const inputs = options.map(({ value, label }) => {
+        const input = el('input', { type: 'checkbox', value });
+        presenceInputs.set(value, input);
+        input.addEventListener('change', () => {
+          const selected = options
+            .filter((option) => presenceInputs.get(option.value)?.checked)
+            .map((option) => option.value);
+          emit({ ...currentFacets, islands: Object.freeze(selected) });
+        });
+        return el('label', { class: 'index-facet-option' }, [input, el('span', { text: label })]);
+      });
+      replace(presenceGroup, [el('legend', { text: 'Presence' }), ...inputs]);
+    }
+    for (const [value, input] of presenceInputs) {
+      input.checked = currentFacets.islands.includes(value);
+    }
+  };
 
   return {
     root,
-    render(snapshot, searchText, selected) {
-      const view = buildIndexView({ snapshot, search: searchText });
-      // A count, and nothing a progress ring can be built from. interaction-model.md 5.5: the
-      // counter "is allowed to read 7 forever. THERE IS NO COMPLETION METRIC ANYWHERE."
+    focusSearch() {
+      search.focus();
+    },
+    render(snapshot, state, selected) {
+      currentFacets = typeof state === 'string' ? { ...ALL_FACETS, text: state } : state;
+      const view = buildIndexView({ snapshot, facets: currentFacets, search: currentFacets.text });
+      currentFacets = view.facets;
+      if (document.activeElement !== search) search.value = currentFacets.text;
       counter.textContent = `${view.openQuestions.count} open ${
         view.openQuestions.count === 1 ? 'question' : 'questions'
       }`;
+      resultSummary.textContent = `${view.resultCount} ${view.resultCount === 1 ? 'entity' : 'entities'}`;
+      const activeCount = activeFacetCount(currentFacets);
+      filterState.textContent = activeCount === 0
+        ? 'Showing the complete entity inventory.'
+        : `${activeCount} ${activeCount === 1 ? 'filter' : 'filters'} active.`;
+      clear.disabled = activeCount === 0;
+      root.dataset['detailOpen'] = selected === null ? 'false' : 'true';
+
+      kinds.reflect();
+      statuses.reflect();
+      sources.reflect();
+      renderPresence(snapshot);
 
       replace(
         identified,
@@ -86,87 +235,113 @@ export function buildLibrary(
           : [emptyState(view, snapshot)],
       );
 
-      const bare = snapshot.occurrences.filter((o) => o.entityId === null);
-      detectionsNote.textContent =
-        bare.length === 0
-          ? 'Every detection in this library has been identified.'
-          : presentation.preview === true
-            ? `${bare.length} synthetic detections nobody has named. Fixture sources remain inspectable; unavailable evidence stays explicit.`
-            : `${bare.length} detections nobody has named. Each one opens the photograph it came from.`;
+      const bare = snapshot.occurrences.filter((occurrence) => occurrence.entityId === null);
+      detectionsNote.textContent = bare.length === 0
+        ? 'Every detection in this library has been identified.'
+        : presentation.preview === true
+          ? `${bare.length} synthetic detections remain outside entity facets. Their fixture sources stay inspectable; unavailable evidence stays explicit.`
+          : `${bare.length} detections remain outside entity facets until somebody identifies them.`;
       replace(
         detections,
-        bare
-          .slice(0, DETECTION_PAGE)
-          .map((occurrence) =>
-            detectionRow(occurrence, occurrence.occurrenceId === selected, handlers),
-          ),
+        bare.slice(0, DETECTION_PAGE).map((occurrence) =>
+          detectionRow(occurrence, occurrence.occurrenceId === selected, handlers)),
       );
       if (bare.length > DETECTION_PAGE) {
-        // Said out loud rather than truncated silently. A list that stops without saying so reads
-        // as the whole list.
-        detections.append(
-          el('li', {
-            class: 'rail-more',
-            text: `${bare.length - DETECTION_PAGE} more, not listed here.`,
-          }),
-        );
+        detections.append(el('li', {
+          class: 'rail-more', text: `${bare.length - DETECTION_PAGE} more, not listed here.`,
+        }));
       }
     },
   };
 }
 
-/**
- * An index row.
- *
- * The three-mark provenance triad, the honest placeholder where there is no name, and a
- * confidence bar only for an inferred entity. All three come from `world-index`'s view model
- * rather than being decided here, so the rules hold identically on every surface that renders it.
- */
+interface FacetBinding {
+  readonly root: HTMLElement;
+  reflect(): void;
+}
+
+function facetGroup<T extends string>(
+  title: string,
+  values: readonly T[],
+  labels: Readonly<Record<T, string>>,
+  selected: () => readonly T[],
+  onChange: (values: readonly T[]) => void,
+): FacetBinding {
+  const inputs = new Map<T, HTMLInputElement>();
+  const root = el('fieldset', { class: 'index-facet-group' }, [el('legend', { text: title })]);
+  for (const value of values) {
+    const input = el('input', { type: 'checkbox', value });
+    inputs.set(value, input);
+    input.addEventListener('change', () => {
+      onChange(Object.freeze(values.filter((candidate) => inputs.get(candidate)?.checked)));
+    });
+    root.append(el('label', { class: 'index-facet-option' }, [input, el('span', { text: labels[value] })]));
+  }
+  return {
+    root,
+    reflect() {
+      const active = selected();
+      for (const [value, input] of inputs) input.checked = active.includes(value);
+    },
+  };
+}
+
+function activeFacetCount(facets: IndexFacets): number {
+  return facets.kinds.length + facets.statuses.length + facets.islands.length + facets.sources.length +
+    (facets.text.trim().length > 0 ? 1 : 0);
+}
+
 function entityRow(row: IndexRow, selected: boolean, handlers: LibraryHandlers): HTMLElement {
   const button = el('button', {
-    type: 'button',
-    class: 'rail-row',
-    'aria-current': selected ? 'true' : undefined,
+    type: 'button', class: 'rail-row', 'aria-current': selected ? 'true' : undefined,
   });
-  button.addEventListener('click', () => handlers.onEntity(row.entityId));
-
-  const name =
-    row.displayName ??
-    // Never written into the same field a real name would occupy. `placeholder` is a separate
-    // structure precisely so a name-shaped thing that is not a name cannot be mistaken for one.
-    `Unnamed ${row.placeholder?.kind ?? row.kind}, ${row.occurrenceCount} occurrences`;
-
+  button.addEventListener('click', (event) =>
+    handlers.onEntity(row.entityId, event.detail === 0 ? 'keyboard' : 'pointer'));
+  const name = row.displayName ?? `Unnamed ${row.placeholder?.kind ?? row.kind}, ${row.occurrenceCount} occurrences`;
   button.append(
     el('span', { class: 'rail-kind', text: row.kind }),
-    el('span', { class: row.displayName === null ? 'rail-name is-placeholder' : 'rail-name' }, [
-      name,
-    ]),
+    el('span', { class: row.displayName === null ? 'rail-name is-placeholder' : 'rail-name', text: name }),
+    el('span', { class: 'rail-presence', text: `${row.occurrenceCount} ${row.occurrenceCount === 1 ? 'occurrence' : 'occurrences'} · ${row.islandIds.length} ${row.islandIds.length === 1 ? 'region' : 'regions'}` }),
     triad(row),
+    ...(row.confidence === null
+      ? []
+      : [el('span', {
+          class: 'row-confidence-band',
+          'data-confidence': row.confidence,
+          'aria-label': `System confidence: ${row.confidence}`,
+        }, [el('span', { text: `${row.confidence} confidence` })])]),
   );
   return el('li', {}, [button]);
 }
 
 function triad(row: IndexRow): HTMLElement {
-  const marks = el('span', { class: 'triad', 'aria-label': 'What is known, and how' });
-  for (const [key, present] of [
-    ['user', row.triad.user],
-    ['capture', row.triad.capture],
-    ['inference', row.triad.inference],
+  const marks = el('span', { class: 'triad', 'aria-label': 'Knowledge sources' });
+  for (const [key, present, label] of [
+    ['user', row.triad.user, 'You provided'],
+    ['capture', row.triad.capture, 'Capture supported'],
+    ['inference', row.triad.inference, 'System inferred'],
   ] as const) {
-    marks.append(
-      el('span', {
-        class: `mark mark-${key}${present ? '' : ' is-absent'}`,
-        title: key,
-        text: key[0]?.toUpperCase() ?? '',
-      }),
-    );
+    marks.append(el('span', {
+      class: `mark mark-${key}${present ? '' : ' is-absent'}`,
+      title: `${label}: ${present ? 'present' : 'not present'}`,
+      'aria-label': `${label}: ${present ? 'present' : 'not present'}`,
+    }));
   }
   if (row.external !== null) {
-    // epi-2 gives external its own rendering obligation and its own date, which is why it is a
-    // separate badge rather than a fourth mark in a triad that is specified as three.
-    marks.append(el('span', { class: 'mark mark-external', title: 'external', text: 'E' }));
+    marks.append(el('span', {
+      class: 'mark mark-external',
+      title: `External source as of ${new Date(row.external.latestRetrievedAtMs).toISOString().slice(0, 10)}`,
+      'aria-label': `External source as of ${new Date(row.external.latestRetrievedAtMs).toISOString().slice(0, 10)}`,
+    }));
   }
   return marks;
+}
+
+function legendItem(kind: 'user' | 'capture' | 'inference', label: string): HTMLElement {
+  return el('p', { class: 'legend-item' }, [
+    el('span', { class: `mark mark-${kind}`, 'aria-hidden': 'true' }),
+    el('span', { text: label }),
+  ]);
 }
 
 function detectionRow(
@@ -175,30 +350,23 @@ function detectionRow(
   handlers: LibraryHandlers,
 ): HTMLElement {
   const button = el('button', {
-    type: 'button',
-    class: 'rail-row is-bare',
-    'aria-current': selected ? 'true' : undefined,
+    type: 'button', class: 'rail-row is-bare', 'aria-current': selected ? 'true' : undefined,
   });
-  button.addEventListener('click', () => handlers.onOccurrence(occurrence.occurrenceId));
+  button.addEventListener('click', (event) =>
+    handlers.onOccurrence(occurrence.occurrenceId, event.detail === 0 ? 'keyboard' : 'pointer'));
   button.append(
     el('span', { class: 'rail-kind', text: occurrence.kind }),
     el('span', { class: 'rail-name is-placeholder', text: whenOf(occurrence) }),
+    el('span', { class: 'rail-presence', text: `Unidentified · ${occurrence.confidence} system confidence` }),
   );
   return el('li', {}, [button]);
 }
 
-/**
- * When a detection was captured, or that it is not known.
- *
- * A photograph with no usable clock is a real and common state, and the honest rendering of it is
- * a sentence saying so rather than a blank cell that reads as a rendering bug.
- */
 function whenOf(occurrence: OccurrenceRecord): string {
   if (occurrence.capturedAtMs === null) return 'time not recorded';
   return new Date(occurrence.capturedAtMs).toISOString().slice(0, 16).replace('T', ' ');
 }
 
-/** Which zero this is. The two are different facts and only one means the library is empty. */
 function emptyState(view: IndexView, snapshot: GraphSnapshot): HTMLElement {
   const nothingIdentified = snapshot.entities.length === 0;
   return el('li', { class: 'rail-empty' }, [

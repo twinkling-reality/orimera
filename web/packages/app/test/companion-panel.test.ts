@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Turn, TurnOption } from '@orimera/companion-runtime';
 import { buildCompanionPanel } from '../src/ui/companion-panel.js';
 
@@ -144,6 +144,20 @@ describe('the exchange stays subordinate to the Companion presence', () => {
       'Show supporting memory',
     );
     expect(panel.root.querySelector('.companion-speaker')?.textContent).toBe('Companion');
+  });
+
+  it('offers app-owned design deep links without making them graph options', () => {
+    const onCustomizeCompanion = vi.fn();
+    const onCustomizeWorld = vi.fn();
+    const panel = opened({ ...NOOP, onCustomizeCompanion, onCustomizeWorld });
+    panel.render(turn());
+    const links = panel.root.querySelectorAll<HTMLButtonElement>('.companion-utilities button');
+    expect([...links].map((button) => button.textContent)).toEqual(['Design Companion', 'Design World']);
+    links[0]?.click();
+    links[1]?.click();
+    expect(onCustomizeCompanion).toHaveBeenCalledOnce();
+    expect(onCustomizeWorld).toHaveBeenCalledOnce();
+    expect(panel.root.querySelectorAll('.companion-choices > .choice-item')).not.toHaveLength(0);
   });
 
   it('renders free text as the next numbered option and removes the text Send control', () => {
