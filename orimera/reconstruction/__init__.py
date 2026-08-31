@@ -24,6 +24,14 @@ from orimera.reconstruction.depth import DepthModel, DepthPrediction
 from orimera.reconstruction.gate import MIN_VALID_FRACTION, RungDecision, decide_rung
 from orimera.reconstruction.opm import OPM_MAGIC, OPM_VERSION, Viewpoint, encode_opm
 from orimera.reconstruction.pointmap import POINT_STRIDE_BYTES, PointMap, Segment
+from orimera.reconstruction.pose import (
+    CommandResult,
+    PoseBuildManifest,
+    PoseJobResult,
+    PoseQuality,
+    SourceFrame,
+    run_colmap_pose_job,
+)
 from orimera.reconstruction.validation import (
     OpmIntegrityError,
     OpmIntegrityReport,
@@ -36,16 +44,22 @@ __all__ = [
     "OPM_MAGIC",
     "OPM_VERSION",
     "POINT_STRIDE_BYTES",
+    "CommandResult",
     "DepthModel",
     "DepthPrediction",
     "OpmIntegrityError",
     "OpmIntegrityReport",
     "PointMap",
+    "PoseBuildManifest",
+    "PoseJobResult",
+    "PoseQuality",
     "RungDecision",
     "Segment",
+    "SourceFrame",
     "Viewpoint",
     "build_point_map",
     "decide_rung",
     "encode_opm",
+    "run_colmap_pose_job",
     "validate_opm",
 ]
