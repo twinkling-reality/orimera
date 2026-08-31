@@ -557,11 +557,6 @@ body {
   text-shadow: none;
 }
 
-:root[data-contrast='high'] .atlas-command-guide {
-  color: var(--ui-companion-ink);
-  text-shadow: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
   html,
   body,

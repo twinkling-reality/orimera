@@ -20,15 +20,10 @@ describe('Atlas command strip', () => {
     expect(view.root.querySelector('[data-command="map"]')?.getAttribute('aria-current')).toBe('page');
   });
 
-  it('temporarily explains the evidence and relationship commands without changing their buttons', () => {
+  it('uses one tooltip per command without a competing persistent legend', () => {
     const view = buildAtlasCommands(vi.fn());
-    const buttonCount = view.root.querySelectorAll('button').length;
-    view.setFirstUseVisible(true);
-    expect(view.root.querySelector('.atlas-command-guide')?.hasAttribute('hidden')).toBe(false);
-    expect(view.root.querySelector('.atlas-command-guide')?.textContent).toContain('Index evidence');
-    expect(view.root.querySelector('.atlas-command-guide')?.textContent).toContain('Map relationships');
-    expect(view.root.querySelectorAll('button')).toHaveLength(buttonCount);
-    view.setFirstUseVisible(false);
-    expect(view.root.querySelector('.atlas-command-guide')?.hasAttribute('hidden')).toBe(true);
+    expect(view.root.querySelectorAll('button')).toHaveLength(4);
+    expect(view.root.querySelectorAll('.atlas-command-tooltip')).toHaveLength(4);
+    expect(view.root.querySelector('.atlas-command-guide')).toBeNull();
   });
 });

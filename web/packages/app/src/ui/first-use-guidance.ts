@@ -1,5 +1,4 @@
 export const FIRST_USE_GUIDANCE_KEY = 'orimera.atlas.first-use.v1';
-export const FIRST_USE_COMMAND_GUIDANCE_KEY = 'orimera.atlas.first-use.commands.v1';
 
 export type FirstUsePhase = 'arrival' | 'traversal' | 'companion' | 'complete';
 export type FirstUseMode = 'traverse' | 'converse';
@@ -22,10 +21,8 @@ interface FirstUseStorage {
 export interface FirstUseGuidance {
   phase(): FirstUsePhase;
   prompt(mode: FirstUseMode): FirstUsePrompt | null;
-  commandLegendVisible(): boolean;
   observeMode(mode: FirstUseMode): boolean;
   observeMovement(): boolean;
-  observeCommand(): boolean;
   complete(): boolean;
 }
 
@@ -40,21 +37,12 @@ function readPhase(storage: FirstUseStorage): FirstUsePhase {
   }
 }
 
-function readCommandLegend(storage: FirstUseStorage): boolean {
-  try {
-    return storage.getItem(FIRST_USE_COMMAND_GUIDANCE_KEY) !== 'used';
-  } catch {
-    return true;
-  }
-}
-
 /**
  * A four-state orientation, not a tour. Progress follows demonstrated actions and is saved on the
  * device; there are no timers, route locks, invented completion metrics, or graph writes.
  */
 export function createFirstUseGuidance(storage: FirstUseStorage): FirstUseGuidance {
   let phase = readPhase(storage);
-  let commandLegendVisible = readCommandLegend(storage);
 
   const setPhase = (next: FirstUsePhase): boolean => {
     if (phase === next) return false;
@@ -69,7 +57,6 @@ export function createFirstUseGuidance(storage: FirstUseStorage): FirstUseGuidan
 
   return {
     phase: () => phase,
-    commandLegendVisible: () => commandLegendVisible,
     prompt(mode) {
       if (phase === 'complete') return null;
       if (phase === 'companion') {
@@ -97,16 +84,6 @@ export function createFirstUseGuidance(storage: FirstUseStorage): FirstUseGuidan
     },
     observeMovement() {
       return phase === 'arrival' || phase === 'traversal' ? setPhase('companion') : false;
-    },
-    observeCommand() {
-      if (!commandLegendVisible) return false;
-      commandLegendVisible = false;
-      try {
-        storage.setItem(FIRST_USE_COMMAND_GUIDANCE_KEY, 'used');
-      } catch {
-        // The legend may return next session, but the command itself must still work.
-      }
-      return true;
     },
     complete() {
       return setPhase('complete');

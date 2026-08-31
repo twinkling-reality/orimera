@@ -473,7 +473,6 @@ async function mount(): Promise<void> {
   const forming = buildFormation();
   const chrome = buildWorldChrome(shell!);
   const handleAtlasCommand = (command: AtlasCommand): void => {
-    if (firstUse.observeCommand()) reflectFirstUse();
     if (companionPanel.state() === 'open') dismissCompanion();
     if (command === 'index') dispatchShell({ type: 'toggle-index' });
     else if (command === 'map') dispatchShell({ type: 'toggle-map' });
@@ -483,7 +482,6 @@ async function mount(): Promise<void> {
   const commandBar = buildAtlasCommands(handleAtlasCommand);
   reflectFirstUse = (): void => {
     companionPanel.setFirstUsePrompt(firstUse.prompt(inputMode));
-    commandBar.setFirstUseVisible(firstUse.commandLegendVisible());
     shell!.dataset['firstUse'] = firstUse.phase();
   };
   reflectFirstUse();

@@ -4,7 +4,6 @@ export type AtlasCommand = 'index' | 'map' | 'options' | 'controls';
 
 export interface AtlasCommands {
   readonly root: HTMLElement;
-  setFirstUseVisible(visible: boolean): void;
   reflect(primary: string, camera: string): void;
 }
 
@@ -41,14 +40,6 @@ export function buildAtlasCommands(onCommand: (command: AtlasCommand) => void): 
   ];
   const buttons = new Map<AtlasCommand, HTMLButtonElement>();
   const root = el('nav', { class: 'atlas-commands', 'aria-label': 'Atlas commands' });
-  const firstUse = el('p', {
-    class: 'atlas-command-guide',
-    'aria-label': 'Index reads evidence. Map shows how memories relate.',
-  }, [
-    el('span', {}, [el('strong', { text: 'Index' }), ' evidence']),
-    el('span', {}, [el('strong', { text: 'Map' }), ' relationships']),
-  ]);
-  firstUse.hidden = true;
   for (const [command, label, key] of entries) {
     const button = el('button', {
       type: 'button',
@@ -66,13 +57,8 @@ export function buildAtlasCommands(onCommand: (command: AtlasCommand) => void): 
     buttons.set(command, button);
     root.append(button);
   }
-  root.append(firstUse);
   return {
     root,
-    setFirstUseVisible(visible) {
-      firstUse.hidden = !visible;
-      root.toggleAttribute('data-first-use', visible);
-    },
     reflect(primary, camera) {
       for (const [command, button] of buttons) {
         const current =

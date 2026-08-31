@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  FIRST_USE_COMMAND_GUIDANCE_KEY,
   FIRST_USE_GUIDANCE_KEY,
   createFirstUseGuidance,
 } from '../src/ui/first-use-guidance.js';
@@ -23,7 +22,6 @@ describe('first-use Atlas guidance', () => {
       statement: 'Atlas arranges your memories as a world.',
       actions: [{ label: 'Click to enter' }],
     });
-    expect(guidance.commandLegendVisible()).toBe(true);
   });
 
   it('progresses only after entering and actually moving', () => {
@@ -50,18 +48,7 @@ describe('first-use Atlas guidance', () => {
     expect(guidance.complete()).toBe(true);
     expect(guidance.phase()).toBe('complete');
     expect(guidance.prompt('converse')).toBeNull();
-    expect(guidance.commandLegendVisible()).toBe(true);
     expect(createFirstUseGuidance(storage).phase()).toBe('complete');
-  });
-
-  it('persists a used command explanation without claiming full completion', () => {
-    const storage = new MemoryStorage();
-    const guidance = createFirstUseGuidance(storage);
-    expect(guidance.observeCommand()).toBe(true);
-    expect(guidance.commandLegendVisible()).toBe(false);
-    expect(guidance.phase()).toBe('arrival');
-    expect(storage.getItem(FIRST_USE_COMMAND_GUIDANCE_KEY)).toBe('used');
-    expect(createFirstUseGuidance(storage).commandLegendVisible()).toBe(false);
   });
 
   it('falls back safely when storage is unavailable or contains a future value', () => {

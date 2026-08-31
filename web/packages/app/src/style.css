@@ -782,27 +782,6 @@ button.ghost {
 
 .atlas-commands kbd { color: var(--ui-companion-secondary); opacity: 0.9; }
 
-.atlas-command-guide {
-  position: absolute;
-  top: calc(100% + 0.65rem);
-  right: 0;
-  display: flex;
-  gap: 0.95rem;
-  margin: 0;
-  color: color-mix(in srgb, var(--ui-companion-text) 72%, transparent);
-  font: 500 0.65rem/1.25 var(--companion-utility-font);
-  letter-spacing: 0.035em;
-  white-space: nowrap;
-  text-shadow: 0 1px 4px color-mix(in srgb, var(--ui-shadow) 72%, transparent);
-}
-
-.atlas-command-guide[hidden] { display: none; }
-
-.atlas-command-guide strong {
-  color: var(--ui-companion-accent);
-  font-weight: 600;
-}
-
 .map-caption {
   position: fixed;
   left: 50%;
@@ -1805,12 +1784,6 @@ kbd {
   .companion-prompt-actions {
     gap: 0.45rem;
     padding-left: 0.55rem;
-  }
-
-  .atlas-command-guide {
-    top: calc(100% + 0.35rem);
-    gap: 0.65rem;
-    font-size: 0.58rem;
   }
 
   .companion-stage {
