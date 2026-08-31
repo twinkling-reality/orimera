@@ -6,7 +6,8 @@
  * build there is no second source of truth and no fixture: everything on the screen came from
  * `GET /graph`, `GET /evidence/{span}` or a write that went through the gate. The Vite development
  * server has one explicit `?preview=1` exception for UI work while the API is unavailable. It is
- * synthetic, visibly labelled, and read-only; production builds cannot enter it.
+ * synthetic, identified in the document title and contextual surfaces, and read-only; production
+ * builds cannot enter it.
  *
  * **Every write goes through the confirmation surface**, and the confirmation surface is the only
  * caller of `session.commit`. The chain is: the user types a name, a draft is built by
@@ -28,7 +29,9 @@ import { ApiError } from '@orimera/graph-client';
 import { anchorId as toAnchorId, islandId as toIslandId } from '@orimera/atlas-core';
 import { confirmationFor, draftEdit } from '@orimera/world-index';
 import { mountAtlas, type MountedAtlas } from './atlas.js';
+import type { SourceMediaCatalog } from '@orimera/atlas-react/playcanvas';
 import {
+  applicationTitle,
   credentials,
   developmentToken,
   isAtlasPreview,
@@ -40,7 +43,8 @@ import { toUpdateProposal } from './proposal.js';
 import { buildScene } from './scene.js';
 import { openSession, type Session } from './session.js';
 import { buildConfirm } from './ui/confirm.js';
-import { buildCompanionPanel } from './ui/companion-panel.js';
+import { buildCompanionEncounter } from './ui/companion-encounter.js';
+import { resolveCompanionPlacement } from './ui/companion-placement.js';
 import { buildAtlasCommands, type AtlasCommand } from './ui/atlas-commands.js';
 import { buildControlsGuide } from './ui/controls-guide.js';
 import { buildOptions } from './ui/options.js';
@@ -52,14 +56,18 @@ import { buildDetail } from './ui/detail.js';
 import { buildFormation } from './ui/formation.js';
 import { el, replace } from './ui/dom.js';
 import { buildLibrary } from './ui/library.js';
-import { buildStatus } from './ui/status.js';
+import { buildStatus, MAP_ORIENTATION_CAPTION } from './ui/status.js';
 import { readPreferences, writePreferences, type AtlasPreferences } from './preferences.js';
 import {
   InteractionPolicyClient,
   preferencesFromInteractionPolicy,
 } from './interaction-policy.js';
-import { applyDocumentAppearance, themeForPreferences } from './theme.js';
-import { worldArtProfile } from '@orimera/presentation';
+import {
+  applyDocumentAppearance,
+  applyDocumentWorldStyle,
+  themeForPreferences,
+} from './theme.js';
+import { companionAppearanceConfiguration, worldArtProfile } from '@orimera/presentation';
 import {
   commandForKeystroke,
   initialWorldShell,
@@ -83,8 +91,12 @@ let companionEngine: CompanionSession | null = null;
 let mountedCompanionStage: CompanionStage | null = null;
 let settingsStylePreviewId: string | null = null;
 let interactionPolicies: InteractionPolicyClient | null = null;
+let previewSourceMedia: SourceMediaCatalog | undefined;
 const systemAppearance = window.matchMedia('(prefers-color-scheme: dark)');
 const systemReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+systemReducedMotion.addEventListener('change', (event) => {
+  atlas?.binding.setReducedMotion(event.matches);
+});
 let preferences = readPreferences(window.localStorage);
 applyDocumentAppearance(preferences, systemAppearance.matches);
 /**
@@ -101,12 +113,18 @@ let selected: string | null = null;
 /** Monotonic, so two proposals in one session never share an id. Not a clock and not random. */
 let issued = 0;
 const preview = isAtlasPreview(window.location.search, import.meta.env.DEV);
+document.title = applicationTitle(preview);
 const previewArtProfileId = preview
   ? new URLSearchParams(window.location.search).get('world-style')
   : null;
 const previewArtProfile = previewArtProfileId === null
   ? undefined
   : worldArtProfile(previewArtProfileId);
+applyDocumentWorldStyle(previewArtProfile ?? worldArtProfile(
+  preferences.worldArtProfile,
+  preferences.worldArtProfileVersion,
+  preferences.worldStyleParameters,
+));
 
 void boot();
 
@@ -171,6 +189,9 @@ function askForToken(): void {
 }
 
 async function start(token: string): Promise<void> {
+  if (preview) {
+    previewSourceMedia = (await import('./dev/preview-media.js')).PREVIEW_SOURCE_MEDIA;
+  }
   credentials_ = preview
     ? previewCredentials(window.location.origin)
     : credentials(token);
@@ -221,6 +242,13 @@ async function mount(): Promise<void> {
   mountedCompanionStage?.dispose();
   const stage = el('div', { class: 'stage' });
   const companionStage = buildCompanionStage({ parent: stage });
+  const companionAppearance = (): ReturnType<typeof companionAppearanceConfiguration> =>
+    companionAppearanceConfiguration({
+      body: preferences.companionBody,
+      color: preferences.companionColor,
+      face: preferences.companionFace,
+    });
+  companionStage.setAppearance(companionAppearance());
   mountedCompanionStage = companionStage;
 
   function reflectTurnState(turn: Turn | null): void {
@@ -254,12 +282,13 @@ async function mount(): Promise<void> {
       confirm.show(proposalId, summary, utterance);
     },
   });
-  const companionPanel = buildCompanionPanel({
-    onDismiss: () => {
-      companionController.dismiss();
-      companionStage.setState('resting');
-      companionStage.hide();
-    },
+  function dismissCompanion(): void {
+    companionController.dismiss();
+    companionStage.setState('resting');
+    companionStage.hide();
+    reflectShell();
+  }
+  const companionPanel = buildCompanionEncounter({
     onSelect: (optionId) => {
       companionController.select(optionId);
       reflectTurnState(companionController.current());
@@ -339,7 +368,10 @@ async function mount(): Promise<void> {
       dispatchShell({ type: 'show-world' });
       showTravelStatus(travelUsesReducedMotion() ? 'Located the source.' : 'Moving to the source…');
     },
-  }, { preview });
+  }, {
+    preview,
+    ...(previewSourceMedia === undefined ? {} : { sourceMedia: previewSourceMedia }),
+  });
 
   const library = buildLibrary({
     onEntity: (entityId) => {
@@ -372,15 +404,17 @@ async function mount(): Promise<void> {
   // its nodes into, which is a different job from being the canvas.
   const forming = buildFormation();
   const chrome = buildWorldChrome(shell!);
-  const commandBar = buildAtlasCommands((command: AtlasCommand) => {
+  const handleAtlasCommand = (command: AtlasCommand): void => {
+    if (companionPanel.state() === 'open') dismissCompanion();
     if (command === 'index') dispatchShell({ type: 'toggle-index' });
     else if (command === 'map') dispatchShell({ type: 'toggle-map' });
     else if (command === 'options') dispatchShell({ type: 'toggle-options' });
     else dispatchShell({ type: 'toggle-controls' });
-  });
+  };
+  const commandBar = buildAtlasCommands(handleAtlasCommand);
   const mapCaption = el('p', {
     class: 'map-caption',
-    text: 'Atlas Map · M to return to ground view',
+    text: `Atlas Map · ${MAP_ORIENTATION_CAPTION} · M to return to ground view`,
   });
   mapCaption.hidden = true;
   const viewportBoundary = el('aside', {
@@ -411,12 +445,31 @@ async function mount(): Promise<void> {
         atlas.binding.discardArtProfilePreview(settingsStylePreviewId);
         settingsStylePreviewId = null;
       }
+      const candidateProfile = worldArtProfile(
+        candidate.worldArtProfile,
+        candidate.worldArtProfileVersion,
+        candidate.worldStyleParameters,
+      );
       const previewSession = atlas.binding.previewArtProfile(
-        worldArtProfile(candidate.worldArtProfile, 1, candidate.worldStyleParameters),
+        candidateProfile,
         'settings',
         candidate.worldStyleParameters,
       );
-      if (previewSession.validation.ok) settingsStylePreviewId = previewSession.sessionId;
+      if (previewSession.validation.ok) {
+        settingsStylePreviewId = previewSession.sessionId;
+        applyDocumentWorldStyle(candidateProfile);
+      }
+    },
+    onWorldDiscard: (restored) => {
+      if (settingsStylePreviewId !== null && atlas !== null) {
+        atlas.binding.discardArtProfilePreview(settingsStylePreviewId);
+        settingsStylePreviewId = null;
+      }
+      applyDocumentWorldStyle(previewArtProfile ?? worldArtProfile(
+        restored.worldArtProfile,
+        restored.worldArtProfileVersion,
+        restored.worldStyleParameters,
+      ));
     },
     onClose: () => dispatchShell({ type: 'toggle-options' }),
     onShowControls: () => dispatchShell({ type: 'toggle-controls' }),
@@ -440,12 +493,18 @@ async function mount(): Promise<void> {
       // Private browsing may refuse storage. The live setting still applies for this session.
     }
     const theme = applyDocumentAppearance(preferences, systemAppearance.matches);
+    const profile = previewArtProfile ?? worldArtProfile(
+      preferences.worldArtProfile,
+      preferences.worldArtProfileVersion,
+      preferences.worldStyleParameters,
+    );
+    applyDocumentWorldStyle(profile);
     optionsView.setPreferences(preferences);
-    chrome.setCompanionSide(preferences.companionSide);
+    companionStage.setAppearance(companionAppearance());
     shell!.setAttribute('data-vignette', preferences.vignette);
     atlas?.binding.setTheme(theme);
     atlas?.binding.setArtProfile(
-      worldArtProfile(preferences.worldArtProfile, 1, preferences.worldStyleParameters),
+      profile,
       'settings',
       preferences.worldStyleParameters,
     );
@@ -483,7 +542,6 @@ async function mount(): Promise<void> {
     buildStatus({
       omittedRegionCount: built.omitted.length,
       undrawable: built.undrawable,
-      preview,
     }),
   ]);
 
@@ -513,7 +571,11 @@ async function mount(): Promise<void> {
     mapCaption.hidden = shellState.camera !== 'map';
     detail.root.hidden = shellState.primary !== 'index' || shellState.detailId === null;
     atlas?.binding.setMapMode(shellState.camera === 'map');
-    atlas?.binding.setControlsEnabled(!systemSurfaceOpen && shellState.camera === 'ground');
+    atlas?.binding.setControlsEnabled(
+      !systemSurfaceOpen &&
+      shellState.camera === 'ground',
+    );
+    atlas?.binding.setCompanionConversationActive(companionPanel.state() === 'open');
     if (
       (shellState.primary !== 'world' || shellState.camera === 'map') &&
       document.pointerLockElement !== null
@@ -521,7 +583,6 @@ async function mount(): Promise<void> {
       document.exitPointerLock();
     }
   };
-  chrome.setCompanionSide(preferences.companionSide);
   shell!.setAttribute('data-vignette', preferences.vignette);
   reflectShell();
 
@@ -567,13 +628,16 @@ async function mount(): Promise<void> {
     mouseSensitivity: preferences.mouseSensitivity,
     artProfile: previewArtProfile ?? worldArtProfile(
       preferences.worldArtProfile,
-      1,
+      preferences.worldArtProfileVersion,
       preferences.worldStyleParameters,
     ),
     ...(previewArtProfile === undefined
       ? { artProfileParameters: preferences.worldStyleParameters }
       : {}),
+    ...(previewSourceMedia === undefined ? {} : { sourceMedia: previewSourceMedia }),
+    reducedMotion: systemReducedMotion.matches,
   });
+  (canvas as HTMLCanvasElement).dataset.companionRenderer = 'svg';
   reflectShell();
 
   // -- the two input modes, and the one key that calls the Companion ----------------------
@@ -597,7 +661,7 @@ async function mount(): Promise<void> {
       const index = mounted.binding.table.indexOf.get(target.anchorId);
       if (index !== undefined) mounted.binding.focusAnchor(index);
     }
-    showTravelStatus(target.kind === 'anchor' ? 'Located the source.' : 'Located the region.');
+    showTravelStatus(target.kind === 'anchor' ? 'Located the source.' : 'The memory is in focus.');
   };
   function reflectMode(next: 'traverse' | 'converse'): void {
     chrome.setMode(next);
@@ -613,22 +677,36 @@ async function mount(): Promise<void> {
   mounted.binding.controls.onModeChange = reflectMode;
   reflectMode(mounted.binding.controls.mode);
 
-  /**
-   * Put the conversation beside what it is about.
-   *
-   * Once, when it opens, and not per frame. A panel that tracked the projection would slide
-   * across the screen the whole time the user looked around, and this is text somebody is in the
-   * middle of reading. With no subject, or a subject behind the camera, it falls back to the
-   * centre rather than to a guess about where the subject might be.
-   */
-  // Right click and C are already the summon verb in the controls.
+  /** Open the fixed visual-novel composition over the current memory backdrop. */
+  // X and right click reach this through the renderer controls, so the verb observes the same
+  // enabled/disabled boundary as movement and interaction instead of bypassing system surfaces.
   function summonCompanion(): void {
+    // Pointer Lock freezes clientX/clientY by specification. The SVG Companion follows the free
+    // page pointer, so summoning releases the real browser lock instead of fabricating a cursor.
+    if (document.pointerLockElement !== null) document.exitPointerLock();
+    const placement = resolveCompanionPlacement({
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      // The reference deliberately treats the memory as backdrop, so it does not mirror the
+      // reading order around a projected source rectangle.
+      memoryBounds: null,
+      preferredSide: preferences.companionSide,
+    });
+    companionPanel.setPlacement(placement);
     companionController.summon(Date.now());
     reflectTurnState(companionController.current());
     companionStage.show();
+    reflectShell();
   }
 
-  mounted.binding.controls.onSummon = summonCompanion;
+  function toggleCompanion(): void {
+    if (companionPanel.state() === 'open') {
+      dismissCompanion();
+      return;
+    }
+    summonCompanion();
+  }
+
+  mounted.binding.controls.onSummon = toggleCompanion;
 
   mountListeners?.abort();
   mountListeners = new AbortController();
@@ -653,6 +731,19 @@ async function mount(): Promise<void> {
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement ||
         (target instanceof HTMLElement && target.isContentEditable);
+      // Pointer lock is already released while the Companion is open, so Escape has no browser
+      // navigation job left to do in this state. It dismisses the whole exchange, including while
+      // a custom reply is focused. While locked, Controls still leaves Escape entirely to the
+      // browser and this branch cannot be reached because an open Companion disables traversal.
+      if (
+        event.code === 'Escape' &&
+        companionPanel.state() === 'open' &&
+        document.pointerLockElement === null
+      ) {
+        event.preventDefault();
+        dismissCompanion();
+        return;
+      }
       const command = commandForKeystroke({
         code: event.code,
         key: event.key,
@@ -661,22 +752,22 @@ async function mount(): Promise<void> {
       });
       if (command === 'toggle-index') {
         event.preventDefault();
-        dispatchShell({ type: 'toggle-index' });
+        handleAtlasCommand('index');
         return;
       }
       if (command === 'toggle-map') {
         event.preventDefault();
-        dispatchShell({ type: 'toggle-map' });
+        handleAtlasCommand('map');
         return;
       }
       if (command === 'toggle-options') {
         event.preventDefault();
-        dispatchShell({ type: 'toggle-options' });
+        handleAtlasCommand('options');
         return;
       }
       if (command === 'toggle-controls') {
         event.preventDefault();
-        dispatchShell({ type: 'toggle-controls' });
+        handleAtlasCommand('controls');
         return;
       }
       if (command === 'selection-back' && shellState.detailId !== null) {
@@ -693,27 +784,6 @@ async function mount(): Promise<void> {
       if (/^Digit[1-9]$/.test(event.code)) {
         if (companionPanel.pressNumber(Number(event.code.slice(5)))) event.preventDefault();
         return;
-      }
-      // Flip which side the Companion lives on. Bracket keys because they are unbound, adjacent,
-      // and read as "push it that way".
-      if (event.code === 'BracketLeft' || event.code === 'BracketRight') {
-        event.preventDefault();
-        applyPreferences({
-          ...preferences,
-          companionSide: event.code === 'BracketLeft' ? 'left' : 'right',
-        });
-        return;
-      }
-      // Cycle the Companion's form. A comparison in place, against the real world, rather than on
-      // a mockup page: the only question worth answering is which one belongs HERE.
-      if (event.code === 'KeyX') {
-        event.preventDefault();
-        if (companionPanel.state() === 'open') {
-          companionController.dismiss();
-          companionStage.hide();
-        } else {
-          summonCompanion();
-        }
       }
     },
     { signal: mountListeners.signal },

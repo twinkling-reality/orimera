@@ -5,9 +5,38 @@
 
 html,
 body {
-  font-family: "Avenir Next", "Segoe UI Variable", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--ui-font-body);
   background-color: var(--ground);
-  transition: background-color 320ms ease, color 240ms ease;
+  transition:
+    background-color var(--motion-deliberate) var(--motion-easing),
+    color var(--motion-standard) var(--motion-easing);
+}
+
+/* Registered world texture families. The profile selects a name and strength; it cannot supply
+ * selectors, URLs, or executable CSS. The same image is used for the field and the summoned
+ * interface surfaces so the chrome belongs to the world without changing component geometry. */
+:root {
+  --ui-texture-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.22'/%3E%3C/svg%3E");
+  --ui-texture-size: 180px 180px;
+}
+
+:root[data-ui-texture='contour-grid'] {
+  --ui-texture-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 23px,
+      color-mix(in srgb, var(--ink-faint) 22%, transparent) 23px 24px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 23px,
+      color-mix(in srgb, var(--ink-faint) 14%, transparent) 23px 24px
+    );
+  --ui-texture-size: 24px 24px;
+}
+
+:root[data-ui-texture='none'] {
+  --ui-texture-image: none;
 }
 
 /* The rendered sky and horizon own the world atmosphere. Never tint the whole viewport in CSS. */
@@ -22,9 +51,77 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: min(var(--grain-opacity), 0.08);
+  opacity: var(--grain-opacity);
   mix-blend-mode: var(--grain-blend);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.22'/%3E%3C/svg%3E");
+  background-image: var(--ui-texture-image);
+  background-size: var(--ui-texture-size);
+}
+
+/* A texture is an optical finish, never a new control shape. `::before` inherits the fixed system
+ * radius and paints before the ordinary DOM content, so labels, focus, and hit testing stay intact. */
+.companion-choice,
+.companion-choices-submit,
+.companion-composer {
+  position: relative;
+}
+
+:where(
+  .companion-speech,
+  .companion-choice,
+  .companion-choices-submit,
+  .companion-composer,
+  .choice-item.unavailable,
+  .atlas-commands button
+)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: var(--ui-texture-image);
+  background-size: var(--ui-texture-size);
+  mix-blend-mode: var(--grain-blend);
+}
+
+/* Access preferences outrank world material. Removing blur while leaving a translucent fill would
+ * expose moving world geometry through the text, so these modes also make the reading surfaces
+ * genuinely opaque. Shape, placement, and semantics remain unchanged. */
+:root:is([data-transparency='reduced'], [data-contrast='high']) :where(
+  .companion-speech,
+  .companion-choice,
+  .companion-choices-submit,
+  .companion-composer,
+  .choice-item.unavailable
+) {
+  background-color: var(--ui-companion-surface);
+  backdrop-filter: none;
+}
+
+:root:is([data-transparency='reduced'], [data-contrast='high'])
+  .companion-choice:hover:not([disabled]),
+:root:is([data-transparency='reduced'], [data-contrast='high'])
+  .companion-choice:focus-visible {
+  background-color: var(--ui-companion-surface-hover);
+}
+
+:root:is([data-transparency='reduced'], [data-contrast='high']) .atlas-commands button {
+  background-color: var(--ui-companion-surface);
+  backdrop-filter: none;
+}
+
+:root:is([data-transparency='reduced'], [data-contrast='high'])
+  .companion-encounter[data-state='open'] ~ .atlas-commands button {
+  background-color: var(--ui-companion-text);
+}
+
+:root:is([data-transparency='reduced'], [data-contrast='high'])
+  .companion-encounter[data-state='open'] ~ .atlas-commands button:hover,
+:root:is([data-transparency='reduced'], [data-contrast='high'])
+  .companion-encounter[data-state='open'] ~ .atlas-commands button:focus-visible,
+:root:is([data-transparency='reduced'], [data-contrast='high'])
+  .companion-encounter[data-state='open'] ~ .atlas-commands button[aria-current='page'] {
+  background-color: var(--ui-companion-surface-hover);
 }
 
 /* Archive sheets: summoned reading surfaces. Photographs and evidence stay visually dominant. */
@@ -106,7 +203,7 @@ body {
 
 .world-style-options {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   column-gap: 0.8rem;
 }
 
@@ -130,6 +227,49 @@ body {
   letter-spacing: 0.04em;
 }
 
+.world-style-state {
+  grid-column: 2;
+  color: var(--ink-faint);
+  font: 500 0.68rem/1.2 var(--ui-font-utility);
+  text-align: right;
+}
+
+.options-view[data-world-dirty='true'] .world-style-state {
+  color: var(--warning);
+}
+
+.world-dna-strip {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1.2fr 1.6fr 1fr 0.8fr 0.8fr;
+  height: 1.55rem;
+  margin: 0.35rem 0 0.55rem;
+  overflow: hidden;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-control);
+}
+
+.world-dna-swatch {
+  min-width: 0;
+  border-inline-start: 1px solid color-mix(in srgb, var(--raised) 42%, transparent);
+}
+
+.world-dna-swatch:first-child { border-inline-start: 0; }
+
+.world-style-explanation,
+.world-style-future {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.world-style-future {
+  margin-top: 0.5rem;
+  color: var(--ink-faint);
+}
+
 .world-style-options .option-field {
   grid-template-columns: 1fr;
   align-content: start;
@@ -137,8 +277,62 @@ body {
 
 .world-style-options .option-note { grid-column: 1; }
 
-/* The supported laptop floor is still a desktop surface. Keep all settings and both actions in
- * one glance at common 768px heights instead of turning a short system sheet into a scroll task. */
+.world-style-assurance {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 0.8rem;
+  align-items: baseline;
+  margin-top: 0.4rem;
+  padding-top: 0.65rem;
+  color: var(--ink-soft);
+  border-top: 1px solid var(--edge);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.world-style-assurance strong {
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.world-style-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.65rem;
+}
+
+.world-style-apply {
+  min-height: 2.35rem;
+  padding: 0.45rem 0.9rem;
+  color: var(--ground);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-control);
+}
+
+.world-style-apply:hover:not([disabled]),
+.world-style-apply:focus-visible {
+  color: var(--raised);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.world-style-apply[disabled],
+.world-style-actions .text-action[disabled] {
+  opacity: 0.42;
+  cursor: default;
+}
+
+/* The supported laptop floor is still a desktop surface. A short screen gets one bounded system
+ * sheet with an ordinary vertical scroll; the world remains fixed behind it and no control is
+ * compressed below its readable or operable size. */
 @media (max-height: 50rem) and (min-width: 60.001rem) {
   .options-view.system-overlay {
     max-height: calc(100vh - 2rem);
@@ -151,22 +345,21 @@ body {
   .options-view .atmosphere-picker { margin-bottom: 0.45rem; }
   .options-view .atmosphere-choice { grid-template-rows: 3rem auto; }
   .options-view .option-field { min-height: 2.55rem; }
+  .options-view .world-style-explanation,
+  .options-view .world-style-future,
+  .options-view .world-style-assurance { font-size: 0.68rem; }
+  .options-view .world-dna-strip { height: 1.2rem; margin-block: 0.2rem 0.35rem; }
+  .options-view .world-style-actions { margin-top: 0.35rem; }
   .options-view .overlay-actions { padding-top: 0.55rem; }
 }
 
-/* Instrument strips are the only persistent pills. */
-.atlas-commands,
-.preview-disclosure,
+/* Transient focus retains a material backing. World commands stay as unboxed type so the
+ * architecture review has no persistent pill or squircle. */
 .ov-focus {
   background: var(--material-instrument);
   backdrop-filter: blur(var(--blur-world));
 }
 
-.atlas-commands {
-  border-radius: var(--radius-pill);
-}
-
-.preview-disclosure,
 .ov-focus {
   border-radius: var(--radius-label);
 }
@@ -180,7 +373,7 @@ body {
 .overlay-head h1,
 .detail-title,
 .viewport-boundary h1 {
-  font-family: "Avenir Next", "Segoe UI Variable Display", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--ui-font-display);
   font-weight: 300;
 }
 
@@ -310,7 +503,6 @@ body {
   line-height: 1.35;
 }
 
-:root[data-contrast='high'] .standing-caption,
 :root[data-contrast='high'] .status,
 :root[data-contrast='high'] .map-caption {
   opacity: 1;

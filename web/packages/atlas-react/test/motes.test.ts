@@ -12,7 +12,11 @@ import {
   atlasVec3,
 } from '@orimera/atlas-core';
 
-import { MOTE_FRAGMENT_GLSL, moteAnchorIndices } from '../src/playcanvas/anchor-motes.js';
+import {
+  MOTE_FRAGMENT_GLSL,
+  anchorKindSlot,
+  moteAnchorIndices,
+} from '../src/playcanvas/anchor-motes.js';
 
 /**
  * The two rules the mote cloud carries, checked without a graphics device.
@@ -77,6 +81,17 @@ describe('what gets a mote', () => {
       anchor('c-event', 'event'),
     ]);
     expect(moteAnchorIndices(table)).toHaveLength(3);
+  });
+
+  it('uses a different hard silhouette for every world-content kind', () => {
+    expect([
+      anchorKindSlot('place'),
+      anchorKindSlot('object'),
+      anchorKindSlot('event'),
+    ]).toEqual([0, 1, 2]);
+    expect(new Set(['place', 'object', 'event'].map((kind) =>
+      anchorKindSlot(kind as AnchorKind),
+    )).size).toBe(3);
   });
 
   it('draws a mote with a hard silhouette rather than a fade', () => {

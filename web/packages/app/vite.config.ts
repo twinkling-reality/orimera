@@ -1,14 +1,24 @@
 import { defineConfig, type Plugin } from 'vite';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { previewApiResponse } from './src/dev/preview-api.js';
+
+const APP_ROOT = fileURLToPath(new URL('.', import.meta.url));
 
 const previewApi: Plugin = {
   name: 'orimera-atlas-preview-api',
   configureServer(server) {
-    server.middlewares.use('/preview-api', (request, response) => {
+    server.middlewares.use('/preview-api', async (request, response) => {
       const decision = previewApiResponse(request.method ?? 'GET', request.url ?? '/');
       response.setHeader('cache-control', 'no-store');
-      response.setHeader('content-type', 'application/json; charset=utf-8');
       response.statusCode = decision.statusCode;
+      if (decision.assetPath !== undefined) {
+        response.setHeader('content-type', decision.contentType ?? 'application/octet-stream');
+        response.end(await readFile(resolve(APP_ROOT, 'public', decision.assetPath)));
+        return;
+      }
+      response.setHeader('content-type', 'application/json; charset=utf-8');
       response.end(JSON.stringify(decision.body));
     });
   },

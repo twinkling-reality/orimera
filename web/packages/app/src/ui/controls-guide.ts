@@ -16,12 +16,12 @@ const rows: readonly (readonly [string, string])[] = [
   ['Mouse', 'Look around'],
   ['Shift', 'Move faster'],
   ['E · Space · Enter', 'Interact with what is centred'],
-  ['C · Right click', 'Call the Companion'],
+  ['X · Right click', 'Call the Companion'],
   ['I', 'Open the World Index'],
   ['M', 'Move between ground view and Atlas Map'],
   ['O', 'Open Options'],
   ['?', 'Show this guide'],
-  ['Escape', 'Release the pointer; never closes a panel'],
+  ['Escape', 'Release look, or dismiss the Companion when it is open'],
 ];
 
 export function buildControlsGuide(options: ControlsGuideOptions): ControlsGuide {

@@ -9,15 +9,18 @@
 
 import type { GraphPayload } from '@orimera/graph-client';
 
-const ID = Object.freeze({
+export const PREVIEW_IDS = Object.freeze({
   actor: '00000000-0000-4000-8000-000000000001',
   entityMara: '00000000-0000-4000-8000-000000000101',
   entityGlasshouse: '00000000-0000-4000-8000-000000000102',
   entityBicycle: '00000000-0000-4000-8000-000000000103',
   entityKite: '00000000-0000-4000-8000-000000000104',
+  entityPlantingDay: '00000000-0000-4000-8000-000000000105',
+  entityLetter: '00000000-0000-4000-8000-000000000106',
   captureCourtyard: '00000000-0000-4000-8000-000000000201',
   captureStudio: '00000000-0000-4000-8000-000000000202',
   captureShore: '00000000-0000-4000-8000-000000000203',
+  captureArchive: '00000000-0000-4000-8000-000000000204',
   occurrenceCourtyardMara: '00000000-0000-4000-8000-000000000301',
   occurrenceCourtyardPlace: '00000000-0000-4000-8000-000000000302',
   occurrenceCourtyardBicycle: '00000000-0000-4000-8000-000000000303',
@@ -27,6 +30,8 @@ const ID = Object.freeze({
   occurrenceShoreMara: '00000000-0000-4000-8000-000000000307',
   occurrenceShoreBicycle: '00000000-0000-4000-8000-000000000308',
   occurrenceShoreKite: '00000000-0000-4000-8000-000000000309',
+  occurrenceStudioEvent: '00000000-0000-4000-8000-000000000310',
+  occurrenceArchiveLetter: '00000000-0000-4000-8000-000000000311',
   spanCourtyardMara: '00000000-0000-4000-8000-000000000401',
   spanCourtyardPlace: '00000000-0000-4000-8000-000000000402',
   spanCourtyardBicycle: '00000000-0000-4000-8000-000000000403',
@@ -36,15 +41,21 @@ const ID = Object.freeze({
   spanShoreMara: '00000000-0000-4000-8000-000000000407',
   spanShoreBicycle: '00000000-0000-4000-8000-000000000408',
   spanShoreKite: '00000000-0000-4000-8000-000000000409',
+  spanStudioEvent: '00000000-0000-4000-8000-000000000410',
+  spanArchiveLetter: '00000000-0000-4000-8000-000000000411',
   assertionMara: '00000000-0000-4000-8000-000000000501',
   assertionGlasshouse: '00000000-0000-4000-8000-000000000502',
   assertionBicycle: '00000000-0000-4000-8000-000000000503',
   assertionKite: '00000000-0000-4000-8000-000000000504',
+  assertionPlantingDay: '00000000-0000-4000-8000-000000000505',
+  assertionLetter: '00000000-0000-4000-8000-000000000506',
   proposalBicycle: '00000000-0000-4000-8000-000000000601',
   regionCourtyard: '00000000-0000-4000-8000-000000000701',
   regionStudio: '00000000-0000-4000-8000-000000000702',
   regionShore: '00000000-0000-4000-8000-000000000703',
+  regionArchive: '00000000-0000-4000-8000-000000000704',
 });
+const ID = PREVIEW_IDS;
 
 const USER = (assertionId: string, name: string, spanId: string, assertedAt: string) => ({
   assertion_id: assertionId,
@@ -74,8 +85,8 @@ const history = (
 }) satisfies GraphPayload['entities'][number]['history'][number];
 
 export const PREVIEW_GRAPH = {
-  // Nine append-only occurrences plus eleven identity events represented in the histories below.
-  state_version: 20,
+  // Eleven append-only occurrences plus fifteen identity events represented in the histories below.
+  state_version: 26,
   entities: [
     {
       entity_id: ID.entityMara,
@@ -145,6 +156,40 @@ export const PREVIEW_GRAPH = {
       history: [
         history(10, 'entity_created', ID.entityKite, ID.occurrenceShoreKite, '2025-09-03T11:15:00Z'),
         history(11, 'link_confirmed', ID.entityKite, ID.occurrenceShoreKite, '2025-09-03T11:15:01Z'),
+      ],
+      contradictions: [],
+    },
+    {
+      entity_id: ID.entityPlantingDay,
+      entity_class: 'event',
+      display_name: 'Spring planting day',
+      merged_into: null,
+      occurrence_count: 1,
+      capture_ids: [ID.captureStudio],
+      first_seen: '2025-06-21T10:06:00Z',
+      last_seen: '2025-06-21T10:06:00Z',
+      open_question_count: 0,
+      assertions: [USER(ID.assertionPlantingDay, 'Spring planting day', ID.spanStudioEvent, '2025-06-22T08:35:00Z')],
+      history: [
+        history(12, 'entity_created', ID.entityPlantingDay, ID.occurrenceStudioEvent, '2025-06-22T08:35:00Z'),
+        history(13, 'link_confirmed', ID.entityPlantingDay, ID.occurrenceStudioEvent, '2025-06-22T08:35:01Z'),
+      ],
+      contradictions: [],
+    },
+    {
+      entity_id: ID.entityLetter,
+      entity_class: 'object',
+      display_name: 'Unsent letter',
+      merged_into: null,
+      occurrence_count: 1,
+      capture_ids: [ID.captureArchive],
+      first_seen: null,
+      last_seen: null,
+      open_question_count: 0,
+      assertions: [USER(ID.assertionLetter, 'Unsent letter', ID.spanArchiveLetter, '2025-11-06T16:20:00Z')],
+      history: [
+        history(14, 'entity_created', ID.entityLetter, ID.occurrenceArchiveLetter, '2025-11-06T16:20:00Z'),
+        history(15, 'link_confirmed', ID.entityLetter, ID.occurrenceArchiveLetter, '2025-11-06T16:20:01Z'),
       ],
       contradictions: [],
     },
@@ -231,6 +276,24 @@ export const PREVIEW_GRAPH = {
       link_state: 'confirmed',
       captured_at: '2025-09-02T19:42:00Z',
     },
+    {
+      occurrence_id: ID.occurrenceStudioEvent,
+      capture_id: ID.captureStudio,
+      occurrence_class: 'event',
+      primary_span_id: ID.spanStudioEvent,
+      entity_id: ID.entityPlantingDay,
+      link_state: 'confirmed',
+      captured_at: '2025-06-21T10:06:00Z',
+    },
+    {
+      occurrence_id: ID.occurrenceArchiveLetter,
+      capture_id: ID.captureArchive,
+      occurrence_class: 'object',
+      primary_span_id: ID.spanArchiveLetter,
+      entity_id: ID.entityLetter,
+      link_state: 'confirmed',
+      captured_at: null,
+    },
   ],
   proposals: [
     {
@@ -280,6 +343,20 @@ export const PREVIEW_GRAPH = {
       capture_ids: [ID.captureShore],
       first_utc: '2025-09-02T19:42:00Z',
       last_utc: '2025-09-02T19:42:00Z',
+      member_count: 1,
+      positioned_member_count: 0,
+      radius_m: null,
+      centroid_lat_e7: null,
+      centroid_lon_e7: null,
+      rung: null,
+      rung_capture_count: 0,
+    },
+    {
+      group_id: ID.regionArchive,
+      ordinal: 4,
+      capture_ids: [ID.captureArchive],
+      first_utc: null,
+      last_utc: null,
       member_count: 1,
       positioned_member_count: 0,
       radius_m: null,

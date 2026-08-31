@@ -1,6 +1,6 @@
 /*
- * One world, two exposures. Components consume roles from this file and never choose palette,
- * field geometry, blur or radius values for themselves.
+ * One interaction system, many world identities. Components consume roles from this file and
+ * never choose palette, field geometry, blur, or radius values for themselves.
  */
 :root {
   color-scheme: light;
@@ -69,19 +69,53 @@
   --inference: #57686d;
   --external: #70586d;
 
+  /* World-profile-owned interface identity. Runtime profiles replace every value together. */
+  --ui-companion-surface: #091e23;
+  --ui-companion-surface-hover: #0f2b30;
+  --ui-companion-text: #f8f3dc;
+  --ui-companion-accent: #dff9f2;
+  --ui-companion-secondary: #9ecdcf;
+  --ui-companion-ink: #091e23;
+  --ui-companion-unavailable: #70586d;
+  --ui-shadow: #041418;
+  --ui-vignette: #000000;
+  --ui-font-body: "Avenir Next", "Segoe UI Variable", ui-sans-serif, system-ui, sans-serif;
+  --ui-font-display: "Avenir Next", "Segoe UI Variable Display", ui-sans-serif, system-ui, sans-serif;
+  --ui-font-utility: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --ui-font-companion: "Avenir Next", Avenir, ui-sans-serif, system-ui, sans-serif;
+
   --field-key-color: var(--dawn-field-key);
   --field-crosslight-color: var(--dawn-field-crosslight);
   --field-afterimage-color: var(--dawn-field-afterimage);
   --field-bounce-color: var(--dawn-field-bounce);
   --field-rim-color: var(--dawn-field-rim);
   --grain-blend: multiply;
-  --grain-opacity: 0.1;
+  --profile-grain-opacity: 0.1;
+  --grain-opacity: var(--profile-grain-opacity);
 
+  /* Protected interaction geometry. A world profile may skin these shapes, never replace them. */
   --radius-label: 3px;
+  --radius-control: 8px;
   --radius-panel: 6px;
   --radius-pill: 999px;
-  --blur-world: 8px;
-  --blur-system: 18px;
+  --ui-choice-radius: 999px;
+  --ui-speech-radius: 34px;
+  --profile-blur-world: 8px;
+  --profile-blur-system: 18px;
+  --profile-ui-companion-blur: 24px;
+  --blur-world: var(--profile-blur-world);
+  --blur-system: var(--profile-blur-system);
+  --ui-companion-blur: var(--profile-ui-companion-blur);
+  --saturation-world: 1;
+  --saturation-system: 1.15;
+  --ui-companion-saturation: 1.12;
+  --motion-quick: 130ms;
+  --motion-standard: 220ms;
+  --motion-deliberate: 320ms;
+  --motion-idle-cycle: 5200ms;
+  --motion-working-cycle: 1250ms;
+  --motion-stagger: 140ms;
+  --motion-easing: cubic-bezier(0.2, 0.7, 0.2, 1);
   --edge: color-mix(in srgb, var(--ink-faint) 28%, transparent);
   --material-archive: color-mix(in srgb, var(--raised) 95%, transparent);
   --material-system: color-mix(in srgb, var(--surface) 94%, transparent);
@@ -118,7 +152,6 @@
   --field-bounce-color: var(--dawn-field-bounce);
   --field-rim-color: var(--dawn-field-rim);
   --grain-blend: multiply;
-  --grain-opacity: 0.1;
 }
 
 :root[data-contrast='high'] {
@@ -132,5 +165,6 @@
 :root[data-contrast='high'] {
   --blur-world: 0px;
   --blur-system: 0px;
+  --ui-companion-blur: 0px;
   --grain-opacity: 0;
 }

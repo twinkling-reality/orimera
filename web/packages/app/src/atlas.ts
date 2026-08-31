@@ -26,7 +26,12 @@ import type {
   WorldArtProfile,
   WorldStyleParameters,
 } from '@orimera/presentation';
-import type { FrameReport, PlacementCheck, PointMap } from '@orimera/atlas-react/playcanvas';
+import type {
+  FrameReport,
+  PlacementCheck,
+  PointMap,
+  SourceMediaCatalog,
+} from '@orimera/atlas-react/playcanvas';
 import { AtlasBinding } from '@orimera/atlas-react/playcanvas';
 
 export interface MountedAtlas {
@@ -49,6 +54,8 @@ export async function mountAtlas(
     readonly mouseSensitivity: number;
     readonly artProfile?: WorldArtProfile;
     readonly artProfileParameters?: WorldStyleParameters;
+    readonly sourceMedia?: SourceMediaCatalog;
+    readonly reducedMotion?: boolean;
   },
 ): Promise<MountedAtlas> {
   const binding = await AtlasBinding.create({
@@ -66,6 +73,10 @@ export async function mountAtlas(
           ...(presentation.artProfileParameters === undefined
             ? {}
             : { artProfileParameters: presentation.artProfileParameters }),
+          ...(presentation.sourceMedia === undefined ? {} : { sourceMedia: presentation.sourceMedia }),
+          ...(presentation.reducedMotion === undefined
+            ? {}
+            : { reducedMotion: presentation.reducedMotion }),
         }),
   });
   canvas.dataset.worldProfile = binding.composedWorld.profileId;

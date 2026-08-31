@@ -65,21 +65,30 @@ uniform vec3 uCloud;
 
 void main(void) {
     vec3 d = normalize(vDirection);
-    float height = smoothstep(-0.04, 0.78, d.y);
+    float height = smoothstep(-0.025, 0.88, d.y);
     vec3 colour = mix(uHaze, uSky, height);
 
-    // Long, quiet cloud veils. They are directional weather, not screen-space decoration.
-    float veilA = sin(d.x * 31.0 + sin(d.z * 17.0) * 1.7);
-    float veilB = sin(d.z * 43.0 - d.x * 13.0);
-    float veil = smoothstep(1.05, 1.72, veilA + veilB * 0.42);
-    veil *= smoothstep(0.08, 0.4, d.y) * (1.0 - smoothstep(0.58, 0.82, d.y));
-    colour = mix(colour, uCloud, veil * 0.15);
+    // The lower atmosphere is a volume, not a backdrop boundary. Keeping a broad haze shelf at
+    // eye level gives the ground material room to converge to this exact colour.
+    float horizonShelf = 1.0 - smoothstep(0.0, 0.24, abs(d.y));
+    colour = mix(colour, uHaze, horizonShelf * 0.34);
 
-    vec3 sunDirection = normalize(vec3(-0.36, 0.38, -0.85));
+    float cloudA = sin(d.x * 18.0 + d.z * 7.0 + sin(d.z * 23.0) * 0.75);
+    float cloudB = sin(d.z * 31.0 - d.x * 9.0);
+    float cloud = smoothstep(0.72, 1.45, cloudA + cloudB * 0.34);
+    cloud *= smoothstep(0.05, 0.24, d.y) * (1.0 - smoothstep(0.52, 0.78, d.y));
+    colour = mix(colour, uCloud, cloud * 0.075);
+
+    // A very broad polar-light bow gives the sky depth without creating another destination.
+    float bow = 1.0 - abs(length(d.xz - vec2(0.18, -0.08)) - 0.72);
+    bow = smoothstep(0.955, 0.992, bow) * smoothstep(0.12, 0.52, d.y);
+    colour += mix(uCloud, uSun, 0.35) * bow * 0.032;
+
+    vec3 sunDirection = normalize(vec3(-0.62, 0.42, -0.72));
     float sunFacing = max(0.0, dot(d, sunDirection));
-    float sunDisc = smoothstep(0.9987, 0.99945, sunFacing);
-    float sunHaze = pow(sunFacing, 90.0) * 0.22;
-    colour += uSun * (sunDisc * 0.78 + sunHaze);
+    float sunDisc = smoothstep(0.99915, 0.99972, sunFacing);
+    float sunHaze = pow(sunFacing, 18.0) * 0.075 + pow(sunFacing, 95.0) * 0.16;
+    colour += uSun * (sunDisc * 0.56 + sunHaze);
 
     gl_FragColor = vec4(colour, 1.0);
 }
@@ -228,10 +237,12 @@ function openingFrame(topology: WorldTopologySnapshot): {
   };
 }
 
-/** A low-poly extruded ridge: a real horizon silhouette, not a screen-space gradient. */
+/** A quiet archive horizon: a real silhouette beyond navigation, softened by field fog. */
 function createRidgeMesh(device: pc.GraphicsDevice): pc.Mesh {
-  const xs = [-96, -80, -64, -50, -38, -27, -17, -7, 3, 15, 29, 44, 61, 78, 96];
-  const heights = [2.5, 5, 3.8, 7.6, 5.2, 10.5, 7, 13.5, 7.8, 11, 6.2, 8.5, 5, 6, 2.5];
+  const xs = Array.from({ length: 33 }, (_, index) => -112 + index * 7);
+  const heights = xs.map((x) =>
+    3.1 + Math.sin(x * 0.043) * 1.5 + Math.sin(x * 0.091 + 1.3) * 0.65,
+  );
   const positions: number[] = [];
   const indices: number[] = [];
   for (let index = 0; index < xs.length; index += 1) {
@@ -259,9 +270,7 @@ function addOriginEnvironment(
   root: pc.Entity,
   topology: WorldTopologySnapshot,
   meshes: MeshCatalog,
-  stone: pc.StandardMaterial,
   shadow: pc.StandardMaterial,
-  growth: pc.StandardMaterial,
   sky: pc.ShaderMaterial,
 ): pc.Entity {
   const frame = openingFrame(topology);
@@ -279,28 +288,9 @@ function addOriginEnvironment(
   skyEntity.addComponent('render', { meshInstances: [skyInstance] });
   environment.addChild(skyEntity);
 
-  // Two terrain silhouettes produce foreground/middle/far depth while remaining beyond the
-  // navigable field. They establish a landscape even when there are no memories yet.
-  addPrimitive(environment, 'archive-ridge-far', meshes.ridge, shadow,
-    [frame.x + frame.forwardX * 190, -0.8, frame.z + frame.forwardZ * 190],
-    [1.32, 1.18, 1], [0, yawDegrees - 2, 0]);
-  addPrimitive(environment, 'living-ridge-near', meshes.ridge, growth,
-    [
-      frame.x + frame.forwardX * 124 + frame.rightX * 18,
-      -1.1,
-      frame.z + frame.forwardZ * 124 + frame.rightZ * 18,
-    ],
-    [0.86, 0.7, 0.72], [0, yawDegrees + 4, 0]);
-  // An empty Atlas gets one unoccupied clearing. This is landscape infrastructure, not a memory.
-  if (!topology.instances.some((instance) => instance.role === 'region-foundation')) {
-    for (let index = 0; index < 5; index += 1) {
-      const angle = -0.85 + index * 0.42;
-      addPrimitive(environment, `empty-garden-bud:${index}`, meshes.rock, index % 2 === 0 ? growth : stone,
-        [Math.sin(angle) * 4.6, 0.12, -7 + Math.cos(angle) * 2.8],
-        [0.52 + index * 0.07, 0.2 + (index % 2) * 0.08, 0.72],
-        [index * 3, index * 31, index * -2]);
-    }
-  }
+  // The origin profile has no decorative horizon geometry. The water/sky seam is the only
+  // orientation line, leaving source-bearing memory silhouettes uncontested.
+  void shadow;
   return environment;
 }
 
@@ -408,14 +398,14 @@ export function createComposedWorld(
     entity.addChild(root);
 
     const mapHidden = profile.profileId === ORIGIN_LANDSCAPE.profileId
-      ? [addOriginEnvironment(root, topology, meshes, stone, shadow, growth, sky)]
+      ? [addOriginEnvironment(root, topology, meshes, shadow, sky)]
       : [];
     const details: pc.Entity[] = [];
 
     for (const instance of topology.instances) {
       // Foundations remain one continuous field. Evidence bodies are created by source-first-grove
       // so a missing photograph never gets replaced by decorative renderer geometry here.
-      if (instance.role === 'landmark') {
+      if (instance.role === 'landmark' && profile.profileId === SURVEY_RELIEF.profileId) {
         const group = atInstance(root, instance);
         if (profile.geometry.landmark === 'aero-beacon') {
           addAeroBeacon(group, profile, meshes, stone, shadow, brass, glass);
@@ -424,7 +414,7 @@ export function createComposedWorld(
         }
       }
 
-      if (instance.role === 'expansion-point') {
+      if (instance.role === 'expansion-point' && profile.profileId === SURVEY_RELIEF.profileId) {
         const group = atInstance(root, instance);
         const count = profile.geometry.expansion === 'living-buds' ? 7 : 5;
         for (let index = 0; index < count; index += 1) {
@@ -449,7 +439,9 @@ export function createComposedWorld(
       }
 
       if (instance.role === 'relationship-path') {
-        addRelationshipInlay(root, instance, meshes.cube, path);
+        if (profile.profileId !== ORIGIN_LANDSCAPE.profileId) {
+          addRelationshipInlay(root, instance, meshes.cube, path);
+        }
       }
     }
     const applyProfile = (next: WorldArtProfile): void => {

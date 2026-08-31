@@ -91,7 +91,7 @@ export function buildLibrary(
         bare.length === 0
           ? 'Every detection in this library has been identified.'
           : presentation.preview === true
-            ? `${bare.length} synthetic detections nobody has named. Source evidence is unavailable in preview.`
+            ? `${bare.length} synthetic detections nobody has named. Fixture sources remain inspectable; unavailable evidence stays explicit.`
             : `${bare.length} detections nobody has named. Each one opens the photograph it came from.`;
       replace(
         detections,

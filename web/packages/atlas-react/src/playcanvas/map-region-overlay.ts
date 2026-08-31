@@ -20,7 +20,11 @@ export class MapRegionOverlay {
 
   onSelect: ((islandId: IslandId) => void) | null = null;
 
-  constructor(parent: HTMLElement, scene: AtlasScene) {
+  constructor(
+    parent: HTMLElement,
+    scene: AtlasScene,
+    labels: ReadonlyMap<IslandId, string | undefined> = new Map(),
+  ) {
     this.root = document.createElement('div');
     this.root.className = 'map-regions';
     this.root.setAttribute('role', 'group');
@@ -39,8 +43,9 @@ export class MapRegionOverlay {
           const button = document.createElement('button');
           button.type = 'button';
           button.className = 'map-region-target';
-          button.textContent = `Region ${String(index + 1).padStart(2, '0')}`;
-          button.setAttribute('aria-label', `Travel to region ${index + 1}`);
+          const label = labels.get(island.islandId) ?? `Region ${String(index + 1).padStart(2, '0')}`;
+          button.textContent = label;
+          button.setAttribute('aria-label', `Travel to ${label}`);
           button.addEventListener('click', () => this.onSelect?.(island.islandId));
           this.root.appendChild(button);
           return Object.freeze({

@@ -56,6 +56,7 @@ const settingCapabilities = (
   contrast: undefined,
   transparency: undefined,
   worldArtProfile: undefined,
+  worldArtProfileVersion: undefined,
   worldStyleParameters: undefined,
   fieldOfView: ['comfort.field-of-view-degrees', preferences.fieldOfView],
   mouseSensitivity: [
@@ -72,6 +73,9 @@ const settingCapabilities = (
       : preferences.transition,
   ],
   companionInitiative: ['initiative.mode', preferences.companionInitiative],
+  companionBody: undefined,
+  companionColor: undefined,
+  companionFace: undefined,
   companionSide: undefined,
 });
 

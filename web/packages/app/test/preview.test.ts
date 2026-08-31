@@ -3,14 +3,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import { adaptSnapshot, type OccurrenceRecord } from '@orimera/graph-client';
 
-import { isAtlasPreview, previewCredentials } from '../src/config.js';
+import {
+  applicationTitle,
+  isAtlasPreview,
+  previewCredentials,
+} from '../src/config.js';
 import { previewApiResponse } from '../src/dev/preview-api.js';
 import { PREVIEW_GRAPH } from '../src/dev/preview-graph.js';
+import { PREVIEW_SOURCE_MEDIA } from '../src/dev/preview-media.js';
 import { EvidenceCache } from '../src/evidence.js';
 import { buildScene } from '../src/scene.js';
 import { buildDetail } from '../src/ui/detail.js';
 import { buildLibrary } from '../src/ui/library.js';
-import { buildStatus, PREVIEW_CAPTION } from '../src/ui/status.js';
 
 describe('Atlas development preview', () => {
   it('requires both an explicit query and a development build', () => {
@@ -29,9 +33,9 @@ describe('Atlas development preview', () => {
   it('adapts the typed payload into a drawable multi-region Atlas', () => {
     const snapshot = adaptSnapshot(PREVIEW_GRAPH);
     const built = buildScene(snapshot);
-    expect(snapshot.entities).toHaveLength(4);
-    expect(snapshot.islands).toHaveLength(3);
-    expect(built.scene.islands).toHaveLength(3);
+    expect(snapshot.entities).toHaveLength(6);
+    expect(snapshot.islands).toHaveLength(4);
+    expect(built.scene.islands).toHaveLength(4);
     expect(built.omitted).toHaveLength(0);
   });
 
@@ -72,6 +76,11 @@ describe('Atlas development preview', () => {
     expect(previewApiResponse('GET', '/graph').statusCode).toBe(200);
     expect(previewApiResponse('GET', '/formation').body).toEqual([]);
     expect(previewApiResponse('GET', '/evidence/example').statusCode).toBe(404);
+    const available = [...PREVIEW_SOURCE_MEDIA.values()].find((source) => source.available)!;
+    expect(previewApiResponse('GET', `/evidence/${available.evidenceRef}`)).toMatchObject({
+      statusCode: 200,
+      contentType: 'image/jpeg',
+    });
     expect(previewApiResponse('GET', '/identity').statusCode).toBe(404);
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
       const decision = previewApiResponse(method, '/identity/confirm');
@@ -80,15 +89,11 @@ describe('Atlas development preview', () => {
     }
   });
 
-  it('states the preview limitations in the visible surface', () => {
-    const status = buildStatus({ omittedRegionCount: 0, undrawable: new Map(), preview: true });
-    const disclosure = status.querySelector('.preview-disclosure');
-    expect(disclosure?.textContent).toBe(PREVIEW_CAPTION);
-    expect(disclosure?.textContent).toContain('Development preview');
-    expect(disclosure?.textContent).toContain('synthetic');
-    expect(disclosure?.textContent).toContain('read-only');
-    expect(disclosure?.textContent).toContain('evidence unavailable');
-    expect(disclosure?.querySelector('button, a, input')).toBeNull();
+  it('identifies the synthetic read-only preview without permanent world chrome', () => {
+    expect(applicationTitle(true)).toContain('development preview');
+    expect(applicationTitle(true)).toContain('synthetic');
+    expect(applicationTitle(true)).toContain('read-only');
+    expect(applicationTitle(false)).toBe('Orimera');
   });
 
   it('omits naming and disables evidence before either can make a request', () => {

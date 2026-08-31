@@ -6,13 +6,12 @@ import { buildCompanionPanel } from '../src/ui/companion-panel.js';
 /**
  * The rules the Companion's panel carries, checked against what actually renders.
  *
- * Each of these is the kind of thing that looks like a tidy-up: drop the options nobody can
- * pick, move the escapes into a menu, bind Escape to close the panel. They are asserted here so
- * the next person finds out from a red suite rather than from a reviewer.
+ * Each of these is the kind of thing that looks like a tidy-up but changes the interaction
+ * contract. They are asserted here so the next person finds out from a red suite rather than from
+ * a reviewer.
  */
 
 const NOOP = {
-  onDismiss: () => undefined,
   onSelect: () => undefined,
   onSubmit: () => undefined,
   onSay: () => undefined,
@@ -84,42 +83,102 @@ describe('unavailable options are delivered, not hidden', () => {
       }),
     );
 
-    const buttons = panel.root.querySelectorAll('.options .option');
+    const buttons = panel.root.querySelectorAll(
+      '.companion-choices > .choice-item:not(.companion-other) .companion-choice',
+    );
     expect(buttons).toHaveLength(2);
     // Hiding it would teach the user nothing; showing the reason teaches them what is missing.
     expect(buttons[1]?.hasAttribute('disabled')).toBe(true);
-    expect(panel.root.querySelector('.unavailable .why')?.textContent ?? '').not.toBe('');
+    expect(panel.root.querySelector('.choice-unavailable-reason')?.textContent ?? '').not.toBe('');
   });
 });
 
-describe('the escapes are always present', () => {
-  it('renders all four, every turn', () => {
+describe('the choice rail stays separate from the Companion speech', () => {
+  it('keeps uncertainty, skip, and correction available while Escape replaces later', () => {
     const panel = opened();
     panel.render(turn());
-    expect(panel.root.querySelectorAll('.escapes .option')).toHaveLength(4);
+    const escapes = [...panel.root.querySelectorAll('.companion-escapes .companion-choice')].map(
+      (element) => element.textContent,
+    );
+    expect(escapes).toEqual(['Not sure', 'Skip', 'Wrong question']);
+    expect(panel.root.querySelector('.companion-speech + .companion-choice-rail')).not.toBeNull();
   });
 
-  it('offers them even when the turn has no choice set at all', () => {
+  it('keeps the three non-dismiss escapes even when there is no choice set', () => {
     const panel = opened();
     panel.render(turn({ choiceSet: null }));
-    expect(panel.root.querySelectorAll('.escapes .option')).toHaveLength(4);
+    expect(panel.root.querySelectorAll('.companion-escapes .companion-choice')).toHaveLength(3);
   });
 });
 
-describe('the panel never takes Escape', () => {
-  it('is not a dialog element', () => {
+describe('dismissal belongs to the shell rather than a floating close button', () => {
+  it('stays an aside and renders no close glyph', () => {
     const panel = opened();
-    // A <dialog> takes Escape for free. Escape releases the mouse and nothing else, everywhere.
     expect(panel.root.tagName.toLowerCase()).toBe('aside');
+    expect(panel.root.querySelector('.panel-close')).toBeNull();
   });
 
-  it('leaves Escape unhandled in the free text field', () => {
+  it('does not consume Escape inside the free text field', () => {
     let said = 0;
     const panel = opened({ ...NOOP, onSay: () => (said += 1) });
     panel.render(turn());
-    const input = panel.root.querySelector('input.free');
+    const input = panel.root.querySelector('input.companion-reply-input');
     input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(said).toBe(0);
+  });
+});
+
+describe('the exchange stays subordinate to the Companion presence', () => {
+  it('renders no redundant header and exposes evidence as an action', () => {
+    const panel = opened();
+    panel.render(turn({ evidence: ['evidence-1'] }));
+
+    expect(panel.root.querySelector('.companion-head')).toBeNull();
+    expect(panel.root.querySelector('.companion-utterance')?.textContent).toContain(
+      'same person',
+    );
+    expect(panel.root.querySelector('.companion-evidence')?.getAttribute('aria-label')).toBe(
+      'Memory evidence',
+    );
+    expect(panel.root.querySelector('.companion-evidence-action')?.textContent).toBe(
+      'Show supporting memory',
+    );
+    expect(panel.root.querySelector('.companion-speaker')?.textContent).toBe('Companion');
+  });
+
+  it('renders free text as the next numbered option and removes the text Send control', () => {
+    const panel = opened();
+    panel.render(
+      turn({
+        choiceSet: {
+          mode: 'single',
+          options: [
+            option(),
+            option({ optionId: 'opt-2' }),
+            option({ optionId: 'opt-3' }),
+          ],
+          submitRequired: false,
+        },
+      }),
+    );
+    const custom = panel.root.querySelector('.companion-composer');
+    const reveal = panel.root.querySelector<HTMLButtonElement>('.companion-other-reveal');
+    expect(reveal?.textContent).toContain('4');
+    expect(reveal?.textContent).toContain('Other');
+    expect(custom?.hasAttribute('hidden')).toBe(true);
+    reveal?.click();
+    expect(custom?.hasAttribute('hidden')).toBe(false);
+    expect(panel.root.querySelector('.companion-reply-submit')?.getAttribute('aria-label')).toBe(
+      'Send reply',
+    );
+    expect(panel.root.textContent).not.toContain('Send');
+  });
+
+  it('opens Other from its number key without committing a graph option', () => {
+    const panel = opened();
+    panel.render(turn());
+    expect(panel.pressNumber(2)).toBe(true);
+    expect(panel.root.querySelector('.companion-composer')?.hasAttribute('hidden')).toBe(false);
   });
 });
 
@@ -137,12 +196,12 @@ describe('a multi select cannot commit by clicking', () => {
       }),
     );
 
-    const boxes = panel.root.querySelectorAll<HTMLInputElement>('.options input[type=checkbox]');
+    const boxes = panel.root.querySelectorAll<HTMLInputElement>('.choice-checkbox');
     expect(boxes).toHaveLength(2);
     boxes[0]!.checked = true;
     // Ticking a box must not commit anything on its own.
     expect(picked).toHaveLength(0);
-    panel.root.querySelector<HTMLButtonElement>('button.primary')?.click();
+    panel.root.querySelector<HTMLButtonElement>('.companion-choices-submit')?.click();
     expect(picked).toEqual([['opt-1']]);
   });
 });
@@ -152,7 +211,7 @@ describe('a refusal is reported in the words the refusal used', () => {
     const panel = opened();
     panel.render(turn());
     panel.reportRefusal('refused.tierNotOfferableHere');
-    expect(panel.root.querySelector('.refusal')?.textContent ?? '').not.toBe('');
+    expect(panel.root.querySelector('.companion-refusal')?.textContent ?? '').not.toBe('');
   });
 });
 
@@ -160,25 +219,25 @@ describe('nothing stands on screen until it is called', () => {
   it('shows how to get into the world while the mouse is free', () => {
     const panel = buildCompanionPanel(NOOP);
     expect(panel.state()).toBe('enter');
-    expect(panel.root.querySelector('.prompt')?.textContent ?? '').toContain('Click');
-    expect(panel.root.querySelector('.options')).toBeNull();
+    expect(panel.root.querySelector('.companion-prompt')?.textContent ?? '').toContain('Click');
+    expect(panel.root.querySelector('.companion-choices')).toBeNull();
   });
 
   it('offers the summon key once the user is in the world', () => {
     const panel = buildCompanionPanel(NOOP);
     panel.setState('summon');
-    expect(panel.root.querySelector('.prompt')?.textContent ?? '').toContain('X');
-    expect(panel.root.querySelector('.escapes')).toBeNull();
+    expect(panel.root.querySelector('.companion-prompt')?.textContent ?? '').toContain('X');
+    expect(panel.root.querySelector('.companion-escapes')).toBeNull();
   });
 
   it('keeps the turn while dismissed, so summoning resumes rather than re-asks', () => {
     const panel = buildCompanionPanel(NOOP);
     panel.setState('open');
     panel.render(turn());
-    const asked = panel.root.querySelector('.utterance')?.textContent;
+    const asked = panel.root.querySelector('.companion-utterance')?.textContent;
     panel.setState('summon');
-    expect(panel.root.querySelector('.utterance')).toBeNull();
+    expect(panel.root.querySelector('.companion-utterance')).toBeNull();
     panel.setState('open');
-    expect(panel.root.querySelector('.utterance')?.textContent).toBe(asked);
+    expect(panel.root.querySelector('.companion-utterance')?.textContent).toBe(asked);
   });
 });

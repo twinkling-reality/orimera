@@ -3,14 +3,12 @@
  *
  * **Why here and not on the landing page.** The formation stream is per intake batch and every
  * request to it carries a bearer token. A signed-out visitor has neither: no batch of their own
- * and no credential, which is why the signed-out page demonstrates formation with a scripted
- * source and says so. This is the surface where an upload is a real thing that happened, so this
- * is where a real stream belongs.
+ * and no credential. The public landing page therefore shows no formation state. This is the
+ * surface where an upload is a real thing that happened, so this is where its stream belongs.
  *
  * **Nothing here decides what a stage means.** The contract, the reducer, the labels and the
- * visual mapping all live in `@orimera/formation`, which knows nothing about this application and
- * is shared with the signed-out page precisely so the two cannot describe the same pipeline
- * differently. This module chooses which batch to watch and hands the events on.
+ * visual mapping all live in `@orimera/formation`, which knows nothing about this application.
+ * This module chooses which batch to watch and hands the events on.
  *
  * **The batch is found, not assumed.** There is no upload endpoint yet, so an intake starts from
  * the command line and this asks the API what there is to watch. That is a smaller lie than a

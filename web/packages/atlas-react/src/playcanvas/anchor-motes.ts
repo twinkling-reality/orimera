@@ -1,5 +1,5 @@
 import * as pc from 'playcanvas';
-import type { AnchorTable, EmphasisBuffers } from '@orimera/atlas-core';
+import type { AnchorKind, AnchorTable, EmphasisBuffers } from '@orimera/atlas-core';
 import { readsAsUnconfirmed, rendersAsPresenceMarker } from '@orimera/atlas-core';
 import type { ProvenanceClass } from '@orimera/atlas-core';
 import {
@@ -35,13 +35,15 @@ const DEFAULT_SIZE_METRES = 0.14;
 const DEFAULT_MAX_SIZE_PX = 11;
 const MIN_SIZE_PX = 2;
 
-/** Bytes per mote: position 12, colour 4, emphasis 4. */
-const STRIDE = 20;
+/** Bytes per mote: position 12, colour 4, emphasis 4, kind 4, uncertainty 4. */
+const STRIDE = 28;
 
 const ATTRIBUTES = {
   aPosition: pc.SEMANTIC_POSITION,
   aColor: pc.SEMANTIC_COLOR,
   aEmphasis: pc.SEMANTIC_ATTR8,
+  aKind: pc.SEMANTIC_ATTR9,
+  aUnconfirmed: pc.SEMANTIC_ATTR10,
 } as const;
 
 const PROVENANCE_ALPHA: Readonly<Record<ProvenanceClass, number>> = Object.freeze({
@@ -85,6 +87,8 @@ const VERTEX_GLSL = /* glsl */ `
 attribute vec3 aPosition;
 attribute vec4 aColor;
 attribute float aEmphasis;
+attribute float aKind;
+attribute float aUnconfirmed;
 
 uniform mat4 matrix_model;
 uniform mat4 matrix_viewProjection;
@@ -95,6 +99,8 @@ uniform vec4 uMote;
 
 varying vec4 vColor;
 varying float vEmphasis;
+varying float vKind;
+varying float vUnconfirmed;
 
 void main(void) {
     vec4 world = matrix_model * vec4(aPosition, 1.0);
@@ -109,6 +115,8 @@ void main(void) {
 
     vColor = aColor;
     vEmphasis = aEmphasis;
+    vKind = aKind;
+    vUnconfirmed = aUnconfirmed;
 }
 `;
 
@@ -117,15 +125,33 @@ precision highp float;
 
 varying vec4 vColor;
 varying float vEmphasis;
+varying float vKind;
+varying float vUnconfirmed;
 
 void main(void) {
-    // A disc with a hard rim rather than a soft particulate blur. In this binding a soft edge
-    // means "reconstructed surface"; a mote is a marker for a detection and must not read as one.
     vec2 d = gl_PointCoord * 2.0 - 1.0;
-    float r = dot(d, d);
-    if (r > 1.0) discard;
+    float rim = 0.0;
+    if (vKind < 0.5) {
+        // Place: four open corners. A place contains; it is not a filled object.
+        float edge = max(abs(d.x), abs(d.y));
+        if (edge < 0.58 || edge > 0.96 || min(abs(d.x), abs(d.y)) < 0.34) discard;
+        rim = smoothstep(0.58, 0.96, edge);
+    } else if (vKind < 1.5) {
+        // Object: a compact lozenge with a complete boundary.
+        float diamond = abs(d.x) + abs(d.y);
+        if (diamond > 0.94) discard;
+        rim = smoothstep(0.58, 0.94, diamond);
+    } else {
+        // Event: unequal rays, because an event is a change radiating through time.
+        bool vertical = abs(d.x) < 0.14 && d.y > -0.9 && d.y < 0.68;
+        bool horizontal = abs(d.y) < 0.12 && d.x > -0.58 && d.x < 0.92;
+        if (!vertical && !horizontal) discard;
+        rim = smoothstep(0.15, 0.35, max(abs(d.x), abs(d.y)));
+    }
 
-    float rim = smoothstep(0.55, 1.0, r);
+    // Unconfirmed identity is structurally interrupted as well as dimmer; colour alone is never
+    // asked to carry certainty.
+    if (vUnconfirmed > 0.5 && mod(floor((d.x + d.y + 2.0) * 4.0), 2.0) < 1.0) discard;
     vec3 rgb = mix(vColor.rgb, vColor.rgb * 1.35, rim);
     float alpha = vColor.a * (0.4 + 0.6 * clamp(vEmphasis, 0.0, 1.0));
     gl_FragColor = vec4(rgb, alpha);
@@ -161,6 +187,10 @@ export function moteAnchorIndices(table: AnchorTable): Int32Array {
   return Int32Array.from(indices);
 }
 
+export function anchorKindSlot(kind: AnchorKind): number {
+  return kind === 'place' ? 0 : kind === 'object' ? 1 : kind === 'event' ? 2 : 3;
+}
+
 export function createAnchorMotes(options: AnchorMotesOptions): AnchorMotes {
   const { device, table } = options;
 
@@ -171,6 +201,8 @@ export function createAnchorMotes(options: AnchorMotesOptions): AnchorMotes {
     { semantic: pc.SEMANTIC_POSITION, components: 3, type: pc.TYPE_FLOAT32 },
     { semantic: pc.SEMANTIC_COLOR, components: 4, type: pc.TYPE_UINT8, normalize: true },
     { semantic: pc.SEMANTIC_ATTR8, components: 1, type: pc.TYPE_FLOAT32 },
+    { semantic: pc.SEMANTIC_ATTR9, components: 1, type: pc.TYPE_FLOAT32 },
+    { semantic: pc.SEMANTIC_ATTR10, components: 1, type: pc.TYPE_FLOAT32 },
   ]);
   const vertexBuffer = new pc.VertexBuffer(device, format, Math.max(1, count), {
     usage: pc.BUFFER_DYNAMIC,
@@ -189,10 +221,11 @@ export function createAnchorMotes(options: AnchorMotesOptions): AnchorMotes {
     // An unconfirmed link is dimmer, and the rule for what counts as unconfirmed is atlas-core's.
     // id-2: an auto-provisional link may organise the world and may never support a claim, so it
     // is present and visibly not settled rather than absent or indistinguishable.
+    const unconfirmed = readsAsUnconfirmed(anchor.linkState, anchor.provenance);
     const colour = anchorMoteRgba(
       options.theme ?? DAWN_THEME,
       anchor.provenance,
-      readsAsUnconfirmed(anchor.linkState, anchor.provenance),
+      unconfirmed,
     );
     const offset = m * STRIDE + 12;
     bytes[offset] = colour[0];
@@ -201,6 +234,8 @@ export function createAnchorMotes(options: AnchorMotesOptions): AnchorMotes {
     bytes[offset + 3] = colour[3];
 
     floats[base + 4] = 1;
+    floats[base + 5] = anchorKindSlot(anchor.kind);
+    floats[base + 6] = unconfirmed ? 1 : 0;
   }
   vertexBuffer.unlock();
 

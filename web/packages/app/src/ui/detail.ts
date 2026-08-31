@@ -24,6 +24,7 @@ import type { BandRow, ConfirmationBand } from '@orimera/companion-runtime';
 import type { EntityDetailView, OccurrenceCitation } from '@orimera/world-index';
 import { DETAIL_SECTION_ORDER, buildEntityDetail } from '@orimera/world-index';
 import type { EvidenceCache } from '../evidence.js';
+import type { SourceMediaCatalog } from '@orimera/atlas-react/playcanvas';
 import { say } from './copy.js';
 import { el, replace } from './dom.js';
 
@@ -46,8 +47,9 @@ export interface DetailPane {
 }
 
 export interface DetailPresentation {
-  /** Synthetic development data has neither originals nor a write path. */
+  /** Synthetic development data has a small source fixture but no write path. */
   readonly preview?: boolean;
+  readonly sourceMedia?: SourceMediaCatalog;
 }
 
 export function buildDetail(
@@ -89,7 +91,7 @@ export function buildDetail(
           'Nobody has said what this is. A detector saw something here, which is an inference ' +
             'and not a fact about anybody, so it supports nothing until you say so.',
         ]),
-        citationList([citationOf(occurrence)], evidence, handlers, presentation.preview !== true),
+        citationList([citationOf(occurrence)], evidence, handlers, presentation),
         presentation.preview === true
           ? el('p', {
               class: 'detail-note preview-read-only-note',
@@ -170,14 +172,14 @@ function sectionsOf(
           el('h2', { text: 'Occurrences' }),
           el('p', { class: 'detail-note' }, [
             presentation.preview === true
-              ? 'These synthetic citations exercise the detail layout; no source photographs exist.'
+              ? 'These synthetic citations exercise source, focus, and direct travel together.'
               : 'Every one of these opens the exact photograph it came from.',
           ]),
           citationList(
             view.occurrences,
             evidence,
             handlers,
-            presentation.preview !== true,
+            presentation,
           ),
         ]);
       case 'relations':
@@ -278,10 +280,13 @@ function citationList(
   citations: readonly OccurrenceCitation[],
   evidence: EvidenceCache,
   handlers: DetailHandlers,
-  evidenceAvailable: boolean,
+  presentation: DetailPresentation,
 ): HTMLElement {
   const list = el('ol', { class: 'citations' });
   for (const citation of citations) {
+    const evidenceAvailable = presentation.preview !== true || citation.evidence.some(
+      (handle) => presentation.sourceMedia?.get(handle)?.available === true,
+    );
     const figure = el('figure', { class: 'citation' });
     const caption = el('figcaption', {
       text: citation.timeUnknown
@@ -291,7 +296,7 @@ function citationList(
     const open = el('button', {
       type: 'button',
       class: 'citation-open',
-      text: evidenceAvailable ? 'Open the original' : 'Evidence unavailable in preview',
+      text: evidenceAvailable ? 'Open the source' : 'Source unavailable',
       disabled: !evidenceAvailable,
     });
     if (evidenceAvailable) {

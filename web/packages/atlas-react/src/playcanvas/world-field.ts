@@ -8,6 +8,21 @@ import {
   type WorldArtProfile,
 } from '@orimera/presentation';
 
+const AEROHEART_IDLE_CYCLE_MS = 5_200;
+
+/** Access preference is the final authority over a profile's bounded ambient cadence. */
+export function worldMotionSeconds(
+  nowMs: number,
+  idleCycleMs: number,
+  reducedMotion: boolean,
+): number {
+  if (reducedMotion) return 0;
+  const cycle = Number.isFinite(idleCycleMs) && idleCycleMs > 0
+    ? idleCycleMs
+    : AEROHEART_IDLE_CYCLE_MS;
+  return nowMs * 0.001 * (AEROHEART_IDLE_CYCLE_MS / cycle);
+}
+
 interface ShaderDesc {
   uniqueName: string;
   attributes?: Record<string, string>;
@@ -50,60 +65,87 @@ uniform vec4 uTraceB[${traceCapacity}];
 uniform vec2 uCounts;
 uniform float uMapMode;
 uniform vec2 uRenderOrigin;
+uniform float uTime;
 
-float segmentDistance(vec2 p, vec2 a, vec2 b) {
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+vec2 segmentProjection(vec2 p, vec2 a, vec2 b) {
     vec2 ab = b - a;
     float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 0.0001), 0.0, 1.0);
-    return length(p - (a + ab * t));
+    vec2 normal = normalize(vec2(-ab.y, ab.x) + vec2(0.0001));
+    vec2 centre = a + ab * t + normal * sin(t * 3.14159265) * min(1.8, length(ab) * 0.025);
+    return vec2(length(p - centre), t);
 }
 
 void main(void) {
     vec2 p = vWorld.xz + uRenderOrigin;
     vec2 local = p - uField.xy;
-    float directional = 0.5 + 0.5 * dot(normalize(local + vec2(0.01)), normalize(vec2(0.47, -0.88)));
-    float longWave = 0.5 + 0.5 * sin(p.x * 0.018 + p.y * 0.011);
-    float mineral = sin(p.x * 0.31 + sin(p.y * 0.17) * 0.8) *
-                    cos(p.y * 0.23 - sin(p.x * 0.13) * 0.65);
-    float contour = 0.5 + 0.5 * sin(length(local) * 0.62 + mineral * 0.8);
-    vec3 colour = mix(uGround, uAtmosphere, 0.025 + 0.035 * directional + 0.018 * longWave);
-    float grain = 0.93 + mineral * 0.04 + smoothstep(0.86, 1.0, contour) * 0.035;
-    colour *= mix(grain, 0.98, uMapMode);
-    float rakedLight = max(0.0, dot(normalize(vNormal), normalize(vec3(-0.55, 0.68, 0.48))));
-    colour *= mix(0.74 + rakedLight * 0.5, 1.0, uMapMode);
-    // Map is a distinct cartographic reading of the same world, not a flattened screenshot.
-    // Lift the field toward the atmospheric glass color so relationship ink remains legible.
-    colour = mix(colour, mix(uGround, uAtmosphere, 0.7), uMapMode * 0.58);
+    vec3 normal = normalize(vNormal);
+    vec3 toEye = normalize(view_position - vWorld);
+    float viewDistance = distance(vWorld, view_position);
+    float grazing = 1.0 - max(0.0, dot(normal, toEye));
+    float fresnel = pow(grazing, 2.6);
+    float slow = noise(p * 0.018 + vec2(uTime * 0.006, -uTime * 0.004));
+    float crossing = noise(p * 0.055 + vec2(-uTime * 0.012, uTime * 0.008));
+    float drift = sin(p.x * 0.052 + p.y * 0.019 + slow * 4.8 + uTime * 0.026) * 0.5 + 0.5;
+    float crossDrift = sin(p.x * -0.031 + p.y * 0.071 + crossing * 3.6 - uTime * 0.018) * 0.5 + 0.5;
+    float fine = sin((p.x + p.y) * 0.28 + slow * 5.0 + uTime * 0.04) * 0.5 + 0.5;
+    float opticalBody = slow * 0.44 + crossing * 0.22 + drift * 0.22 + crossDrift * 0.12;
+    vec3 deep = mix(uGround, uSurface, 0.22 + opticalBody * 0.34);
+    vec3 reflectedAir = mix(uSurface, uAtmosphere, 0.45 + slow * 0.24);
+    vec3 colour = mix(deep, reflectedAir, 0.14 + fresnel * 0.58);
+    float interference = abs(drift - crossDrift);
+    float glimmer = smoothstep(0.76, 0.98, interference * 0.62 + fine * 0.38);
+    colour += mix(uSurface, uAtmosphere, 0.62) * glimmer * 0.14 * (1.0 - uMapMode);
+
+    // Map is a cartographic exposure of the same reflective medium.
+    vec3 mapField = mix(uGround, uSurface, 0.28);
+    colour = mix(colour, mapField, uMapMode * 0.86);
 
     for (int i = 0; i < ${regionCapacity}; i++) {
         if (float(i) >= uCounts.x) break;
         vec4 region = uRegions[i];
         vec2 delta = p - region.xy;
-        float warp = sin(delta.x * 0.22 + float(i)) * 0.42 + cos(delta.y * 0.17) * 0.34;
-        float d = length(delta) + warp;
-        float approach = 1.0 - smoothstep(region.z, region.z + 24.0, d);
-        float core = 1.0 - smoothstep(region.w, region.z, d);
-        colour = mix(colour, uSurface, 0.13 * approach + 0.22 * core + uMapMode * (0.14 * approach + 0.2 * core));
-        float seam = smoothstep(region.w - 0.9, region.w + 0.2, d) *
-                     (1.0 - smoothstep(region.z - 0.15, region.z + 1.15, d));
-        colour *= 1.0 - 0.045 * seam;
-        float mapRing = 1.0 - smoothstep(0.0, 0.34, abs(d - 4.4));
-        float mapNode = 1.0 - smoothstep(0.65, 1.7, d);
-        colour = mix(colour, uTraceColour, mapRing * uMapMode * 0.72);
-        colour = mix(colour, uTraceColour, mapNode * uMapMode * 0.96);
+        float d = length(delta);
+        float presence = 1.0 - smoothstep(region.z * 0.8, region.z + 18.0, d);
+        float wave = abs(sin(d * 0.31 - uTime * 0.18 + float(i) * 1.7));
+        float memoryRipple = smoothstep(0.94, 1.0, wave) * presence;
+        float basin = exp(-d * 0.055) * presence;
+        colour = mix(colour, uSurface, basin * 0.09 + memoryRipple * 0.045);
+        float mapDiamond = abs(delta.x) + abs(delta.y);
+        float mapNode = 1.0 - smoothstep(0.48, 1.18, mapDiamond);
+        colour = mix(colour, uTraceColour, mapNode * uMapMode * 0.94);
     }
 
     for (int i = 0; i < ${traceCapacity}; i++) {
         if (float(i) >= uCounts.y) break;
-        float d = segmentDistance(p, uTraceA[i].xy, uTraceB[i].xy);
-        float trace = 1.0 - smoothstep(0.12, 0.34 + uTraceA[i].z * 0.28, d);
-        colour = mix(colour, uTraceColour, trace * (0.06 + uTraceA[i].z * 0.1 + uMapMode * 0.82));
+        vec2 projected = segmentProjection(p, uTraceA[i].xy, uTraceB[i].xy);
+        float trace = 1.0 - smoothstep(0.075, 0.22 + uTraceA[i].z * 0.16, projected.x);
+        float traveller = exp(-pow(fract(projected.y - uTime * 0.035) - 0.5, 2.0) * 210.0);
+        // A relationship segment reads as an arbitrary road or light stripe at eye height.
+        // Expose the same confirmed topology only in Map, where its endpoints and overview
+        // context make it legible as a relationship rather than as decorative ground geometry.
+        float strength = (0.79 + uTraceA[i].z * 0.12 + traveller * 0.34) * uMapMode;
+        colour = mix(colour, uTraceColour, trace * strength);
     }
 
     float radial = length(local);
-    float edge = smoothstep(uField.z, uField.w, radial);
-    colour = mix(colour, uAtmosphere, edge * 0.76 * (1.0 - uMapMode));
-    float distanceFog = smoothstep(72.0, 260.0, distance(vWorld, view_position)) * (1.0 - uMapMode);
-    colour = mix(colour, uAtmosphere, distanceFog * 0.88);
+    float fieldDissolve = smoothstep(uField.z, uField.w, radial);
+    float distanceDissolve = smoothstep(26.0, 108.0, viewDistance);
+    float horizonDissolve = smoothstep(0.48, 0.96, grazing);
+    float atmosphere = max(fieldDissolve * 0.78, max(distanceDissolve, horizonDissolve));
+    float mapAtmosphere = horizonDissolve * uMapMode;
+    colour = mix(colour, uAtmosphere, max(atmosphere * (1.0 - uMapMode), mapAtmosphere));
     gl_FragColor = vec4(colour, 1.0);
 }
 `;
@@ -115,6 +157,8 @@ export interface WorldField {
   setProfile(profile: WorldArtProfile): void;
   setMapGroundPose(pose: NavigationPose | null): void;
   setRenderOrigin(x: number, z: number): void;
+  setReducedMotion(reduced: boolean): void;
+  update(nowMs: number): void;
   destroy(): void;
 }
 
@@ -175,13 +219,14 @@ export function createWorldField(
   world: NavigationWorld,
   initialProfile: WorldArtProfile = ORIGIN_LANDSCAPE,
   theme: PresentationTheme = DAWN_THEME,
+  initiallyReducedMotion = false,
 ): WorldField {
   const entity = new pc.Entity('atlas-world-field');
   const buffers = worldFieldBufferShape(world);
   // The navigable/recovery radii remain visible in the material, but the physical draw surface
   // extends beyond the far clip so its square edge can never masquerade as a platform boundary.
-  const visualHalfExtent = Math.max(420, world.recoveryRadius * 2.6);
-  const mesh = createLandscapeMesh(device, world, visualHalfExtent);
+  const visualHalfExtent = Math.max(2200, world.recoveryRadius * 4.8);
+  const mesh = createLandscapeMesh(device, world, visualHalfExtent, 220);
   const material = new pc.ShaderMaterial({
     uniqueName: `orimera-grounded-world-field:${buffers.regionCapacity}:${buffers.traceCapacity}`,
     attributes: { aPosition: pc.SEMANTIC_POSITION, aNormal: pc.SEMANTIC_NORMAL },
@@ -222,8 +267,12 @@ export function createWorldField(
   ]));
   material.setParameter('uMapMode', 0);
   material.setParameter('uRenderOrigin', new Float32Array([0, 0]));
+  material.setParameter('uTime', 0);
 
+  let idleCycleMs = initialProfile.ui.motion.idleCycleMs;
+  let reducedMotion = initiallyReducedMotion;
   const setProfile = (profile: WorldArtProfile): void => {
+    idleCycleMs = profile.ui.motion.idleCycleMs;
     material.setParameter('uGround', new Float32Array(unitRgb(profile.palette.terrain)));
     material.setParameter('uSurface', new Float32Array(unitRgb(profile.palette.terrainLift)));
     material.setParameter('uAtmosphere', new Float32Array(unitRgb(profile.palette.haze)));
@@ -233,9 +282,14 @@ export function createWorldField(
   setProfile(initialProfile);
 
   entity.setPosition(world.centre.x, -0.035, world.centre.z);
-  entity.addComponent('render', {
-    meshInstances: [new pc.MeshInstance(mesh, material, entity)],
-  });
+  const fieldInstance = new pc.MeshInstance(mesh, material, entity);
+  fieldInstance.castShadow = false;
+  fieldInstance.receiveShadow = false;
+  entity.addComponent('render', { meshInstances: [fieldInstance] });
+  if (entity.render !== undefined && entity.render !== null) {
+    entity.render.castShadows = false;
+    entity.render.receiveShadows = false;
+  }
 
   const marker = new pc.Entity('atlas-map-user-marker');
   const markerGeometry = new pc.Geometry();
@@ -295,6 +349,12 @@ export function createWorldField(
     },
     setRenderOrigin(x, z) {
       material.setParameter('uRenderOrigin', new Float32Array([x, z]));
+    },
+    setReducedMotion(reduced) {
+      reducedMotion = reduced;
+    },
+    update(nowMs) {
+      material.setParameter('uTime', worldMotionSeconds(nowMs, idleCycleMs, reducedMotion));
     },
     destroy() {
       markerMesh.destroy();

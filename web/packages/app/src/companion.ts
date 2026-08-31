@@ -5,7 +5,7 @@ import type {
   Turn,
 } from '@orimera/companion-runtime';
 import type { EvidenceHandle, GraphSnapshot } from '@orimera/graph-client';
-import type { CompanionPanel } from './ui/companion-panel.js';
+import type { CompanionEncounter } from './ui/companion-encounter.js';
 
 /**
  * The turn loop. What turns the Companion's engine into a conversation.
@@ -30,8 +30,8 @@ export interface CompanionControllerOptions {
 }
 
 export interface CompanionController {
-  /** The panel is attached after construction, because it is built with handlers that call here. */
-  attach(panel: CompanionPanel): void;
+  /** The encounter is attached after construction, because its handlers call back here. */
+  attach(encounter: CompanionEncounter): void;
   current(): Turn | null;
   advance(nowMs: number): void;
   /** Call the Companion: generate a turn and open the panel onto it. */
@@ -55,7 +55,7 @@ export function createCompanionController(
 ): CompanionController {
   const { companion } = options;
   let turn: Turn | null = null;
-  let panel: CompanionPanel | null = null;
+  let panel: CompanionEncounter | null = null;
 
   const render = (): void => panel?.render(turn);
 

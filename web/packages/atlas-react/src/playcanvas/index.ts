@@ -37,7 +37,15 @@ export type { CameraState, ControlsConfig, InputMode } from './controls.js';
 export { DEFAULT_CONTROLS, FirstPersonControls } from './controls.js';
 
 export type { AnchorMotes, AnchorMotesOptions } from './anchor-motes.js';
-export { MOTE_FRAGMENT_GLSL, createAnchorMotes, moteAnchorIndices } from './anchor-motes.js';
+export {
+  MOTE_FRAGMENT_GLSL,
+  anchorKindSlot,
+  createAnchorMotes,
+  moteAnchorIndices,
+} from './anchor-motes.js';
+
+export type { SourceMediaCatalog, SourceMediaDescriptor } from './source-media.js';
+export { sourceMediaForIsland } from './source-media.js';
 
 export type { OverlayCounts, OverlayFrame } from './anchor-overlay.js';
 export { AnchorOverlay } from './anchor-overlay.js';
@@ -58,7 +66,7 @@ export type {
   IslandVisual,
   PlacementCheck,
 } from './atlas-binding.js';
-export { AtlasBinding, mapCameraState } from './atlas-binding.js';
+export { AtlasBinding, mapCameraState, sourceFirstArrivalPose } from './atlas-binding.js';
 
 export type {
   AssetAvailability,

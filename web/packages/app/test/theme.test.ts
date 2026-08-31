@@ -1,14 +1,21 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { DAWN_THEME } from '@orimera/presentation';
+import { DAWN_THEME, ORIGIN_LANDSCAPE, SURVEY_RELIEF } from '@orimera/presentation';
 import { DEFAULT_PREFERENCES, normalisePreferences } from '../src/preferences.js';
-import { applyDocumentAppearance, applyDocumentTheme, themeForPreferences } from '../src/theme.js';
+import {
+  applyDocumentAppearance,
+  applyDocumentTheme,
+  applyDocumentWorldStyle,
+  themeForPreferences,
+} from '../src/theme.js';
 
 afterEach(() => {
   document.documentElement.removeAttribute('data-theme');
   document.documentElement.removeAttribute('data-contrast');
   document.documentElement.removeAttribute('data-transparency');
+  document.documentElement.removeAttribute('data-world-style');
+  document.documentElement.removeAttribute('data-ui-texture');
   document.documentElement.removeAttribute('style');
 });
 
@@ -39,5 +46,42 @@ describe('Atlas presentation theme', () => {
     expect(document.documentElement.dataset['theme']).toBe('dawn');
     expect(document.documentElement.dataset['contrast']).toBe('high');
     expect(document.documentElement.dataset['transparency']).toBe('reduced');
+  });
+
+  it('replaces the world-owned skin while restoring protected system geometry', () => {
+    const root = document.documentElement;
+    for (const [property, legacyValue] of [
+      ['--radius-label', '0px'],
+      ['--radius-control', '2px'],
+      ['--radius-panel', '0px'],
+      ['--radius-pill', '2px'],
+      ['--ui-choice-radius', '2px'],
+      ['--ui-speech-radius', '2px'],
+    ] as const) root.style.setProperty(property, legacyValue);
+
+    applyDocumentWorldStyle(ORIGIN_LANDSCAPE);
+    expect(root.dataset['worldStyle']).toBe('origin-landscape');
+    expect(root.dataset['uiTexture']).toBe('paper-grain');
+    expect(root.style.getPropertyValue('--ui-companion-surface')).toBe(
+      ORIGIN_LANDSCAPE.ui.colors.companionSurface,
+    );
+    expect(root.style.getPropertyValue('--ui-font-body')).toBe(ORIGIN_LANDSCAPE.ui.typography.body);
+    expect(root.style.getPropertyValue('--radius-panel')).toBe('');
+    expect(root.style.getPropertyValue('--ui-choice-radius')).toBe('');
+    expect(root.style.getPropertyValue('--ui-speech-radius')).toBe('');
+    expect(root.style.getPropertyValue('--motion-idle-cycle')).toBe('5200ms');
+
+    applyDocumentWorldStyle(SURVEY_RELIEF);
+    expect(root.dataset['worldStyle']).toBe('survey-relief');
+    expect(root.dataset['uiTexture']).toBe('contour-grid');
+    expect(root.style.getPropertyValue('--ui-companion-surface')).toBe(
+      SURVEY_RELIEF.ui.colors.companionSurface,
+    );
+    expect(root.style.getPropertyValue('--ui-font-body')).toBe(SURVEY_RELIEF.ui.typography.body);
+    expect(root.style.getPropertyValue('--radius-panel')).toBe('');
+    expect(root.style.getPropertyValue('--ui-choice-radius')).toBe('');
+    expect(root.style.getPropertyValue('--ui-speech-radius')).toBe('');
+    expect(root.style.getPropertyValue('--profile-ui-companion-blur')).toBe('0px');
+    expect(root.style.getPropertyValue('--motion-idle-cycle')).toBe('4000ms');
   });
 });

@@ -28,6 +28,8 @@
 const API_PATH = '/api';
 const PREVIEW_API_PATH = '/preview-api';
 const PREVIEW_TOKEN = 'atlas-preview-read-only';
+const PRODUCT_TITLE = 'Orimera';
+const PREVIEW_TITLE = 'Orimera — synthetic read-only development preview';
 
 export interface Credentials {
   readonly baseUrl: string;
@@ -53,6 +55,11 @@ export function credentials(token: string): Credentials {
  */
 export function isAtlasPreview(search: string, development: boolean): boolean {
   return development && new URLSearchParams(search).get('preview') === '1';
+}
+
+/** Keep preview provenance visible in browser chrome without adding permanent world chrome. */
+export function applicationTitle(preview: boolean): string {
+  return preview ? PREVIEW_TITLE : PRODUCT_TITLE;
 }
 
 /** Credentials for the Vite-only preview route. No user credential is read or persisted. */

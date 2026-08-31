@@ -12,7 +12,9 @@
 
 :root {
   --gap: clamp(0.75rem, 1.4vw, 1.25rem);
-  --companion-size: min(26rem, 30vw, 34vh);
+  --companion-size: min(12rem, 19vw, 28vh);
+  --companion-font: var(--ui-font-companion);
+  --companion-utility-font: var(--ui-font-utility);
 }
 
 *,
@@ -28,7 +30,7 @@ body {
   overflow: hidden;
   background: var(--ground);
   color: var(--ink);
-  font: 400 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 400 15px/1.55 var(--ui-font-body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -80,8 +82,12 @@ body {
   z-index: 8;
   pointer-events: none;
   opacity: 0;
-  background: radial-gradient(circle at center, transparent 46%, rgb(0 0 0 / 88%) 118%);
-  transition: opacity 180ms ease;
+  background: radial-gradient(
+    circle at center,
+    transparent 46%,
+    color-mix(in srgb, var(--ui-vignette) 88%, transparent) 118%
+  );
+  transition: opacity var(--motion-standard) var(--motion-easing);
 }
 
 #shell[data-mode='traverse'][data-moving='true'][data-vignette='subtle']::after { opacity: 0.28; }
@@ -129,7 +135,7 @@ body {
  * pauses and nothing reloads. `converse` is pointer free: the reticle dims because it is no
  * longer what the user is aiming with, and the panels take their clicks back.
  */
-#shell[data-mode='traverse'] > :where(.rail, .detail, .confirm, .companion-panel, .forming) {
+#shell[data-mode='traverse'] > :where(.rail, .detail, .confirm, .companion-encounter, .forming) {
   pointer-events: none;
   opacity: 0.42;
 }
@@ -143,13 +149,20 @@ body {
   position: fixed;
   left: 50%;
   top: 50%;
-  width: 13px;
-  height: 13px;
-  margin: -7px 0 0 -7px;
-  border: 1px solid var(--ink);
-  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  background:
+    linear-gradient(var(--ink), var(--ink)) left top / 5px 1px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) left top / 1px 5px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) right top / 5px 1px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) right top / 1px 5px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) left bottom / 5px 1px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) left bottom / 1px 5px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) right bottom / 5px 1px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) right bottom / 1px 5px no-repeat;
   opacity: 0.2;
-  transition: opacity 160ms ease;
+  transition: opacity var(--motion-quick) var(--motion-easing);
   pointer-events: none;
 }
 
@@ -157,7 +170,7 @@ body {
   opacity: 0.62;
 }
 
-#shell[data-camera='map'] > :where(.reticle, .companion-panel) {
+#shell[data-camera='map'] > :where(.reticle, .companion-encounter) {
   opacity: 0;
   pointer-events: none;
 }
@@ -176,7 +189,7 @@ body {
   background: var(--panel);
   border: 1px solid var(--edge);
   border-radius: var(--radius);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(var(--blur-system));
 }
 
 .gate h1 {
@@ -202,7 +215,7 @@ input {
   padding: 0.6rem 0.75rem;
   background: color-mix(in srgb, var(--surface) 78%, transparent);
   border: 1px solid var(--edge);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--ink);
   font: inherit;
 }
@@ -217,7 +230,7 @@ select:focus-visible {
 button {
   font: inherit;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 0.5rem 0.9rem;
   border: 1px solid var(--edge);
   background: color-mix(in srgb, var(--raised) 66%, transparent);
@@ -245,7 +258,7 @@ button.ghost {
   background: var(--panel);
   border: 1px solid var(--edge);
   border-radius: var(--radius);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(var(--blur-system));
 }
 
 /*
@@ -265,7 +278,7 @@ button.ghost {
   gap: 0.6rem;
   transform: translateX(calc(-100% - var(--gap)));
   opacity: 0;
-  transition: transform 200ms ease, opacity 160ms ease;
+  transition: transform var(--motion-standard) var(--motion-easing), opacity var(--motion-quick) var(--motion-easing);
 }
 
 #shell[data-index='open'] .rail {
@@ -376,7 +389,7 @@ button.ghost {
   height: 1.1rem;
   display: grid;
   place-items: center;
-  border-radius: 4px;
+  border-radius: var(--radius-label);
   font-size: 0.62rem;
   font-weight: 600;
   color: var(--ground);
@@ -489,7 +502,7 @@ button.ghost {
 
 .band-row.is-pending {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
-  border-radius: 4px;
+  border-radius: var(--radius-label);
 }
 
 .row-label { color: var(--ink-soft); }
@@ -538,7 +551,7 @@ button.ghost {
 .citation img {
   width: 100%;
   height: auto;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--edge);
 }
 
@@ -567,9 +580,9 @@ button.ghost {
   color: var(--ink-soft);
   background: color-mix(in srgb, var(--surface) 82%, transparent);
   border: 1px solid var(--edge);
-  border-radius: var(--radius-label, 6px);
-  box-shadow: 0 8px 30px rgb(0 0 0 / 24%);
-  backdrop-filter: blur(10px);
+  border-radius: var(--radius-label);
+  box-shadow: 0 8px 30px color-mix(in srgb, var(--ui-shadow) 24%, transparent);
+  backdrop-filter: blur(var(--blur-world));
   font-size: 0.76rem;
   line-height: 1.4;
   text-align: center;
@@ -610,7 +623,7 @@ button.ghost {
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 18px 60px color-mix(in srgb, var(--ui-shadow) 55%, transparent);
 }
 
 .confirm[hidden] {
@@ -652,7 +665,7 @@ button.ghost {
 
 /* ------------------------------------------------------------------ the status bar */
 
-/* One governing sentence, with one concise exception when part of the Atlas is absent. */
+/* A concise exception only when part of the Atlas is absent. */
 .status {
   position: fixed;
   left: var(--gap);
@@ -669,45 +682,11 @@ button.ghost {
   font-size: 0.72rem;
   line-height: 1.5;
   color: var(--ink-faint);
-  text-shadow: 0 1px 3px rgb(0 0 0 / 70%);
+  text-shadow: 0 1px 3px color-mix(in srgb, var(--ui-shadow) 70%, transparent);
 }
 
 .status p {
   margin: 0;
-}
-
-.status-context {
-  display: flex;
-  flex-direction: column;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 0.25rem;
-}
-
-.preview-disclosure {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.12rem 0.48rem;
-  color: var(--ink-soft);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border: 1px solid var(--edge);
-  border-radius: 5px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  line-height: 1.35;
-  letter-spacing: 0.025em;
-  white-space: nowrap;
-  text-shadow: none;
-  backdrop-filter: blur(8px);
-}
-
-/*
- * Never dismissible. interaction-model.md 6.2 fixes this sentence and there is no control here
- * that hides it, because the coordinate rule it states is permanent.
- */
-.standing-caption {
-  color: var(--ink-soft);
-  opacity: 0.62;
 }
 
 .status-warning {
@@ -721,38 +700,81 @@ button.ghost {
 
 .atlas-commands {
   position: fixed;
-  left: 50%;
+  right: var(--gap);
   top: var(--gap);
   z-index: 10;
   display: flex;
-  gap: 0.15rem;
-  padding: 0.2rem;
-  transform: translateX(-50%);
-  background: color-mix(in srgb, var(--surface) 68%, transparent);
-  border: 1px solid var(--edge);
-  border-radius: 999px;
-  backdrop-filter: blur(12px);
+  gap: 0.5rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  backdrop-filter: none;
 }
 
 .atlas-commands button {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.28rem 0.58rem;
-  color: var(--ink-soft);
-  background: none;
-  border: 0;
-  border-radius: 999px;
-  font-size: 0.76rem;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 2.85rem;
+  height: 2.85rem;
+  padding: 0;
+  color: color-mix(in srgb, var(--ui-companion-accent) 78%, transparent);
+  background: color-mix(in srgb, var(--ui-companion-surface) 66%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-companion-accent) 22%, transparent);
+  border-radius: var(--radius-pill);
+  backdrop-filter: blur(var(--ui-companion-blur)) saturate(var(--ui-companion-saturation));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--ui-companion-accent) 13%, transparent),
+    0 8px 24px color-mix(in srgb, var(--ui-shadow) 22%, transparent);
+  transition:
+    color var(--motion-quick) var(--motion-easing),
+    background var(--motion-quick) var(--motion-easing),
+    border-color var(--motion-quick) var(--motion-easing),
+    transform var(--motion-quick) var(--motion-easing);
 }
 
 .atlas-commands button:hover,
+.atlas-commands button:focus-visible,
 .atlas-commands button[aria-current='page'] {
-  color: var(--ink);
-  background: color-mix(in srgb, var(--raised) 70%, transparent);
+  color: var(--ui-companion-ink);
+  background: var(--ui-companion-accent);
+  border-color: var(--ui-companion-accent);
+  outline: none;
+  transform: translateY(-2px);
 }
 
-.atlas-commands kbd { color: currentColor; opacity: 0.72; }
+.atlas-command-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.atlas-command-tooltip {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 50%;
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.32rem 0.55rem;
+  color: var(--ui-companion-text);
+  background: color-mix(in srgb, var(--ui-companion-surface) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-companion-accent) 18%, transparent);
+  border-radius: var(--radius-pill);
+  font: 500 0.66rem/1 var(--companion-utility-font);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -4px);
+  transition: opacity var(--motion-quick) var(--motion-easing), transform var(--motion-quick) var(--motion-easing);
+}
+
+.atlas-commands button:hover .atlas-command-tooltip,
+.atlas-commands button:focus-visible .atlas-command-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.atlas-commands kbd { color: var(--ui-companion-secondary); opacity: 0.9; }
 
 .map-caption {
   position: fixed;
@@ -760,11 +782,13 @@ button.ghost {
   top: calc(var(--gap) + 2.8rem);
   z-index: 10;
   margin: 0;
+  width: min(46rem, calc(100vw - 2 * var(--gap)));
   transform: translateX(-50%);
-  color: var(--ink-soft);
+  color: color-mix(in srgb, var(--ui-companion-text) 78%, transparent);
   font-size: 0.72rem;
   letter-spacing: 0.05em;
-  text-shadow: 0 1px 4px rgb(0 0 0 / 60%);
+  text-shadow: 0 1px 4px color-mix(in srgb, var(--ui-shadow) 60%, transparent);
+  text-align: center;
 }
 
 .map-caption[hidden] { display: none; }
@@ -789,9 +813,9 @@ button.ghost {
   color: var(--ink-soft);
   background: color-mix(in srgb, var(--ground) 84%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--edge));
-  border-radius: var(--radius-label, 6px);
-  box-shadow: 0 5px 18px rgb(0 0 0 / 22%);
-  backdrop-filter: blur(8px);
+  border-radius: var(--radius-label);
+  box-shadow: 0 5px 18px color-mix(in srgb, var(--ui-shadow) 22%, transparent);
+  backdrop-filter: blur(var(--blur-world));
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -828,11 +852,11 @@ button.ghost {
   color: var(--ink);
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   border: 1px solid var(--edge);
-  border-radius: 18px;
+  border-radius: var(--radius-panel);
   box-shadow:
     0 0 0 100vmax color-mix(in srgb, var(--ground) 68%, transparent),
-    0 30px 90px rgb(0 0 0 / 42%);
-  backdrop-filter: blur(24px) saturate(115%);
+    0 30px 90px color-mix(in srgb, var(--ui-shadow) 42%, transparent);
+  backdrop-filter: blur(var(--blur-system)) saturate(var(--saturation-system));
 }
 
 .system-overlay[hidden] { display: none; }
@@ -912,7 +936,7 @@ select {
   color: var(--ink);
   background: var(--raised);
   border: 1px solid var(--edge);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font: inherit;
 }
 
@@ -933,7 +957,7 @@ select {
 
 .option-value {
   color: var(--ink-faint);
-  font: 500 0.75rem/1 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font: 500 0.75rem/1 var(--ui-font-utility);
   text-align: right;
 }
 
@@ -963,12 +987,12 @@ select {
 
 kbd {
   color: var(--ink);
-  font: 500 0.72rem/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font: 500 0.72rem/1.2 var(--ui-font-utility);
   letter-spacing: 0.04em;
 }
 
-#shell[data-primary='options'] > :where(.rail, .detail, .confirm, .companion-panel, .forming),
-#shell[data-primary='controls'] > :where(.rail, .detail, .confirm, .companion-panel, .forming) {
+#shell[data-primary='options'] > :where(.rail, .detail, .confirm, .companion-encounter, .forming),
+#shell[data-primary='controls'] > :where(.rail, .detail, .confirm, .companion-encounter, .forming) {
   pointer-events: none;
   opacity: 0;
 }
@@ -1061,7 +1085,7 @@ kbd {
   gap: 0.3rem;
   font-size: 0.78rem;
   color: var(--ink-faint);
-  text-shadow: 0 1px 4px rgb(0 0 0 / 70%);
+  text-shadow: 0 1px 4px color-mix(in srgb, var(--ui-shadow) 70%, transparent);
 }
 
 .forming[hidden] {
@@ -1135,7 +1159,7 @@ kbd {
   background: color-mix(in srgb, var(--ground) 82%, transparent);
   border: 1px solid var(--edge);
   border-radius: var(--radius);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(var(--blur-world));
 }
 
 /* Pinned callouts. The left rule carries provenance, the same four colours as everywhere else. */
@@ -1157,19 +1181,39 @@ kbd {
  * detection was estimated at. Dashed while proposed, solid once the account holder confirms it,
  * so the difference between a guess and a fact is visible without reading the label. */
 .ov-marker {
-  padding: 0.1rem 0.4rem;
+  --presence-line: dashed;
+  position: relative;
+  padding: 0.1rem 0.62rem;
   font-size: 0.68rem;
   letter-spacing: 0.04em;
   color: var(--inference);
-  background: color-mix(in srgb, var(--ground) 55%, transparent);
-  border: 1px dashed color-mix(in srgb, var(--inference) 70%, transparent);
-  border-radius: 2px;
+  background: color-mix(in srgb, var(--ground) 42%, transparent);
+  border: 0;
+}
+
+.ov-marker::before,
+.ov-marker::after {
+  content: '';
+  position: absolute;
+  top: -0.22rem;
+  bottom: -0.22rem;
+  width: 0.26rem;
+  border-block: 1px var(--presence-line) currentColor;
+}
+
+.ov-marker::before {
+  left: 0;
+  border-left: 1px var(--presence-line) currentColor;
+}
+
+.ov-marker::after {
+  right: 0;
+  border-right: 1px var(--presence-line) currentColor;
 }
 
 .ov-marker[data-link-state='confirmed'] {
+  --presence-line: solid;
   color: var(--user);
-  border-style: solid;
-  border-color: var(--user);
 }
 
 .ov-chevron {
@@ -1181,117 +1225,113 @@ kbd {
   rotate: var(--angle, 0rad);
 }
 
-/* The mote field's canvas. Square, and sized from the wrapper rather than from itself. */
-.companion-flat {
-  position: absolute;
-  inset: 0;
-  margin: auto;
+.companion-stage {
+  position: fixed;
+  left: 50%;
+  top: clamp(2.5rem, 9vh, 5.25rem);
+  z-index: 5;
+  width: clamp(9rem, 16vw, 13rem);
+  aspect-ratio: 1;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--motion-deliberate) var(--motion-easing),
+    transform var(--motion-deliberate) var(--motion-easing);
+  transform: translate(-50%, 12px) scale(0.97);
+}
+
+.companion-stage[data-shown][data-ready] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%);
+}
+
+.companion-avatar {
+  display: block;
   width: 100%;
   height: 100%;
-  /* No object-fit. A canvas carries an intrinsic size, and `contain` scales that size to the box
-   * rather than letterboxing empty space: a mis-measured canvas becomes a smooth block of colour
-   * instead of visibly drawing nothing, which hides the fault it should be showing. */
+  overflow: visible;
 }
 
-/* Motion normally carries the state distinction. This visible caption replaces that channel when
- * the field is static. It is deliberately plain and adjacent to the body, not a badge or a meter. */
-.companion-motion-caption {
-  position: absolute;
-  right: 0.75rem;
-  bottom: 0.2rem;
-  left: 0.75rem;
-  margin: 0;
-  font-size: 0.72rem;
-  line-height: 1.4;
-  text-align: center;
-  color: var(--ink-soft);
-  text-shadow: 0 1px 5px rgb(0 0 0 / 75%);
+.companion-avatar-body,
+.companion-avatar-dot {
+  vector-effect: non-scaling-stroke;
 }
 
-.companion-motion-caption[hidden] {
+.companion-avatar-gaze {
+  transition: transform var(--motion-standard) var(--motion-easing);
+}
+
+.companion-avatar-blink {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: companion-avatar-blink var(--motion-idle-cycle) var(--motion-easing) infinite;
+}
+
+.companion-avatar-thinking {
   display: none;
 }
 
-/* The Companion's own canvas, composited over the world.
- *
- * A 2D canvas over the Atlas, sitting above the world and below the panel. It is transparent
- * where nothing is drawn, and it never takes pointer events: the Companion is something to look
- * at rather than to click, and an interactive layer here would steal the click that enters
- * pointer lock.
- */
-.companion-stage {
-  position: fixed;
-  right: 3vw;
-  top: 12vh;
-  z-index: 2;
-  width: var(--companion-size);
-  height: var(--companion-size);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 260ms ease, transform 260ms ease;
-  transform: translateY(14px) scale(0.97);
+.companion-stage[data-state='working'] .companion-avatar-orb {
+  display: none;
 }
 
-/* Shown. Pointer events come back with it: the scene tracks the cursor, and that tracking is
- * most of why it is here rather than a glTF. */
-/* Handedness. One preference, remembered, rather than a settings screen for a single choice. */
-#shell[data-companion-side='left'] .companion-stage {
-  right: auto;
-  left: 3vw;
+.companion-stage[data-state='working'] .companion-avatar-thinking {
+  display: block;
 }
 
-.companion-stage[data-shown] {
-  opacity: 1;
-  transform: none;
+.companion-stage[data-state='working'] .companion-avatar-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: companion-avatar-dot var(--motion-working-cycle) var(--motion-easing) infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .companion-stage {
-    transition: none;
-    transform: none;
-  }
+.companion-stage[data-state='working'] .companion-avatar-dot-2 { animation-delay: var(--motion-stagger); }
+.companion-stage[data-state='working'] .companion-avatar-dot-3 { animation-delay: calc(var(--motion-stagger) * 2); }
+
+@keyframes companion-avatar-blink {
+  0%, 43%, 47%, 100% { transform: scaleY(1); }
+  45% { transform: scaleY(0.08); }
 }
 
-/* -- the Companion -----------------------------------------------------------------------
- *
- * A prompt at the foot of the screen that expands into the conversation it offered. One element
- * with three states, so the transition reads as the same thing opening rather than as a panel
- * appearing over the world.
- *
- * Deliberately not a card. A bordered box with a solid fill is a piece of software sitting on top
- * of a place; this is a scrim that the world fades up through, so the text belongs to the screen
- * without walling off what is behind it. It is an `aside` and not a `<dialog>` because a dialog
- * takes Escape for free, and Escape has exactly one meaning here: release the mouse.
- */
-.companion-panel {
+@keyframes companion-avatar-dot {
+  0%, 58%, 100% { opacity: 0.45; transform: scale(0.78); }
+  29% { opacity: 1; transform: scale(1.08); }
+}
+
+/* -- composed Companion encounter --------------------------------------------------------- */
+.companion-encounter {
   position: fixed;
   left: 50%;
   bottom: 2.4rem;
   z-index: 4;
-  transform: translateX(-50%);
-  max-height: 60vh;
-  overflow-y: auto;
   color: var(--ink);
-  transition: width 220ms ease, padding 220ms ease, background 220ms ease;
+  transform: translateX(-50%);
+  transition:
+    opacity var(--motion-standard) var(--motion-easing),
+    transform var(--motion-standard) var(--motion-easing);
 }
 
-/* The resting prompt. A pill, and the only standing chrome in the product. */
-.companion-panel[data-state='enter'],
-.companion-panel[data-state='summon'] {
-  padding: 0.42rem 1rem;
-  background: color-mix(in srgb, var(--ground) 72%, transparent);
-  border-radius: 999px;
-  backdrop-filter: blur(10px);
+.companion-encounter[data-state='enter'],
+.companion-encounter[data-state='summon'] {
+  display: block;
+  padding: 0.48rem 0.82rem;
+  background: var(--material-instrument);
+  border: 1px solid color-mix(in srgb, var(--edge) 78%, transparent);
+  border-radius: var(--radius-pill);
+  backdrop-filter: blur(var(--blur-world));
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--material-shadow) 32%, transparent);
 }
 
-.companion-panel .prompt {
+.companion-prompt {
   margin: 0;
   font-size: 0.82rem;
   color: var(--ink-soft);
   white-space: nowrap;
+  text-shadow: none;
 }
 
-.companion-panel .prompt b {
+.companion-prompt b {
   display: inline-block;
   min-width: 1.15rem;
   padding: 0.02rem 0.3rem;
@@ -1299,270 +1339,478 @@ kbd {
   font-weight: 500;
   text-align: center;
   border: 1px solid var(--edge);
-  border-radius: 4px;
+  border-radius: var(--radius-label);
 }
 
-/* Open. No border and no card: a gradient the world fades up through. */
-/* Placed beside its subject. The inline left/top come from the projection; everything else is
- * the same panel, so nothing about it changes except where it sits. */
-.companion-panel[data-placed] {
-  bottom: auto;
+.companion-encounter[data-state='open'] {
+  --speech-width: min(58rem, calc(100vw - 12rem));
+  --choice-width: min(27rem, 31vw);
+
+  inset: 0;
+  pointer-events: none;
   transform: none;
 }
 
-/*
- * The words sit directly under the body, in the same column and on the same side.
- *
- * Bottom centre was the obvious game convention and it is wrong here: it lands under the reticle,
- * next to the focus readout that says what the user is aiming at, so two different answers to
- * "what is this" compete for one spot. Keeping the Companion and its words in one column also
- * removes the need for the tether the specification called for, because nothing has to explain
- * that the panel belongs to the body when they are plainly the same object.
- */
-.companion-panel[data-state='open'] {
+.companion-encounter[data-state='open'] ~ .atlas-commands {
   position: fixed;
-  right: 3vw;
-  left: auto;
-  top: calc(12vh + var(--companion-size) - 1.5rem);
-  bottom: auto;
-  transform: none;
-  width: var(--companion-size);
-  padding: 0;
-  background: none;
-  border-radius: 0;
-  backdrop-filter: none;
-}
-
-#shell[data-companion-side='left'] .companion-panel[data-state='open'] {
-  right: auto;
-  left: 3vw;
-}
-
-/* The presence name. It identifies which text belongs to the Companion without implying a
- * person, a recorded source, or a second interaction mode. */
-.companion-panel .companion-name {
+  inset: auto auto clamp(1.4rem, 3vh, 2.4rem) 50%;
+  z-index: 8;
   display: block;
-  margin-bottom: 0.2rem;
-  font-size: 0.72rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent);
+  width: min(66rem, calc(100vw - 2rem));
+  height: 9.6rem;
+  pointer-events: none;
+  transform: translateX(-50%);
 }
 
-/* The number that answers it. Legible as a key, because it is one. */
-.companion-panel .option .key {
-  display: inline-block;
-  width: 1.1rem;
-  margin-right: 0.55rem;
-  font-size: 0.72rem;
-  font-weight: 500;
-  color: var(--ink-faint);
-  text-align: center;
-  border: 1px solid var(--edge);
-  border-radius: 3px;
-}
-
-.companion-panel .option:hover:not([disabled]) .key {
-  color: var(--ink);
-  border-color: var(--ink-soft);
-}
-
-
-/* The way out. Marked with the key that also does it, so the keyboard route is learnable rather
- * than folklore. Not an escape: the escapes are answers about the question, this is just away. */
-.companion-panel .panel-close {
+.companion-encounter[data-state='open'] ~ .atlas-commands button {
   position: absolute;
-  top: 0.9rem;
-  right: 1rem;
-  width: 1.5rem;
-  height: 1.5rem;
-  padding: 0;
-  font: inherit;
-  font-size: 0.72rem;
-  line-height: 1;
-  color: var(--ink-faint);
-  background: none;
-  border: 1px solid var(--edge);
-  border-radius: 5px;
-  cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease;
+  width: 3.35rem;
+  height: 3.35rem;
+  color: var(--ui-companion-ink);
+  background: color-mix(in srgb, var(--ui-companion-text) 94%, transparent);
+  border-color: color-mix(in srgb, var(--ui-companion-surface) 16%, transparent);
+  pointer-events: auto;
 }
 
-.companion-panel .panel-close:hover {
-  color: var(--ink);
-  border-color: var(--ink-soft);
+.companion-encounter[data-state='open'] ~ .atlas-commands button:nth-child(1) { left: 0; top: 0; }
+.companion-encounter[data-state='open'] ~ .atlas-commands button:nth-child(2) { left: 0; bottom: 0; }
+.companion-encounter[data-state='open'] ~ .atlas-commands button:nth-child(3) { right: 0; top: 0; }
+.companion-encounter[data-state='open'] ~ .atlas-commands button:nth-child(4) { right: 0; bottom: 0; }
+
+.companion-encounter[data-state='open'] ~ .atlas-commands button:hover,
+.companion-encounter[data-state='open'] ~ .atlas-commands button:focus-visible,
+.companion-encounter[data-state='open'] ~ .atlas-commands button[aria-current='page'] {
+  color: var(--ui-companion-text);
+  background: var(--ui-companion-surface-hover);
+  border-color: color-mix(in srgb, var(--ui-companion-accent) 36%, transparent);
 }
 
-.companion-panel[data-state='open'] {
+.companion-encounter[data-state='open'] ~ .atlas-commands button:nth-child(-n + 2) .atlas-command-tooltip {
+  top: 50%;
+  left: calc(100% + 0.5rem);
+  transform: translate(0, -50%);
+}
+
+.companion-encounter[data-state='open'] ~ .atlas-commands button:nth-child(n + 3) .atlas-command-tooltip {
+  top: 50%;
+  right: calc(100% + 0.5rem);
+  left: auto;
+  transform: translate(0, -50%);
+}
+
+/* Fixed visual-novel composition: memory backdrop, central character, bottom speech, right choices. */
+.companion-speech {
   position: fixed;
+  right: auto;
+  bottom: clamp(1.4rem, 3vh, 2.4rem);
+  left: 50%;
+  width: var(--speech-width);
+  min-height: 9.6rem;
+  max-height: min(15rem, calc(100vh - 16rem));
+  padding: 2.1rem 2rem 1.25rem;
+  overflow: visible;
+  color: color-mix(in srgb, var(--ui-companion-text) 96%, transparent);
+  background: color-mix(in srgb, var(--ui-companion-surface) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-companion-accent) 25%, transparent);
+  border-radius: var(--ui-speech-radius);
+  corner-shape: squircle;
+  backdrop-filter: blur(var(--ui-companion-blur)) saturate(var(--ui-companion-saturation));
+  box-shadow: none;
+  pointer-events: auto;
+  font-family: var(--companion-font);
+  transform: translateX(-50%);
 }
 
-.companion-panel .utterance {
-  padding-right: 2.2rem;
-  margin: 0 0 0.9rem;
-  font-size: 1.05rem;
-  line-height: 1.45;
-  color: var(--ink);
-  text-shadow: 0 1px 6px rgb(0 0 0 / 60%);
+/* Signature: the speaker name is a real component that physically bisects the lens boundary. */
+.companion-speaker {
+  position: absolute;
+  top: 0;
+  left: 1.45rem;
+  min-width: 7.5rem;
+  margin: 0;
+  padding: 0.48rem 1rem 0.52rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.045em;
+  color: var(--ui-companion-ink);
+  text-align: center;
+  background: var(--ui-companion-accent);
+  border: 1px solid color-mix(in srgb, var(--ui-companion-text) 48%, transparent);
+  border-radius: var(--radius-pill);
+  transform: translateY(-50%);
 }
 
-.companion-panel ul {
-  margin: 0 0 0.5rem;
+.companion-utterance {
+  margin: 0;
+  font-size: clamp(0.98rem, 1.25vw, 1.12rem);
+  line-height: 1.47;
+  font-weight: 500;
+  color: var(--ui-companion-text);
+  text-shadow: 0 1px 8px color-mix(in srgb, var(--ui-shadow) 36%, transparent);
+}
+
+.companion-speech ul,
+.companion-choice-rail ul,
+.companion-choice-rail ol {
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.companion-panel .evidence {
+.companion-evidence {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-bottom: 0.9rem;
+  gap: 0.35rem 0.8rem;
+  margin-top: 0.65rem !important;
 }
 
-.companion-panel .evidence-chip {
-  padding: 0.1rem 0.55rem;
-  font-size: 0.74rem;
-  color: var(--ink-faint);
+.companion-evidence-action {
+  padding: 0.14rem 0;
+  font: 500 0.73rem/1.3 var(--companion-font);
+  letter-spacing: 0.03em;
+  color: var(--ui-companion-secondary);
   background: none;
-  border: 1px solid var(--edge);
-  border-radius: 999px;
+  border: 0;
   cursor: pointer;
 }
 
-.companion-panel .evidence-chip:hover {
-  color: var(--ink);
+.companion-evidence-action:hover,
+.companion-evidence-action:focus-visible {
+  color: var(--ui-companion-accent);
+  outline: 1px solid color-mix(in srgb, var(--ui-companion-secondary) 55%, transparent);
+  outline-offset: 4px;
 }
 
-/* Options as rows, not buttons. A stack of bordered rectangles is a form; this is someone
- * offering you answers. The marker on the left is the only affordance and it appears on hover. */
-.companion-panel .option {
+.companion-refusal {
+  margin: 0.65rem 0 0;
+  font-size: 0.78rem;
+  color: color-mix(in srgb, var(--ui-companion-text) 56%, transparent);
+}
+
+.companion-choice-rail {
+  position: fixed;
+  top: 49%;
+  right: clamp(1.5rem, 3.6vw, 4rem);
+  bottom: auto;
+  left: auto;
+  width: var(--choice-width);
+  max-height: min(25rem, calc(100vh - 5rem));
+  overflow-y: auto;
+  pointer-events: auto;
+  font-family: var(--companion-font);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--ui-companion-accent) 20%, transparent) transparent;
+  transform: translateY(-50%);
+}
+
+.companion-choices {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.choice-item {
+  min-width: 0;
+}
+
+.companion-choice,
+.companion-choices-submit,
+.companion-composer {
   width: 100%;
-  padding: 0.34rem 0 0.34rem 0.85rem;
+  min-height: 3.05rem;
   font: inherit;
-  font-size: 0.92rem;
+  color: color-mix(in srgb, var(--ui-companion-text) 88%, transparent);
+  background: color-mix(in srgb, var(--ui-companion-surface) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-companion-accent) 21%, transparent);
+  border-radius: var(--ui-choice-radius);
+  backdrop-filter: blur(var(--ui-companion-blur)) saturate(var(--ui-companion-saturation));
+  box-shadow: none;
+}
+
+.companion-choice {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.64rem 1rem;
+  font-size: 0.88rem;
   text-align: left;
-  color: var(--ink-soft);
-  background: none;
-  border: none;
-  border-left: 2px solid transparent;
   cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease;
+  transition:
+    color var(--motion-quick) var(--motion-easing),
+    border-color var(--motion-quick) var(--motion-easing),
+    background var(--motion-quick) var(--motion-easing);
 }
 
-.companion-panel .option:hover:not([disabled]),
-.companion-panel .option:focus-visible {
-  color: var(--ink);
-  border-left-color: var(--ink-soft);
+.companion-choice:hover:not([disabled]),
+.companion-choice:focus-visible {
+  color: var(--ui-companion-text);
+  background: color-mix(in srgb, var(--ui-companion-surface-hover) 91%, transparent);
+  border-color: color-mix(in srgb, var(--ui-companion-accent) 45%, transparent);
+  outline: none;
 }
 
-/* Tier 2 and above, marked before it is pressed rather than after, so the weight of an answer is
- * legible at the moment of choosing and not only in the confirmation that follows. */
-.companion-panel .option.consequential {
-  border-left-color: color-mix(in srgb, var(--user) 60%, transparent);
-}
-
-.companion-panel .unavailable .option {
-  color: var(--ink-faint);
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.companion-panel .unavailable .why {
-  display: block;
-  padding: 0 0 0.2rem 0.85rem;
-  font-size: 0.74rem;
-  color: var(--ink-faint);
-}
-
-.companion-panel .options.multi .key {
+.choice-key {
+  display: grid;
   flex: none;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  font: 500 0.68rem/1 var(--companion-utility-font);
+  color: color-mix(in srgb, var(--ui-companion-accent) 62%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-companion-accent) 22%, transparent);
+  border-radius: var(--radius-pill);
 }
 
-.companion-panel .options.multi label {
+.choice-label {
+  min-width: 0;
+}
+
+.companion-choice.consequential {
+  border-color: color-mix(in srgb, var(--ui-companion-accent) 21%, transparent);
+}
+
+.choice-item.unavailable {
+  padding-bottom: 0.55rem;
+  background: color-mix(in srgb, var(--ui-companion-surface) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-companion-unavailable) 42%, transparent);
+  border-radius: var(--ui-choice-radius);
+  backdrop-filter: blur(var(--ui-companion-blur));
+}
+
+.choice-item.unavailable .companion-choice {
+  color: color-mix(in srgb, var(--ui-companion-text) 40%, transparent);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.choice-unavailable-reason {
+  display: block;
+  padding: 0 1rem 0 3.1rem;
+  font: 500 0.68rem/1.35 var(--companion-utility-font);
+  color: color-mix(in srgb, var(--ui-companion-secondary) 52%, transparent);
+}
+
+.multi-choice {
+  cursor: pointer;
+}
+
+.choice-checkbox {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--ui-companion-secondary);
+}
+
+.companion-choices-submit {
+  margin-top: 0.55rem;
+  padding: 0.62rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ui-companion-ink);
+  background: var(--ui-companion-accent);
+  cursor: pointer;
+}
+
+.companion-other {
+  min-height: 3.05rem;
+}
+
+.companion-other-reveal[hidden],
+.companion-composer[hidden] {
+  display: none;
+}
+
+.companion-composer {
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  padding: 0.3rem 0;
-  font-size: 0.92rem;
-  color: var(--ink-soft);
-  cursor: pointer;
+  padding: 0.42rem 0.48rem 0.42rem 1rem;
 }
 
-.companion-panel .options.multi label:hover {
-  color: var(--ink);
-}
-
-.companion-panel button.primary {
-  margin-bottom: 0.7rem;
-  padding: 0.35rem 0.95rem;
-  font: inherit;
-  font-size: 0.85rem;
-  color: var(--ground);
-  background: var(--ink-soft);
-  border: none;
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.companion-panel .free-row {
-  display: flex;
-  gap: 0.4rem;
-  margin: 0.4rem 0 0.2rem;
-}
-
-.companion-panel .free {
+.companion-reply-input {
   flex: 1;
-  padding: 0.4rem 0;
+  min-width: 0;
+  padding: 0.3rem 0;
   font: inherit;
-  font-size: 0.9rem;
-  color: var(--ink);
+  font-size: 0.88rem;
+  color: var(--ui-companion-text);
   background: none;
-  border: none;
-  border-bottom: 1px solid var(--edge);
+  border: 0;
 }
 
-.companion-panel .free:focus {
+.companion-reply-input::placeholder {
+  color: color-mix(in srgb, var(--ui-companion-text) 42%, transparent);
+}
+
+.companion-reply-input:focus {
   outline: none;
-  border-bottom-color: var(--ink-soft);
 }
 
-.companion-panel .free-row button {
-  padding: 0.2rem 0.7rem;
-  font: inherit;
-  font-size: 0.8rem;
-  color: var(--ink-faint);
-  background: none;
-  border: none;
+.companion-reply-submit {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.05rem;
+  height: 2.05rem;
+  padding: 0;
+  color: var(--ui-companion-ink);
+  background: var(--ui-companion-accent);
+  border: 0;
+  border-radius: var(--radius-pill);
   cursor: pointer;
 }
 
-/* The escapes. Quiet, small, and always there. None of them is the wrong answer, so none of them
- * is styled as a lesser one. */
-.companion-panel .escapes {
+.reply-arrow {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.companion-reply-submit:hover,
+.companion-reply-submit:focus-visible {
+  background: var(--ui-companion-text);
+  outline: 2px solid color-mix(in srgb, var(--ui-companion-accent) 30%, transparent);
+  outline-offset: 2px;
+}
+
+.companion-escapes {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 1rem;
-  margin-top: 0.85rem;
-  padding-top: 0.7rem;
-  border-top: 1px solid color-mix(in srgb, var(--edge) 60%, transparent);
+  gap: 0.42rem;
+  margin-top: 0.7rem !important;
 }
 
-.companion-panel .escapes .option {
-  width: auto;
-  padding: 0.1rem 0;
-  font-size: 0.78rem;
-  color: var(--ink-faint);
-  border-left: none;
+.companion-escapes .choice-item {
+  flex: 1 1 auto;
 }
 
-.companion-panel .escapes .option:hover {
-  color: var(--ink-soft);
-  border-left: none;
+.companion-escapes .companion-choice {
+  min-height: 2.15rem;
+  justify-content: center;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--ui-companion-text) 62%, transparent);
+  background: color-mix(in srgb, var(--ui-companion-surface) 58%, transparent);
+  box-shadow: none;
 }
 
-.companion-panel .refusal {
-  margin: 0.6rem 0 0;
-  font-size: 0.8rem;
-  color: var(--ink-faint);
+@media (prefers-reduced-motion: reduce) {
+  .companion-stage,
+  .companion-encounter {
+    transition: none;
+  }
+
+  .companion-stage[data-shown][data-ready] { transform: translateX(-50%); }
+
+  .companion-avatar-blink,
+  .companion-stage[data-state='working'] .companion-avatar-dot {
+    animation: none;
+  }
+}
+
+/* 1012 × 324 keeps the same reading order: character centre, answers right, speech at bottom. */
+@media (max-height: 420px) and (min-width: 960px) {
+  .companion-stage {
+    top: 0.25rem;
+    width: 7rem;
+    height: 7rem;
+    transform: translate(-50%, 8px) scale(0.97);
+  }
+
+  .companion-stage[data-shown][data-ready] {
+    transform: translateX(-50%);
+  }
+
+  .companion-encounter[data-state='open'] {
+    --speech-width: calc(100vw - 8rem);
+    --choice-width: 19rem;
+  }
+
+  .companion-speech {
+    bottom: 0.5rem;
+    min-height: 6.4rem;
+    max-height: 6.4rem;
+    padding: 1.35rem 1rem 0.65rem;
+    border-radius: min(var(--ui-speech-radius), 1.35rem);
+  }
+
+  .companion-choice-rail {
+    top: 0.55rem;
+    right: 0.55rem;
+    max-height: 11.5rem;
+    transform: none;
+  }
+
+  .companion-encounter[data-state='open'] ~ .atlas-commands {
+    bottom: 0.5rem;
+    width: calc(100vw - 0.75rem);
+    height: 6.4rem;
+  }
+
+  .companion-encounter[data-state='open'] ~ .atlas-commands button {
+    width: 2.35rem;
+    height: 2.35rem;
+  }
+
+  .companion-encounter[data-state='open'] ~ .atlas-commands .atlas-command-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .companion-encounter[data-state='open'] ~ .atlas-commands .atlas-command-tooltip {
+    display: none;
+  }
+
+  .companion-speaker {
+    left: 1rem;
+    min-width: 6rem;
+    padding: 0.34rem 0.75rem 0.38rem;
+    font-size: 0.66rem;
+  }
+
+  .companion-utterance {
+    font-size: 0.8rem;
+    line-height: 1.34;
+  }
+
+  .companion-evidence {
+    margin-top: 0.34rem !important;
+  }
+
+  .companion-evidence-action {
+    font-size: 0.63rem;
+  }
+
+  .companion-choices {
+    gap: 0.3rem;
+  }
+
+  .companion-choice,
+  .companion-composer {
+    min-height: 2rem;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.7rem;
+  }
+
+  .choice-key {
+    width: 1.15rem;
+    height: 1.15rem;
+    font-size: 0.58rem;
+  }
+
+  .companion-escapes {
+    gap: 0.25rem;
+    margin-top: 0.35rem !important;
+  }
+
+  .companion-escapes .companion-choice {
+    min-height: 1.6rem;
+    padding: 0.2rem 0.45rem;
+    font-size: 0.61rem;
+  }
 }

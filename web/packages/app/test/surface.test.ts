@@ -7,7 +7,7 @@ import type { EntityRecord, GraphSnapshot, OccurrenceRecord } from '@orimera/gra
 import { EvidenceCache } from '../src/evidence.js';
 import { buildDetail } from '../src/ui/detail.js';
 import { buildLibrary } from '../src/ui/library.js';
-import { STANDING_CAPTION, buildStatus } from '../src/ui/status.js';
+import { MAP_ORIENTATION_CAPTION, buildStatus } from '../src/ui/status.js';
 
 /**
  * The rules a redesign of this surface must not quietly remove.
@@ -194,9 +194,9 @@ describe('citation-to-world navigation', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// The standing caption
+// The Map orientation caption
 
-describe('the standing caption', () => {
+describe('the Map orientation caption', () => {
   const status = () =>
     buildStatus({
       omittedRegionCount: 0,
@@ -204,15 +204,15 @@ describe('the standing caption', () => {
     });
 
   it('says exactly what interaction-model.md 6.2 fixes it to say', () => {
-    expect(status().querySelector('.standing-caption')?.textContent).toBe(STANDING_CAPTION);
+    expect(MAP_ORIENTATION_CAPTION).toBe(
+      'Positions show how these memories relate, not where they happened.',
+    );
   });
 
-  it('offers nothing that could dismiss it', () => {
-    // Never dismissible. Not "dismissible but we chose not to add the button": the bar contains
-    // no control at all, so there is nothing to wire a dismissal to.
+  it('does not leave the orientation sentence in the ground-view status area', () => {
     const bar = status();
     expect(bar.querySelectorAll('button, a, input, [role="button"]')).toHaveLength(0);
-    expect(bar.querySelector('.standing-caption')?.hasAttribute('hidden')).toBe(false);
+    expect(bar.textContent).not.toContain(MAP_ORIENTATION_CAPTION);
   });
 
   it('keeps diagnostics out of the normal world view', () => {

@@ -24,10 +24,11 @@ import { atlasVec3, forwardFromYawPitch, resolveGroundMovement } from '@orimera/
  * focus; re-locking after a user-initiated unlock needs a fresh engagement gesture.
  * https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API
  *
- * So the application never binds Escape, never calls `requestPointerLock` outside a real user
- * gesture, and never auto-relocks. It observes `pointerlockchange` and follows. The two input
- * modes in the interaction model, `traverse` and `converse`, are therefore a READ of the browser's
- * lock state rather than a state this module owns.
+ * So this renderer control never binds Escape, never calls `requestPointerLock` outside a real
+ * user gesture, and never auto-relocks. It observes `pointerlockchange` and follows. Once the lock
+ * is already absent, a separate converse-mode surface may use Escape for its ordinary dismissal.
+ * The two input modes in the interaction model, `traverse` and `converse`, are therefore a READ of
+ * the browser's lock state rather than a state this module owns.
  *
  * NO JUMP VERB. The space bar is Interact. That is a product decision, not an omission.
  */
@@ -69,6 +70,7 @@ export class FirstPersonControls {
   private readonly config: ControlsConfig;
   private sensitivityMultiplier = 1;
   private enabled = true;
+  private conversationActive = false;
   private readonly keys = new Set<string>();
   private vx = 0;
   private vz = 0;
@@ -83,7 +85,7 @@ export class FirstPersonControls {
   onModeChange: ((mode: InputMode) => void) | null = null;
   /** Interact. Bound to space, E, Enter and left click, exactly as the two-verb set requires. */
   onInteract: (() => void) | null = null;
-  /** Summon Companion. Bound to C and right click. */
+  /** Summon or dismiss Companion. Bound to X and right click. */
   onSummon: (() => void) | null = null;
 
   constructor(
@@ -128,6 +130,7 @@ export class FirstPersonControls {
 
     on(canvas, 'mousedown', (e: MouseEvent) => {
       if (!this.locked) {
+        if (!this.enabled || this.conversationActive) return;
         // A real user gesture, which is the only thing that may request the lock.
         void this.canvas.requestPointerLock();
         return;
@@ -138,14 +141,13 @@ export class FirstPersonControls {
     on(canvas, 'contextmenu', (e: Event) => e.preventDefault());
 
     on(window, 'keydown', (e: KeyboardEvent) => {
-      // Escape is never bound. It has exactly one meaning everywhere: release the mouse, and the
-      // browser owns it. Reading it here at all would be a bug.
+      // While this renderer may own movement, Escape belongs to the browser's unlock gesture.
+      // Converse-mode UI can handle it only after pointer lock has already been released.
       if (e.code === 'Escape') return;
       const target = e.target;
       if (
         target instanceof HTMLElement &&
-        (target.isContentEditable ||
-          target.closest('button, a[href], input, textarea, select, [role="button"]') !== null)
+        (target.isContentEditable || target.closest('input, textarea, select') !== null)
       ) {
         return;
       }
@@ -155,7 +157,10 @@ export class FirstPersonControls {
         e.preventDefault();
         this.onInteract?.();
       }
-      if (e.code === 'KeyC') this.onSummon?.();
+      if (e.code === 'KeyX' && !e.repeat) {
+        e.preventDefault();
+        this.onSummon?.();
+      }
     });
     on(window, 'keyup', (e: KeyboardEvent) => this.keys.delete(e.code));
     on(window, 'blur', () => {
@@ -199,12 +204,28 @@ export class FirstPersonControls {
     }
   }
 
-  /** Advance by `dt` seconds. Movement is disabled in `converse`, per the input mode table. */
+  /**
+   * Answering keeps a free cursor and blocks pointer recapture, but walking remains available.
+   * Camera look stays fixed until the person clicks the world again after dismissing the turn.
+   */
+  setConversationActive(active: boolean): void {
+    this.conversationActive = active;
+    if (active && this.locked && document.pointerLockElement === this.canvas) {
+      document.exitPointerLock();
+    }
+    if (!active) {
+      this.keys.clear();
+      this.vx = 0;
+      this.vz = 0;
+    }
+  }
+
+  /** Advance by `dt` seconds. Ordinary converse pauses; an active answer overlay opts into WASD. */
   update(dt: number): void {
     if (!this.enabled) return;
     let ix = 0;
     let iz = 0;
-    if (this.locked) {
+    if (this.locked || this.conversationActive) {
       if (this.keys.has('KeyW')) iz += 1;
       if (this.keys.has('KeyS')) iz -= 1;
       if (this.keys.has('KeyA')) ix -= 1;
