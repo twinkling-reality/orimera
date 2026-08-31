@@ -13,9 +13,11 @@ from typing import Annotated, Literal, TypeAlias
 
 from fastapi import APIRouter, Depends, Path, Response
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     StrictBool,
     StrictFloat,
     StrictInt,
@@ -35,6 +37,7 @@ from orimera.world import (
     ProposalOrigin,
     ProposalProvenance,
     StyleProposal,
+    StyleProposalRecord,
     StyleReference,
     StyleScope,
     StyleVersion,
@@ -50,8 +53,17 @@ StyleValue: TypeAlias = StrictBool | StrictInt | StrictFloat | StrictStr
 class StyleReferenceBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    profile_id: Annotated[str, Field(pattern=r"^[a-z][a-z0-9.-]*$", max_length=200)]
-    profile_version: Annotated[int, Field(ge=1)]
+    profile_id: Annotated[
+        str,
+        Field(
+            pattern=r"^[a-z][a-z0-9.-]*$",
+            max_length=200,
+            validation_alias=AliasChoices("profile_id", "profileId"),
+        ),
+    ]
+    profile_version: Annotated[
+        int, Field(ge=1, validation_alias=AliasChoices("profile_version", "profileVersion"))
+    ]
     parameters: dict[str, StyleValue] = Field(default_factory=dict, max_length=100)
 
 
@@ -59,7 +71,14 @@ class StyleScopeBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["global", "region"]
-    region_id: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    region_id: Annotated[
+        str | None,
+        Field(
+            min_length=1,
+            max_length=500,
+            validation_alias=AliasChoices("region_id", "islandId"),
+        ),
+    ] = None
 
     @model_validator(mode="after")
     def exact_scope(self) -> StyleScopeBody:
@@ -71,26 +90,89 @@ class StyleScopeBody(BaseModel):
 class PreviewBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    proposal_id: uuid.UUID
+    proposal_id: Annotated[
+        uuid.UUID, Field(validation_alias=AliasChoices("proposal_id", "proposalId"))
+    ]
     origin: ProposalOrigin
-    origin_reference: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    origin_reference: Annotated[
+        str | None,
+        Field(
+            min_length=1,
+            max_length=500,
+            validation_alias=AliasChoices("origin_reference", "originReference"),
+        ),
+    ] = None
     scope: StyleScopeBody
-    base_style_version_id: uuid.UUID
-    base_topology_digest: Annotated[str, Field(min_length=1, max_length=256)]
+    base_style_version_id: Annotated[
+        uuid.UUID,
+        Field(validation_alias=AliasChoices("base_style_version_id", "baseStyleVersionId")),
+    ]
+    base_topology_digest: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=256,
+            validation_alias=AliasChoices("base_topology_digest", "baseTopologyDigest"),
+        ),
+    ]
     profile: StyleReferenceBody
+    reference_ids: list[Annotated[str, Field(min_length=1, max_length=500)]] = Field(
+        default_factory=list,
+        max_length=100,
+        validation_alias=AliasChoices("reference_ids", "referenceIds"),
+    )
+    model_id: Annotated[
+        str | None,
+        Field(
+            min_length=1,
+            max_length=300,
+            validation_alias=AliasChoices("model_id", "modelId"),
+        ),
+    ] = None
+    prompt_version: Annotated[
+        str | None,
+        Field(
+            min_length=1,
+            max_length=300,
+            validation_alias=AliasChoices("prompt_version", "promptVersion"),
+        ),
+    ] = None
+    refines_proposal_id: Annotated[
+        uuid.UUID | None,
+        Field(validation_alias=AliasChoices("refines_proposal_id", "refinesProposalId")),
+    ] = None
 
 
 class ApplyBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    base_style_version_id: uuid.UUID
-    base_topology_digest: Annotated[str, Field(min_length=1, max_length=256)]
+    base_style_version_id: Annotated[
+        uuid.UUID,
+        Field(validation_alias=AliasChoices("base_style_version_id", "baseStyleVersionId")),
+    ]
+    base_topology_digest: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=256,
+            validation_alias=AliasChoices("base_topology_digest", "baseTopologyDigest"),
+        ),
+    ]
 
 
 class RollbackBody(ApplyBody):
-    target_version_id: uuid.UUID
+    target_version_id: Annotated[
+        uuid.UUID, Field(validation_alias=AliasChoices("target_version_id", "targetVersionId"))
+    ]
     origin: ProposalOrigin
-    origin_reference: Annotated[str, Field(min_length=1, max_length=500)] | None = None
+    origin_reference: Annotated[
+        str | None,
+        Field(
+            min_length=1,
+            max_length=500,
+            validation_alias=AliasChoices("origin_reference", "originReference"),
+        ),
+    ] = None
 
 
 class ProvenanceView(BaseModel):
@@ -127,6 +209,12 @@ class StyleVersionView(BaseModel):
     provenance: ProvenanceView | None
     created_at: dt.datetime
     warnings: list[str]
+    recipe_binding: dict[str, JsonValue]
+    capability_mapping: dict[str, str]
+    reference_ids: list[str]
+    model_id: str | None
+    prompt_version: str | None
+    refines_proposal_id: uuid.UUID | None
 
 
 class StyleStateView(BaseModel):
@@ -143,6 +231,42 @@ class PreviewView(BaseModel):
     proposal_id: uuid.UUID
     candidate: StyleVersionView
     created_at: dt.datetime
+
+
+class StyleProposalView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    proposal_id: uuid.UUID
+    provenance: ProvenanceView
+    scope: StyleScopeBody
+    base_style_version_id: uuid.UUID
+    base_topology_digest: str
+    profile: StyleReferenceView
+    reference_ids: list[str]
+    model_id: str | None
+    prompt_version: str | None
+    refines_proposal_id: uuid.UUID | None
+    recipe_binding: dict[str, JsonValue]
+    capability_mapping: dict[str, str]
+    status: str
+    validation_issues: list[str]
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+class SourceAssetProvenanceView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: uuid.UUID
+    evidence_span_id: uuid.UUID
+
+
+class SourceAssetReferenceView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    href: str
+    authorization: Literal["workspace-bearer"]
+    provenance: SourceAssetProvenanceView
 
 
 class SourceMediaView(BaseModel):
@@ -162,6 +286,7 @@ class SourceMediaView(BaseModel):
     height: int | None
     captured_at: dt.datetime | None
     captured_at_uncertainty_ms: int | None
+    asset_reference: SourceAssetReferenceView | None
 
 
 def read_repository(
@@ -218,6 +343,10 @@ def preview(body: PreviewBody, repository: WriteWorld, session: CurrentSession) 
         base_style_version_id=body.base_style_version_id,
         base_topology_digest=body.base_topology_digest,
         profile=_reference(body.profile),
+        reference_ids=tuple(body.reference_ids),
+        model_id=body.model_id,
+        prompt_version=body.prompt_version,
+        refines_proposal_id=body.refines_proposal_id,
     )
     created = repository.preview(proposal)
     return PreviewView(
@@ -226,6 +355,15 @@ def preview(body: PreviewBody, repository: WriteWorld, session: CurrentSession) 
         candidate=_version_view(created.candidate),
         created_at=created.created_at,
     )
+
+
+@router.get(
+    "/styles/proposals/{proposal_id}",
+    response_model=StyleProposalView,
+    summary="Inspect one authorised style proposal, provenance, and lifecycle state.",
+)
+def proposal(proposal_id: Annotated[uuid.UUID, Path()], repository: ReadWorld) -> StyleProposalView:
+    return _proposal_view(repository.proposal(proposal_id))
 
 
 @router.post(
@@ -347,10 +485,52 @@ def _version_view(version: StyleVersion) -> StyleVersionView:
         provenance=provenance,
         created_at=version.created_at,
         warnings=list(version.warnings),
+        recipe_binding=dict(version.recipe_binding),
+        capability_mapping=dict(version.capability_mapping),
+        reference_ids=list(version.reference_ids),
+        model_id=version.model_id,
+        prompt_version=version.prompt_version,
+        refines_proposal_id=version.refines_proposal_id,
+    )
+
+
+def _proposal_view(record: StyleProposalRecord) -> StyleProposalView:
+    proposal = record.proposal
+    return StyleProposalView(
+        proposal_id=proposal.proposal_id,
+        provenance=ProvenanceView(
+            origin=proposal.provenance.origin,
+            actor=proposal.provenance.actor,
+            origin_reference=proposal.provenance.origin_reference,
+        ),
+        scope=StyleScopeBody(kind=proposal.scope.kind, region_id=proposal.scope.region_id),
+        base_style_version_id=proposal.base_style_version_id,
+        base_topology_digest=proposal.base_topology_digest,
+        profile=_reference_view(proposal.profile),
+        reference_ids=list(proposal.reference_ids),
+        model_id=proposal.model_id,
+        prompt_version=proposal.prompt_version,
+        refines_proposal_id=proposal.refines_proposal_id,
+        recipe_binding=dict(record.recipe_binding),
+        capability_mapping=dict(record.capability_mapping),
+        status=record.status,
+        validation_issues=list(record.validation_issues),
+        created_at=record.created_at,
+        updated_at=record.updated_at,
     )
 
 
 def _source_view(source: WorldSourceMedia) -> SourceMediaView:
+    asset_reference = None
+    if source.evidence_path is not None and source.evidence_span_id is not None:
+        asset_reference = SourceAssetReferenceView(
+            href=source.evidence_path,
+            authorization="workspace-bearer",
+            provenance=SourceAssetProvenanceView(
+                source_id=source.source_id,
+                evidence_span_id=source.evidence_span_id,
+            ),
+        )
     return SourceMediaView(
         source_id=source.source_id,
         slot_key=source.slot_key,
@@ -366,4 +546,5 @@ def _source_view(source: WorldSourceMedia) -> SourceMediaView:
         height=source.height,
         captured_at=source.captured_at,
         captured_at_uncertainty_ms=source.captured_at_uncertainty_ms,
+        asset_reference=asset_reference,
     )

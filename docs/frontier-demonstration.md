@@ -61,7 +61,14 @@ The manifest profile is `orimera-frontier-build/v1`. Its exact top-level fields 
   "adaptation": {
     "profile_id": "origin-landscape",
     "profile_version": 1,
-    "parameters": {"vitality": 1}
+    "parameters": {"vitality": 1},
+    "proposal_provenance": {
+      "origin": "companion",
+      "origin_reference": "conversation:frontier-style",
+      "model_id": "<actual proposing model/version>",
+      "prompt_version": "<actual recipe prompt/version>",
+      "reference_ids": ["<opaque authorized design reference id>"]
+    }
   },
   "deletion_demo": {"path": "a.jpg"}
 }
@@ -85,6 +92,12 @@ The manifest:
   changes anywhere in the recursive directory; and
 - binds the pipeline to the checkout's model-manifest SHA-256.
 
+The adaptation block is an already-produced inert conversational proposal input, not evidence that
+this command invoked the named style model. Its required model/prompt/reference fields record the
+proposal's actual upstream provenance. The command validates that provenance, derives reviewed
+module/capability bindings from the closed backend registry, and never stores conversation text,
+private media, CSS, markup, scripts, shaders, renderer programs, or layout in the recipe.
+
 Precomputed artifact declarations have exact fields `artifact_id`, `kind`, `sha256`, `bytes`,
 `producer`, and `use`. In v1, `use` must be `disclose-only`. There is no reviewed importer for
 external COLMAP or splat work at this boundary, so the command records these artifacts as
@@ -102,8 +115,9 @@ One successful invocation performs these gates in order:
    renders the deterministic answer, and runs the answer validator;
 4. deterministically composes one stable region per live manifest source and labels it from the
    current `reconstruction_rung_is` assertion, using named source-first rung 4 when none exists;
-5. previews and discards one reviewed style proposal, previews two more from one base, applies one,
-   verifies stale rejection of the other, and rolls back to the original semantics;
+5. previews a Companion-origin recipe proposal, creates two provenance-bearing refinements from
+   the same base, discards the draft, applies one refinement, verifies stale rejection of the
+   other, inspects their durable states, and rolls back to the original semantics;
 6. creates two structural previews from one protected base and verifies that compare-and-swap
    rejects the stale one;
 7. projects and signs an initial World Memory Package containing an explicit operational
@@ -148,7 +162,8 @@ keys, and real run receipts belong outside Git.
   links, float refusal, duplicate content, and precomputed substitution refusal.
 - `tests/test_frontier_demonstration.py` runs the full lifecycle on PostgreSQL: two initial model
   calls, zero repeat calls, evidence opening, supported answer, rung-4 fallback, structural and
-  style stale rejection, rollback, three independently verified packages, one durable tombstone,
+  conversational recipe provenance/refinement/discard/apply, style stale rejection, rollback,
+  three independently verified packages, one durable tombstone,
   surviving source preservation, and a semantic diff that names a removed capture.
 - `uv run lint-imports` places `orimera.orchestration` above every reusable boundary, so no product
   package can depend on the acceptance workflow.

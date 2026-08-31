@@ -12,7 +12,7 @@ import json
 import math
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
@@ -23,16 +23,23 @@ from orimera.world.models import StyleParameterValue, StyleReference
 __all__ = [
     "STYLE_REGISTRY",
     "CapabilityDefinition",
+    "ModuleDefinition",
     "ParameterDefinition",
     "ProfileDefinition",
     "StyleRegistry",
 ]
 
 _ID: Final = re.compile(r"^[a-z][a-z0-9.-]*$")
+_PROFILE_ID: Final = re.compile(r"^[a-z][a-z0-9-]*$")
+_CONTROL_ID: Final = re.compile(r"^[a-z][a-z0-9-]*$")
 _COLOUR: Final = re.compile(r"^#[0-9a-fA-F]{6}$")
 _AVAILABLE: Final = frozenset({"supported", "experimental"})
+_AVAILABILITY: Final = frozenset({"product", "developer"})
+_RECIPE_ORIGINS: Final = frozenset({"authored", "generated"})
 _KINDS: Final = frozenset({"range", "choice", "color", "toggle"})
 _GROUPS: Final = frozenset({"world", "material", "atmosphere", "motion", "detail"})
+_MODULE_ID: Final = re.compile(r"^[a-z][a-z0-9-]*-v[1-9][0-9]*$")
+_COMMIT: Final = re.compile(r"^[0-9a-f]{40}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +49,13 @@ class CapabilityDefinition:
     group: str
     minimum: float | None = None
     maximum: float | None = None
+    options: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleDefinition:
+    module_id: str
+    capabilities: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +71,7 @@ class ParameterDefinition:
     maximum: float | None = None
     step: float | None = None
     options: tuple[str, ...] = ()
+    option_labels: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +83,10 @@ class ProfileDefinition:
     compatibility_key: str
     status: str
     fallback_key: tuple[str, int]
+    recipe_schema_version: int
+    availability: str
+    recipe_origin: str
+    modules: tuple[str, ...]
     controls: Mapping[str, ParameterDefinition]
 
     @property
@@ -81,7 +100,17 @@ class StyleRegistry:
     def __init__(self, document: Mapping[str, Any]) -> None:
         if document.get("schema_version") != 1:
             raise ValueError("world style registry schema_version must be 1")
+        frontend_contract = document.get("frontend_contract")
+        if (
+            not isinstance(frontend_contract, Mapping)
+            or frontend_contract.get("recipe_schema_version") != 1
+            or not isinstance(frontend_contract.get("commit"), str)
+            or _COMMIT.fullmatch(frontend_contract["commit"]) is None
+        ):
+            raise ValueError("world style registry needs a pinned frontend recipe contract")
+        self.frontend_contract_commit = frontend_contract["commit"]
         self._capabilities = self._read_capabilities(document.get("capabilities"))
+        self._modules = self._read_modules(document.get("modules"))
         self._profiles = self._read_profiles(document.get("profiles"))
         default = document.get("default_profile")
         if not isinstance(default, Mapping):
@@ -104,6 +133,10 @@ class StyleRegistry:
     @property
     def profiles(self) -> Mapping[tuple[str, int], ProfileDefinition]:
         return self._profiles
+
+    @property
+    def modules(self) -> Mapping[str, ModuleDefinition]:
+        return self._modules
 
     @property
     def default_reference(self) -> StyleReference:
@@ -181,11 +214,26 @@ class StyleRegistry:
             return self._resolved(fallback, {}), tuple(warnings)
 
     def catalog(self) -> dict[str, Any]:
+        """Return the renderer-neutral portion of the frontend ``WorldStyleCatalog``.
+
+        ``recipeBinding`` is an exact identity/capability handshake with the reviewed client
+        recipe.  It deliberately omits the frontend-owned visual source and all executable module
+        implementations.
+        """
         return {
-            "schema_version": 1,
-            "default_profile": self._reference_document(self.default_reference),
+            "schemaVersion": 1,
+            "contractSource": {"frontendCommit": self.frontend_contract_commit},
+            "defaultProfile": self._reference_document(self.default_reference),
             "profiles": [self._profile_document(profile) for profile in self._profiles.values()],
         }
+
+    def recipe_binding(self, reference: StyleReference) -> dict[str, Any]:
+        profile = self._profiles.get((reference.profile_id, reference.profile_version))
+        if profile is None:
+            raise InvalidStyleData(
+                f"unknown world profile {reference.profile_id}@{reference.profile_version}"
+            )
+        return self._recipe_binding_document(profile)
 
     def _read_capabilities(self, raw: Any) -> Mapping[str, CapabilityDefinition]:
         if not isinstance(raw, list) or not raw:
@@ -203,10 +251,39 @@ class StyleRegistry:
                 raise ValueError(f"duplicate world style capability {key}")
             minimum = _optional_number(item.get("min"))
             maximum = _optional_number(item.get("max"))
+            raw_options = item.get("options", [])
+            if not isinstance(raw_options, list):
+                raise ValueError(f"capability options for {key} must be a list")
+            options = tuple(str(value) for value in raw_options)
             if kind == "range" and (minimum is None or maximum is None or minimum >= maximum):
                 raise ValueError(f"range capability {key} needs ordered bounds")
-            values[key] = CapabilityDefinition(key, kind, group, minimum, maximum)
+            if kind == "choice" and (len(options) < 2 or len(set(options)) != len(options)):
+                raise ValueError(f"choice capability {key} needs unique options")
+            values[key] = CapabilityDefinition(key, kind, group, minimum, maximum, options)
         return MappingProxyType(values)
+
+    def _read_modules(self, raw: Any) -> Mapping[str, ModuleDefinition]:
+        if not isinstance(raw, list) or not raw:
+            raise ValueError("world style registry needs reviewed modules")
+        modules: dict[str, ModuleDefinition] = {}
+        for item in raw:
+            if not isinstance(item, Mapping):
+                raise ValueError("world style module must be an object")
+            module_id = str(item.get("module_id", ""))
+            raw_capabilities = item.get("capabilities", [])
+            if not isinstance(raw_capabilities, list):
+                raise ValueError(f"module capabilities for {module_id} must be a list")
+            capabilities = tuple(str(value) for value in raw_capabilities)
+            if _MODULE_ID.fullmatch(module_id) is None or module_id in modules:
+                raise ValueError(f"invalid or duplicate world style module {module_id!r}")
+            if (
+                not capabilities
+                or len(set(capabilities)) != len(capabilities)
+                or any(value not in self._capabilities for value in capabilities)
+            ):
+                raise ValueError(f"module {module_id} has invalid or unregistered capabilities")
+            modules[module_id] = ModuleDefinition(module_id, capabilities)
+        return MappingProxyType(modules)
 
     def _read_profiles(self, raw: Any) -> Mapping[tuple[str, int], ProfileDefinition]:
         if not isinstance(raw, list) or not raw:
@@ -217,7 +294,7 @@ class StyleRegistry:
                 raise ValueError("world style profile must be an object")
             profile_id = str(item.get("profile_id", ""))
             version = item.get("profile_version")
-            if not _ID.fullmatch(profile_id) or not isinstance(version, int) or version < 1:
+            if not _PROFILE_ID.fullmatch(profile_id) or not isinstance(version, int) or version < 1:
                 raise ValueError(f"invalid world style profile {profile_id!r}@{version!r}")
             key = (profile_id, version)
             if key in profiles:
@@ -226,6 +303,44 @@ class StyleRegistry:
             if not isinstance(fallback, Mapping):
                 raise ValueError(f"world style profile {profile_id}@{version} needs a fallback")
             controls = self._read_controls(key, item.get("controls"))
+            recipe = item.get("recipe")
+            if not isinstance(recipe, Mapping) or recipe.get("schema_version") != 1:
+                raise ValueError(f"world style profile {profile_id}@{version} needs recipe v1")
+            raw_modules = recipe.get("modules", [])
+            if not isinstance(raw_modules, list):
+                raise ValueError(f"recipe modules for {profile_id}@{version} must be a list")
+            modules = tuple(str(value) for value in raw_modules)
+            availability = str(recipe.get("availability", ""))
+            recipe_origin = str(recipe.get("origin", ""))
+            if (
+                not modules
+                or len(set(modules)) != len(modules)
+                or availability not in _AVAILABILITY
+                or recipe_origin not in _RECIPE_ORIGINS
+            ):
+                raise ValueError(f"invalid recipe binding for {profile_id}@{version}")
+            selected_capabilities: set[str] = set()
+            for module_id in modules:
+                module = self._modules.get(module_id)
+                if module is None:
+                    raise ValueError(
+                        f"unknown world style module {module_id} in {profile_id}@{version}"
+                    )
+                overlap = selected_capabilities.intersection(module.capabilities)
+                if overlap:
+                    raise ValueError(
+                        f"multiple modules own {', '.join(sorted(overlap))} in "
+                        f"{profile_id}@{version}"
+                    )
+                selected_capabilities.update(module.capabilities)
+            control_capabilities = {value.capability for value in controls.values()}
+            if selected_capabilities != control_capabilities:
+                missing = sorted(control_capabilities - selected_capabilities)
+                unmatched = sorted(selected_capabilities - control_capabilities)
+                raise ValueError(
+                    f"recipe capability binding mismatch for {profile_id}@{version}: "
+                    f"missing_modules={missing}, unmatched_modules={unmatched}"
+                )
             profile = ProfileDefinition(
                 profile_id=profile_id,
                 profile_version=version,
@@ -237,6 +352,10 @@ class StyleRegistry:
                     str(fallback.get("profile_id", "")),
                     int(fallback.get("profile_version", 0)),
                 ),
+                recipe_schema_version=1,
+                availability=availability,
+                recipe_origin=recipe_origin,
+                modules=modules,
                 controls=controls,
             )
             if profile.status not in {"supported", "experimental", "removed", "unsupported"}:
@@ -250,14 +369,21 @@ class StyleRegistry:
         if not isinstance(raw, list):
             raise ValueError(f"controls for {profile_key[0]}@{profile_key[1]} must be a list")
         controls: dict[str, ParameterDefinition] = {}
+        bound_capabilities: set[str] = set()
         for item in raw:
             if not isinstance(item, Mapping):
                 raise ValueError("world style control must be an object")
             key = str(item.get("key", ""))
             capability_key = str(item.get("capability", ""))
             capability = self._capabilities.get(capability_key)
-            if not _ID.fullmatch(key) or key in controls or capability is None:
+            if (
+                not _CONTROL_ID.fullmatch(key)
+                or key in controls
+                or capability is None
+                or capability_key in bound_capabilities
+            ):
                 raise ValueError(f"invalid or unregistered world style control {key!r}")
+            bound_capabilities.add(capability_key)
             kind = str(item.get("kind", ""))
             group = str(item.get("group", ""))
             if kind != capability.kind or group != capability.group:
@@ -265,7 +391,20 @@ class StyleRegistry:
             minimum = _optional_number(item.get("min"))
             maximum = _optional_number(item.get("max"))
             step = _optional_number(item.get("step"))
-            options = tuple(str(value) for value in item.get("options", ()))
+            raw_options = item.get("options", ())
+            if not isinstance(raw_options, list | tuple):
+                raise ValueError(f"options for {key} must be a list")
+            options: list[str] = []
+            option_labels: dict[str, str] = {}
+            for raw_option in raw_options:
+                if isinstance(raw_option, Mapping):
+                    value = str(raw_option.get("value", ""))
+                    label = _required_text(raw_option, "label")
+                else:
+                    value = str(raw_option)
+                    label = value
+                options.append(value)
+                option_labels[value] = label
             definition = ParameterDefinition(
                 key=key,
                 capability=capability_key,
@@ -277,7 +416,8 @@ class StyleRegistry:
                 minimum=minimum,
                 maximum=maximum,
                 step=step,
-                options=options,
+                options=tuple(options),
+                option_labels=MappingProxyType(option_labels),
             )
             self._validate_definition(definition, capability)
             self._validate_value(definition, definition.default_value)
@@ -309,6 +449,10 @@ class StyleRegistry:
             len(definition.options) < 2 or len(set(definition.options)) != len(definition.options)
         ):
             raise ValueError(f"invalid choice definition {definition.key}")
+        elif definition.kind == "choice" and any(
+            value not in capability.options for value in definition.options
+        ):
+            raise ValueError(f"choice definition {definition.key} exceeds capability options")
 
     @staticmethod
     def _validate_value(definition: ParameterDefinition, value: StyleParameterValue | Any) -> None:
@@ -359,23 +503,20 @@ class StyleRegistry:
     @staticmethod
     def _reference_document(reference: StyleReference) -> dict[str, Any]:
         return {
-            "profile_id": reference.profile_id,
-            "profile_version": reference.profile_version,
+            "profileId": reference.profile_id,
+            "profileVersion": reference.profile_version,
             "parameters": dict(reference.parameters),
         }
 
     def _profile_document(self, profile: ProfileDefinition) -> dict[str, Any]:
         return {
-            "profile_id": profile.profile_id,
-            "profile_version": profile.profile_version,
-            "display_name": profile.display_name,
+            "profileId": profile.profile_id,
+            "profileVersion": profile.profile_version,
+            "displayName": profile.display_name,
             "description": profile.description,
-            "compatibility_key": profile.compatibility_key,
+            "compatibilityKey": profile.compatibility_key,
             "status": profile.status,
-            "fallback": {
-                "profile_id": profile.fallback_key[0],
-                "profile_version": profile.fallback_key[1],
-            },
+            "recipeBinding": self._recipe_binding_document(profile),
             "controls": [
                 {
                     "key": control.key,
@@ -384,7 +525,7 @@ class StyleRegistry:
                     "group": control.group,
                     "label": control.label,
                     "description": control.description,
-                    "default_value": control.default_value,
+                    "defaultValue": control.default_value,
                     **(
                         {
                             "min": control.minimum,
@@ -394,10 +535,33 @@ class StyleRegistry:
                         if control.kind == "range"
                         else {}
                     ),
-                    **({"options": list(control.options)} if control.kind == "choice" else {}),
+                    **(
+                        {
+                            "options": [
+                                {"value": value, "label": control.option_labels[value]}
+                                for value in control.options
+                            ]
+                        }
+                        if control.kind == "choice"
+                        else {}
+                    ),
                 }
                 for control in profile.controls.values()
             ],
+        }
+
+    def _recipe_binding_document(self, profile: ProfileDefinition) -> dict[str, Any]:
+        return {
+            "schemaVersion": profile.recipe_schema_version,
+            "frontendCommit": self.frontend_contract_commit,
+            "availability": profile.availability,
+            "origin": profile.recipe_origin,
+            "profileId": profile.profile_id,
+            "profileVersion": profile.profile_version,
+            "modules": list(profile.modules),
+            "capabilityMapping": {
+                control.key: control.capability for control in profile.controls.values()
+            },
         }
 
 

@@ -89,6 +89,14 @@ def test_projector_archives_current_structure_and_append_only_receipt(repository
         "@type": "orimera:IEEE754Binary64",
         "hex": "0x1.0000000000000p+0",
     }
+    assert appearance["recipe_binding"]["modules"] == [
+        "aeroheart-optics-v1",
+        "registered-surface-v1",
+        "bounded-tempo-v1",
+    ]
+    assert {
+        value["module_id"] for value in appearance["registry_modules"]
+    } >= {"aeroheart-optics-v1", "registered-surface-v1", "bounded-tempo-v1"}
     assert interaction["state"] == "current"
     assert interaction["parameters"]["comfort.vignette"] == "strong"
     assert crate["@context"] == "https://w3id.org/ro/crate/1.2/context"

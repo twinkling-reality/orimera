@@ -531,7 +531,9 @@ def _style(cursor: psycopg.Cursor, world_id: str, version_id: uuid.UUID | None) 
     row = cursor.execute(
         "select version_id,revision,parent_version_id,topology_digest,global_profile_id,"
         "global_profile_version,global_parameters,rollback_target_version_id,origin,"
-        "origin_reference from world_style_version where world_id=%s and version_id=%s",
+        "origin_reference,reference_ids,model_id,prompt_version,refines_proposal_id,"
+        "recipe_binding,capability_mapping from world_style_version "
+        "where world_id=%s and version_id=%s",
         (world_id, version_id),
     ).fetchone()
     regions = cursor.execute(
@@ -546,6 +548,12 @@ def _style(cursor: psycopg.Cursor, world_id: str, version_id: uuid.UUID | None) 
         "p.choice_values from world_art_profile_registry r "
         "left join world_art_profile_parameter p using(profile_id,profile_version) "
         "order by r.profile_id,r.profile_version,p.parameter_key"
+    ).fetchall()
+    modules = cursor.execute(
+        "select pm.profile_id,pm.profile_version,pm.module_id,pm.application_order,"
+        "mc.capability_key,mc.capability_version from world_art_profile_module pm "
+        "join world_style_module_capability mc using(module_id) "
+        "order by pm.profile_id,pm.profile_version,pm.application_order,mc.application_order"
     ).fetchall()
     if row is None:
         raise PackageError("current style pointer does not resolve inside the snapshot")
@@ -565,8 +573,17 @@ def _style(cursor: psycopg.Cursor, world_id: str, version_id: uuid.UUID | None) 
         },
         "origin": row["origin"],
         "origin_reference": row["origin_reference"],
+        "proposal_provenance": {
+            "model_id": row["model_id"],
+            "prompt_version": row["prompt_version"],
+            "reference_ids": row["reference_ids"],
+            "refines_proposal_id": _optional_urn("style-proposal", row["refines_proposal_id"]),
+        },
         "profile": "orimera-adaptive-style-projection-v1",
         "registry": [dict(value) for value in registry],
+        "registry_modules": [dict(value) for value in modules],
+        "recipe_binding": row["recipe_binding"],
+        "capability_mapping": row["capability_mapping"],
         "regions": [dict(region) for region in regions],
         "state": "current",
         "topology_sha256": row["topology_digest"],

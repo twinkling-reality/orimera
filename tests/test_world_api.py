@@ -120,6 +120,17 @@ def world_api(repository, spine_schema, tmp_path, monkeypatch):
 def test_catalog_and_current_state_expose_references_not_renderer_programs(world_api):
     catalog = world_api.get("/world/styles/catalog")
     assert catalog.status_code == 200
+    contract = catalog.json()
+    assert contract["schemaVersion"] == 1
+    assert contract["defaultProfile"]["profileId"] == "origin-landscape"
+    aeroheart = next(
+        value for value in contract["profiles"] if value["profileId"] == "origin-landscape"
+    )
+    assert aeroheart["recipeBinding"]["modules"] == [
+        "aeroheart-optics-v1",
+        "registered-surface-v1",
+        "bounded-tempo-v1",
+    ]
     text = catalog.text.lower()
     for forbidden in ("javascript", '"css"', '"shader"', '"layout"', "https://"):
         assert forbidden not in text
@@ -236,12 +247,106 @@ def test_preview_apply_discard_and_rollback_are_visible_as_immutable_versions(wo
     ]
 
 
+def test_companion_recipe_proposals_preserve_provenance_and_refinement(world_api):
+    initial = world_api.current()
+    missing_provenance = world_api.preview_body(
+        origin="companion", origin_reference="conversation:17"
+    )
+    response = world_api.post("/world/styles/previews", missing_provenance)
+    assert (response.status_code, response.json()["code"]) == (422, "invalid_style_data")
+
+    draft_id = uuid.uuid4()
+    draft_body = world_api.preview_body(
+        proposal_id=str(draft_id),
+        origin="companion",
+        origin_reference="conversation:17",
+        model_id="style-proposer/v3",
+        prompt_version="world-recipe/v2",
+        reference_ids=["design-reference:light-study"],
+    )
+    draft = world_api.post("/world/styles/previews", draft_body)
+    assert draft.status_code == 201, draft.text
+
+    refined_id = uuid.uuid4()
+    refined_body = world_api.preview_body(
+        proposal_id=str(refined_id),
+        origin="companion",
+        origin_reference="conversation:18",
+        model_id="style-proposer/v3",
+        prompt_version="world-recipe/v2",
+        reference_ids=["design-reference:light-study"],
+        refines_proposal_id=str(draft_id),
+        profile={
+            "profile_id": "origin-landscape",
+            "profile_version": 1,
+            "parameters": {"vitality": 0.4, "surface-finish": "clear-lens"},
+        },
+    )
+    refined = world_api.post("/world/styles/previews", refined_body)
+    assert refined.status_code == 201, refined.text
+    inspected = world_api.get(f"/world/styles/proposals/{refined_id}")
+    assert inspected.status_code == 200
+    record = inspected.json()
+    assert record["status"] == "previewed"
+    assert record["refines_proposal_id"] == str(draft_id)
+    assert record["model_id"] == "style-proposer/v3"
+    assert record["prompt_version"] == "world-recipe/v2"
+    assert record["reference_ids"] == ["design-reference:light-study"]
+    assert record["recipe_binding"]["modules"] == [
+        "aeroheart-optics-v1",
+        "registered-surface-v1",
+        "bounded-tempo-v1",
+    ]
+    assert record["capability_mapping"]["surface-finish"] == "surface.finish"
+
+    discarded = world_api.delete(f"/world/styles/previews/{draft.json()['preview_id']}")
+    assert discarded.status_code == 204
+    applied = world_api.post(
+        f"/world/styles/previews/{refined.json()['preview_id']}/apply",
+        {
+            "base_style_version_id": initial["current"]["version_id"],
+            "base_topology_digest": "api-topology",
+        },
+    )
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["model_id"] == "style-proposer/v3"
+    assert applied.json()["refines_proposal_id"] == str(draft_id)
+    assert world_api.get(f"/world/styles/proposals/{refined_id}").json()["status"] == "applied"
+
+
+def test_frontend_camel_case_proposal_translates_to_the_backend_authority(world_api):
+    current = world_api.current()
+    response = world_api.post(
+        "/world/styles/previews",
+        {
+            "proposalId": str(uuid.uuid4()),
+            "origin": "settings",
+            "originReference": "atlas-options",
+            "scope": {"kind": "global"},
+            "baseStyleVersionId": current["current"]["version_id"],
+            "baseTopologyDigest": current["current_topology_digest"],
+            "profile": {
+                "profileId": "origin-landscape",
+                "profileVersion": 1,
+                "parameters": {"surface-finish": "clear-lens"},
+            },
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["candidate"]["recipe_binding"]["profileId"] == "origin-landscape"
+
+
 def test_style_topology_and_asset_failures_have_distinct_problem_codes(world_api):
     current = world_api.current()
 
     invalid = world_api.preview_body()
     invalid["profile"]["parameters"] = {"css": "body { display:none }"}
     response = world_api.post("/world/styles/previews", invalid)
+    assert (response.status_code, response.json()["code"]) == (422, "invalid_style_data")
+
+    unknown_version = world_api.preview_body()
+    unknown_version["profile"]["profile_version"] = 2
+    response = world_api.post("/world/styles/previews", unknown_version)
     assert (response.status_code, response.json()["code"]) == (422, "invalid_style_data")
 
     stale = world_api.preview_body(base_style_version_id=str(uuid.uuid4()))
@@ -282,6 +387,7 @@ def test_source_listing_preserves_missing_evidence_instead_of_inventing_an_asset
             "height": None,
             "captured_at": None,
             "captured_at_uncertainty_ms": None,
+            "asset_reference": None,
         }
     ]
 

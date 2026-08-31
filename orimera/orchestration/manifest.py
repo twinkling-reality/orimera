@@ -72,6 +72,10 @@ class Adaptation:
     profile_id: str
     profile_version: int
     parameters: dict[str, bool | int | str]
+    origin_reference: str
+    model_id: str
+    prompt_version: str
+    reference_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,7 +288,11 @@ def _precomputed(value: Any, index: int) -> PrecomputedArtifact:
 
 def _adaptation(value: Any) -> Adaptation:
     item = _mapping(value, "adaptation")
-    _keys(item, {"profile_id", "profile_version", "parameters"}, "adaptation")
+    _keys(
+        item,
+        {"profile_id", "profile_version", "parameters", "proposal_provenance"},
+        "adaptation",
+    )
     parameters = _mapping(item["parameters"], "adaptation.parameters")
     if not parameters:
         raise BuildManifestError("adaptation.parameters must not be empty")
@@ -294,10 +302,35 @@ def _adaptation(value: Any) -> Adaptation:
             raise BuildManifestError(
                 f"adaptation.parameters.{key} must be a boolean, integer, or string"
             )
+    provenance = _mapping(item["proposal_provenance"], "adaptation.proposal_provenance")
+    _keys(
+        provenance,
+        {"origin", "origin_reference", "model_id", "prompt_version", "reference_ids"},
+        "adaptation.proposal_provenance",
+    )
+    if provenance["origin"] != "companion":
+        raise BuildManifestError("adaptation proposal provenance must use companion origin")
+    raw_reference_ids = _array(
+        provenance["reference_ids"], "adaptation.proposal_provenance.reference_ids"
+    )
+    reference_ids = tuple(
+        _nonempty(value, f"adaptation.proposal_provenance.reference_ids[{index}]")
+        for index, value in enumerate(raw_reference_ids)
+    )
+    if not reference_ids or len(set(reference_ids)) != len(reference_ids):
+        raise BuildManifestError("adaptation proposal reference_ids must be non-empty and unique")
     return Adaptation(
         profile_id=_nonempty(item["profile_id"], "adaptation.profile_id"),
         profile_version=_integer(item["profile_version"], "adaptation.profile_version", minimum=1),
         parameters=dict(parameters),
+        origin_reference=_nonempty(
+            provenance["origin_reference"], "adaptation.proposal_provenance.origin_reference"
+        ),
+        model_id=_nonempty(provenance["model_id"], "adaptation.proposal_provenance.model_id"),
+        prompt_version=_nonempty(
+            provenance["prompt_version"], "adaptation.proposal_provenance.prompt_version"
+        ),
+        reference_ids=reference_ids,
     )
 
 

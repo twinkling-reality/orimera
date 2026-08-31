@@ -6,7 +6,8 @@ authority is implemented separately in [spatial-world-authority.md](spatial-worl
 This document is the persistence and HTTP half of
 [ADR-0007](adr/0007-world-composition-and-customization.md) and the
 [Atlas world customization contract](atlas-world-customization-contract.md). The implementation is
-`orimera/world/`, migration `0017_adaptive_world_styles.sql`, and the `/world` API routes.
+`orimera/world/`, migrations `0017_adaptive_world_styles.sql` and
+`0023_frontend_world_recipe_contract.sql`, and the `/world` API routes.
 
 ## Boundary
 
@@ -22,6 +23,11 @@ The backend stores only:
 - current pointers; and
 - proposal/apply/discard/rollback provenance.
 
+For Companion proposals that provenance includes reference IDs, model ID, prompt version, and
+optional `refines_proposal_id`. The server derives and stores the recipe/module/capability binding
+from its closed registry; clients and models cannot submit executable bindings. Conversation text
+and preview-session state are not durable style fields.
+
 It does not store or return CSS, markup, JavaScript, shaders, renderer programs, remote texture
 URLs, or interface layout. `WorldUiStyle`/presentation realization stays in the reviewed client
 presentation system; the backend does not author panel structure, generated forms, or screen
@@ -35,10 +41,25 @@ bindings, reconstruction requirements, or destinations.
 
 ## Registry and fallback
 
-`orimera/world/style-registry.v1.json` mirrors the committed presentation profile/capability
-contract. The loader rejects duplicate controls, unknown capabilities, mismatched kinds/groups,
-widened ranges, invalid defaults, and profiles without a registered fallback. Runtime database
-roles have SELECT-only access to the three registry tables.
+`orimera/world/style-registry.v1.json` is pinned to the renderer-neutral portion of frontend commit
+`55b123627314d328fba3850eb607d8a7682a8cad`. The referenced frontend history is on a divergent
+branch, so this backend does not copy its visual profiles or executable TypeScript modules. The
+loader instead validates their exact reviewed module IDs, one-to-one capability ownership,
+controls, profile versions, safe ranges/options, and recipe availability/origin. The catalog uses
+the frontend `WorldStyleCatalog` camel-case shape and extends each descriptor with an inert
+`recipeBinding`. Runtime database roles have read-only access to the registry rows.
+
+The catalog deliberately uses the existing frontend camel-case `WorldStyleCatalog` keys. Preview,
+apply, and rollback bodies accept both that frontend casing and the API's established snake-case
+names: `proposalId ↔ proposal_id`, `baseStyleVersionId ↔ base_style_version_id`,
+`baseTopologyDigest ↔ base_topology_digest`, `profileId/profileVersion ↔
+profile_id/profile_version`, and regional `islandId ↔ region_id`. The API normalizes both forms to
+one domain model; it does not persist two schemas. The HTTP contract test submits the frontend form
+and inspects the same backend-produced recipe binding.
+
+Unknown profile versions, modules, capabilities, and parameters fail closed for new proposals and
+for preview-to-apply revalidation. Historical immutable rows may resolve to a warned display
+fallback, but old parameters are discarded and never interpreted against a newer recipe.
 
 New proposals must name a currently supported or experimental exact profile version. Historical
 versions are never rewritten when support changes:
@@ -75,7 +96,10 @@ rows are the intentionally mutable exceptions.
 Rejected proposals are also audit records. Invalid style data, stale bases, and topology conflicts
 retain the supplied origin, token-derived actor, origin reference, and rejection code. `settings`
 and `companion` proposals require an origin reference; `user` proposals may omit one. The HTTP body
-has no actor field: the actor comes from the bearer token.
+has no actor field: the actor comes from the bearer token. Companion proposals additionally require
+model ID, prompt version, and at least one opaque reference ID. `GET /world/styles/proposals/{id}`
+exposes acceptance/rejection/discard/stale status, refinement lineage, and the exact inert recipe
+binding without storing raw conversation or private reference media.
 
 ## Source media
 
@@ -93,7 +117,9 @@ security applies to every source query.
   reason.
 
 Only an available source carries a local authenticated evidence path such as
-`/evidence/{span_id}`. No remote asset URL is accepted or emitted. Requiring one source through
+`/evidence/{span_id}` and an `asset_reference` that names its source slot and evidence-span
+provenance and declares workspace-bearer authorization. No remote asset URL is accepted or emitted.
+Requiring one source through
 `GET /world/source-media/{source_id}` returns `unavailable_asset` rather than inventing media.
 Unknown and cross-workspace source IDs return the identical `unknown_reference` response.
 
@@ -106,6 +132,7 @@ All routes require a bearer token.
 | `GET` | `/world/styles/catalog` | Reviewed profiles and capability-backed controls |
 | `GET` | `/world/styles/current` | Current version plus the independently current topology digest |
 | `GET` | `/world/styles/versions` | Immutable resolved history with warnings/provenance |
+| `GET` | `/world/styles/proposals/{id}` | Proposal status, provenance, refinement, and recipe binding |
 | `POST` | `/world/styles/previews` | Validate and create an isolated preview |
 | `POST` | `/world/styles/previews/{id}/apply` | Compare both bases and atomically apply |
 | `DELETE` | `/world/styles/previews/{id}` | Atomically discard without changing current style |
@@ -126,8 +153,8 @@ The domain problem codes are intentionally distinct:
 
 ## Verification
 
-`tests/test_world_style_contract.py` checks the Python registry against the committed TypeScript
-profile/capability vocabulary and rejects executable/remote payload channels.
+`tests/test_world_style_contract.py` pins the Python adapter to the inspected frontend recipe
+commit and rejects unknown modules/capabilities and executable/remote payload channels.
 `tests/test_world_style_postgres.py` executes preview isolation, competing-writer exclusion,
 topology invalidation, immutable rollback, three-origin audit provenance, and source states against
 PostgreSQL 18. `tests/test_world_api.py` holds the route shapes, problem codes, actor derivation, and

@@ -74,7 +74,10 @@ READ_ONLY_TABLES: Final = (
     "schema_migrations",
     "world_art_profile_parameter",
     "world_art_profile_registry",
+    "world_art_profile_module",
     "world_style_capability_registry",
+    "world_style_module_capability",
+    "world_style_module_registry",
 )
 
 #: The vocabulary is administered, not generated. Without revoking this the role could insert a

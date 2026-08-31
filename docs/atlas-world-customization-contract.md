@@ -32,6 +32,9 @@ scope: global | region(islandId)
 baseStyleVersionId
 baseTopologyDigest
 profile: profileId + profileVersion + validated parameter values
+referenceIds
+modelId + promptVersion (Companion only)
+refinesProposalId (optional)
 ```
 
 Preview creates an isolated candidate style version. It does not change current state. Apply is
@@ -65,6 +68,23 @@ A style descriptor owns a parameter manifest. Each control has a stable key, a r
 kind, group, label, explanation, safe range/options, and default. Different styles may expose
 different manifests. Options renders the active manifest rather than hard-coding Aeroheart sliders.
 
+The frontend recipe contract inspected at `55b1236` is the execution boundary. Its version-one
+recipe contains `schemaVersion`, product/developer availability, authored/generated origin, a
+versioned visual profile, bounded controls, and reviewed local module IDs. The frontend owns the
+visual profile, module implementations, exact capability validation, contrast correction,
+protected component geometry, preview rendering, reduced-motion behavior, and accessibility. The
+backend does not reproduce that visual source. It returns and persists an inert `recipeBinding`
+containing only the exact schema/profile version, module IDs, and control-to-capability mapping.
+That is an adapter to the existing client recipe, not a second style language.
+
+Backend proposals can select a registered recipe version and parameter values. They cannot carry
+CSS, markup, JavaScript, shaders, renderer programs, remote texture URLs, private media, interface
+layout, or new module implementations. A Companion proposal also carries durable reference IDs,
+model ID, prompt version, actor/origin, and optional refinement lineage; conversation text and
+preview-session state are excluded. Apply records those values on the immutable version. Rejection,
+discard, stale closure, refinement, and rollback remain inspectable without turning transient
+conversation into a durable preference.
+
 The trusted renderer capability registry is the limit of runtime AI programmability. A model may
 select capabilities, rename controls, narrow ranges, choose defaults, and propose values. It may not
 invent an executable binding, widen a protected range, or ship generated shader/code into the
@@ -83,8 +103,10 @@ stroke, and focus uses contrast + outline.
 
 ## 5. Failure and fallback rules
 
-- unknown or removed global profile → catalog default plus warning;
-- unknown regional profile → ignore that override plus warning;
+- unknown recipe/profile version, module, capability, or parameter in a new proposal or client
+  handshake → fail closed before preview;
+- unknown or removed profile in immutable historical data → display a warned default/ignored
+  regional override, discarding the old parameters rather than reinterpreting them;
 - stale style base → reject preview/apply;
 - changed topology digest → reject as a protected conflict;
 - unknown region → reject;
@@ -105,14 +127,24 @@ Design references belong to proposal provenance. The intended flow is:
 
 The model may explain which reference traits mapped to which capability. Reference images and
 conversation text are not renderer instructions and never bypass manifest validation.
-The production boundary is `orimera/world/`, migration `0017_adaptive_world_styles.sql`, and the
-`/world/styles` routes. The present Atlas UI remains unchanged and may continue using its per-device
-preference until it adopts that API. See [world-style-backend.md](world-style-backend.md).
+The production boundary is `orimera/world/`, migrations `0017_adaptive_world_styles.sql` and
+`0023_frontend_world_recipe_contract.sql`, and the `/world/styles` routes. Durable versions and
+current pointers live there; live conversation and isolated preview sessions remain separate. See
+[world-style-backend.md](world-style-backend.md).
+
+The referenced frontend commits are not ancestors of this backend worktree; their merge base is
+`c5f4c029f53013cb209af70e2814e7482cd332c5`. This branch therefore reproduces only the shared inert
+contract pinned to `55b123627314d328fba3850eb607d8a7682a8cad`. Integrating the actual frontend
+registry, versioned previews, Atlas journey, and verified visual system still depends on commits
+`55b1236`, `6b6b282`, `8ccebb3`, and `5c95cb3` (or reviewed descendants). It does not cherry-pick
+or redesign them.
 
 ## 6. Source-media contract
 
 Source bindings are protected topology values, not style parameters. Each registered source slot
 either names an evidence span from the same workspace or records why no evidence exists. Reads
 distinguish `available`, `unavailable_asset`, and `missing_evidence`; cross-workspace and nonexistent
-source IDs are indistinguishable. Available sources expose only the existing authenticated local
-evidence path, never a remote texture URL.
+source IDs are indistinguishable. Available sources expose an authenticated local evidence path
+plus a provenance-bearing asset reference naming the protected source slot and evidence span.
+Unavailable states expose no asset reference. Private media remains in the evidence store and
+never enters a style recipe.

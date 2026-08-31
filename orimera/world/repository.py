@@ -35,7 +35,9 @@ from orimera.world.models import (
     SourceMediaState,
     StylePreview,
     StyleProposal,
+    StyleProposalRecord,
     StyleReference,
+    StyleScope,
     StyleVersion,
     TopologyContract,
     WorldSourceMedia,
@@ -121,10 +123,13 @@ class WorldStyleRepository:
             if state is None:
                 default = self.registry.default_reference
                 self._validate_reference_compatibility(default, contract.topology_digest)
+                binding, capability_mapping = self._binding_for_reference(default)
                 row = self.connection.execute(
                     "insert into world_style_version "
                     "(workspace_id,world_id,revision,topology_digest,global_profile_id,"
-                    "global_profile_version,global_parameters) values (%s,%s,0,%s,%s,%s,%s) "
+                    "global_profile_version,global_parameters,provenance_schema_version,"
+                    "recipe_binding,capability_mapping) "
+                    "values (%s,%s,0,%s,%s,%s,%s,1,%s,%s) "
                     "returning *",
                     (
                         self.workspace_id,
@@ -133,6 +138,8 @@ class WorldStyleRepository:
                         default.profile_id,
                         default.profile_version,
                         Jsonb(dict(default.parameters)),
+                        Jsonb(binding),
+                        Jsonb(capability_mapping),
                     ),
                 ).fetchone()
                 assert row is not None
@@ -184,11 +191,41 @@ class WorldStyleRepository:
         ).fetchall()
         return tuple(self._row_to_version(row) for row in rows)
 
+    def proposal(self, proposal_id: uuid.UUID) -> StyleProposalRecord:
+        row = self.connection.execute(
+            "select * from world_style_proposal where workspace_id=%s and world_id=%s "
+            "and proposal_id=%s",
+            (self.workspace_id, self.world_id, proposal_id),
+        ).fetchone()
+        if row is None:
+            raise UnknownWorldResource("no such world style proposal")
+        proposal = StyleProposal(
+            proposal_id=row["proposal_id"],
+            provenance=_provenance_from_row(row),
+            scope=StyleScope(row["scope_kind"], row["scope_region_id"]),
+            base_style_version_id=row["base_style_version_id"],
+            base_topology_digest=row["base_topology_digest"],
+            profile=StyleReference(row["profile_id"], row["profile_version"], row["parameters"]),
+            reference_ids=tuple(row["reference_ids"]),
+            model_id=row["model_id"],
+            prompt_version=row["prompt_version"],
+            refines_proposal_id=row["refines_proposal_id"],
+        )
+        return StyleProposalRecord(
+            proposal=proposal,
+            recipe_binding=row["recipe_binding"],
+            capability_mapping=row["capability_mapping"],
+            status=row["status"],
+            validation_issues=tuple(row["validation_issues"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
     # -- proposal lifecycle --------------------------------------------------------------
 
     def preview(self, proposal: StyleProposal) -> StylePreview:
         """Validate and persist one isolated preview, auditing refusals as proposals too."""
-        self._validate_provenance(proposal.provenance)
+        self._validate_proposal_provenance(proposal)
         rejected: Exception | None = None
         result: StylePreview | None = None
         with self.connection.transaction():
@@ -211,6 +248,7 @@ class WorldStyleRepository:
                 )
             else:
                 try:
+                    self._validate_refinement(proposal)
                     self._validate_scope(proposal, state["current_topology_digest"])
                     reference = self.registry.validate_reference(proposal.profile)
                     self._validate_reference_compatibility(
@@ -302,6 +340,18 @@ class WorldStyleRepository:
             if failure is not None:
                 self._close_stale(preview, provenance, failure)
             else:
+                proposed_reference = StyleReference(
+                    preview["profile_id"], preview["profile_version"], preview["parameters"]
+                )
+                expected_binding, expected_mapping = self._binding_for_reference(proposed_reference)
+                if (
+                    preview["recipe_binding"] != expected_binding
+                    or preview["capability_mapping"] != expected_mapping
+                ):
+                    raise InvalidStyleData(
+                        "the reviewed frontend recipe binding changed after preview; create a "
+                        "new proposal"
+                    )
                 candidate = self._candidate_from_document(preview["candidate"])
                 # Registry support may have changed after preview creation.  New state never
                 # silently applies a fallback; fallback is only for reading immutable history.
@@ -323,8 +373,11 @@ class WorldStyleRepository:
                     "insert into world_style_version "
                     "(version_id,workspace_id,world_id,revision,parent_version_id,topology_digest,"
                     "global_profile_id,global_profile_version,global_parameters,"
-                    "applied_from_proposal_id,origin,actor,origin_reference) "
-                    "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning *",
+                    "applied_from_proposal_id,origin,actor,origin_reference,"
+                    "provenance_schema_version,reference_ids,model_id,prompt_version,"
+                    "refines_proposal_id,recipe_binding,capability_mapping) "
+                    "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s,%s,%s,%s) "
+                    "returning *",
                     (
                         version_id,
                         self.workspace_id,
@@ -339,6 +392,12 @@ class WorldStyleRepository:
                         provenance.origin.value,
                         provenance.actor,
                         provenance.origin_reference,
+                        preview["reference_ids"],
+                        preview["model_id"],
+                        preview["prompt_version"],
+                        preview["refines_proposal_id"],
+                        Jsonb(preview["recipe_binding"]),
+                        Jsonb(preview["capability_mapping"]),
                     ),
                 ).fetchone()
                 assert row is not None
@@ -408,6 +467,10 @@ class WorldStyleRepository:
         base_topology_digest: str,
         provenance: ProposalProvenance,
     ) -> StyleVersion:
+        if provenance.origin is ProposalOrigin.COMPANION:
+            raise InvalidStyleData(
+                "Companion rollback requires a new explicit proposal with model provenance"
+            )
         self._validate_provenance(provenance)
         with self.connection.transaction():
             state = self._require_state(for_update=True)
@@ -427,13 +490,15 @@ class WorldStyleRepository:
                 for region_id, reference in target.region_styles.items()
                 if region_id in current_regions
             }
+            binding, capability_mapping = self._binding_for_reference(target.global_style)
             version_id = uuid.uuid4()
             row = self.connection.execute(
                 "insert into world_style_version "
                 "(version_id,workspace_id,world_id,revision,parent_version_id,topology_digest,"
                 "global_profile_id,global_profile_version,global_parameters,"
-                "rollback_target_version_id,origin,actor,origin_reference) "
-                "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning *",
+                "rollback_target_version_id,origin,actor,origin_reference,"
+                "provenance_schema_version,recipe_binding,capability_mapping) "
+                "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s) returning *",
                 (
                     version_id,
                     self.workspace_id,
@@ -448,6 +513,8 @@ class WorldStyleRepository:
                     provenance.origin.value,
                     provenance.actor,
                     provenance.origin_reference,
+                    Jsonb(binding),
+                    Jsonb(capability_mapping),
                 ),
             ).fetchone()
             assert row is not None
@@ -576,6 +643,12 @@ class WorldStyleRepository:
             provenance=provenance,
             created_at=row["created_at"],
             warnings=tuple(warnings),
+            recipe_binding=row["recipe_binding"],
+            capability_mapping=row["capability_mapping"],
+            reference_ids=tuple(row["reference_ids"]),
+            model_id=row["model_id"],
+            prompt_version=row["prompt_version"],
+            refines_proposal_id=row["refines_proposal_id"],
         )
 
     def _preview_row(self, preview_id: uuid.UUID, *, for_update: bool) -> Mapping[str, Any]:
@@ -613,9 +686,32 @@ class WorldStyleRepository:
             rollback_target_version_id=None,
             provenance=proposal.provenance,
             created_at=dt.datetime.now(dt.UTC),
+            recipe_binding=self.registry.recipe_binding(reference),
+            capability_mapping={
+                key: definition.capability
+                for key, definition in self.registry.profiles[
+                    (reference.profile_id, reference.profile_version)
+                ].controls.items()
+            },
+            reference_ids=proposal.reference_ids,
+            model_id=proposal.model_id,
+            prompt_version=proposal.prompt_version,
+            refines_proposal_id=proposal.refines_proposal_id,
         )
 
     def _candidate_from_document(self, value: Mapping[str, Any]) -> StyleVersion:
+        required = {
+            "recipe_binding",
+            "capability_mapping",
+            "reference_ids",
+            "model_id",
+            "prompt_version",
+            "refines_proposal_id",
+        }
+        if not required.issubset(value):
+            raise InvalidPreviewState(
+                "preview predates the reviewed recipe-binding contract; create a new preview"
+            )
         return StyleVersion(
             version_id=uuid.UUID(value["version_id"]),
             revision=int(value["revision"]),
@@ -630,18 +726,31 @@ class WorldStyleRepository:
             rollback_target_version_id=None,
             provenance=None,
             created_at=dt.datetime.fromisoformat(value["created_at"]),
+            recipe_binding=value["recipe_binding"],
+            capability_mapping=value["capability_mapping"],
+            reference_ids=tuple(value["reference_ids"]),
+            model_id=value["model_id"],
+            prompt_version=value["prompt_version"],
+            refines_proposal_id=(
+                None
+                if value["refines_proposal_id"] is None
+                else uuid.UUID(value["refines_proposal_id"])
+            ),
         )
 
     def _insert_proposal(
         self, proposal: StyleProposal, status: str, error: Exception | None
     ) -> None:
+        binding, capability_mapping = self._proposal_binding(proposal.profile)
         try:
             self.connection.execute(
                 "insert into world_style_proposal "
                 "(proposal_id,workspace_id,world_id,origin,actor,origin_reference,scope_kind,"
                 "scope_region_id,base_style_version_id,base_topology_digest,profile_id,"
-                "profile_version,parameters,status,validation_issues) "
-                "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "profile_version,parameters,status,validation_issues,provenance_schema_version,"
+                "reference_ids,model_id,prompt_version,refines_proposal_id,recipe_binding,"
+                "capability_mapping) "
+                "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s,%s,%s,%s)",
                 (
                     proposal.proposal_id,
                     self.workspace_id,
@@ -658,6 +767,12 @@ class WorldStyleRepository:
                     Jsonb(dict(proposal.profile.parameters)),
                     status,
                     Jsonb([] if error is None else [_error_code(error)]),
+                    list(proposal.reference_ids),
+                    proposal.model_id,
+                    proposal.prompt_version,
+                    proposal.refines_proposal_id,
+                    Jsonb(binding),
+                    Jsonb(capability_mapping),
                 ),
             )
         except psycopg.errors.UniqueViolation as exc:
@@ -815,6 +930,8 @@ class WorldStyleRepository:
 
     @staticmethod
     def _validate_provenance(provenance: ProposalProvenance) -> None:
+        if not isinstance(provenance.actor, uuid.UUID):
+            raise InvalidStyleData("proposal actor must be a UUID")
         reference = (provenance.origin_reference or "").strip()
         if provenance.origin is not ProposalOrigin.USER and not reference:
             raise InvalidStyleData(
@@ -822,6 +939,60 @@ class WorldStyleRepository:
             )
         if len(reference) > 500:
             raise InvalidStyleData("proposal origin reference is too long")
+
+    def _validate_proposal_provenance(self, proposal: StyleProposal) -> None:
+        self._validate_provenance(proposal.provenance)
+        if len(set(proposal.reference_ids)) != len(proposal.reference_ids) or any(
+            not value.strip() or len(value) > 500 for value in proposal.reference_ids
+        ):
+            raise InvalidStyleData("style proposal reference ids must be unique and non-empty")
+        if proposal.provenance.origin is ProposalOrigin.COMPANION:
+            if (
+                not (proposal.model_id or "").strip()
+                or not (proposal.prompt_version or "").strip()
+                or not proposal.reference_ids
+            ):
+                raise InvalidStyleData(
+                    "Companion style proposals require model, prompt version, and reference ids"
+                )
+        elif proposal.model_id is not None or proposal.prompt_version is not None:
+            raise InvalidStyleData(
+                "only Companion style proposals may carry model and prompt provenance"
+            )
+        if len(proposal.model_id or "") > 300 or len(proposal.prompt_version or "") > 300:
+            raise InvalidStyleData("style proposal model or prompt version is too long")
+
+    def _validate_refinement(self, proposal: StyleProposal) -> None:
+        if proposal.refines_proposal_id is None:
+            return
+        row = self.connection.execute(
+            "select 1 from world_style_proposal where workspace_id=%s and world_id=%s "
+            "and proposal_id=%s",
+            (self.workspace_id, self.world_id, proposal.refines_proposal_id),
+        ).fetchone()
+        if row is None:
+            raise InvalidStyleData("refinement names no prior authorised style proposal")
+
+    def _binding_for_reference(
+        self, reference: StyleReference
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        binding = self.registry.recipe_binding(reference)
+        return binding, dict(binding["capabilityMapping"])
+
+    def _proposal_binding(self, reference: StyleReference) -> tuple[dict[str, Any], dict[str, str]]:
+        try:
+            return self._binding_for_reference(reference)
+        except InvalidStyleData:
+            return (
+                {
+                    "schemaVersion": 1,
+                    "state": "unregistered",
+                    "profileId": reference.profile_id,
+                    "profileVersion": reference.profile_version,
+                    "modules": [],
+                },
+                {},
+            )
 
     def _validate_topology_contract(self, contract: TopologyContract) -> None:
         if contract.world_id != self.world_id:
@@ -1003,6 +1174,14 @@ def _version_document(value: StyleVersion) -> dict[str, Any]:
             for region_id, reference in sorted(value.region_styles.items())
         },
         "applied_from_proposal_id": str(value.applied_from_proposal_id),
+        "recipe_binding": dict(value.recipe_binding),
+        "capability_mapping": dict(value.capability_mapping),
+        "reference_ids": list(value.reference_ids),
+        "model_id": value.model_id,
+        "prompt_version": value.prompt_version,
+        "refines_proposal_id": (
+            None if value.refines_proposal_id is None else str(value.refines_proposal_id)
+        ),
         "created_at": value.created_at.isoformat(),
     }
 

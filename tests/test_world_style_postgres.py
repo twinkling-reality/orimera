@@ -11,6 +11,7 @@ from orimera.store.local import LocalContentAddressedStore
 from orimera.world import (
     STYLE_REGISTRY,
     InvalidPreviewState,
+    InvalidStyleData,
     ProposalOrigin,
     ProposalProvenance,
     ProtectedTopologyConflict,
@@ -43,7 +44,18 @@ def proposal(
     origin_reference=None,
     scope=None,
     parameters=None,
+    reference_ids=None,
+    model_id=None,
+    prompt_version=None,
+    refines_proposal_id=None,
 ):
+    if origin is ProposalOrigin.COMPANION:
+        if reference_ids is None:
+            reference_ids = ("design-reference:test",)
+        if model_id is None:
+            model_id = "test-style-proposer/v1"
+        if prompt_version is None:
+            prompt_version = "test-style-prompt/v1"
     return StyleProposal(
         proposal_id=proposal_id or uuid.uuid4(),
         provenance=ProposalProvenance(origin, uuid.uuid4(), origin_reference),
@@ -51,6 +63,10 @@ def proposal(
         base_style_version_id=current.version_id,
         base_topology_digest=topology_digest,
         profile=StyleReference("origin-landscape", 1, parameters or {"vitality": 0.25}),
+        reference_ids=tuple(reference_ids or ()),
+        model_id=model_id,
+        prompt_version=prompt_version,
+        refines_proposal_id=refines_proposal_id,
     )
 
 
@@ -69,6 +85,39 @@ def test_migration_registry_matches_the_validated_runtime_registry(repository):
     }
     assert capabilities == set(STYLE_REGISTRY.capabilities)
     assert profiles == set(STYLE_REGISTRY.profiles)
+    modules = {
+        row["module_id"]: {
+            value["capability_key"]
+            for value in repository.connection.execute(
+                "select capability_key from world_style_module_capability where module_id=%s",
+                (row["module_id"],),
+            ).fetchall()
+        }
+        for row in repository.connection.execute(
+            "select module_id from world_style_module_registry"
+        ).fetchall()
+    }
+    assert modules == {
+        key: set(value.capabilities) for key, value in STYLE_REGISTRY.modules.items()
+    }
+
+
+def test_new_rows_cannot_opt_out_through_the_historical_provenance_version(repository):
+    with pytest.raises(psycopg.errors.IntegrityConstraintViolation, match="recipe provenance"):
+        repository.connection.execute(
+            "insert into world_style_proposal "
+            "(proposal_id,workspace_id,world_id,origin,actor,scope_kind,"
+            "base_style_version_id,base_topology_digest,profile_id,profile_version,parameters,"
+            "status,provenance_schema_version) "
+            "values (%s,%s,'atlas:default','user',%s,'global',%s,'topology-a',"
+            "'origin-landscape',1,'{}','rejected',0)",
+            (
+                uuid.uuid4(),
+                repository.workspace_id,
+                uuid.uuid4(),
+                uuid.uuid4(),
+            ),
+        )
 
 
 def test_preview_isolation_atomic_apply_discard_and_immutable_rollback(repository):
@@ -227,6 +276,52 @@ def test_user_settings_and_companion_proposals_keep_distinct_audit_provenance(re
         "appearance-panel",
         "turn:17",
     }
+
+
+def test_companion_recipe_refinement_persists_only_inert_binding_and_provenance(repository):
+    styles = WorldStyleRepository(repository.connection, repository.workspace_id)
+    initial = styles.register_topology(topology())
+    with pytest.raises(InvalidStyleData, match="require model"):
+        styles.preview(
+            proposal(
+                initial,
+                origin=ProposalOrigin.COMPANION,
+                origin_reference="conversation:1",
+                model_id="",
+                prompt_version="",
+                reference_ids=(),
+            )
+        )
+
+    draft = styles.preview(
+        proposal(
+            initial,
+            origin=ProposalOrigin.COMPANION,
+            origin_reference="conversation:2",
+        )
+    )
+    refined = styles.preview(
+        proposal(
+            initial,
+            origin=ProposalOrigin.COMPANION,
+            origin_reference="conversation:3",
+            parameters={"surface-finish": "clear-lens", "world-tempo": 1.2},
+            refines_proposal_id=draft.proposal.proposal_id,
+        )
+    )
+    record = styles.proposal(refined.proposal.proposal_id)
+    assert record.status == "previewed"
+    assert record.proposal.refines_proposal_id == draft.proposal.proposal_id
+    assert record.proposal.model_id == "test-style-proposer/v1"
+    assert record.recipe_binding["modules"] == [
+        "aeroheart-optics-v1",
+        "registered-surface-v1",
+        "bounded-tempo-v1",
+    ]
+    assert record.capability_mapping["surface-finish"] == "surface.finish"
+    serialized = str(record.recipe_binding).lower()
+    for forbidden in ("css", "javascript", "shader", "markup", "https://", "layout"):
+        assert forbidden not in serialized
 
 
 def test_missing_source_evidence_is_a_state_and_requiring_it_is_an_asset_error(

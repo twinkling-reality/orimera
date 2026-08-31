@@ -375,14 +375,20 @@ Deliverables:
   export;
 - record proposal inputs, reference ids, origin, actor, model/prompt version, capability mapping,
   acceptance, rejection, refinement, and rollback;
+- bind conversational appearance proposals to inert recipe/profile versions and reviewed frontend
+  module IDs without accepting CSS, markup, scripts, shaders, renderer programs, layout, remote
+  texture URLs, or private media;
 - derive suggestions from observed user choices without converting them into silent writes;
 - separate durable preference from transient session behavior; and
 - evaluate whether adaptations are understandable, reversible, stable across sessions, and free of
   protected-topology effects.
 
-Gate: the same proposal produces the same validated candidate against the same bases; discard is
-state-neutral; rollback appends history; stale bases fail; and a user can inspect why an adaptation
-was proposed.
+Gate: the same proposal produces the same validated candidate against the same bases; a
+Companion-origin recipe proposal carries actor/origin, references, model/prompt versions, exact
+module/capability mapping, and optional refinement lineage; preview is isolated; discard is
+state-neutral; explicit apply records acceptance; invalid proposals record rejection; rollback
+appends history; stale bases fail; unknown recipe versions/modules/capabilities/parameters fail
+closed; and a user can inspect why an adaptation was proposed.
 
 The deterministic and protected-state parts of this gate are PostgreSQL-, API-, and browser-tested.
 The browser sends range motion only to transient rendering and commits the final user choice through
@@ -390,6 +396,11 @@ the production policy lifecycle. Companion-authored changes stop at an isolated 
 separate confirmation call applies the review handle. No real-participant study is present, so this
 repository does not claim that explanation copy is understandable or that adaptations remain
 desirable across repeated weeks. See [interaction-policy-backend.md](interaction-policy-backend.md).
+
+The frontend execution half exists on the divergent `55b1236` → `5c95cb3` history and remains an
+explicit integration dependency for this worktree. This branch implements and tests only the
+shared inert catalog/recipe-binding and lifecycle payloads; it does not cherry-pick or replace the
+frontend registry, modules, contrast/accessibility correction, protected geometry, or preview UI.
 
 No neural fine-tuning is required for this phase. Personalization is explicit, versioned world state.
 
@@ -401,6 +412,8 @@ Deliverables:
 
 - turn residency actions into cancelable fetch, decode, upload, downgrade, unload, and disposal;
 - enforce authenticated asset availability and honest rung fallback;
+- expose provenance-bearing source/evidence asset references only for available authorised media,
+  never inside style recipes;
 - add neighborhood origin rebasing and scalable world-field buffers;
 - batch repeated modules, motes, and relationship traces;
 - test context loss and recover to a complete World Index path;
@@ -457,7 +470,8 @@ The demonstration starts from an ordinary authorized photo directory and runs th
 2. open exact evidence and its provenance;
 3. show the semantic memory graph and a supported answer;
 4. enter regions at the rung each actually earned;
-5. preview, apply, discard, and rollback a reviewed world adaptation;
+5. create a Companion-origin inert recipe proposal, preview it, refine it, discard the draft,
+   explicitly apply the refinement, inspect provenance, and roll back through immutable history;
 6. show a protected-topology or stale-version rejection;
 7. export a World Memory Package;
 8. verify it in a clean process;
@@ -472,8 +486,9 @@ produces the runtime world, receipt, evaluation report, and signed package, and 
 mandatory gate passes or a named honest fallback is terminal.
 
 `orimera-frontier demonstrate` now satisfies that mechanical gate, including exact evidence
-opening, validated deterministic answer, actual-rung world composition, style and structural stale
-rejection, clean-process verification, zero-call artifact reuse, and one-source deletion/re-export.
+opening, validated deterministic answer, actual-rung world composition, conversational recipe
+proposal/refinement/discard/apply provenance, style and structural stale rejection, immutable style
+rollback, clean-process verification, zero-call artifact reuse, and one-source deletion/re-export.
 The frontier milestone itself remains open until the command is run on a user-authorized personal
 directory with user-owned signing/credential/hardware decisions; none were supplied during this
 implementation.

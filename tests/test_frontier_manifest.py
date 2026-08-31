@@ -39,6 +39,13 @@ def _document(photo_dir: Path) -> dict[str, object]:
             "profile_id": "origin-landscape",
             "profile_version": 1,
             "parameters": {"vitality": 1},
+            "proposal_provenance": {
+                "origin": "companion",
+                "origin_reference": "conversation:frontier-style",
+                "model_id": "fixture-style-proposer/v1",
+                "prompt_version": "fixture-world-recipe/v1",
+                "reference_ids": ["design-reference:fixture"],
+            },
         },
         "deletion_demo": {"path": sources[0]["path"]},
     }

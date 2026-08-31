@@ -46,6 +46,13 @@ def _manifest(tmp_path, photo_dir, workspace_id, actor_id, *, vision="configured
             "profile_id": "origin-landscape",
             "profile_version": 1,
             "parameters": {"vitality": 1},
+            "proposal_provenance": {
+                "origin": "companion",
+                "origin_reference": "conversation:frontier-style",
+                "model_id": "fixture-style-proposer/v1",
+                "prompt_version": "fixture-world-recipe/v1",
+                "reference_ids": ["design-reference:fixture"],
+            },
         },
         "deletion_demo": {"path": sources[0]["path"]},
     }
@@ -94,6 +101,22 @@ def test_frontier_demonstration_runs_every_gate_without_fabricating_reconstructi
         "fallback-no-reconstruction"
     }
     assert receipt["adaptation"]["stale_preview"] == "rejected"
+    assert receipt["adaptation"]["discard_status"] == "discarded"
+    assert receipt["adaptation"]["refinement_status"] == "applied"
+    assert receipt["adaptation"]["stale_proposal_status"] == "stale"
+    assert receipt["adaptation"]["proposal_provenance"] == {
+        "origin": "companion",
+        "origin_reference": "conversation:frontier-style",
+        "model_id": "fixture-style-proposer/v1",
+        "prompt_version": "fixture-world-recipe/v1",
+        "reference_ids": ["design-reference:fixture"],
+    }
+    assert receipt["adaptation"]["recipe_binding"]["modules"] == [
+        "aeroheart-optics-v1",
+        "registered-surface-v1",
+        "bounded-tempo-v1",
+    ]
+    assert receipt["adaptation"]["capability_mapping"]["vitality"] == "world.vitality"
     assert receipt["adaptation"]["current_semantics_restored"] is True
     assert receipt["deletion"]["remaining_regions"] == 1
     assert receipt["deletion"]["original_photo_file_deleted"] is False

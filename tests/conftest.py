@@ -239,6 +239,9 @@ _PRESERVED_TABLES = frozenset(
         "world_art_profile_parameter",
         "world_art_profile_registry",
         "world_style_capability_registry",
+        "world_style_module_registry",
+        "world_style_module_capability",
+        "world_art_profile_module",
     }
 )
 

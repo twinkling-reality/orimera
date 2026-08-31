@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TypeAlias
 
@@ -17,6 +17,7 @@ __all__ = [
     "StyleParameterValue",
     "StylePreview",
     "StyleProposal",
+    "StyleProposalRecord",
     "StyleReference",
     "StyleScope",
     "StyleVersion",
@@ -70,6 +71,21 @@ class StyleProposal:
     base_style_version_id: uuid.UUID
     base_topology_digest: str
     profile: StyleReference
+    reference_ids: tuple[str, ...] = ()
+    model_id: str | None = None
+    prompt_version: str | None = None
+    refines_proposal_id: uuid.UUID | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StyleProposalRecord:
+    proposal: StyleProposal
+    recipe_binding: Mapping[str, object]
+    capability_mapping: Mapping[str, str]
+    status: str
+    validation_issues: tuple[str, ...]
+    created_at: dt.datetime
+    updated_at: dt.datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +101,12 @@ class StyleVersion:
     provenance: ProposalProvenance | None
     created_at: dt.datetime
     warnings: tuple[str, ...] = ()
+    recipe_binding: Mapping[str, object] = field(default_factory=dict)
+    capability_mapping: Mapping[str, str] = field(default_factory=dict)
+    reference_ids: tuple[str, ...] = ()
+    model_id: str | None = None
+    prompt_version: str | None = None
+    refines_proposal_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)

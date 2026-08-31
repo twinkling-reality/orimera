@@ -12,18 +12,82 @@ from orimera.world import STYLE_REGISTRY, InvalidStyleData, StyleReference, Styl
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 REGISTRY_PATH = ROOT / "orimera" / "world" / "style-registry.v1.json"
-CAPABILITIES_TS = ROOT / "web" / "packages" / "presentation" / "src" / "world-style-capabilities.ts"
 PROFILES_TS = ROOT / "web" / "packages" / "presentation" / "src" / "world-profiles.ts"
+FRONTEND_RECIPE_COMMIT = "55b123627314d328fba3850eb607d8a7682a8cad"
+FRONTEND_CAPABILITIES = {
+    "world.vitality",
+    "material.transmission",
+    "relationships.energy",
+    "detail.ecology",
+    "atmosphere.softness",
+    "detail.contours",
+    "material.technical-contrast",
+    "surface.finish",
+    "motion.tempo",
+}
+FRONTEND_MODULES = {
+    "aeroheart-optics-v1": {
+        "world.vitality",
+        "material.transmission",
+        "relationships.energy",
+        "detail.ecology",
+        "atmosphere.softness",
+    },
+    "registered-surface-v1": {"surface.finish"},
+    "bounded-tempo-v1": {"motion.tempo"},
+    "survey-relief-response-v1": {"detail.contours", "material.technical-contrast"},
+}
 
 
 def registry_document():
     return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
 
 
-def test_the_backend_registry_matches_the_committed_renderer_capability_vocabulary():
-    source = CAPABILITIES_TS.read_text(encoding="utf-8")
-    declared = set(re.findall(r"^  '([^']+)': Object\.freeze", source, re.MULTILINE))
-    assert declared == set(STYLE_REGISTRY.capabilities)
+def test_the_backend_adapter_is_pinned_to_the_reviewed_frontend_recipe_contract():
+    # This backend branch diverges before the recipe files exist.  These exact identities are the
+    # renderer-neutral contract inspected from FRONTEND_RECIPE_COMMIT, not copied renderer code.
+    assert len(FRONTEND_RECIPE_COMMIT) == 40
+    assert STYLE_REGISTRY.frontend_contract_commit == FRONTEND_RECIPE_COMMIT
+    assert set(STYLE_REGISTRY.capabilities) == FRONTEND_CAPABILITIES
+    assert {
+        module_id: set(definition.capabilities)
+        for module_id, definition in STYLE_REGISTRY.modules.items()
+    } == FRONTEND_MODULES
+
+    catalog = STYLE_REGISTRY.catalog()
+    assert catalog["schemaVersion"] == 1
+    assert catalog["contractSource"] == {"frontendCommit": FRONTEND_RECIPE_COMMIT}
+    assert catalog["defaultProfile"]["profileId"] == "origin-landscape"
+    aeroheart = next(
+        value for value in catalog["profiles"] if value["profileId"] == "origin-landscape"
+    )
+    assert aeroheart["recipeBinding"] == {
+        "schemaVersion": 1,
+        "frontendCommit": FRONTEND_RECIPE_COMMIT,
+        "availability": "product",
+        "origin": "authored",
+        "profileId": "origin-landscape",
+        "profileVersion": 1,
+        "modules": [
+            "aeroheart-optics-v1",
+            "registered-surface-v1",
+            "bounded-tempo-v1",
+        ],
+        "capabilityMapping": {
+            "vitality": "world.vitality",
+            "glass": "material.transmission",
+            "relationship-energy": "relationships.energy",
+            "garden-density": "detail.ecology",
+            "horizon-softness": "atmosphere.softness",
+            "surface-finish": "surface.finish",
+            "world-tempo": "motion.tempo",
+        },
+    }
+    finish = next(value for value in aeroheart["controls"] if value["key"] == "surface-finish")
+    assert finish["options"] == [
+        {"value": "source-paper", "label": "Source paper"},
+        {"value": "clear-lens", "label": "Clear lens"},
+    ]
 
 
 def test_the_backend_registry_matches_the_committed_world_profile_versions():
@@ -67,21 +131,44 @@ def test_only_registered_capabilities_can_enter_a_profile_manifest():
         StyleRegistry(document)
 
 
+def test_unknown_modules_and_unmatched_module_capabilities_fail_closed():
+    document = registry_document()
+    document["profiles"][0]["recipe"]["modules"].append("not-reviewed-v1")
+    with pytest.raises(ValueError, match="unknown world style module"):
+        StyleRegistry(document)
+
+    document = registry_document()
+    document["profiles"][0]["recipe"]["modules"].remove("bounded-tempo-v1")
+    with pytest.raises(ValueError, match="capability binding mismatch"):
+        StyleRegistry(document)
+
+    document = registry_document()
+    duplicate = copy.deepcopy(document["profiles"][0]["controls"][0])
+    duplicate["key"] = "second-vitality"
+    document["profiles"][0]["controls"].append(duplicate)
+    with pytest.raises(ValueError, match="invalid or unregistered"):
+        StyleRegistry(document)
+
+
+def test_unknown_profile_versions_never_reinterpret_parameters_against_version_one():
+    with pytest.raises(InvalidStyleData, match="unknown world profile"):
+        STYLE_REGISTRY.validate_reference(StyleReference("origin-landscape", 2, {"vitality": 0.5}))
+
+
 @pytest.mark.parametrize("status", ["removed", "unsupported"])
 def test_removed_and_unsupported_profiles_have_one_deterministic_fallback(status):
     document = registry_document()
-    document["profiles"].append(
+    retired = copy.deepcopy(document["profiles"][1])
+    retired.update(
         {
             "profile_id": "retired-study",
-            "profile_version": 1,
             "display_name": "Retired study",
             "description": "A profile retained only so history resolves.",
-            "compatibility_key": "atlas-topology-v1",
             "status": status,
             "fallback": {"profile_id": "origin-landscape", "profile_version": 1},
-            "controls": [],
         }
     )
+    document["profiles"].append(retired)
     registry = StyleRegistry(document)
     resolved, warnings = registry.resolve_reference(StyleReference("retired-study", 1, {}))
     assert resolved == registry.default_reference

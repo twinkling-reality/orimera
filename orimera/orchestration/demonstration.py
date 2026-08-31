@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path
@@ -766,14 +767,37 @@ def _adapt_world(connection: psycopg.Connection, manifest: BuildManifest) -> dic
             "rollback_version_id": str(existing[-1].version_id),
         }
     initial = repository.current()
-    provenance = ProposalProvenance(ProposalOrigin.SETTINGS, manifest.actor_id, reference)
+    proposal_provenance = ProposalProvenance(
+        ProposalOrigin.COMPANION,
+        manifest.actor_id,
+        manifest.adaptation.origin_reference,
+    )
+    rollback_provenance = ProposalProvenance(ProposalOrigin.USER, manifest.actor_id, reference)
 
-    discard = repository.preview(_style_proposal(manifest, initial, provenance))
-    repository.discard(discard.preview_id, discarded_by=manifest.actor_id)
-    first = repository.preview(_style_proposal(manifest, initial, provenance))
-    stale = repository.preview(_style_proposal(manifest, initial, provenance))
+    draft = repository.preview(
+        _style_proposal(manifest, initial, proposal_provenance, parameters={})
+    )
+    refined = repository.preview(
+        _style_proposal(
+            manifest,
+            initial,
+            proposal_provenance,
+            parameters=manifest.adaptation.parameters,
+            refines_proposal_id=draft.proposal.proposal_id,
+        )
+    )
+    stale = repository.preview(
+        _style_proposal(
+            manifest,
+            initial,
+            proposal_provenance,
+            parameters=manifest.adaptation.parameters,
+            refines_proposal_id=draft.proposal.proposal_id,
+        )
+    )
+    repository.discard(draft.preview_id, discarded_by=manifest.actor_id)
     applied = repository.apply(
-        first.preview_id,
+        refined.preview_id,
         base_style_version_id=initial.version_id,
         base_topology_digest=initial.topology_digest,
         applied_by=manifest.actor_id,
@@ -795,25 +819,48 @@ def _adapt_world(connection: psycopg.Connection, manifest: BuildManifest) -> dic
         initial.version_id,
         base_style_version_id=applied.version_id,
         base_topology_digest=applied.topology_digest,
-        provenance=provenance,
+        provenance=rollback_provenance,
     )
+    draft_record = repository.proposal(draft.proposal.proposal_id)
+    refined_record = repository.proposal(refined.proposal.proposal_id)
+    stale_record = repository.proposal(stale.proposal.proposal_id)
     return {
         "state": "completed",
         "build_reference": reference,
-        "discard_preview_id": str(discard.preview_id),
+        "conversational_proposal_id": str(draft.proposal.proposal_id),
+        "discard_preview_id": str(draft.preview_id),
+        "discard_status": draft_record.status,
+        "refinement_proposal_id": str(refined.proposal.proposal_id),
+        "refines_proposal_id": str(refined_record.proposal.refines_proposal_id),
+        "refinement_status": refined_record.status,
         "applied_version_id": str(applied.version_id),
         "stale_preview": stale_state,
+        "stale_proposal_status": stale_record.status,
         "rollback_version_id": str(rolled_back.version_id),
         "rollback_target_version_id": str(initial.version_id),
         "current_semantics_restored": (
             rolled_back.global_style == initial.global_style
             and rolled_back.region_styles == initial.region_styles
         ),
+        "proposal_provenance": {
+            "origin": proposal_provenance.origin.value,
+            "origin_reference": proposal_provenance.origin_reference,
+            "model_id": manifest.adaptation.model_id,
+            "prompt_version": manifest.adaptation.prompt_version,
+            "reference_ids": list(manifest.adaptation.reference_ids),
+        },
+        "recipe_binding": dict(refined_record.recipe_binding),
+        "capability_mapping": dict(refined_record.capability_mapping),
     }
 
 
 def _style_proposal(
-    manifest: BuildManifest, current: Any, provenance: ProposalProvenance
+    manifest: BuildManifest,
+    current: Any,
+    provenance: ProposalProvenance,
+    *,
+    parameters: Mapping[str, bool | int | str],
+    refines_proposal_id: uuid.UUID | None = None,
 ) -> StyleProposal:
     return StyleProposal(
         proposal_id=uuid.uuid4(),
@@ -824,8 +871,12 @@ def _style_proposal(
         profile=StyleReference(
             manifest.adaptation.profile_id,
             manifest.adaptation.profile_version,
-            manifest.adaptation.parameters,
+            parameters,
         ),
+        reference_ids=manifest.adaptation.reference_ids,
+        model_id=manifest.adaptation.model_id,
+        prompt_version=manifest.adaptation.prompt_version,
+        refines_proposal_id=refines_proposal_id,
     )
 
 
