@@ -62,6 +62,9 @@ export {
 export type { MovementModel, ReconstructionRung, RungProperties } from './rung.js';
 export { SINGLE_PHOTO_RUNG, rungProperties } from './rung.js';
 
+export type { CorridorArtifactWire, ValidatedCorridorRule } from './corridor.js';
+export { constrainCorridorLook, corridorRuleFromArtifact } from './corridor.js';
+
 export type { ConfidenceBand, LinkState, ProvenanceClass } from './provenance.js';
 export { contributesToLayout, isConfirmed, readsAsUnconfirmed } from './provenance.js';
 

@@ -22,6 +22,14 @@ from __future__ import annotations
 from orimera.reconstruction.build import DEFAULT_SEGMENT, build_point_map
 from orimera.reconstruction.depth import DepthModel, DepthPrediction
 from orimera.reconstruction.gate import MIN_VALID_FRACTION, RungDecision, decide_rung
+from orimera.reconstruction.navigation import (
+    CorridorArtifact,
+    CorridorBuildManifest,
+    Destination,
+    NavigationPoseSample,
+    build_corridor_artifact,
+    validate_corridor_artifact,
+)
 from orimera.reconstruction.opm import OPM_MAGIC, OPM_VERSION, Viewpoint, encode_opm
 from orimera.reconstruction.pointmap import POINT_STRIDE_BYTES, PointMap, Segment
 from orimera.reconstruction.pose import (
@@ -51,8 +59,12 @@ __all__ = [
     "OPM_VERSION",
     "POINT_STRIDE_BYTES",
     "CommandResult",
+    "CorridorArtifact",
+    "CorridorBuildManifest",
     "DepthModel",
     "DepthPrediction",
+    "Destination",
+    "NavigationPoseSample",
     "OpmIntegrityError",
     "OpmIntegrityReport",
     "PointMap",
@@ -66,10 +78,12 @@ __all__ = [
     "SplatJobResult",
     "SplatQuality",
     "Viewpoint",
+    "build_corridor_artifact",
     "build_point_map",
     "decide_rung",
     "encode_opm",
     "run_colmap_pose_job",
     "run_gsplat_job",
+    "validate_corridor_artifact",
     "validate_opm",
 ]
