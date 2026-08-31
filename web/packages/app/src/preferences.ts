@@ -1,6 +1,7 @@
 /** Versioned device preferences. The authored Atlas landscape is not a theme picker. */
 
 import {
+  productWorldStyleReferences,
   resolveWorldStyleParameters,
   type WorldArtProfileId,
   type WorldStyleParameters,
@@ -15,6 +16,15 @@ export type VignettePreference = 'off' | 'subtle' | 'strong';
 export type TurnPreference = 'smooth' | 'snap';
 export type TransitionPreference = 'system' | 'motion' | 'fade';
 export type CompanionInitiativePreference = 'normal' | 'minimal' | 'off';
+export type CompanionBodyPreference =
+  | 'circle'
+  | 'pebble'
+  | 'squircle'
+  | 'capsule'
+  | 'cloud'
+  | 'droplet';
+export type CompanionColorPreference = 'ink' | 'rose' | 'orange' | 'periwinkle' | 'mint';
+export type CompanionFacePreference = 'neutral' | 'attentive' | 'curious' | 'happy' | 'sleepy';
 
 export interface AtlasPreferences {
   readonly version: 1;
@@ -22,6 +32,7 @@ export interface AtlasPreferences {
   readonly contrast: ContrastPreference;
   readonly transparency: TransparencyPreference;
   readonly worldArtProfile: WorldArtProfileId;
+  readonly worldArtProfileVersion: number;
   readonly worldStyleParameters: WorldStyleParameters;
   readonly fieldOfView: number;
   /** Multiplier over the measured default rather than engine units exposed as a user setting. */
@@ -31,6 +42,10 @@ export interface AtlasPreferences {
   readonly turnMode: TurnPreference;
   readonly transition: TransitionPreference;
   readonly companionInitiative: CompanionInitiativePreference;
+  readonly companionBody: CompanionBodyPreference;
+  readonly companionColor: CompanionColorPreference;
+  readonly companionFace: CompanionFacePreference;
+  /** Retained for version-one preference compatibility; the encounter now has a fixed composition. */
   readonly companionSide: 'left' | 'right';
 }
 
@@ -40,6 +55,7 @@ export const DEFAULT_PREFERENCES: AtlasPreferences = Object.freeze({
   contrast: 'standard',
   transparency: 'layered',
   worldArtProfile: 'origin-landscape',
+  worldArtProfileVersion: 1,
   worldStyleParameters: resolveWorldStyleParameters('origin-landscape'),
   fieldOfView: 70,
   mouseSensitivity: 1,
@@ -48,6 +64,9 @@ export const DEFAULT_PREFERENCES: AtlasPreferences = Object.freeze({
   turnMode: 'smooth',
   transition: 'system',
   companionInitiative: 'normal',
+  companionBody: 'circle',
+  companionColor: 'rose',
+  companionFace: 'neutral',
   companionSide: 'right',
 });
 
@@ -61,11 +80,22 @@ const CONTRAST = new Set<ContrastPreference>(['standard', 'high']);
 const TRANSPARENCY = new Set<TransparencyPreference>(['layered', 'reduced']);
 // Alternate profiles remain renderer test fixtures. Stored legacy choices return to the one
 // authored product identity instead of silently keeping an abandoned experimental treatment.
-const WORLD_ART_PROFILE = new Set<WorldArtProfileId>(['origin-landscape']);
+const WORLD_ART_PROFILE = new Set(productWorldStyleReferences().map(
+  (reference) => `${reference.profileId}@${reference.profileVersion}`,
+));
 const VIGNETTE = new Set<VignettePreference>(['off', 'subtle', 'strong']);
 const TURN = new Set<TurnPreference>(['smooth', 'snap']);
 const TRANSITION = new Set<TransitionPreference>(['system', 'motion', 'fade']);
 const INITIATIVE = new Set<CompanionInitiativePreference>(['normal', 'minimal', 'off']);
+const COMPANION_BODY = new Set<CompanionBodyPreference>([
+  'circle', 'pebble', 'squircle', 'capsule', 'cloud', 'droplet',
+]);
+const COMPANION_COLOR = new Set<CompanionColorPreference>([
+  'ink', 'rose', 'orange', 'periwinkle', 'mint',
+]);
+const COMPANION_FACE = new Set<CompanionFacePreference>([
+  'neutral', 'attentive', 'curious', 'happy', 'sleepy',
+]);
 
 const finiteIn = (value: unknown, min: number, max: number): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
@@ -73,6 +103,25 @@ const finiteIn = (value: unknown, min: number, max: number): value is number =>
 /** Invalid or newer data falls back field by field; one bad value never bricks the menu. */
 export function normalisePreferences(value: unknown): AtlasPreferences {
   const record = typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  const requestedWorldProfile = typeof record['worldArtProfile'] === 'string'
+    ? record['worldArtProfile']
+    : DEFAULT_PREFERENCES.worldArtProfile;
+  const requestedWorldProfileVersion = Number.isSafeInteger(record['worldArtProfileVersion']) &&
+    (record['worldArtProfileVersion'] as number) > 0
+    ? (record['worldArtProfileVersion'] as number)
+    : DEFAULT_PREFERENCES.worldArtProfileVersion;
+  const worldProfileAvailable = WORLD_ART_PROFILE.has(
+    `${requestedWorldProfile}@${requestedWorldProfileVersion}`,
+  );
+  const worldArtProfile = worldProfileAvailable
+    ? requestedWorldProfile
+    : DEFAULT_PREFERENCES.worldArtProfile;
+  const worldArtProfileVersion = worldProfileAvailable
+    ? requestedWorldProfileVersion
+    : DEFAULT_PREFERENCES.worldArtProfileVersion;
+  const companionV3 = COMPANION_BODY.has(record['companionBody'] as CompanionBodyPreference) &&
+    COMPANION_COLOR.has(record['companionColor'] as CompanionColorPreference) &&
+    COMPANION_FACE.has(record['companionFace'] as CompanionFacePreference);
   return Object.freeze({
     version: 1,
     appearance: APPEARANCE.has(record['appearance'] as AppearancePreference)
@@ -84,16 +133,15 @@ export function normalisePreferences(value: unknown): AtlasPreferences {
     transparency: TRANSPARENCY.has(record['transparency'] as TransparencyPreference)
       ? (record['transparency'] as TransparencyPreference)
       : DEFAULT_PREFERENCES.transparency,
-    worldArtProfile: WORLD_ART_PROFILE.has(record['worldArtProfile'] as WorldArtProfileId)
-      ? (record['worldArtProfile'] as WorldArtProfileId)
-      : DEFAULT_PREFERENCES.worldArtProfile,
+    worldArtProfile,
+    worldArtProfileVersion,
     worldStyleParameters: resolveWorldStyleParameters(
-      WORLD_ART_PROFILE.has(record['worldArtProfile'] as WorldArtProfileId)
-        ? (record['worldArtProfile'] as WorldArtProfileId)
-        : DEFAULT_PREFERENCES.worldArtProfile,
+      worldArtProfile,
+      worldProfileAvailable &&
       typeof record['worldStyleParameters'] === 'object' && record['worldStyleParameters'] !== null
         ? (record['worldStyleParameters'] as Readonly<Record<string, unknown>>)
         : {},
+      worldArtProfileVersion,
     ),
     fieldOfView: finiteIn(record['fieldOfView'], 60, 90)
       ? record['fieldOfView']
@@ -119,6 +167,15 @@ export function normalisePreferences(value: unknown): AtlasPreferences {
     )
       ? (record['companionInitiative'] as CompanionInitiativePreference)
       : DEFAULT_PREFERENCES.companionInitiative,
+    companionBody: companionV3
+      ? (record['companionBody'] as CompanionBodyPreference)
+      : DEFAULT_PREFERENCES.companionBody,
+    companionColor: companionV3
+      ? (record['companionColor'] as CompanionColorPreference)
+      : DEFAULT_PREFERENCES.companionColor,
+    companionFace: companionV3
+      ? (record['companionFace'] as CompanionFacePreference)
+      : DEFAULT_PREFERENCES.companionFace,
     companionSide:
       record['companionSide'] === 'left' || record['companionSide'] === 'right'
         ? record['companionSide']

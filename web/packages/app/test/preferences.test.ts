@@ -25,7 +25,10 @@ describe('Atlas preferences', () => {
     expect(DEFAULT_PREFERENCES.contrast).toBe('standard');
     expect(DEFAULT_PREFERENCES.transparency).toBe('layered');
     expect(DEFAULT_PREFERENCES.worldArtProfile).toBe('origin-landscape');
+    expect(DEFAULT_PREFERENCES.worldArtProfileVersion).toBe(1);
     expect(DEFAULT_PREFERENCES.cameraBob).toBe(false);
+    expect(DEFAULT_PREFERENCES.companionBody).toBe('circle');
+    expect(DEFAULT_PREFERENCES.companionColor).toBe('rose');
   });
 
   it('round trips one versioned object', () => {
@@ -38,6 +41,8 @@ describe('Atlas preferences', () => {
       worldArtProfile: 'origin-landscape',
       fieldOfView: 82,
       vignette: 'strong',
+      companionBody: 'cloud',
+      companionFace: 'happy',
     });
     writePreferences(storage, changed);
     expect(storage.values.has(PREFERENCES_KEY)).toBe(true);
@@ -54,6 +59,8 @@ describe('Atlas preferences', () => {
         'relationship-energy': 0.2,
         'garden-density': 0.45,
         'horizon-softness': 0.65,
+        'surface-finish': 'clear-lens',
+        'world-tempo': 1.2,
         'not-a-renderer-capability': 1,
       },
     });
@@ -64,6 +71,8 @@ describe('Atlas preferences', () => {
       'relationship-energy': 0.2,
       'garden-density': 0.45,
       'horizon-softness': 0.65,
+      'surface-finish': 'clear-lens',
+      'world-tempo': 1.2,
     });
     writePreferences(storage, changed);
     expect(readPreferences(storage).worldStyleParameters).toEqual(changed.worldStyleParameters);
@@ -85,6 +94,20 @@ describe('Atlas preferences', () => {
     expect(value.cameraBob).toBe(true);
   });
 
+  it('migrates the rejected robot choices as one set instead of mixing visual systems', () => {
+    const migrated = normalisePreferences({
+      ...DEFAULT_PREFERENCES,
+      companionBody: 'lantern',
+      companionColor: 'mint',
+      companionFace: 'calm',
+      companionAccessory: 'antenna',
+    });
+    expect(migrated.companionBody).toBe('circle');
+    expect(migrated.companionColor).toBe('rose');
+    expect(migrated.companionFace).toBe('neutral');
+    expect(migrated).not.toHaveProperty('companionAccessory');
+  });
+
   it('keeps daylight independent of the device color scheme', () => {
     expect(resolvedAppearance('dawn', true)).toBe('dawn');
     expect(resolvedAppearance('dawn', false)).toBe('dawn');
@@ -95,5 +118,16 @@ describe('Atlas preferences', () => {
       .toBe('origin-landscape');
     expect(normalisePreferences({ worldArtProfile: 'survey-relief' }).worldArtProfile)
       .toBe('origin-landscape');
+  });
+
+  it('does not reinterpret an unknown version as the current world recipe', () => {
+    const value = normalisePreferences({
+      ...DEFAULT_PREFERENCES,
+      worldArtProfile: 'origin-landscape',
+      worldArtProfileVersion: 99,
+      worldStyleParameters: { vitality: 0 },
+    });
+    expect(value.worldArtProfileVersion).toBe(1);
+    expect(value.worldStyleParameters).toEqual(DEFAULT_PREFERENCES.worldStyleParameters);
   });
 });

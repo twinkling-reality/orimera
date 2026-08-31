@@ -2,11 +2,15 @@ import {
   DEFAULT_PREFERENCES,
   normalisePreferences,
   type AtlasPreferences,
+  type CompanionBodyPreference,
+  type CompanionColorPreference,
+  type CompanionFacePreference,
   type ContrastPreference,
   type TransparencyPreference,
   type VignettePreference,
 } from '../preferences.js';
 import {
+  resolveWorldStyleParameters,
   worldArtProfile,
   worldStyleControls,
 } from '@orimera/presentation';
@@ -26,6 +30,7 @@ interface OptionsCallbacks {
   readonly preferences: AtlasPreferences;
   readonly onChange: (preferences: AtlasPreferences) => void;
   readonly onPreview?: (preferences: AtlasPreferences) => void;
+  readonly onWorldDiscard?: (preferences: AtlasPreferences) => void;
   readonly onClose: () => void;
   readonly onShowControls: () => void;
 }
@@ -39,6 +44,17 @@ function field(label: string, control: HTMLElement, note?: string): HTMLElement 
   if (note !== undefined) content.push(el('span', { class: 'option-note', text: note }));
   return el('label', { class: 'option-field' }, content);
 }
+
+const sameWorldStyle = (left: AtlasPreferences, right: AtlasPreferences): boolean => {
+  if (left.worldArtProfile !== right.worldArtProfile) return false;
+  const keys = new Set([
+    ...Object.keys(left.worldStyleParameters),
+    ...Object.keys(right.worldStyleParameters),
+  ]);
+  return [...keys].every(
+    (key) => left.worldStyleParameters[key] === right.worldStyleParameters[key],
+  );
+};
 
 export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
   const root = el('section', {
@@ -55,7 +71,6 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
     'aria-label': 'Return to Atlas',
     text: 'Return  O',
   });
-  close.addEventListener('click', callbacks.onClose);
 
   const contrast = el('select', { 'aria-label': 'Contrast' }, [
     option('standard', 'Standard'),
@@ -83,13 +98,53 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
     option('subtle', 'Subtle'),
     option('strong', 'Strong'),
   ]);
-  const companionSide = el('select', { 'aria-label': 'Companion side' }, [
-    option('right', 'Right'),
-    option('left', 'Left'),
+  const companionBody = el('select', { 'aria-label': 'Companion shape' }, [
+    option('circle', 'Circle'),
+    option('pebble', 'Pebble'),
+    option('squircle', 'Squircle'),
+    option('capsule', 'Capsule'),
+    option('cloud', 'Cloud'),
+    option('droplet', 'Droplet'),
+  ]);
+  const companionColor = el('select', { 'aria-label': 'Companion color' }, [
+    option('ink', 'Ink'),
+    option('rose', 'Pink'),
+    option('orange', 'Orange'),
+    option('periwinkle', 'Blue'),
+    option('mint', 'Green'),
+  ]);
+  const companionFace = el('select', { 'aria-label': 'Companion expression' }, [
+    option('neutral', 'Neutral'),
+    option('attentive', 'Attentive'),
+    option('curious', 'Curious'),
+    option('happy', 'Happy'),
+    option('sleepy', 'Sleepy'),
   ]);
 
-  const activeStyle = worldArtProfile(callbacks.preferences.worldArtProfile);
-  const styleControls = worldStyleControls(activeStyle.profileId);
+  const activeStyle = worldArtProfile(
+    callbacks.preferences.worldArtProfile,
+    callbacks.preferences.worldArtProfileVersion,
+  );
+  const defaultStyleParameters = resolveWorldStyleParameters(
+    activeStyle.profileId,
+    {},
+    activeStyle.profileVersion,
+  );
+  const styleControls = worldStyleControls(activeStyle.profileId, activeStyle.profileVersion);
+  const styleName = el('strong', { class: 'world-style-name' });
+  const styleState = el('span', { class: 'world-style-state', role: 'status', 'aria-live': 'polite' });
+  const styleSwatches = [
+    ['Open air', 'sky'],
+    ['Continuity field', 'terrain'],
+    ['Source light', 'paper'],
+    ['Confirmed relation', 'brass'],
+    ['Unresolved', 'stoneShadow'],
+  ].map(([label, role]) => el('span', {
+    class: 'world-dna-swatch',
+    title: label,
+    'aria-label': label,
+    'data-palette-role': role,
+  }));
   const styleInputs = new Map<string, {
     readonly definition: WorldStyleParameterDefinition;
     readonly input: HTMLInputElement | HTMLSelectElement;
@@ -120,18 +175,52 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
     return field(definition.label, control, definition.description);
   });
 
+  let applied = callbacks.preferences;
   let current = callbacks.preferences;
-  const commit = (patch: Partial<AtlasPreferences>): void => {
-    current = normalisePreferences({ ...current, ...patch });
+  let render = (): void => {};
+  const worldDirty = (): boolean => !sameWorldStyle(current, applied);
+  const discardWorldPreview = (): void => {
+    if (!worldDirty()) return;
+    current = normalisePreferences({
+      ...current,
+      worldArtProfile: applied.worldArtProfile,
+      worldStyleParameters: applied.worldStyleParameters,
+    });
     render();
-    callbacks.onChange(current);
+    callbacks.onWorldDiscard?.(applied);
+  };
+  close.addEventListener('click', () => {
+    discardWorldPreview();
+    callbacks.onClose();
+  });
+  const commit = (patch: Partial<AtlasPreferences>): void => {
+    const draftProfile = current.worldArtProfile;
+    const draftParameters = current.worldStyleParameters;
+    applied = normalisePreferences({ ...applied, ...patch });
+    current = normalisePreferences({
+      ...applied,
+      worldArtProfile: draftProfile,
+      worldStyleParameters: draftParameters,
+    });
+    render();
+    callbacks.onChange(applied);
   };
   const preview = (patch: Partial<AtlasPreferences>): void => {
     current = normalisePreferences({ ...current, ...patch });
     render();
     callbacks.onPreview?.(current);
   };
-  const render = (): void => {
+  const applyWorld = el('button', {
+    type: 'button', class: 'world-style-apply', text: 'Apply world design',
+  });
+  const undoWorld = el('button', {
+    type: 'button', class: 'text-action', text: 'Undo preview',
+  });
+  const resetWorld = el('button', {
+    type: 'button', class: 'text-action', text: 'Reset this style',
+  });
+
+  render = (): void => {
     contrast.value = current.contrast;
     transparency.value = current.transparency;
     fieldOfView.value = String(current.fieldOfView);
@@ -139,15 +228,41 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
     sensitivity.value = String(current.mouseSensitivity);
     sensitivityValue.value = `${current.mouseSensitivity.toFixed(1)}×`;
     vignette.value = current.vignette;
-    companionSide.value = current.companionSide;
+    companionBody.value = current.companionBody;
+    companionColor.value = current.companionColor;
+    companionFace.value = current.companionFace;
+    const liveStyle = worldArtProfile(
+      current.worldArtProfile,
+      current.worldArtProfileVersion,
+      current.worldStyleParameters,
+    );
+    styleName.textContent = liveStyle.displayName;
+    const authored = Object.entries(defaultStyleParameters).every(
+      ([key, value]) => current.worldStyleParameters[key] === value,
+    );
+    styleState.textContent = worldDirty()
+      ? 'Previewing · not saved'
+      : authored
+        ? 'Authored default'
+        : 'Personal variation';
+    root.dataset['worldDirty'] = worldDirty() ? 'true' : 'false';
+    applyWorld.toggleAttribute('disabled', !worldDirty());
+    undoWorld.toggleAttribute('disabled', !worldDirty());
+    const palette = liveStyle.palette as unknown as Record<string, string>;
+    for (const swatch of styleSwatches) {
+      const role = swatch.dataset['paletteRole'];
+      if (role !== undefined) swatch.style.backgroundColor = palette[role] ?? 'transparent';
+    }
     for (const { definition, input, output } of styleInputs.values()) {
       const value = current.worldStyleParameters[definition.key] ?? definition.defaultValue;
       if (definition.kind === 'toggle') (input as HTMLInputElement).checked = value === true;
       else input.value = String(value);
       if (output !== undefined && definition.kind === 'range' && typeof value === 'number') {
-        output.value = definition.min === 0 && definition.max === 1
-          ? `${Math.round(value * 100)}%`
-          : String(value);
+        output.value = definition.capability === 'motion.tempo'
+          ? `${value.toFixed(2)}×`
+          : definition.min === 0 && definition.max === 1
+            ? `${Math.round(value * 100)}%`
+            : String(value);
       }
     }
   };
@@ -163,8 +278,12 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
   sensitivity.addEventListener('change', () => callbacks.onChange(current));
   vignette.addEventListener('change', () =>
     commit({ vignette: vignette.value as VignettePreference }));
-  companionSide.addEventListener('change', () =>
-    commit({ companionSide: companionSide.value === 'left' ? 'left' : 'right' }));
+  companionBody.addEventListener('change', () =>
+    commit({ companionBody: companionBody.value as CompanionBodyPreference }));
+  companionColor.addEventListener('change', () =>
+    commit({ companionColor: companionColor.value as CompanionColorPreference }));
+  companionFace.addEventListener('change', () =>
+    commit({ companionFace: companionFace.value as CompanionFacePreference }));
   for (const [key, { definition, input }] of styleInputs) {
     const stylePatch = (): Partial<AtlasPreferences> => {
       const value: WorldStyleParameterValue = definition.kind === 'range'
@@ -176,16 +295,40 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
     };
     if (definition.kind === 'range' || definition.kind === 'color') {
       input.addEventListener('input', () => preview(stylePatch()));
-      input.addEventListener('change', () => callbacks.onChange(current));
     } else {
-      input.addEventListener('change', () => commit(stylePatch()));
+      input.addEventListener('change', () => preview(stylePatch()));
     }
   }
+
+  applyWorld.addEventListener('click', () => {
+    if (!worldDirty()) return;
+    applied = normalisePreferences({
+      ...applied,
+      worldArtProfile: current.worldArtProfile,
+      worldStyleParameters: current.worldStyleParameters,
+    });
+    current = applied;
+    render();
+    callbacks.onChange(applied);
+  });
+  undoWorld.addEventListener('click', discardWorldPreview);
+  resetWorld.addEventListener('click', () => preview({
+    worldStyleParameters: resolveWorldStyleParameters(
+      current.worldArtProfile,
+      {},
+      current.worldArtProfileVersion,
+    ),
+  }));
 
   const controls = el('button', { type: 'button', class: 'text-action', text: 'View controls  ?' });
   controls.addEventListener('click', callbacks.onShowControls);
   const reset = el('button', { type: 'button', class: 'text-action', text: 'Restore defaults' });
-  reset.addEventListener('click', () => commit(DEFAULT_PREFERENCES));
+  reset.addEventListener('click', () => {
+    applied = DEFAULT_PREFERENCES;
+    current = DEFAULT_PREFERENCES;
+    render();
+    callbacks.onChange(DEFAULT_PREFERENCES);
+  });
 
   root.append(
     el('header', { class: 'overlay-head' }, [
@@ -203,10 +346,30 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
     el('div', { class: 'option-group world-style-options' }, [
       el('div', { class: 'world-style-head' }, [
         el('h2', { text: 'World design' }),
-        el('strong', { class: 'world-style-name', text: activeStyle.displayName }),
+        styleName,
         el('p', { class: 'option-note', text: activeStyle.description }),
+        styleState,
       ]),
+      el('div', {
+        class: 'world-dna-strip', role: 'img',
+        'aria-label': 'Colors shared by the world and its interface',
+      }, styleSwatches),
+      el('p', {
+        class: 'world-style-explanation',
+        text: 'These controls belong to this world design. Color, finish, and cadence flow into the world and its interface together.',
+      }),
       ...styleFields,
+      el('div', { class: 'world-style-assurance' }, [
+        el('strong', { text: 'Always protected' }),
+        el('span', {
+          text: 'Your memories and evidence · certainty and provenance · navigation · command placement · Companion identity · readable contrast',
+        }),
+      ]),
+      el('p', {
+        class: 'world-style-future',
+        text: 'Conversation-made designs are not connected in this build. When they are, they use this same bounded system and may offer different controls.',
+      }),
+      el('div', { class: 'world-style-actions' }, [undoWorld, resetWorld, applyWorld]),
     ]),
     el('div', { class: 'option-group view-options' }, [
       el('h2', { text: 'View' }),
@@ -216,7 +379,9 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
     ]),
     el('div', { class: 'option-group companion-options' }, [
       el('h2', { text: 'Companion' }),
-      field('Screen side', companionSide),
+      field('Shape', companionBody, 'Changes the silhouette without changing what the Companion may do.'),
+      field('Color', companionColor),
+      field('Expression', companionFace, 'Two slit eyes are the complete face; expression is visual only.'),
     ]),
     el('footer', { class: 'overlay-actions' }, [persistence, controls, reset]),
   );
@@ -227,10 +392,21 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
     root,
     preferences: () => current,
     setPreferences(value) {
-      current = normalisePreferences(value);
+      const preserveDraft = worldDirty() && sameWorldStyle(value, applied);
+      const draftProfile = current.worldArtProfile;
+      const draftParameters = current.worldStyleParameters;
+      applied = normalisePreferences(value);
+      current = preserveDraft
+        ? normalisePreferences({
+            ...applied,
+            worldArtProfile: draftProfile,
+            worldStyleParameters: draftParameters,
+          })
+        : applied;
       render();
     },
     setVisible(visible) {
+      if (!visible) discardWorldPreview();
       modalFocus.setVisible(visible);
     },
     reportPersistence(state) {
