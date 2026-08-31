@@ -57,9 +57,11 @@ that every detailed asset is resident or that every region is traversable in one
 ## 3. Spatial grammar
 
 The continuous memory field is a subtly legible navigation surface. It uses restrained directional
-variation, horizon haze, contact darkening, sparse relationship traces, and low-frequency material.
-It does not use grass, tiles, a generic grid, noisy terrain, decorative gradient blobs, or glowing
-circles.
+variation, a field/sky convergence volume, source-coloured reflection, sparse confirmed
+relationship seams, and low-frequency optical interference. It does not use grass, tiles, a
+generic grid, noisy terrain, decorative gradient blobs, or glowing circles. Renderer geometry
+extends beyond the camera envelope; field colour then converges analytically to the sky haze at
+distance and grazing angles, so a local terrain rise cannot draw a false platform edge.
 
 Every region footprint has four bands derived from one signed-distance definition:
 
@@ -73,10 +75,12 @@ navigation constraints. A circle remains a valid broad-phase fallback for the fo
 long-term footprints are authored or derived polygons, unions, or signed-distance fields. Detection
 count must not determine recovered spatial coverage.
 
-Standing and walking are communicated first through contact and optic flow, not permanent labels.
-Approach and entry are communicated through the shared footprint transition, trace convergence, and
-region body. Text is reserved for capability truth, arrival/recovery, and the permanent
-non-geographic disclosure.
+Standing and walking are communicated first through optic flow and source parallax, not permanent
+labels. Approach and entry are communicated through the shared footprint transition, relationship
+seam, and source-aperture registration. Text is reserved for capability truth, arrival/recovery,
+focused evidence actions, and the permanent non-geographic disclosure. The rejected rounded
+onboarding surface is absent from the architecture-only opening; first-use instruction is an
+explicit next UX slice rather than a renderer prop.
 
 ## 4. Engine-neutral navigation
 
@@ -198,9 +202,9 @@ backend state:
   guards the former quadratic path;
 - a pure budgeted residency planner with stub/proxy/coarse/full stages, target pinning, current and
   adjacent-neighborhood demand, cancellation, stale-completion rejection, hysteresis and release;
-- a PlayCanvas memory field with low-frequency directional material, soft region presence,
-  relationship traces, horizon correspondence, Map ground marker, and source-first archive bodies
-  for the current no-geometry state;
+- a PlayCanvas continuity field with low-frequency optical interference, source reflection, soft
+  region presence, confirmed relationship seams, field/sky convergence, Map ground marker, and
+  source apertures for the current no-geometry state;
 - PlayCanvas realization of the composed artifact using shared meshes/materials, with Aeroheart as
   the only complete user-facing identity and Survey Relief retained as an internal
   topology-compatibility regression fixture;
@@ -210,12 +214,14 @@ backend state:
 - overview tier forcing and exact Map pose restoration;
 - safe deterministic region-entry and anchor-vantage resolution through the same surface, blocker
   and line-of-sight rules as walking and focus; one exact 1.2-second transition sampler plus the
-  reduced-motion zero-duration path;
+  reduced-motion zero-duration path. The renderer preserves the validated rung-4 arrival position
+  and turns only its presentation orientation toward the canonical source body;
 - projected, keyboard-focusable Map region sigils derived from live region transforms, with Map to
   ground travel; citation-level “Locate in Atlas” with exact anchor arrival and refocus;
 - one-shot last-safe recovery events and contextual, truthful arrival/failure feedback with no
   permanent recovery chrome;
-- removal of ambient generic anchor callouts so attention remains single-valued;
+- removal of ambient generic anchor callouts so attention remains single-valued; place, object, and
+  event motes now have distinct hard silhouettes, while people remain paired presence brackets;
 - tests for surface-derived eye height, spatial bands, collision, recovery, corridor limits, Map
   restoration, confirmed-only layout, durable layout parsing/coverage, full-transform pinning,
   hundreds-region neighborhoods, budget/cancellation/hysteresis, direct navigation, Map targets,
@@ -237,7 +243,7 @@ behavior.
 | Implemented but contradictory | Movement was planar X/Z with camera Y reset to 1.62, but there was no surface, contact, collision, step, boundary, or recovery. Map altitude passed through ground distance tiers. Pointer unlock cleared keys but allowed residual velocity. A “pinned” layout preserved X/Z while silently recomputing yaw and scale. |
 | Missing at audit; core/frontend contract now implemented | Persistent-layout schema and consumption, distinct region-creation ordinal, deterministic neighborhood index, residency budgets, safe direct-navigation poses, last-safe recovery feedback, Map marker and region targets, and a spatial test suite. Durable storage, authored rung artifacts, real streaming and view-cone polish remain open. |
 | Unsuitable at target scale | The app sliced the first five records and the solver rejected more than five; all detail was described as resident; a graph write disposed and rebuilt the rendered world; footprints were estimated from anchor count; ambient neutral labels competed with focus; and capture time stood in for region creation order. |
-| Honest present constraint | The app supplies no point maps. The correct current rung is source-first cards/motes on the shared field, not fabricated terrain or reconstructed shells. |
+| Honest present constraint | The app supplies no point maps. The correct current rung is source-bearing apertures, unavailable-evidence contours, and semantic motes on the shared field, not fabricated terrain or reconstructed shells. |
 
 ## 10. Phased roadmap and ownership
 

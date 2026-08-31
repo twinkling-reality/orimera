@@ -10,23 +10,74 @@
 - Related: [architecture-overview.md](../architecture-overview.md) section 1.1
 - Mobile-delivery consequences in the preserved analysis are superseded by ADR-0006.
 
-## CORRECTED 2026-08-29: the Spline exception was opened and closed
+## CORRECTED 2026-08-31: verified SVG Companion; guessed robot and Spline removed
 
-**DECISION, CORRECTED, and now back where it started.** For one day this ADR carried a reversal
-permitting `@splinetool/runtime` for the Companion, on the grounds that glTF cannot carry what makes
-an authored Spline scene good: the exporter lists "States, Events, and Interactivity" as
-unsupported, so an exported body has no eye tracking and no expression states.
+The supplied reference was identified as the Grok Bot-style geometric avatar documented by the
+MIT-licensed Bloub project: one configurable silhouette and two slit eyes. The ordinary and
+production application now uses an original DOM/SVG implementation of that verified grammar. It
+supports saved shape, colour, and expression choices through the V3 presentation contract.
 
-That was true and it is still true. It stopped mattering because the Companion is no longer an
-authored character. Four forms were built and compared in place against the real Atlas, and the one
-chosen is a field of motes: the Atlas's own substance, drawn in 2D, needing no second engine and no
-imported scene. The robot lost on a product argument rather than a rendering one. It has a face,
-and in a system that proposes rather than asserts, a face makes claims the graph has not earned.
+The rejected humanoid PlayCanvas robot, its renderer attachment, and its body/accessory controls are
+deleted. The Spline runtime, hosted scene, development query route, and fallback are also deleted.
+The Companion therefore creates no canvas, no network request, and no second 3D renderer. The
+historical corrections below remain only as an audit of superseded decisions.
 
-So the ban stands as originally written, the `@splinetool/*` dependency is removed, and the
-`spline-runtime-is-one-file-wide` rule that fenced the exception is deleted with it. This entry is
-kept rather than erased because the reasoning is the useful part: if a future Companion ever wants
-authored interactivity, this is the road that was walked and why it was walked back.
+Bloub's MIT license covers its code, not xAI's imitated design. Orimera does not copy Bloub source or
+claim xAI affiliation; it implements the abstract, user-supplied geometric grammar locally and
+retains attribution in the evaluation document. VRM remains separate research for a future
+rights-cleared humanoid request, not a justification for adding a body to this reference.
+
+## HISTORICAL CORRECTION 2026-08-30: the supplied authored Companion reopened one narrow Spline exception
+
+**DECISION, CORRECTED.** The 2026-08-29 closure rested on a false product premise: that there was no
+approved authored Companion and that the code therefore had to invent one. The account holder has
+now supplied the source file and its production scene:
+
+- source: `https://app.spline.design/file/9ec46d55-e993-44ae-b5d4-d34e6e3babfd`;
+- runtime scene: `https://prod.spline.design/fqke6-9pFgVx3uvG/scene.splinecode`.
+
+The live scene was inspected rather than inferred from a screenshot. It contains the `body`,
+`eyes_opened`, `eyes_blinking`, and `eye` hierarchy, and exposes authored `lookAt`, `start`, and
+`mouseHover` events. Moving the cursor to opposite sides of the running export visibly rotates the
+body toward it. This is the Companion source of truth. The CSS source-plane mark and provisional
+mote field were not approximations of it and have been deleted.
+
+The narrow runtime exception is therefore open again. `@splinetool/runtime` may be imported only by
+`packages/app/src/ui/companion-stage.ts`; the dependency boundary names that exact file, so a second
+import fails the build. PlayCanvas remains the sole Atlas renderer. Spline receives no graph,
+topology, evidence, navigation, customization, or versioning authority and is loaded only on first
+summon.
+
+This exception is necessary because Spline's glTF/GLB export does not preserve states, events, or
+interactivity. Converting the scene to an Atlas asset would discard the exact Look At behaviour that
+settled the question. The DOM glass exchange remains a separate renderer because its responses and
+evidence must stay accessible and are not part of the character model.
+
+**Verified compatibility pin.** The scene loads and its authored events run under the pinned
+`@splinetool/runtime@2.0.15` browser module. Its npm package could not be installed on 2026-08-30
+because it declares `@splinetool/animation-core`, which the configured npm registry returned as
+404. The application therefore imports that exact versioned browser module from unpkg on first
+summon. The installable `1.12.98` fallback rendered the scene but emitted a real schema downgrade
+warning (`131` to `122`) and was rejected rather than presented as equivalent. Re-test the exact
+scene before changing the runtime URL or version.
+
+**Delivery and licensing remain open.** The published `@splinetool/runtime@2.0.15` package manifest
+contains no `license` field and the package exposes no `LICENSE` file. That absence is not evidence
+that use is forbidden, but it is also not a redistribution grant. Spline's current official
+self-hosting documentation says a fully offline export including the runtime is an Enterprise-plan
+feature. The current unpkg import and `prod.spline.design` scene therefore remain an externally
+hosted comparison baseline, not an approved offline or redistributable supply chain. Resolve rights
+and delivery terms with Spline before production; do not infer them from public package access.
+
+**SUPERSEDED EXPERIMENT, 2026-08-30: one-renderer native Companion.** The first paired-shutter
+prototype established the lifecycle and renderer boundary. The 2026-08-31 correction replaced it
+with the configurable modular character and made native the default.
+
+**2026-08-29 closure preserved as rejected reasoning.** The earlier decision chose a 2D mote field
+because a speculative face could make social claims unsupported by the graph. That caution remains
+valid for expressions Orimera invents. It does not authorize replacing an account-holder-supplied
+character with generated geometry. Epistemic states therefore remain unmapped until approved named
+states exist in the authored scene.
 
 ## Context
 
@@ -360,8 +411,8 @@ empty `notes` array, meaning the harness vouches for it.
 **Costs accepted, with mitigations:**
 
 - **Time to first render is 2.05x worse (202 ms versus 99 ms).** In absolute terms 202 ms is still
-  fast, and the landing-to-Atlas transition is a designed particle sequence rather than a hard cut,
-  so it has cover. Worth revisiting if it degrades at 4M points.
+  fast. The public landing page no longer masks this with a mock transition, so the application
+  must own an honest loading/arrival treatment. Worth revisiting if it degrades at 4M points.
 - **Peak heap is 1.9x higher (74.7 MB versus 39.3 MB).** This constrains how many islands can be
   resident at overview distance and makes the streaming design more important, not less.
 

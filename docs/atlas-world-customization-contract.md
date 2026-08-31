@@ -1,8 +1,9 @@
 # Atlas world customization contract
 
-Status: **DECISION** and **IMPLEMENTED BACKEND FOUNDATION**. Appearance transactions, generated
-parameter controls, PostgreSQL authority, and the HTTP lifecycle exist. A complete multi-style
-editor and structural topology editor do not.
+Status: **DECISION** and **ACTIVE IMPLEMENTATION**. PostgreSQL appearance transactions, the HTTP
+lifecycle, style-specific generated controls, shared world/interface visual DNA, and local
+preview/apply/undo UI exist. The production frontend persistence adapter, conversational authoring
+service, complete multi-style library, and structural topology editor do not.
 
 ## 1. Protected topology
 
@@ -85,13 +86,60 @@ preview-session state are excluded. Apply records those values on the immutable 
 discard, stale closure, refinement, and rollback remain inspectable without turning transient
 conversation into a durable preference.
 
+The frontend now stores each style definition as a JSON-serializable version-one recipe with:
+
+```text
+schemaVersion
+availability: product | developer
+origin: authored | generated
+profile: profileId + profileVersion + topology-compatible visual source
+controls: bounded capability manifest
+modules: reviewed local module IDs
+```
+
+The recipe contains no functions, selectors, shaders, markup, or remote assets. At startup the
+world-style registry validates profile data, the control manifest, module existence, and an exact
+one-to-one capability binding. It then compiles the recipe through the selected reviewed modules.
+Unknown modules, duplicate capability owners, unmatched controls, invalid defaults, and unsafe
+ranges fail closed. The registry itself contains no profile-ID branches, so adding a validated
+recipe does not require adding another conditional path through Options or the renderer binding.
+
+A module is trusted application code and is the only executable part of style resolution. Shared
+modules currently cover registered surface finish and bounded tempo; authored response modules
+translate Aeroheart and the Survey regression fixture's semantic controls into their own palette,
+material, detail, and atmosphere values. The backend persists inert recipe bindings and style
+versions, but cannot use recipe data to introduce executable behavior. Adding a genuinely new
+capability still requires a reviewed frontend module and capability-registry entry.
+
+The profile contains one shared visual DNA palette. The renderer consumes its sky, field, source,
+relationship, and unresolved roots directly. A trusted deterministic adapter derives interface
+ground, surface, ink, focus, provenance, uncertainty, and Companion roles from those same roots and
+corrects them to minimum contrast. A profile can no longer author a second, unrelated UI palette.
+Its versioned interface expression may still select reviewed type families, blur/saturation,
+registered texture family and blend, and interaction/idle motion. Components own shape, hit area,
+layout, reading order, accessibility, and behavior; they consume the derived roles and do not
+contain palette literals or world-specific font stacks.
+
+Control geometry is a protected system contract. The circular Atlas commands, choice silhouette,
+speech-lens silhouette, panel geometry, placements, and responsive reading order remain recognizable
+across worlds. A profile may paint those surfaces with a different material, border treatment, or
+registered texture, but it carries no radius, dimensions, coordinates, or hit-area values.
+
+This is not arbitrary CSS injection. Texture families are registered values, profile numbers are
+bounded, and a profile cannot supply selectors, markup, remote assets, executable animation code,
+or shader code. A new visual capability is a reviewed registry addition. This keeps world identity
+expressive while ensuring personal or model-authored style data cannot change evidence behavior,
+navigation, accessibility order, or confirmation semantics.
+
 The trusted renderer capability registry is the limit of runtime AI programmability. A model may
 select capabilities, rename controls, narrow ranges, choose defaults, and propose values. It may not
 invent an executable binding, widen a protected range, or ship generated shader/code into the
 runtime. A genuinely new renderer feature remains a reviewed software change. Unknown bindings,
 unknown parameters, invalid values, and out-of-range values fail before preview.
 
-Aeroheart is the sole complete user-facing identity and uses the authored daylight exposure. The
+Aeroheart is the sole complete user-facing identity and uses the authored daylight exposure. Survey
+Relief remains an intentionally extreme internal regression fixture, not a product alternative or
+evidence that unrelated styles form one family. The
 minimum presentation matrix is therefore:
 
 - Aeroheart × Standard and High contrast;
@@ -115,11 +163,15 @@ stroke, and focus uses contrast + outline.
 - unreachable required destination → reject composition;
 - failed/discarded preview → current style and topology remain unchanged.
 
-Settings and Companion are proposal origins, not separate rule engines. Settings now exposes the
-active style's generated parameter controls. It does not expose the incomplete Survey fixture as a
-product choice. Slider movement uses an isolated preview; release applies one immutable version.
+Settings and Companion are proposal origins, not separate rule engines. Settings exposes the
+active style's generated parameter controls; a different validated style may expose a different
+manifest. It does not expose the incomplete Survey fixture as a product choice. Input changes are
+live, isolated previews. The person must choose **Apply world design** to persist them, and may use
+**Undo preview** or leave Options to restore the saved style. The visible editor names what is
+protected and truthfully states that conversational style creation is not connected in this build.
 The renderer binding exposes the same Companion-origin preview/apply/discard methods; the separately
-owned Companion UI was not changed.
+owned Companion behavior is unchanged while its surrounding interface consumes the active world's
+derived semantic roles.
 
 Design references belong to proposal provenance. The intended flow is:
 
@@ -127,17 +179,29 @@ Design references belong to proposal provenance. The intended flow is:
 
 The model may explain which reference traits mapped to which capability. Reference images and
 conversation text are not renderer instructions and never bypass manifest validation.
+
 The production boundary is `orimera/world/`, migrations `0017_adaptive_world_styles.sql` and
 `0023_frontend_world_recipe_contract.sql`, and the `/world/styles` routes. Durable versions and
 current pointers live there; live conversation and isolated preview sessions remain separate. See
 [world-style-backend.md](world-style-backend.md).
 
-The referenced frontend commits are not ancestors of this backend worktree; their merge base is
-`c5f4c029f53013cb209af70e2814e7482cd332c5`. This branch therefore reproduces only the shared inert
-contract pinned to `55b123627314d328fba3850eb607d8a7682a8cad`. Integrating the actual frontend
-registry, versioned previews, Atlas journey, and verified visual system still depends on commits
-`55b1236`, `6b6b282`, `8ccebb3`, and `5c95cb3` (or reviewed descendants). It does not cherry-pick
-or redesign them.
+Production must persist the resulting immutable style version through the backend boundary rather
+than relying on the present per-device preference.
+
+The per-device preference now stores both profile ID and profile version. An unknown pair falls
+back to the product default and discards its parameters rather than interpreting old values against
+a newer recipe. Product availability also comes from the recipe registry instead of a second
+hard-coded profile allowlist.
+
+The expected personal-world lifecycle is:
+
+`authored default → human request or direct controls → model selects registered capabilities and values → validation → live world + UI preview → explicit apply → immutable style version → rollback by appending a new version`
+
+“Generate a custom style” therefore means compose and parameterize existing reviewed capabilities,
+not add CSS. Its stored recipe identifies a versioned base profile, complete validated parameter
+values, and provenance. Opening that style later regenerates the controls declared by its own
+manifest. A genuinely new renderer, texture, shader, or structural capability remains a reviewed
+software/module addition before a model may use it.
 
 ## 6. Source-media contract
 
@@ -148,3 +212,23 @@ source IDs are indistinguishable. Available sources expose an authenticated loca
 plus a provenance-bearing asset reference naming the protected source slot and evidence span.
 Unavailable states expose no asset reference. Private media remains in the evidence store and
 never enters a style recipe.
+
+## 7. Companion appearance is a separate version family
+
+Companion appearance is not world appearance and neither is memory-graph state. The versioned V3
+shape lives in `packages/presentation/src/companion-appearance.ts` and includes
+`companionModelVersion`, one geometric silhouette, colour, two-eye expression, catalog-derived body
+and eye colours, `motionProfile`, and `reducedMotionProfile`. Unknown versions fail closed to the
+current configuration; V1 and V2 prototype records migrate explicitly instead of being
+reinterpreted.
+
+Options exposes six silhouettes, five colours, and five two-eye expressions. The resolved
+configuration is applied to the DOM/SVG Companion and persisted only as a device preference. There
+are no accessory or humanoid-body controls. No graph assertion, evidence handle, topology digest,
+navigation destination, or world style version contains or derives these values.
+
+The world profile may style the Companion's surrounding speech, choices, command buttons, type,
+material, texture, and timing through semantic roles. It does not change their protected shapes or
+the user's selected Companion
+silhouette, colour, or expression. That separation allows one presence identity to remain
+recognizable across visually different worlds.

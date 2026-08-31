@@ -17,10 +17,10 @@ otherwise assume exists, and most of this document is downstream of them.
 
 ### 1.1 One scene, for the whole session
 
-**DECISION.** There is exactly one scene graph, one camera and one render loop for the entire
-lifetime of a session, from the landing page through to any region interior. There is no scene
-loading, no "enter" and no "return". Everything the user ever sees, including the landing page's
-Companion form and the World Index backdrop, is that same canvas.
+**DECISION.** Once the Atlas application opens, there is exactly one scene graph, one camera and one
+render loop for the lifetime of that application session. There is no scene loading between Map,
+World Index and region interiors. The public landing site is a separate lightweight document that
+links to the application; it does not imitate an empty Atlas or mount mock application state.
 
 Rejected alternative: discrete scenes with transitions between an overview map and region interiors,
 which is the conventional structure. Rejected because it forces a loading boundary exactly where the
@@ -33,7 +33,7 @@ Five consequences follow mechanically and are not separately decided:
 - The Atlas Map is a camera pose, not a different view (6.2).
 - Recomposition is a per-object uniform change, not a rebuild (7).
 - Processing is visible in the world where the region will be, not in a separate progress panel (8).
-- First run is a camera dolly, not a navigation.
+- First run inside the application is a camera movement, not a second scene load.
 
 ### 1.2 Three coordinate frames, one of which is presentation only
 
@@ -164,8 +164,9 @@ The Pointer Lock API documentation adds that an engagement gesture is required b
 after a user-initiated unlock.
 https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API
 
-> **Consequence: the application can never own the Escape key and can never auto-relock.** Escape has
-> exactly one meaning everywhere in Orimera: release the mouse. Nothing else may bind it.
+> **Consequence: while pointer lock is active, the application can never own Escape and can never
+> auto-relock.** Once lock has already been released for an open Companion exchange, Escape may
+> dismiss that converse-mode surface. It is never prevented while the browser still owns unlock.
 
 **VERIFIED FACT 2: pointer lock does not exist on the dominant mobile browsers.** Support data lists
 iOS Safari 3.2 through 26.6 as Not supported, Android Chrome 151 as Not supported, and Samsung
@@ -182,14 +183,15 @@ https://caniuse.com/pointerlock
 
 | Mode | Pointer | Reticle | Movement keys | Panel |
 | --- | --- | --- | --- | --- |
-| `traverse` | locked | live | active | read-only, shows key hints |
+| `traverse` | locked | live | active | summon hint only; no open conversation |
 | `converse` | unlocked, cursor visible | dimmed | disabled | interactive |
 
 - `traverse` to `converse` on: Summon Companion, Interact on an anchor that opens a panel, opening
-  the World Index, or the user pressing Escape (which the browser handles; the application merely
-  observes the pointer lock change event and follows).
-- `converse` to `traverse` on: clicking the world surface, or a persistent resume affordance. Because
-  transient activation is required, resume must be a real click target and never an automatic retry.
+  the World Index, or the user pressing Escape (which the browser handles while locked; the
+  application merely observes the pointer lock change event and follows).
+- `converse` to `traverse` on: clicking the world surface when no conversation or system surface is
+  open, or a persistent resume affordance. Because transient activation is required, resume must be
+  a real click target and never an automatic retry.
 - The world keeps rendering and animating in `converse`. Nothing pauses. That is what makes live
   consequence previews behind a panel possible (5.3).
 
@@ -258,9 +260,9 @@ person, merging and reviewing are all reachable without moving the camera at all
 Index. That is the compliance route, and it is also a better interface for a user in a hurry.
 
 Inside the Atlas: arrow keys turn, W/S move, `Tab` cycles anchors in the current region by distance
-and focuses each exactly as the reticle would, `Enter` interacts, `C` summons, `M` opens the Atlas
-Map, `I` opens the World Index, `Backspace` pops the view manifest stack. Escape is unavailable
-(2.1).
+and focuses each exactly as the reticle would, `Enter` interacts, `X` summons, `M` opens the Atlas
+Map, `I` opens the World Index, `Backspace` pops the view manifest stack. Escape releases pointer
+lock in traversal and dismisses the Companion only after its converse-mode exchange is open (2.1).
 
 **System surfaces use a small, stable command vocabulary.** A quiet command strip makes it visible:
 `I` opens the World Index, `M` changes only the camera into Atlas Map presentation, `O` opens
@@ -298,8 +300,9 @@ image must be reachable from a flat keyboard-navigable list.
 ## 3. Two verbs, and the contextual affordance system
 
 The entire verb set is `Interact` (contextual, acts on the focused anchor) and `Summon Companion`
-(global, always available). Interact is bound to space, `E`, left click and `Enter`. Summon is
-bound to `C`, right click, and a persistent low-opacity affordance at bottom centre.
+(global, always available). Interact is bound to space, `E`, left click and `Enter`. Summon/dismiss
+is bound to `X`, right click, and a persistent low-opacity affordance at bottom centre. The binding
+lives in the shared controls layer so disabled system surfaces cannot summon behind themselves.
 
 ### 3.1 The problem, stated precisely
 
@@ -363,74 +366,93 @@ constructs or parses one; it passes it to the evidence resolver and renders what
 
 ## 4. The Companion
 
-### 4.1 Two-part embodiment, deliberately separated
+### 4.1 Three-part encounter, deliberately separated
 
-**DECISION.** The Companion is a **presence in the world** and a **panel in the view**, and they are
-visually separate on purpose.
+**DECISION.** The Companion encounter is a **presence in the world**, a **speech lens in the view**,
+and a **separate decision rail**. The presence remains a rendered object. Speech, evidence, choices,
+and custom reply remain accessible DOM. They use one fixed visual-novel composition and one optical
+material language, not one generic card or a mirrored dashboard layout.
 
-**Presence.** A field of roughly 560 motes on a transparent 2D canvas over the Atlas. It is made from
-the same point-cloud substance as the regions, photographs and anchors, so it reads as part of the
-memory world rather than as a character imported into it. The motes always occupy one spherical
-body. State changes happen inside that body through local illumination, short threads between
-neighbours, ripples across its surface and small density gathers. The silhouette does not morph.
+**DECISION, CORRECTED 2026-08-31: verified SVG geometric avatar.** The supplied crop matches the
+Grok Bot visual grammar documented by the MIT-licensed Bloub project: one geometric silhouette and
+two slit eyes. The product path is an original DOM/SVG implementation of that verified grammar.
+Shape, colour, and two-eye expression are saved device preferences resolved through a versioned
+presentation contract. The rejected humanoid robot and the Spline runtime, scene, and fallback
+route are removed.
 
-The internal behavior is epistemic rather than emotional. An inferred, unconfirmed link is dim,
-sparsely connected and unsteady. A link the account holder confirmed is bright, coherent and nearly
-still. One certainty value derives brightness, coherence, connection density and steadiness, so the
-presence cannot look more certain than the graph is. Operational states such as attending and
-checking evidence change the kind of internal event, but they do not raise certainty.
+Resting, attending, uncertain, working, and settled remain operational states, not an emotional
+performance. Only `working` has a distinct semantic render: three pulsing dots. Expression
+selection is appearance only and never changes confidence, intent, or what the Companion may do.
 
-**Panel.** A floating dialogue panel in screen space, placed directly below the presence on the same
-chosen side of the view. It never overlaps the reticle.
+**Exchange, corrected from live review 2026-08-30.** The question occupies one dark optical-glass
+speech squircle across the bottom centre. A small speaker-name pill physically bisects its top
+boundary; the component accepts a name and currently receives `Companion`, so identity is not
+hard-coded as permanent product chrome. Evidence actions stay in this lens because they support
+what was said. Individual numbered answer pills occupy a fixed right-side rail. The next
+numbered answer is `Other…`; opening it replaces that pill in place with an unlined composer and an
+arrow icon rather than turning the encounter back into a form card. Unnumbered uncertainty, skip,
+and correction responses remain in the decision rail. Escape dismisses the complete encounter and
+has the same no-penalty meaning as Later.
 
-**Association.** The presence and panel share one column and one side, close enough that they read as
-one participant without a tether. A tether would imply a world position that the screen-space
-presence does not have.
+**Association.** The presence occupies the upper centre over the current memory backdrop. Speech
+anchors the bottom and decisions remain on the right. The presence is the Companion; the lens is
+its accessible utterance and evidence; the right rail is what the person can decide. Index, Map,
+Options, and Controls become circular icon controls around the speech band while an encounter is
+open, matching the supplied reference's control rhythm without copying its game chrome.
 
-Rejected alternatives were a mesh gradient orb, an aperture, a constellation and an authored Spline
-robot. The robot lost on a product argument rather than a visual one: a face would make social claims
-the graph has not earned at the measured identification accuracy. The other abstract forms were less
-specific to the Atlas's material. ADR-0003 records the Spline runtime exception being opened and
-closed.
+Rejected alternatives were the humanoid primitive robot, generated mesh gradient orb, aperture,
+constellation, mote field, Spline scene, and CSS source-plane stack. They either guessed at the
+reference or kept an unnecessary renderer after a verified SVG path existed.
 
-Rejected alternative: a bubble attached to the presence. It cannot hold evidence chips, provenance
-bands or multi-select without turning the body into a window frame. Separating the panel lets the
-user read a question while looking at the memory it concerns.
+Rejected alternative: putting the text inside the body or tethering a speech bubble to it. The
+separate glass surface can still hold evidence and multi-select without turning the body into a
+window frame.
 
 ### 4.2 Spatial placement
 
 **DECISION, CORRECTED 2026-08-29.** The Companion is a screen-space overlay, not an entity in the
-Atlas coordinate frame. It occupies a stable column near the upper left or upper right of the view.
-The account holder can flip the side with the adjacent bracket keys, and that preference is
-remembered. The presence does not trail the camera, travel to anchors or use inferred geometry for
-placement.
+Atlas coordinate frame. It occupies the stable upper centre of the view. The presence does not
+trail the camera, travel to anchors, or use inferred geometry for placement.
+
+On ordinary laptop and desktop viewports the presence occupies upper centre, speech spans the lower
+centre, and decisions remain right. The short 1012 × 324 stress layout preserves that same reading
+order with a smaller character and shallower speech band rather than mirroring or recombining it.
+
+`companion-placement.ts` reports `reference-fixed`. The current memory is intentionally backdrop,
+so its projected rectangle does not reorder answers or move the question. A prior mirrored resolver
+was removed after live review because it could put choices on the left and the dialogue in a side
+column, contradicting the supplied reference.
 
 The rejected in-world placement model had a tested home and errand solver. It was not wired after
 the presence became a 2D canvas overlay. Keeping it would preserve two incompatible answers to where
 the Companion exists, so the solver and its station abstraction were deleted rather than wired back.
 
-Attention now happens inside the stable body. A local gather marks an open question, and the world
+Attention now happens inside the stable silhouette. A local gather marks an open question, and the world
 anchor itself carries any required focus or evidence highlight. This keeps the presence findable and
 lets the actual memory point at what the question concerns.
 
-Under `prefers-reduced-motion`, the sphere is static. Every distinction otherwise carried by its
-weather becomes a visible plain-language caption beside it. The caption is mandatory, because a
-motion preference cannot remove information.
+Under `prefers-reduced-motion`, blink and working-dot pulses stop on a settled frame. No
+semantic information is lost because conversation content and evidence remain ordinary DOM text.
 
-Implemented in `web/packages/app/src/ui/companion-motes.ts` and mounted by `companion-stage.ts`.
+Implemented in `web/packages/app/src/ui/companion-stage.ts`.
 
-#### CORRECTED 2026-08-28: options are answerable by number, in both modes
+#### SVG default; no character fallback renderer
 
-**DECISION, CORRECTED.** 2.2 makes the panel READ ONLY in `traverse`, and the reason given is
-sound as far as it goes: the pointer is locked, so there is nothing to click with. The conclusion
-drawn from it was wrong. It left the user with only one way to answer anything, which was to
-release the mouse, leave the world, click, and re-enter with a fresh engagement gesture, for every
-question.
+The DOM/SVG avatar is the only Companion renderer. There is no Spline query path and no PlayCanvas
+character entity. A future rights-cleared VRM or GLB character would require a separate design,
+asset-provenance, licensing, performance, and accessibility decision; it is not implied by the
+current geometric-avatar reference.
 
-Choice-set options now carry a number and are selectable by the matching digit key, which works
-identically whether the pointer is locked or free. A user can be walking through a region, be asked
-something, press `2`, and keep walking. The panel is still not CLICKABLE in `traverse`, because
-that remains impossible rather than merely undesirable.
+#### CORRECTED 2026-08-30: summon owns the mode transition
+
+**DECISION, CORRECTED.** An open Companion conversation is always `converse`. Summoning releases
+pointer lock because choices need a real cursor position; Pointer Lock freezes that position by
+specification. WASD movement remains available relative to the last heading, while clicking the
+world cannot recapture pointer lock until the conversation is dismissed. With lock already absent,
+Escape dismisses the Companion even when the
+custom reply has focus. Choice-set options keep their number bindings as an efficient keyboard
+route, and the next number opens `Other…`; they no longer imply that an open panel may remain in
+`traverse`.
 
 Two properties this must keep. An unavailable option's key does nothing at all rather than falling
 through to the next available option, because a key that silently selects something adjacent
@@ -460,7 +482,7 @@ That shape is adopted exactly. The difference is that the story is not authored 
 per turn from the entity graph.
 
 A turn carries: an utterance with its evidence, an optional choice set (single or multi select, with
-an explicit submit in multi mode), a free input affordance for text, an always-present set of
+an explicit submit in multi mode), a free input affordance exposed as the next numbered option, an always-present set of
 escapes, the subject anchor that connects the question to the world, and the graph state version
 that invalidates it. Each choice carries an id, text, an availability flag with a reason shown when
 unavailable, a kind, an optional update proposal that is previewed on focus, and a consequence tier.
@@ -476,7 +498,7 @@ because a blast-radius preview cannot be rendered for a set.
 | --- | --- | --- |
 | Not sure | An explicit `uncertain` assertion, which is data rather than a null | Lowers re-ask priority on this entity for 14 days |
 | Skip | The question is marked deferred | 7 day re-ask cooldown; initiative cooldown doubles |
-| Later | The conversation is dismissed | Closes the thread, no penalty |
+| Later / Escape while open | The conversation is dismissed | Closes the thread, no penalty |
 | That is the wrong question | A negative signal on (intent, entity) | The only channel by which a user can tell the system its framing is off |
 
 The fourth escape is the underrated one and it is cheap to build. Without it, a user whose situation
@@ -976,6 +998,6 @@ Switching engines after the interaction layer is built means rewriting it.**
 | I-2 | Renderer (section 10) | The bake-off in [adr/0003-renderer-selection.md](adr/0003-renderer-selection.md), forced at its stated deadline |
 | I-3 | Per-stage counters, which gate section 8 | A-29, two hours, do it first |
 | I-4 | Layout at three regions: algorithmic or hand-placed (1.4) | Side-by-side comparison on the three real captures, two hours |
-| I-5 | Nothing further. The Companion and panel now share one screen-space column and need no tether (4.1) | Closed |
+| I-5 | The Companion uses the fixed centre/right/bottom encounter composition and needs no tether (4.1) | Closed |
 | I-6 | Whether muting stays legible at high mute ratios, and the right cross-fade duration (7.3) | Debug-panel tuning, half a day |
 | I-7 | Nothing further. The evidence reference shape for stills, previously open here, is settled in [domain-and-evidence-model.md](domain-and-evidence-model.md) section 1.5 | Closed |
