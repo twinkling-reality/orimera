@@ -18,8 +18,19 @@ import type { WorldStyleParameterDefinition, WorldStyleParameterValue } from '@o
 import { commandAction, el } from './dom.js';
 import { createModalFocus } from './modal-focus.js';
 
+/**
+ * The parts of Customize a caller can ask for by name.
+ *
+ * The Companion offers to redesign the world or itself, and arriving at the top of a scrolling
+ * surface makes the person hunt for the thing they just asked about. These are the sections it
+ * can name, and nothing else addresses them.
+ */
+export type AtlasInstrumentSection = 'world' | 'companion';
+
 export interface OptionsView {
   readonly root: HTMLElement;
+  /** Bring one section into view. Silent when the section is not rendered. */
+  showSection(section: AtlasInstrumentSection): void;
   preferences(): AtlasPreferences;
   setPreferences(value: AtlasPreferences): void;
   setVisible(visible: boolean): void;
@@ -430,7 +441,7 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
     el('header', { class: 'overlay-head' }, [
       el('div', {}, [
         el('p', { class: 'overlay-kicker', text: 'Atlas system' }),
-        el('h1', { id: 'options-title', text: 'Options' }),
+        el('h1', { id: 'options-title', text: 'Customize' }),
       ]),
       close,
     ]),
@@ -496,6 +507,17 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
   const modalFocus = createModalFocus(root, close);
   return {
     root,
+    showSection(section) {
+      const group = root.querySelector<HTMLElement>(
+        section === 'world' ? '.world-style-options' : '.companion-options',
+      );
+      if (group === null) return;
+      // The surface may still be hidden when this is called, and scrolling a hidden element does
+      // nothing, so it waits for the frame in which it has been shown.
+      requestAnimationFrame(() => {
+        group.scrollIntoView({ block: 'start', behavior: 'auto' });
+      });
+    },
     preferences: () => current,
     setPreferences(value) {
       const preserveDraft = worldDirty() && sameWorldStyle(value, applied);

@@ -281,6 +281,9 @@
     flex: 0 0 auto;
     padding: 0.85rem 1.15rem;
     border-bottom: 1px solid var(--edge);
+    /* The head is sticky, so a section scrolled to the very top lands underneath it and loses
+     * its own label. Reserve the head's height, which is what the person came here to read. */
+    scroll-margin-top: 7.4rem;
   }
 
   .options-view > .overlay-actions {

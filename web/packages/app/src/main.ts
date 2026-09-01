@@ -55,7 +55,7 @@ import { buildCompanionEncounter } from './ui/companion-encounter.js';
 import { resolveCompanionPlacement } from './ui/companion-placement.js';
 import { buildAtlasCommands, type AtlasCommand } from './ui/atlas-commands.js';
 import { buildControlsGuide } from './ui/controls-guide.js';
-import { buildOptions } from './ui/options.js';
+import { buildOptions, type AtlasInstrumentSection } from './ui/options.js';
 import { buildWorldChrome } from './ui/world-chrome.js';
 import { buildCompanionStage, type CompanionStage } from './ui/companion-stage.js';
 import { createCompanionController } from './companion.js';
@@ -357,12 +357,7 @@ async function mount(): Promise<void> {
       confirm.show(proposalId, summary, utterance);
     },
   });
-  /*
-   * The Companion can send you to Customize for the world or for itself. Customize is the
-   * API-wired build, which has no section addressing yet, so the destination opens and the
-   * section is not yet honoured. Porting section targeting onto it is the remaining gap.
-   */
-  let openInstrumentSection = (_section: 'world' | 'companion'): void => undefined;
+  let openInstrumentSection = (_section: AtlasInstrumentSection): void => undefined;
   function dismissCompanion(): void {
     companionController.dismiss();
     companionStage.setState('resting');
@@ -803,9 +798,10 @@ async function mount(): Promise<void> {
       optionsView.reportWorldLifecycle('failed', describeWorldStyleFailure(error));
     }
   });
-  openInstrumentSection = (_section): void => {
+  openInstrumentSection = (section): void => {
     if (companionPanel.state() === 'open') dismissCompanion();
     if (shellState.primary !== 'options') dispatchShell({ type: 'toggle-options' });
+    optionsView.showSection(section);
   };
   const settingsView = buildControlsGuide({
     preferences,
