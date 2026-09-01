@@ -252,15 +252,46 @@
    * the world around itself instead, so the surface no longer has to pretend to be a window.
    * It is the widest plate because it holds four columns, and that is the only thing it varies.
    */
+  /*
+   * Customize is a flat run of option groups, not a nav/pages/register instrument, so it gets a
+   * single scrolling column rather than a three column grid. Forcing the grid on it stacked every
+   * group into one cell, because there are no children to fill columns two and three.
+   */
   .atlas-instrument.options-view.system-overlay {
-    --plate-w: min(74rem, 74vw);
-    --plate-h: min(38rem, 74vh);
+    --plate-w: min(52rem, 56vw);
+    --plate-h: min(36rem, 74vh);
     z-index: 40;
-    grid-template-columns:
-      clamp(10.5rem, 14vw, 13rem)
-      minmax(20rem, 1fr)
-      clamp(14rem, 18vw, 18rem);
-    grid-template-rows: 4.2rem minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow-y: auto;
+  }
+
+  .options-view > .overlay-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    flex: 0 0 auto;
+    padding: 0.7rem 1.15rem 0.6rem;
+    background: color-mix(in srgb, var(--atlas-plane) 94%, transparent);
+    border-bottom: 1px solid var(--edge);
+  }
+
+  .options-view > .option-group {
+    flex: 0 0 auto;
+    padding: 0.85rem 1.15rem;
+    border-bottom: 1px solid var(--edge);
+  }
+
+  .options-view > .overlay-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    flex: 0 0 auto;
+    margin-top: auto;
+    padding: 0.6rem 1.15rem;
+    background: color-mix(in srgb, var(--atlas-plane) 94%, transparent);
+    border-top: 1px solid var(--edge);
   }
 
   .atlas-instrument .instrument-head {
