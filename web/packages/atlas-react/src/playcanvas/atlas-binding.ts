@@ -30,6 +30,7 @@ import type {
   WorldProposalOrigin,
   WorldStyleVersion,
 } from '@orimera/atlas-core';
+import { shouldDrawFrame } from './frame-policy.js';
 import {
   DISSOLVE_BAND_FRACTION,
   EMPTY_RESIDENCY_STATE,
@@ -48,12 +49,14 @@ import {
   exitAtlasMap,
   focusDirectly,
   isNavigationLineVisible,
+  latchFocus,
   localToAtlas,
   localVec3,
   mapTierState,
   neutralEmphasis,
   occurrenceNormalizer,
   resolveFocus,
+  releaseFocus,
   resolveDirectNavigation,
   resolveTiers,
   planDirectNavigationTransition,
@@ -149,6 +152,8 @@ export interface AtlasBindingOptions {
   readonly reducedMotion?: boolean;
   /** Abstract renderer residency units. Point-map full detail costs 24 by default. */
   readonly residencyBudget?: number;
+  /** Ceiling on the backing-store pixel ratio. Never raises a display above its own ratio. */
+  readonly maxPixelRatio?: number;
 }
 
 export interface FrameReport {
@@ -215,6 +220,12 @@ export class AtlasBinding {
   private readonly residencyBudget: number;
   private residencyState: ResidencyState = EMPTY_RESIDENCY_STATE;
   private residencyAllocated: ReadonlyMap<IslandId, ResidencyStage> = new Map();
+  /**
+   * Islands whose source body is actually drawn right now. The overlay needs this because an
+   * interaction prompt has to belong to something visible: an anchor on a stubbed island would
+   * otherwise put a marker on apparently empty ground.
+   */
+  private readonly presentIslands = new Set<IslandId>();
   private residencySignature = '';
   private readonly representationPressure = new RepresentationPressureController();
   private renderOriginState: RenderOriginState = INITIAL_RENDER_ORIGIN;
@@ -298,6 +309,11 @@ export class AtlasBinding {
     this.normalizer = occurrenceNormalizer(table.anchors);
   }
 
+  private dirty = true;
+  private reducedMotion = false;
+  private lastRenderMs = -1;
+  private readonly renderedPose = { x: NaN, y: NaN, z: NaN, yaw: NaN, pitch: NaN };
+
   static async create(options: AtlasBindingOptions): Promise<AtlasBinding> {
     const theme = options.theme ?? DAWN_THEME;
     const initialArtProfile = options.artProfile ?? DEFAULT_WORLD_ART_PROFILE;
@@ -321,6 +337,16 @@ export class AtlasBinding {
     app.init(appOptions);
     app.setCanvasFillMode(pc.FILLMODE_NONE);
     app.setCanvasResolution(pc.RESOLUTION_AUTO);
+    /*
+     * Cap the backing-store resolution.
+     *
+     * This scene is fragment-bound, not vertex-bound: a full-screen sky shader plus a ground
+     * shader that loops over regions and traces for every pixel. Cost therefore scales with the
+     * PIXEL COUNT, and on a 2x display an uncapped ratio quadruples that against a 1x panel for
+     * detail that the atmosphere is deliberately diffusing away. The cap is a ceiling, not a
+     * fixed value, so a 1x display is untouched.
+     */
+    device.maxPixelRatio = Math.min(globalThis.devicePixelRatio ?? 1, options.maxPixelRatio ?? 1.5);
 
     const camera = new pc.Entity('atlas-camera');
     const [skyR, skyG, skyB] = unitRgb(initialArtProfile.palette.sky);
@@ -545,6 +571,7 @@ export class AtlasBinding {
   }
 
   setTheme(theme: PresentationTheme): void {
+    this.invalidate();
     this.motes.setTheme(theme);
     this.field.setTheme(theme);
     this.sourceFirst.setTheme(theme);
@@ -553,8 +580,48 @@ export class AtlasBinding {
   }
 
   setReducedMotion(reduced: boolean): void {
+    this.reducedMotion = reduced;
     this.field.setReducedMotion(reduced);
     this.sourceFirst.setReducedMotion(reduced);
+    this.invalidate();
+  }
+
+  /**
+   * Mark the next frame as needing to be drawn.
+   *
+   * Anything that changes what the world LOOKS like without moving the camera calls this: a
+   * profile swap, a theme change, entering Map. Movement and travel are detected from the pose
+   * itself, so they never need announcing.
+   */
+  invalidate(): void {
+    this.dirty = true;
+  }
+
+  /** Whether this frame has to be drawn at all. The rule itself lives in `frame-policy`. */
+  wantsFrame(nowMs: number): boolean {
+    const s = this.controls.state;
+    const r = this.renderedPose;
+    return shouldDrawFrame({
+      dirty: this.dirty,
+      navigating: this.navigationTransition !== null,
+      poseChanged:
+        s.x !== r.x || s.y !== r.y || s.z !== r.z ||
+        s.yaw !== r.yaw || s.pitch !== r.pitch,
+      reducedMotion: this.reducedMotion,
+      sinceLastRenderMs: this.lastRenderMs < 0 ? -1 : nowMs - this.lastRenderMs,
+    });
+  }
+
+  /** Called by the host immediately after it has drawn, to record what the screen now shows. */
+  markRendered(nowMs: number): void {
+    const s = this.controls.state;
+    this.renderedPose.x = s.x;
+    this.renderedPose.y = s.y;
+    this.renderedPose.z = s.z;
+    this.renderedPose.yaw = s.yaw;
+    this.renderedPose.pitch = s.pitch;
+    this.lastRenderMs = nowMs;
+    this.dirty = false;
   }
 
   private setClearColours(profile: WorldArtProfile): void {
@@ -571,6 +638,7 @@ export class AtlasBinding {
   }
 
   private setProfileVisuals(profile: WorldArtProfile): void {
+    this.invalidate();
     this.composedWorld.setProfile(profile);
     this.field.setProfile(profile);
     this.sourceFirst.setProfile(profile);
@@ -681,8 +749,15 @@ export class AtlasBinding {
     this.refreshControlsEnabled();
   }
 
-  /** Keep walking available while the answer UI owns the cursor and pointer lock is suspended. */
-  setCompanionConversationActive(active: boolean): void {
+  /**
+   * Keep walking available while a surface owns the cursor and pointer lock is suspended.
+   *
+   * Any surface that needs a free cursor releases the lock, and releasing the lock used to end
+   * movement as a side effect: opening a panel parked you. Walking and pointing are separable,
+   * so a surface that takes the cursor opts back into movement here rather than stranding it.
+   * Look still requires the lock, because look IS the lock.
+   */
+  setFreeCursorActive(active: boolean): void {
     this.controls.setConversationActive(active);
   }
 
@@ -696,6 +771,7 @@ export class AtlasBinding {
 
   /** The map is the same live scene from a high camera pose; no scene is loaded or replaced. */
   setMapMode(active: boolean): void {
+    this.invalidate();
     if (active === (this.mapState !== null)) return;
     this.composedWorld.setMapActive(active);
     if (this.camera.camera !== undefined && this.camera.camera !== null) {
@@ -721,6 +797,7 @@ export class AtlasBinding {
       if (this.overlay !== null) this.overlay.root.hidden = true;
       this.mapOverlay?.setActive(true);
       this.sourceFirst.setResidency(this.residencyAllocated, true);
+      this.refreshPresentIslands(true);
       this.refreshControlsEnabled();
       return;
     }
@@ -739,6 +816,7 @@ export class AtlasBinding {
     if (this.overlay !== null) this.overlay.root.hidden = false;
     this.mapOverlay?.setActive(false);
     this.sourceFirst.setResidency(this.residencyAllocated, false);
+      this.refreshPresentIslands(false);
     this.refreshControlsEnabled();
   }
 
@@ -865,6 +943,28 @@ export class AtlasBinding {
   focusAnchor(index: number, nowMs: number = performance.now()): void {
     if (!Number.isInteger(index) || index < 0 || index >= this.table.count) return;
     this.focusState = focusDirectly(this.focusState, index, nowMs);
+  }
+
+  /** Engage exactly the one settled reticle target. The application decides which panel opens. */
+  engageFocusedAnchor(): number | null {
+    if (this.controls.mode !== 'traverse' || this.focusState.focusedIndex === null) return null;
+    const index = this.focusState.focusedIndex;
+    this.focusState = latchFocus(this.focusState);
+    return index;
+  }
+
+  /** Mirror of what source-first-grove and the island visuals were just told to draw. */
+  private refreshPresentIslands(map: boolean): void {
+    this.presentIslands.clear();
+    if (map) return;
+    for (const [islandId, stage] of this.residencyAllocated) {
+      if (stage !== 'stub') this.presentIslands.add(islandId);
+    }
+  }
+
+  /** Called when the evidence surface gives control back to traversal. */
+  releaseFocusedAnchor(): void {
+    this.focusState = releaseFocus(this.focusState);
   }
 
   cameraPose(): CameraPose {
@@ -999,6 +1099,7 @@ export class AtlasBinding {
         [...this.residencyState.entries].map(([id, entry]) => [id, entry.current]),
       );
       this.applyResidencyPresentation();
+      this.invalidate();
     }
 
     // Representation density, as one uniform write per island. No material swap, no scene-graph
@@ -1059,6 +1160,16 @@ export class AtlasBinding {
         table: this.table,
         emphasis: this.emphasis,
         camera: cameraComponent,
+        cameraPosition: cameraAtlas,
+        traversalActive: this.controls.mode === 'traverse',
+        candidateIndex: this.controls.mode === 'traverse' ? (resolution.best?.index ?? null) : null,
+        presentIslands: this.presentIslands,
+        focusedDistance:
+          this.controls.mode === 'traverse' &&
+          resolution.focused !== null &&
+          resolution.best?.index === resolution.focused.index
+            ? resolution.focused.distance
+            : null,
         // Conversation mode is for reading chrome, not for showing whatever happens to sit under
         // the dormant reticle. Focus copy enters only after the person clicks into the world.
         focusedIndex: this.controls.mode === 'traverse' ? this.focusState.focusedIndex : null,

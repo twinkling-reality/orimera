@@ -86,8 +86,23 @@ export async function mountAtlas(
   if (onFrame !== undefined) binding.onFrame = onFrame;
   // The engine drives the clock. The binding's own update runs before the render, which is the
   // order the interaction model describes: move, decide density, decide attention, then draw.
+  /*
+   * The engine drives the clock; the binding decides whether the frame is worth drawing.
+   *
+   * `autoRender = false` stops the renderer, not the update loop: input, focus, residency and the
+   * DOM overlay all keep running every tick, so nothing that reads world state goes stale. Only
+   * the GPU work is skipped, and only when the binding says the screen would come out identical.
+   */
+  binding.app.autoRender = false;
+  // A resize changes the picture without moving the camera, so it has to announce itself.
+  const onResize = (): void => binding.invalidate();
+  window.addEventListener('resize', onResize);
   binding.app.on('update', (dt: number) => {
-    binding.update(dt, performance.now());
+    const nowMs = performance.now();
+    binding.update(dt, nowMs);
+    const draw = binding.wantsFrame(nowMs);
+    binding.app.renderNextFrame = draw;
+    if (draw) binding.markRendered(nowMs);
   });
   binding.app.start();
 
@@ -95,6 +110,7 @@ export async function mountAtlas(
     binding,
     placements: binding.verifyPlacements(),
     dispose: () => {
+      window.removeEventListener('resize', onResize);
       delete canvas.dataset.worldProfile;
       delete canvas.dataset.worldTopology;
       delete canvas.dataset.worldModules;
