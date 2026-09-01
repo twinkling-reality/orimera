@@ -437,6 +437,9 @@ export function createSourceFirstGrove(
       reducedMotion = reduced;
     },
     setResidency(stages, map) {
+      // The authored residency rule. A source is world evidence, so it is present whenever its
+      // island is resident; what a deliberate interaction adds is the full evidence surface, not
+      // the first sight of the memory.
       for (const memory of memories) {
         memory.group.enabled = !map && (stages.get(memory.islandId) ?? 'stub') !== 'stub';
       }
@@ -461,11 +464,14 @@ export function createSourceFirstGrove(
         memory.material.setParameter('uTime', seconds);
         memory.material.setParameter('uResolve', memory.resolve);
         memory.auraMaterial.setParameter('uTime', seconds);
-        // Direct travel can legally resolve very near a source. Keep the veil room-scale without
-        // letting it swallow the entire camera when the protected destination is close.
+        // The veil is a world object, so it keeps real parallax: its size is fixed in the world
+        // beyond about fourteen units and only tapers as the camera closes. At the 4.2-unit
+        // approach threshold, and at a 70 degree vertical field of view, the taper puts it at
+        // roughly a third of the viewport width, which is what keeps approaching a source from
+        // turning into a full-screen photograph.
         const proximityScale = memory.unavailable
           ? Math.max(0.30, Math.min(0.58, distance / 10))
-          : 0.68 + smoothstep(3.5, 10.5, distance) * 0.32;
+          : 0.34 + smoothstep(3.5, 14.0, distance) * 0.36;
         const displayScale = memory.profileScale * proximityScale;
         memory.veil.setLocalScale(displayScale, displayScale, displayScale);
       }

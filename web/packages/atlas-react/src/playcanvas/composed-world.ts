@@ -5,6 +5,7 @@ import {
   ORIGIN_LANDSCAPE,
   SURVEY_RELIEF,
   unitRgb,
+  worldSilhouetteTone,
   type PresentationTheme,
   type WorldArtProfile,
   type WorldArtProfileId,
@@ -62,9 +63,48 @@ uniform vec3 uSky;
 uniform vec3 uHaze;
 uniform vec3 uSun;
 uniform vec3 uCloud;
+uniform vec3 uWarm;
+uniform vec3 uGold;
+uniform vec3 uLift;
+/** 0 = layered-horizon, 1 = diffuse-canvas. Authored by the profile, never by a profile ID. */
+uniform float uAtmosphereForm;
+
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+float colourMass(vec2 point, vec2 centre, vec2 radius) {
+    vec2 q = (point - centre) / radius;
+    return exp(-dot(q, q) * 1.65);
+}
 
 void main(void) {
     vec3 d = normalize(vDirection);
+    if (uAtmosphereForm > 0.5) {
+        // The supplied poster language: one light canvas with colour entering from beyond the
+        // frame, never a stacked sky/haze/ground horizon.
+        vec2 p = vec2(d.x, d.y);
+        float coral = colourMass(p, vec2(-1.02, 0.04), vec2(0.86, 0.72));
+        float gold = colourMass(p, vec2(0.12, -0.98), vec2(1.02, 0.68));
+        float cool = colourMass(p, vec2(0.92, 0.58), vec2(0.88, 0.72));
+        float lift = colourMass(p, vec2(-0.16, 1.02), vec2(0.86, 0.64));
+        // Both physical surfaces meet at paper-white. Colour belongs to the outer field, so the
+        // horizon cannot reappear as a differently coloured horizontal band.
+        float edgeField = smoothstep(0.035, 0.30, abs(d.y));
+        coral *= edgeField;
+        gold *= edgeField;
+        cool *= edgeField;
+        lift *= edgeField;
+        vec3 colour = uCloud;
+        colour = mix(colour, uWarm, coral * 0.29);
+        colour = mix(colour, uGold, gold * 0.24);
+        colour = mix(colour, uSky, cool * 0.23);
+        colour = mix(colour, uLift, lift * 0.18);
+        float grain = hash(floor((p + d.z) * 920.0));
+        colour += (grain - 0.5) * 0.012;
+        gl_FragColor = vec4(colour, 1.0);
+        return;
+    }
     float height = smoothstep(-0.025, 0.88, d.y);
     vec3 colour = mix(uHaze, uSky, height);
 
@@ -138,6 +178,10 @@ function createSkyMaterial(profile: WorldArtProfile): pc.ShaderMaterial {
   material.setParameter('uHaze', new Float32Array(unitRgb(profile.palette.haze)));
   material.setParameter('uSun', new Float32Array(unitRgb(profile.palette.sun)));
   material.setParameter('uCloud', new Float32Array(unitRgb(profile.palette.paper)));
+  material.setParameter('uWarm', new Float32Array(unitRgb(profile.palette.brass)));
+  material.setParameter('uGold', new Float32Array(unitRgb(profile.palette.path)));
+  material.setParameter('uLift', new Float32Array(unitRgb(profile.palette.terrainLift)));
+  material.setParameter('uAtmosphereForm', profile.field.atmosphere === 'diffuse-canvas' ? 1 : 0);
   material.cull = pc.CULLFACE_FRONT;
   material.depthWrite = false;
   material.blendType = pc.BLEND_NONE;
@@ -150,6 +194,10 @@ function updateSkyMaterial(material: pc.ShaderMaterial, profile: WorldArtProfile
   material.setParameter('uHaze', new Float32Array(unitRgb(profile.palette.haze)));
   material.setParameter('uSun', new Float32Array(unitRgb(profile.palette.sun)));
   material.setParameter('uCloud', new Float32Array(unitRgb(profile.palette.paper)));
+  material.setParameter('uWarm', new Float32Array(unitRgb(profile.palette.brass)));
+  material.setParameter('uGold', new Float32Array(unitRgb(profile.palette.path)));
+  material.setParameter('uLift', new Float32Array(unitRgb(profile.palette.terrainLift)));
+  material.setParameter('uAtmosphereForm', profile.field.atmosphere === 'diffuse-canvas' ? 1 : 0);
   material.update();
 }
 
@@ -294,21 +342,32 @@ function addOriginEnvironment(
   return environment;
 }
 
+/**
+ * The orientation register.
+ *
+ * Structure is drawn in the silhouette tone rather than in `stone`: on a near-white world a
+ * paper-coloured mast is the same value as the air behind it, so the one thing in the field that
+ * exists to be found from a distance was the one thing that could not be seen. `landmarkWidth` is
+ * the authored token for how substantial this world's register is, and it is read here rather
+ * than being replaced by a constant.
+ */
 function addAeroBeacon(
   group: pc.Entity,
   profile: WorldArtProfile,
   meshes: MeshCatalog,
-  stone: pc.StandardMaterial,
-  shadow: pc.StandardMaterial,
+  silhouette: pc.StandardMaterial,
   brass: pc.StandardMaterial,
   glass: pc.StandardMaterial,
 ): void {
   const h = profile.geometry.landmarkHeight;
-  addPrimitive(group, 'beacon-base', meshes.disc, stone, [0, 0.12, 0], [1.1, 0.18, 1.1]);
-  addPrimitive(group, 'beacon-stem', meshes.cube, stone, [0, h * 0.42, 0], [0.12, h * 0.78, 0.12]);
+  const w = profile.geometry.landmarkWidth;
+  const mast = 0.09 + w * 0.055;
+  const foot = 0.55 + w * 0.3;
+  addPrimitive(group, 'beacon-base', meshes.disc, silhouette, [0, 0.12, 0], [foot, 0.18, foot]);
+  addPrimitive(group, 'beacon-stem', meshes.cube, silhouette, [0, h * 0.42, 0], [mast, h * 0.78, mast]);
   addPrimitive(group, 'beacon-lens', meshes.rock, glass, [0, h * 0.86, 0], [0.58, 0.58, 0.28]);
-  addPrimitive(group, 'beacon-ring', meshes.ring, shadow, [0, h * 0.86, 0], [1.5, 1.5, 1.5], [90, 0, 0]);
-  addPrimitive(group, 'beacon-signal', meshes.rock, brass, [0, h * 0.86, -0.02], [0.14, 0.14, 0.08]);
+  addPrimitive(group, 'beacon-ring', meshes.ring, silhouette, [0, h * 0.86, 0], [1.5, 1.5, 1.5], [90, 0, 0]);
+  addPrimitive(group, 'beacon-signal', meshes.rock, brass, [0, h * 0.86, -0.02], [0.2, 0.2, 0.12]);
 }
 
 function addSurveyLandmark(
@@ -383,6 +442,7 @@ export function createComposedWorld(
     const root = new pc.Entity(`world-profile:${profile.profileId}`);
     const stone = createMaterial(profile.palette.stone, { gloss: 0.12 });
     const shadow = createMaterial(profile.palette.stoneShadow, { gloss: 0.08 });
+    const silhouette = createMaterial(worldSilhouetteTone(profile.palette), { gloss: 0.1 });
     const brass = createMaterial(profile.palette.brass, { metalness: 0.62, gloss: 0.36 });
     const path = createMaterial(profile.palette.path, { metalness: 0.22, gloss: 0.22 });
     const growth = createMaterial(profile.palette.terrainLift, { gloss: 0.34 });
@@ -394,7 +454,9 @@ export function createComposedWorld(
     });
     glass.cull = pc.CULLFACE_NONE;
     const sky = createSkyMaterial(profile);
-    const materials = Object.freeze<pc.Material[]>([stone, shadow, brass, path, growth, glass, sky]);
+    const materials = Object.freeze<pc.Material[]>([
+      stone, shadow, silhouette, brass, path, growth, glass, sky,
+    ]);
     entity.addChild(root);
 
     const mapHidden = profile.profileId === ORIGIN_LANDSCAPE.profileId
@@ -405,10 +467,13 @@ export function createComposedWorld(
     for (const instance of topology.instances) {
       // Foundations remain one continuous field. Evidence bodies are created by source-first-grove
       // so a missing photograph never gets replaced by decorative renderer geometry here.
-      if (instance.role === 'landmark' && profile.profileId === SURVEY_RELIEF.profileId) {
+      // Every region carries a required orientation register (world/default-catalog.ts). Gating
+      // it on one profile ID left the origin world with no vertical reference at all and made
+      // addAeroBeacon unreachable. The authored `geometry.landmark` form is the selector.
+      if (instance.role === 'landmark') {
         const group = atInstance(root, instance);
         if (profile.geometry.landmark === 'aero-beacon') {
-          addAeroBeacon(group, profile, meshes, stone, shadow, brass, glass);
+          addAeroBeacon(group, profile, meshes, silhouette, brass, glass);
         } else {
           addSurveyLandmark(group, profile, meshes, stone, shadow, brass);
         }
@@ -447,6 +512,7 @@ export function createComposedWorld(
     const applyProfile = (next: WorldArtProfile): void => {
       updateMaterial(stone, next.palette.stone, { gloss: 0.34 });
       updateMaterial(shadow, next.palette.stoneShadow, { gloss: 0.28 });
+      updateMaterial(silhouette, worldSilhouetteTone(next.palette), { gloss: 0.1 });
       updateMaterial(brass, next.palette.brass, {
         emissive: next.palette.brass,
         emissiveIntensity: next.material.emissiveStrength * 0.34,

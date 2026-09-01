@@ -4,6 +4,7 @@ import {
   DAWN_THEME,
   ORIGIN_LANDSCAPE,
   unitRgb,
+  worldSilhouetteTone,
   type PresentationTheme,
   type WorldArtProfile,
 } from '@orimera/presentation';
@@ -58,6 +59,11 @@ uniform vec3 uGround;
 uniform vec3 uSurface;
 uniform vec3 uAtmosphere;
 uniform vec3 uTraceColour;
+uniform vec3 uPaper;
+uniform vec3 uInk;
+/** 0 = reflective-tide, 1 = paper-contour. Authored by the profile, never by a profile ID. */
+uniform float uSurfaceForm;
+uniform float uSurfacePresence;
 uniform vec4 uField;
 uniform vec4 uRegions[${regionCapacity}];
 uniform vec4 uTraceA[${traceCapacity}];
@@ -77,6 +83,21 @@ float noise(vec2 p) {
     f = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
                mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+/**
+ * One contour of the authored relief.
+ *
+ * Perspective compresses world-space lines toward the horizon, so the line widens with view
+ * distance: the near field keeps crisp separate contours to walk against, and the far field
+ * thickens into continuous tone instead of aliasing into speckle.
+ */
+float contourInk(float relief, float viewDistance) {
+    float lines = relief * 11.0;
+    float f = fract(lines);
+    float toLine = min(f, 1.0 - f) * 2.0;
+    float width = 0.09 + smoothstep(10.0, 130.0, viewDistance) * 0.52;
+    return 1.0 - smoothstep(0.0, width, toLine);
 }
 
 vec2 segmentProjection(vec2 p, vec2 a, vec2 b) {
@@ -108,6 +129,24 @@ void main(void) {
     float glimmer = smoothstep(0.76, 0.98, interference * 0.62 + fine * 0.38);
     colour += mix(uSurface, uAtmosphere, 0.62) * glimmer * 0.14 * (1.0 - uMapMode);
 
+    // A paper-contour world walks on a sheet, not on a reflective tide.
+    //
+    // The relief is sampled WITHOUT uTime. A tide is supposed to flow, so the fields above carry
+    // time; contours are not allowed to. A ground that slides on its own cannot answer "did I
+    // move", which is the only question this surface exists to answer: drifting contours make a
+    // still camera and a walking one look identical.
+    float relief = noise(p * 0.018) * 0.62 + noise(p * 0.055) * 0.38;
+    if (uSurfaceForm > 0.5) {
+        vec3 sheet = mix(uPaper, uSurface, 0.05 + relief * 0.07);
+        float contour = contourInk(relief, viewDistance);
+        // Paper fibre in world space. Near the feet this is the only high-frequency reference a
+        // person has, and it is what turns walking into visible movement rather than a still image.
+        float fibre = noise(p * vec2(1.45, 0.46)) * 0.58 + noise(p * vec2(0.46, 1.45)) * 0.42;
+        sheet = mix(sheet, uInk, contour * 0.30 * uSurfacePresence);
+        sheet *= 1.0 - (fibre - 0.5) * 0.05 * uSurfacePresence;
+        colour = mix(colour, sheet, 1.0 - uMapMode);
+    }
+
     // Map is a cartographic exposure of the same reflective medium.
     vec3 mapField = mix(uGround, uSurface, 0.28);
     colour = mix(colour, mapField, uMapMode * 0.86);
@@ -121,7 +160,11 @@ void main(void) {
         float wave = abs(sin(d * 0.31 - uTime * 0.18 + float(i) * 1.7));
         float memoryRipple = smoothstep(0.94, 1.0, wave) * presence;
         float basin = exp(-d * 0.055) * presence;
-        colour = mix(colour, uSurface, basin * 0.09 + memoryRipple * 0.045);
+        // Contact shading. On paper this is what tells a person a memory region SITS on the
+        // surface rather than floating above an undefined space.
+        vec3 contact = mix(uSurface, uInk, uSurfaceForm * 0.72);
+        float contactWeight = mix(0.09, 0.20 * uSurfacePresence, uSurfaceForm);
+        colour = mix(colour, contact, basin * contactWeight + memoryRipple * 0.045);
         float mapDiamond = abs(delta.x) + abs(delta.y);
         float mapNode = 1.0 - smoothstep(0.48, 1.18, mapDiamond);
         colour = mix(colour, uTraceColour, mapNode * uMapMode * 0.94);
@@ -141,8 +184,14 @@ void main(void) {
 
     float radial = length(local);
     float fieldDissolve = smoothstep(uField.z, uField.w, radial);
-    float distanceDissolve = smoothstep(26.0, 108.0, viewDistance);
-    float horizonDissolve = smoothstep(0.48, 0.96, grazing);
+    // A reflective tide is meant to disappear into haze almost immediately at eye height. A sheet
+    // of paper is not: at 1.62 eye height the tide's dissolve is already 84% complete ten units
+    // ahead, which is why a discarded floor and a held floor looked identical. Paper holds its
+    // surface out to roughly 25 units, then fades to a soft edge instead of a stacked band.
+    float distanceDissolve = smoothstep(
+        mix(26.0, 90.0, uSurfaceForm), mix(108.0, 420.0, uSurfaceForm), viewDistance);
+    float horizonDissolve = smoothstep(
+        mix(0.48, 0.90, uSurfaceForm), mix(0.96, 0.999, uSurfaceForm), grazing);
     float atmosphere = max(fieldDissolve * 0.78, max(distanceDissolve, horizonDissolve));
     float mapAtmosphere = horizonDissolve * uMapMode;
     colour = mix(colour, uAtmosphere, max(atmosphere * (1.0 - uMapMode), mapAtmosphere));
@@ -226,7 +275,10 @@ export function createWorldField(
   // The navigable/recovery radii remain visible in the material, but the physical draw surface
   // extends beyond the far clip so its square edge can never masquerade as a platform boundary.
   const visualHalfExtent = Math.max(2200, world.recoveryRadius * 4.8);
-  const mesh = createLandscapeMesh(device, world, visualHalfExtent, 220);
+  // 220 segments is ~193k triangles for a surface whose relief, contours, regions and traces are
+  // all computed per pixel. The mesh only has to carry the height field well enough that the
+  // silhouette and the horizon read correctly, and 96 does that at a fifth of the geometry.
+  const mesh = createLandscapeMesh(device, world, visualHalfExtent, 96);
   const material = new pc.ShaderMaterial({
     uniqueName: `orimera-grounded-world-field:${buffers.regionCapacity}:${buffers.traceCapacity}`,
     attributes: { aPosition: pc.SEMANTIC_POSITION, aNormal: pc.SEMANTIC_NORMAL },
@@ -277,6 +329,10 @@ export function createWorldField(
     material.setParameter('uSurface', new Float32Array(unitRgb(profile.palette.terrainLift)));
     material.setParameter('uAtmosphere', new Float32Array(unitRgb(profile.palette.haze)));
     material.setParameter('uTraceColour', new Float32Array(unitRgb(profile.palette.path)));
+    material.setParameter('uPaper', new Float32Array(unitRgb(profile.palette.paper)));
+    material.setParameter('uInk', new Float32Array(unitRgb(worldSilhouetteTone(profile.palette))));
+    material.setParameter('uSurfaceForm', profile.field.surface === 'paper-contour' ? 1 : 0);
+    material.setParameter('uSurfacePresence', profile.field.surfacePresence);
     material.update();
   };
   setProfile(initialProfile);

@@ -1,10 +1,14 @@
 import type { WorldStyleParameterDefinition } from '@orimera/atlas-core';
 import {
+  MIN_SURFACE_PRESENCE,
   contrastRatio,
   deriveWorldUiColors,
+  worldSilhouetteTone,
   type WorldArtProfile,
   type WorldArtProfileSource,
+  type WorldAtmosphereForm,
   type WorldPalette,
+  type WorldSurfaceForm,
   type WorldUiColors,
   type WorldUiRecipe,
   type WorldUiStyle,
@@ -25,7 +29,9 @@ export type WorldArtProfileId = string;
 export type {
   WorldArtProfile,
   WorldArtProfileSource,
+  WorldAtmosphereForm,
   WorldPalette,
+  WorldSurfaceForm,
   WorldStyleParameters,
   WorldStyleRecipeV1,
   WorldUiColors,
@@ -34,12 +40,14 @@ export type {
 };
 export {
   AEROHEART_CONTROLS,
+  MIN_SURFACE_PRESENCE,
   SURVEY_RELIEF_CONTROLS,
   WORLD_STYLE_MODULES,
   WORLD_STYLE_RECIPES,
   WorldStyleRegistry,
   contrastRatio,
   deriveWorldUiColors,
+  worldSilhouetteTone,
 };
 
 export const WORLD_STYLE_REGISTRY = new WorldStyleRegistry({

@@ -76,17 +76,27 @@ const AEROHEART_SOURCE: WorldArtProfileSource = {
   profileId: 'origin-landscape',
   profileVersion: 1,
   displayName: 'Aeroheart',
-  description: 'Photographic memory veils above a luminous relationship tide.',
+  description: 'A clear memory field shaped by diffuse colour entering from its edges.',
   compatibilityKey: 'atlas-topology-v1',
   geometry: {
     landmark: 'aero-beacon',
     evidence: 'memory-lens',
     expansion: 'living-buds',
-    landmarkHeight: 2.3,
+    // The orientation register is a REGION-scale reference, not a cross-field one: the landmark
+    // socket puts it about three units from its region centre and the opening camera spawns 3.6
+    // units out, so a person always stands beside one. Taller does not read as further away, it
+    // reads as a wall: at 6.4 this spans more than the full vertical field of view from spawn.
+    // Tall enough to clear the horizon dissolve and still be found from the opening position.
+    landmarkHeight: 3.4,
     landmarkWidth: 2.4,
     evidenceSpread: 1.7,
     detailCount: 8,
     expansionCount: 5,
+  },
+  field: {
+    atmosphere: 'diffuse-canvas',
+    surface: 'paper-contour',
+    surfacePresence: 0.62,
   },
   material: {
     emissiveStrength: 0.58,
@@ -96,16 +106,16 @@ const AEROHEART_SOURCE: WorldArtProfileSource = {
     edgeStrength: 0.86,
   },
   palette: {
-    sky: '#5ea8b2',
-    haze: '#e8d8c7',
-    terrain: '#153f4b',
-    terrainLift: '#609b9c',
-    path: '#ffd27a',
-    stone: '#f7f1da',
-    stoneShadow: '#7c71b5',
-    paper: '#f8f3dc',
-    brass: '#ff916f',
-    sun: '#fff5cf',
+    sky: '#a8d5df',
+    haze: '#fffaf4',
+    terrain: '#eef7f2',
+    terrainLift: '#dcefdc',
+    path: '#ffac38',
+    stone: '#fffaf2',
+    stoneShadow: '#b7c8e5',
+    paper: '#fffdf8',
+    brass: '#f96858',
+    sun: '#fff3bf',
   },
   semanticChannels: {
     provenance: ['hue', 'shape'],
@@ -156,6 +166,11 @@ const SURVEY_RELIEF_SOURCE: WorldArtProfileSource = {
     evidenceSpread: 1.55,
     detailCount: 8,
     expansionCount: 5,
+  },
+  field: {
+    atmosphere: 'layered-horizon',
+    surface: 'reflective-tide',
+    surfacePresence: 1,
   },
   material: {
     emissiveStrength: 0.02,

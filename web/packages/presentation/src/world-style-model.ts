@@ -10,6 +10,23 @@ export type WorldExpansionForm = 'living-buds' | 'survey-stakes';
 const WORLD_LANDMARK_FORMS = new Set<WorldLandmarkForm>(['aero-beacon', 'survey-strata']);
 const WORLD_EVIDENCE_FORMS = new Set<WorldEvidenceForm>(['memory-lens', 'indexed-bays']);
 const WORLD_EXPANSION_FORMS = new Set<WorldExpansionForm>(['living-buds', 'survey-stakes']);
+
+/**
+ * How a world draws its atmosphere and the surface a person walks on.
+ *
+ * These exist because the two decisions are genuinely per-world and genuinely visual: one world
+ * stacks a horizon, another opens a single colour field. Before this token the renderer had no
+ * way to say that, so it asked for the profile's ID instead, which is exactly the hard-coded
+ * one-world exception the world model is supposed to make unnecessary.
+ */
+export type WorldAtmosphereForm = 'layered-horizon' | 'diffuse-canvas';
+export type WorldSurfaceForm = 'reflective-tide' | 'paper-contour';
+
+const WORLD_ATMOSPHERE_FORMS = new Set<WorldAtmosphereForm>(['layered-horizon', 'diffuse-canvas']);
+const WORLD_SURFACE_FORMS = new Set<WorldSurfaceForm>(['reflective-tide', 'paper-contour']);
+
+/** A surface may recede almost into the atmosphere, but it may never be authored out of existence. */
+export const MIN_SURFACE_PRESENCE = 0.25;
 const WORLD_UI_TEXTURES = new Set(['paper-grain', 'contour-grid', 'none']);
 const WORLD_UI_BLEND_MODES = new Set(['normal', 'multiply', 'soft-light']);
 const WORLD_UI_EASINGS = new Set(['linear', 'cubic-bezier(0.2, 0.7, 0.2, 1)']);
@@ -113,6 +130,16 @@ export interface WorldArtProfileSource {
     readonly detailCount: number;
     readonly expansionCount: number;
   };
+  /**
+   * Atmosphere and traversal-surface treatment. `surfacePresence` scales how strongly the ground
+   * reads against the atmosphere; it does not decide whether the ground is drawn. Navigation,
+   * collision, and the map field are unaffected by every value here.
+   */
+  readonly field: {
+    readonly atmosphere: WorldAtmosphereForm;
+    readonly surface: WorldSurfaceForm;
+    readonly surfacePresence: number;
+  };
   readonly material: {
     readonly emissiveStrength: number;
     readonly opacity: number;
@@ -211,9 +238,22 @@ export function deriveWorldUiColors(palette: WorldPalette): WorldUiColors {
   });
 }
 
+/**
+ * A structural tone guaranteed to separate from the world's own paper.
+ *
+ * A landmark exists to be found from across the field. On a near-white world its stone body is
+ * the same value as the air behind it, so the orientation it is supposed to provide disappears.
+ * This keeps the silhouette readable from the palette a world already authored, rather than from
+ * a colour hard-coded for one world.
+ */
+export function worldSilhouetteTone(palette: WorldPalette): string {
+  return accessibleTone(palette.stoneShadow, palette.paper, 2.6);
+}
+
 const freezeSource = (source: WorldArtProfileSource): WorldArtProfileSource => Object.freeze({
   ...source,
   geometry: Object.freeze({ ...source.geometry }),
+  field: Object.freeze({ ...source.field }),
   material: Object.freeze({ ...source.material }),
   palette: Object.freeze({ ...source.palette }),
   semanticChannels: Object.freeze({
@@ -252,6 +292,15 @@ export function validateWorldArtProfileSource(source: WorldArtProfileSource): vo
       throw new TypeError(`invalid ${source.profileId} geometry token ${name}`);
     }
   }
+  if (
+    !WORLD_ATMOSPHERE_FORMS.has(source.field.atmosphere) ||
+    !WORLD_SURFACE_FORMS.has(source.field.surface)
+  ) throw new TypeError(`unregistered world field treatment: ${source.profileId}`);
+  if (
+    !Number.isFinite(source.field.surfacePresence) ||
+    source.field.surfacePresence < MIN_SURFACE_PRESENCE ||
+    source.field.surfacePresence > 1
+  ) throw new TypeError(`invalid ${source.profileId} surface presence`);
   for (const [name, number] of Object.entries(source.material)) {
     if (!Number.isFinite(number) || number < 0 || number > 1) {
       throw new TypeError(`invalid ${source.profileId} material token ${name}`);
@@ -311,6 +360,7 @@ export function copyWorldArtProfileSource(source: WorldArtProfileSource): WorldA
   return {
     ...source,
     geometry: { ...source.geometry },
+    field: { ...source.field },
     material: { ...source.material },
     palette: { ...source.palette },
     semanticChannels: {
