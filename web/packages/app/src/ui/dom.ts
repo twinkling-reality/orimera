@@ -34,3 +34,19 @@ export function replace(node: Element, children: readonly (Node | string)[]): vo
   clear(node);
   node.append(...children);
 }
+
+/**
+ * A command and the key that runs it, in that order.
+ *
+ * The key comes FIRST because that is the order every one of these reads in: the badge is the
+ * thing you scan for, and the words tell you what it does. Three surfaces used to bake the key
+ * into the label as trailing text ("Dismiss  ?"), which meant the same object was a styled badge
+ * in one place and two spaces and a letter in another. There is one of these now, and a surface
+ * that needs a command action asks for it here rather than describing one again.
+ */
+export function commandAction(key: string, label: string): readonly Node[] {
+  return [
+    el('kbd', { text: key }),
+    el('span', { class: 'command-action-label', text: label }),
+  ];
+}

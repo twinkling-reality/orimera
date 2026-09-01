@@ -39,6 +39,15 @@ export interface AtlasPreferences {
   readonly mouseSensitivity: number;
   readonly vignette: VignettePreference;
   readonly cameraBob: boolean;
+  /**
+   * A region plan held in the corner while traversing.
+   *
+   * Off by default, deliberately. The world is meant to be its own coordinate system, so the
+   * beacons and the field come first and this is the fallback for anyone the world does not
+   * orient on its own. A toggle is not the permanent HUD the design rules out; a default-on one
+   * would be.
+   */
+  readonly regionMinimap: boolean;
   readonly turnMode: TurnPreference;
   readonly transition: TransitionPreference;
   readonly companionInitiative: CompanionInitiativePreference;
@@ -61,6 +70,7 @@ export const DEFAULT_PREFERENCES: AtlasPreferences = Object.freeze({
   mouseSensitivity: 1,
   vignette: 'subtle',
   cameraBob: false,
+  regionMinimap: false,
   turnMode: 'smooth',
   transition: 'system',
   companionInitiative: 'normal',
@@ -156,6 +166,10 @@ export function normalisePreferences(value: unknown): AtlasPreferences {
       typeof record['cameraBob'] === 'boolean'
         ? record['cameraBob']
         : DEFAULT_PREFERENCES.cameraBob,
+    regionMinimap:
+      typeof record['regionMinimap'] === 'boolean'
+        ? record['regionMinimap']
+        : DEFAULT_PREFERENCES.regionMinimap,
     turnMode: TURN.has(record['turnMode'] as TurnPreference)
       ? (record['turnMode'] as TurnPreference)
       : DEFAULT_PREFERENCES.turnMode,

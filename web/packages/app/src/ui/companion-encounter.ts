@@ -38,6 +38,7 @@ export function buildCompanionEncounter(
   handlers: CompanionHandlers,
   options: CompanionEncounterOptions = {},
 ): CompanionEncounter {
+  const speakerName = options.speakerName ?? 'Unnamed Companion';
   const root = el('aside', {
     class: 'companion-encounter',
     'aria-label': 'Companion encounter',
@@ -45,7 +46,7 @@ export function buildCompanionEncounter(
     'data-state': 'enter',
   });
   const speech = buildCompanionSpeech({
-    speakerName: options.speakerName ?? 'Companion',
+    speakerName,
     onEvidence: handlers.onEvidence,
   });
   const choices = buildCompanionChoiceRail(handlers);
@@ -68,6 +69,7 @@ export function buildCompanionEncounter(
   function renderPrompt(): void {
     root.toggleAttribute('data-first-use', firstUsePrompt !== null);
     if (firstUsePrompt !== null) {
+      root.toggleAttribute('data-compact-prompt', firstUsePrompt.compact === true);
       replace(root, [
         el('p', { class: 'companion-prompt' }, [
           el('span', { class: 'companion-prompt-statement', text: firstUsePrompt.statement }),
@@ -80,13 +82,14 @@ export function buildCompanionEncounter(
       ]);
       return;
     }
+    root.removeAttribute('data-compact-prompt');
     replace(root, [
       el(
         'p',
         { class: 'companion-prompt' },
         state === 'enter'
           ? ['Click to look around']
-          : ['Press ', el('b', { text: 'X' }), ' to summon the Companion'],
+          : ['Press ', el('b', { text: 'X' }), ` to call ${speakerName}`],
       ),
     ]);
   }

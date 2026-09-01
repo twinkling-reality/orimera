@@ -30,4 +30,13 @@ describe('world-owned interface style contract', () => {
     expect(componentStyles).toContain('background-color: var(--ui-companion-surface)');
     expect(worldStyleAdapter).not.toMatch(/['"]--(?:radius-|ui-choice-radius|ui-speech-radius)['"]\s*:/);
   });
+
+  it('does not reveal closed panels when traversal begins', () => {
+    const traversalRule = componentStyles.match(
+      /#shell\[data-mode='traverse'\] > :where\([^}]+\)\s*\{([^}]*)\}/,
+    );
+    expect(traversalRule?.[1]).toContain('pointer-events: none');
+    expect(traversalRule?.[1]).not.toContain('opacity');
+    expect(componentStyles).toContain("#shell[data-index='open'] .rail");
+  });
 });

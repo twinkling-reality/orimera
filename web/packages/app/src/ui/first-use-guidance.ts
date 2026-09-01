@@ -11,6 +11,7 @@ export interface FirstUsePromptAction {
 export interface FirstUsePrompt {
   readonly statement: string;
   readonly actions: readonly FirstUsePromptAction[];
+  readonly compact?: boolean;
 }
 
 interface FirstUseStorage {
@@ -61,8 +62,9 @@ export function createFirstUseGuidance(storage: FirstUseStorage): FirstUseGuidan
       if (phase === 'complete') return null;
       if (phase === 'companion') {
         return Object.freeze({
-          statement: 'The Companion helps resolve what your memories show.',
-          actions: Object.freeze([{ key: 'X', label: 'Call Companion' }]),
+          statement: 'Press',
+          actions: Object.freeze([{ key: 'X', label: 'to call Unnamed Companion' }]),
+          compact: true,
         });
       }
       if (mode === 'converse') {

@@ -23,6 +23,7 @@
 import '@orimera/presentation/tokens.css';
 import './style.css';
 import './appearance.css';
+import './unified-interface.css';
 
 import type { GraphSnapshot, OccurrenceRecord } from '@orimera/graph-client';
 import { ApiError } from '@orimera/graph-client';
@@ -63,7 +64,9 @@ import { buildDetail } from './ui/detail.js';
 import { buildFormation } from './ui/formation.js';
 import { el, replace } from './ui/dom.js';
 import { createFirstUseGuidance, type FirstUseMode } from './ui/first-use-guidance.js';
-import { buildLibrary } from './ui/library.js';
+import { buildWorldIndex } from './ui/world-index.js';
+import { MapPeek } from './ui/map-peek.js';
+import { buildRegionPlan } from './ui/region-plan.js';
 import { buildStatus, MAP_ORIENTATION_CAPTION } from './ui/status.js';
 import { readPreferences, writePreferences, type AtlasPreferences } from './preferences.js';
 import {
@@ -476,7 +479,14 @@ async function mount(): Promise<void> {
     ...(previewSourceMedia === undefined ? {} : { sourceMedia: previewSourceMedia }),
   });
 
-  const library = buildLibrary({
+  const regionPoints = built.scene.islands.map((island) => ({
+    islandId: island.islandId,
+    x: island.placement.position.x,
+    z: island.placement.position.z,
+  }));
+  const minimap = buildRegionPlan(regionPoints, { viewer: true, className: 'region-minimap' });
+  minimap.render(new Set(), null);
+  const worldIndex = buildWorldIndex({
     onEntity: (entityId, activation) => {
       selected = entityId;
       const entity = current.entities.find((e) => e.entityId === entityId);
@@ -484,7 +494,7 @@ async function mount(): Promise<void> {
         detail.showEntity(current, entity);
         dispatchShell({ type: 'show-detail', id: entityId });
       }
-      library.render(current, indexFacets, selected);
+      worldIndex.render(current, indexFacets, selected);
       if (activation === 'keyboard') {
         window.setTimeout(() => detail.root.querySelector<HTMLElement>('button')?.focus(), 0);
       }
@@ -496,22 +506,27 @@ async function mount(): Promise<void> {
         detail.showOccurrence(occurrence);
         dispatchShell({ type: 'show-detail', id: occurrenceId });
       }
-      library.render(current, indexFacets, selected);
+      worldIndex.render(current, indexFacets, selected);
       if (activation === 'keyboard') {
         window.setTimeout(() => detail.root.querySelector<HTMLElement>('button')?.focus(), 0);
       }
     },
     onSearch: (text) => {
       indexFacets = Object.freeze({ ...indexFacets, text });
-      library.render(current, indexFacets, selected);
+      worldIndex.render(current, indexFacets, selected);
     },
     onFacets: (next) => {
       indexFacets = next;
       syncIndexRoute(next);
-      library.render(current, indexFacets, selected);
+      worldIndex.render(current, indexFacets, selected);
     },
     onClose: () => dispatchShell({ type: 'toggle-index' }),
-  }, { preview });
+  }, {
+    preview,
+    // Placements come from the scene, not the graph: the index reads where the world already put
+    // these regions rather than deciding it a second time.
+    regions: regionPoints,
+  });
 
   // The canvas stays where the document put it: fixed, behind everything, outside the shell.
   // Moving it into the shell would put it in the shell's stacking context, where it paints over
@@ -524,13 +539,21 @@ async function mount(): Promise<void> {
     if (command === 'index') {
       const opening = shellState.primary !== 'index';
       dispatchShell({ type: 'toggle-index' });
-      if (opening) window.setTimeout(() => library.focusSearch(), 0);
+      if (opening) window.setTimeout(() => worldIndex.focusSearch(), 0);
     }
     else if (command === 'map') dispatchShell({ type: 'toggle-map' });
     else if (command === 'options') dispatchShell({ type: 'toggle-options' });
     else dispatchShell({ type: 'toggle-controls' });
   };
   const commandBar = buildAtlasCommands(handleAtlasCommand);
+  const mapPeek = new MapPeek({
+    isMapActive: () => shellState.camera === 'map',
+    enterMap: () => dispatchShell({ type: 'toggle-map' }),
+    leaveMap: () => dispatchShell({ type: 'toggle-map' }),
+    toggleMap: () => handleAtlasCommand('map'),
+    schedule: (run, ms) => window.setTimeout(run, ms),
+    cancel: (handle) => window.clearTimeout(handle),
+  });
   reflectFirstUse = (): void => {
     companionPanel.setFirstUsePrompt(firstUse.prompt(inputMode));
     shell!.dataset['firstUse'] = firstUse.phase();
@@ -736,7 +759,6 @@ async function mount(): Promise<void> {
       }
     },
     onClose: () => dispatchShell({ type: 'toggle-options' }),
-    onShowControls: () => dispatchShell({ type: 'toggle-controls' }),
   });
   presentWorldStyleAuthority(optionsView, worldStyleConnection, worldStyleFailure, null);
   stopWorldStyleProposalInbox?.();
@@ -780,9 +802,11 @@ async function mount(): Promise<void> {
     optionsView.showSection(section);
     if (shellState.primary !== 'options') dispatchShell({ type: 'toggle-options' });
   };
-  const controlsGuide = buildControlsGuide({
+  const settingsView = buildControlsGuide({
+    preferences,
+    onChange: applyPreferences,
     onClose: () => dispatchShell({ type: 'toggle-controls' }),
-    onShowOptions: () => dispatchShell({ type: 'toggle-options' }),
+    onShowCustomize: () => dispatchShell({ type: 'toggle-options' }),
   });
 
   let latestSettingsSave = 0;
@@ -806,6 +830,7 @@ async function mount(): Promise<void> {
     );
     applyDocumentWorldStyle(profile);
     optionsView.setPreferences(preferences);
+    settingsView.setPreferences(preferences);
     companionStage.setAppearance(companionAppearance());
     shell!.setAttribute('data-vignette', preferences.vignette);
     atlas?.binding.setTheme(theme);
@@ -834,7 +859,7 @@ async function mount(): Promise<void> {
   replace(shell!, [
     stage,
     chrome.reticle,
-    library.root,
+    worldIndex.root,
     detail.root,
     forming.root,
     companionPanel.root,
@@ -842,8 +867,9 @@ async function mount(): Promise<void> {
     commandBar.root,
     mapCaption,
     travelStatus,
+    minimap.root,
     optionsView.root,
-    controlsGuide.root,
+    settingsView.root,
     viewportBoundary,
       buildStatus({
         omittedRegionCount: built.omitted.length,
@@ -856,16 +882,18 @@ async function mount(): Promise<void> {
     shell!.setAttribute('data-primary', shellState.primary);
     shell!.setAttribute('data-camera', shellState.camera);
     chrome.setIndexOpen(shellState.primary === 'index');
-    library.root.inert = shellState.primary !== 'index';
-    library.root.setAttribute('aria-hidden', shellState.primary === 'index' ? 'false' : 'true');
+    worldIndex.root.inert = shellState.primary !== 'index';
+    worldIndex.root.setAttribute('aria-hidden', shellState.primary === 'index' ? 'false' : 'true');
+    optionsView.setVisible(shellState.primary === 'options');
+    settingsView.setVisible(shellState.primary === 'controls');
     const systemSurfaceOpen = shellState.primary === 'options' || shellState.primary === 'controls';
     const modalBackground = [
       stage,
+      worldIndex.root,
       detail.root,
       forming.root,
       companionPanel.root,
       confirm.root,
-      commandBar.root,
       mapCaption,
       travelStatus,
     ];
@@ -877,13 +905,29 @@ async function mount(): Promise<void> {
     if (systemSurfaceOpen) for (const surface of modalBackground) surface.inert = true;
     commandBar.reflect(shellState.primary, shellState.camera);
     mapCaption.hidden = shellState.camera !== 'map';
+    // Only while traversing the ground: the Map is already the whole answer, and a plate has the
+    // world behind it rather than under it.
+    minimap.root.hidden =
+      !preferences.regionMinimap ||
+      shellState.primary !== 'world' ||
+      shellState.camera !== 'ground';
     detail.root.hidden = shellState.primary !== 'index' || shellState.detailId === null;
     atlas?.binding.setMapMode(shellState.camera === 'map');
-    atlas?.binding.setControlsEnabled(
-      !systemSurfaceOpen &&
-      shellState.camera === 'ground',
+    /*
+     * A plate stands in front of the world; it does not replace it. Movement therefore tracks the
+     * CAMERA MODE and nothing else: Map and direct travel own the camera, so they stop you, but
+     * opening a panel never does. Disabling controls for the system surfaces parked you in place
+     * the moment you opened Customize, which is the one surface where walking around while you
+     * change the world's appearance is the entire point.
+     *
+     * Summon keeps its own guard below, so a system surface still cannot call the Companion out
+     * from behind itself.
+     */
+    atlas?.binding.setControlsEnabled(shellState.camera === 'ground');
+    // Every surface here takes the cursor. None of them should take your feet with it.
+    atlas?.binding.setFreeCursorActive(
+      companionPanel.state() === 'open' || shellState.primary !== 'world',
     );
-    atlas?.binding.setCompanionConversationActive(companionPanel.state() === 'open');
     if (
       (shellState.primary !== 'world' || shellState.camera === 'map') &&
       document.pointerLockElement !== null
@@ -894,7 +938,7 @@ async function mount(): Promise<void> {
   shell!.setAttribute('data-vignette', preferences.vignette);
   reflectShell();
 
-  library.render(current, indexFacets, selected);
+  worldIndex.render(current, indexFacets, selected);
   forming.render(null, null);
 
   // What there is to watch. There is no upload endpoint yet, so an intake starts from the command
@@ -914,12 +958,24 @@ async function mount(): Promise<void> {
   settingsStylePreviewId = null;
   const activeTheme = themeForPreferences(preferences, systemAppearance.matches);
   let lastMoving: boolean | null = null;
+  let lastAnchorFocus: boolean | null = null;
   atlas = await mountAtlas(canvas as HTMLCanvasElement, stage, built.scene, (report) => {
     if (lastMoving !== report.moving) {
       lastMoving = report.moving;
       shell!.setAttribute('data-moving', report.moving ? 'true' : 'false');
     }
     if (report.moving && firstUse.observeMovement()) reflectFirstUse();
+    if (!minimap.root.hidden) {
+      const camera = atlas?.binding.controls.state;
+      minimap.setViewer(
+        camera === undefined ? null : { x: camera.x, z: camera.z, yaw: camera.yaw },
+      );
+    }
+    const anchorFocused = report.mode === 'traverse' && report.focusedIndex !== null;
+    if (lastAnchorFocus !== anchorFocused) {
+      lastAnchorFocus = anchorFocused;
+      shell!.toggleAttribute('data-anchor-focus', anchorFocused);
+    }
     shell!.setAttribute('data-spatial', report.spatial.phase);
     if (report.recoveryReason !== null) {
       showTravelStatus(
@@ -975,6 +1031,7 @@ async function mount(): Promise<void> {
   function reflectMode(next: 'traverse' | 'converse'): void {
     inputMode = next;
     chrome.setMode(next);
+    if (next === 'traverse') mounted.binding.releaseFocusedAnchor();
     if (next === 'traverse' && (shellState.primary !== 'world' || shellState.camera !== 'ground')) {
       dispatchShell({ type: 'show-world' });
     }
@@ -1011,6 +1068,9 @@ async function mount(): Promise<void> {
   }
 
   function toggleCompanion(): void {
+    // A system surface must not summon the Companion out from behind itself. This used to fall
+    // out of disabling the controls wholesale; it is now stated where the policy actually lives.
+    if (shellState.primary === 'options' || shellState.primary === 'controls') return;
     if (companionPanel.state() === 'open') {
       dismissCompanion();
       return;
@@ -1019,6 +1079,24 @@ async function mount(): Promise<void> {
   }
 
   mounted.binding.controls.onSummon = toggleCompanion;
+  mounted.binding.controls.onInteract = () => {
+    const index = mounted.binding.engageFocusedAnchor();
+    if (index === null) return;
+    const anchor = mounted.binding.table.anchors[index];
+    const occurrence = anchor === undefined
+      ? undefined
+      : current.occurrences.find((value) => value.occurrenceId === anchor.occurrenceId);
+    if (occurrence === undefined) {
+      mounted.binding.releaseFocusedAnchor();
+      showTravelStatus('This memory reference is unavailable.', 'failure');
+      return;
+    }
+    selected = occurrence.occurrenceId;
+    detail.showOccurrence(occurrence);
+    worldIndex.render(current, indexFacets, selected);
+    if (shellState.primary !== 'index') dispatchShell({ type: 'toggle-index' });
+    dispatchShell({ type: 'show-detail', id: occurrence.occurrenceId });
+  };
 
   mountListeners?.abort();
   mountListeners = new AbortController();
@@ -1043,18 +1121,31 @@ async function mount(): Promise<void> {
         target instanceof HTMLTextAreaElement ||
         target instanceof HTMLSelectElement ||
         (target instanceof HTMLElement && target.isContentEditable);
-      // Pointer lock is already released while the Companion is open, so Escape has no browser
-      // navigation job left to do in this state. It dismisses the whole exchange, including while
-      // a custom reply is focused. While locked, Controls still leaves Escape entirely to the
-      // browser and this branch cannot be reached because an open Companion disables traversal.
-      if (
-        event.code === 'Escape' &&
-        companionPanel.state() === 'open' &&
-        document.pointerLockElement === null
-      ) {
-        event.preventDefault();
-        dismissCompanion();
-        return;
+      /*
+       * Escape steps back by exactly one, and only once the browser has finished with it.
+       *
+       * While the pointer is locked Escape belongs to the user agent: it releases the mouse and
+       * we neither see nor want it, which is the rule the renderer controls are built around.
+       * Released, it has no browser job left, and the key everyone already tries for "out of
+       * this" becomes the way out. One press, one level: the exchange, then the entry, then the
+       * plate. Backspace keeps its meaning for people who learned it, but nobody guesses it.
+       */
+      if (event.code === 'Escape' && document.pointerLockElement === null) {
+        if (companionPanel.state() === 'open') {
+          event.preventDefault();
+          dismissCompanion();
+          return;
+        }
+        if (shellState.detailId !== null) {
+          event.preventDefault();
+          dispatchShell({ type: 'close-detail' });
+          return;
+        }
+        if (shellState.primary !== 'world') {
+          event.preventDefault();
+          dispatchShell({ type: 'show-world' });
+          return;
+        }
       }
       const command = commandForKeystroke({
         code: event.code,
@@ -1069,7 +1160,8 @@ async function mount(): Promise<void> {
       }
       if (command === 'toggle-map') {
         event.preventDefault();
-        handleAtlasCommand('map');
+        // Tap or hold is decided on the way back up, so the key does nothing yet.
+        mapPeek.press();
         return;
       }
       if (command === 'toggle-options') {
@@ -1101,10 +1193,19 @@ async function mount(): Promise<void> {
     { signal: mountListeners.signal },
   );
   window.addEventListener(
+    'keyup',
+    (event: KeyboardEvent) => {
+      if (event.code === 'KeyM') mapPeek.release();
+    },
+    { signal: mountListeners.signal },
+  );
+  // A hold that loses the window never receives its keyup, and a look must not become a journey.
+  window.addEventListener('blur', () => mapPeek.abort(), { signal: mountListeners.signal });
+  window.addEventListener(
     'popstate',
     () => {
       indexFacets = decodeFacets(window.location.search);
-      library.render(current, indexFacets, selected);
+      worldIndex.render(current, indexFacets, selected);
     },
     { signal: mountListeners.signal },
   );

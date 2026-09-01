@@ -143,7 +143,7 @@ describe('the exchange stays subordinate to the Companion presence', () => {
     expect(panel.root.querySelector('.companion-evidence-action')?.textContent).toBe(
       'Show supporting memory',
     );
-    expect(panel.root.querySelector('.companion-speaker')?.textContent).toBe('Companion');
+    expect(panel.root.querySelector('.companion-speaker')?.textContent).toBe('Unnamed Companion');
   });
 
   it('offers app-owned design deep links without making them graph options', () => {
@@ -262,6 +262,20 @@ describe('nothing stands on screen until it is called', () => {
     expect(panel.root.querySelector('.companion-speech')).toBeNull();
   });
 
+  it('renders the unnamed Companion call as one compact instruction', () => {
+    const panel = buildCompanionPanel(NOOP);
+    panel.setFirstUsePrompt({
+      statement: 'Press',
+      actions: [{ key: 'X', label: 'to call Unnamed Companion' }],
+      compact: true,
+    });
+    expect(panel.root.hasAttribute('data-compact-prompt')).toBe(true);
+    expect(panel.root.querySelector('.companion-prompt-statement')?.textContent).toBe('Press');
+    expect(panel.root.querySelector('.companion-prompt')?.textContent ?? '').toContain(
+      'PressXto call Unnamed Companion',
+    );
+  });
+
   it('shows how to get into the world while the mouse is free', () => {
     const panel = buildCompanionPanel(NOOP);
     expect(panel.state()).toBe('enter');
@@ -272,7 +286,9 @@ describe('nothing stands on screen until it is called', () => {
   it('offers the summon key once the user is in the world', () => {
     const panel = buildCompanionPanel(NOOP);
     panel.setState('summon');
-    expect(panel.root.querySelector('.companion-prompt')?.textContent ?? '').toContain('X');
+    expect(panel.root.querySelector('.companion-prompt')?.textContent ?? '').toContain(
+      'Press X to call Unnamed Companion',
+    );
     expect(panel.root.querySelector('.companion-escapes')).toBeNull();
   });
 

@@ -15,7 +15,7 @@ import {
   worldStyleControls,
 } from '@orimera/presentation';
 import type { WorldStyleParameterDefinition, WorldStyleParameterValue } from '@orimera/atlas-core';
-import { el } from './dom.js';
+import { commandAction, el } from './dom.js';
 import { createModalFocus } from './modal-focus.js';
 
 export interface OptionsView {
@@ -84,7 +84,7 @@ const sameWorldStyle = (left: AtlasPreferences, right: AtlasPreferences): boolea
 
 export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
   const root = el('section', {
-    class: 'system-overlay options-view',
+    class: 'system-overlay options-view atlas-instrument held-plate',
     role: 'dialog',
     'aria-modal': 'true',
     'aria-labelledby': 'options-title',
@@ -93,10 +93,9 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
 
   const close = el('button', {
     type: 'button',
-    class: 'overlay-close',
+    class: 'overlay-close command-action',
     'aria-label': 'Return to Atlas',
-    text: 'Return  O',
-  });
+  }, commandAction('O', 'Return'));
 
   const contrast = el('select', { 'aria-label': 'Contrast' }, [
     option('standard', 'Standard'),

@@ -35,8 +35,9 @@ describe('first-use Atlas guidance', () => {
     ]);
     expect(guidance.observeMovement()).toBe(true);
     expect(guidance.prompt('traverse')).toEqual({
-      statement: 'The Companion helps resolve what your memories show.',
-      actions: [{ key: 'X', label: 'Call Companion' }],
+      statement: 'Press',
+      actions: [{ key: 'X', label: 'to call Unnamed Companion' }],
+      compact: true,
     });
     expect(storage.getItem(FIRST_USE_GUIDANCE_KEY)).toBe('companion');
   });
