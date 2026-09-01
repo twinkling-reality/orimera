@@ -52,6 +52,7 @@ const settingCapabilities = (
   systemReducedMotion: boolean,
 ): Readonly<Record<keyof AtlasPreferences, readonly [string, InteractionValue] | undefined>> => ({
   version: undefined,
+  regionMinimap: undefined,
   appearance: undefined,
   contrast: undefined,
   transparency: undefined,

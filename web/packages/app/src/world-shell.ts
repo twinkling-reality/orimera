@@ -80,7 +80,10 @@ export function updateWorldShell(
     case 'show-world':
       return initialWorldShell();
     case 'show-index':
-      return Object.freeze({ primary: 'index', camera: 'ground', detailId: null, returnTo: null });
+      return Object.freeze({
+        primary: 'index', camera: 'ground', detailId: null, returnTo: null,
+        returnStack: Object.freeze([]),
+      });
     case 'show-detail':
       return state.primary === 'index'
         ? Object.freeze({ ...state, detailId: event.id })

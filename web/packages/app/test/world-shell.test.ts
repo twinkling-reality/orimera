@@ -47,8 +47,10 @@ describe('the Atlas shell', () => {
 
   it('has an unconditional complete-Index recovery transition for renderer loss', () => {
     const map = updateWorldShell(initialWorldShell(), { type: 'toggle-map' });
+    // Recovery is unconditional, so it clears the return stack rather than leaving somewhere to
+    // step back to: there is no longer a surface behind this one to return into.
     expect(updateWorldShell(map, { type: 'show-index' })).toEqual({
-      primary: 'index', camera: 'ground', detailId: null, returnTo: null,
+      primary: 'index', camera: 'ground', detailId: null, returnTo: null, returnStack: [],
     });
   });
 });
