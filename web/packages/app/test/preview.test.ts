@@ -14,7 +14,7 @@ import { PREVIEW_SOURCE_MEDIA } from '../src/dev/preview-media.js';
 import { EvidenceCache } from '../src/evidence.js';
 import { buildScene } from '../src/scene.js';
 import { buildDetail } from '../src/ui/detail.js';
-import { buildLibrary } from '../src/ui/library.js';
+import { buildWorldIndex } from '../src/ui/world-index.js';
 
 describe('Atlas development preview', () => {
   it('requires both an explicit query and a development build', () => {
@@ -126,12 +126,12 @@ describe('Atlas development preview', () => {
 
   it('does not promise source photographs from the synthetic Index', () => {
     const snapshot = adaptSnapshot(PREVIEW_GRAPH);
-    const library = buildLibrary(
+    const indexPane = buildWorldIndex(
       { onEntity: vi.fn(), onOccurrence: vi.fn(), onSearch: vi.fn() },
       { preview: true },
     );
-    library.render(snapshot, '', null);
-    const note = library.root.querySelector('.rail-note')?.textContent ?? '';
+    indexPane.render(snapshot, '', null);
+    const note = indexPane.root.querySelector('.rail-note')?.textContent ?? '';
     expect(note).toContain('synthetic');
     expect(note).toContain('unavailable');
     expect(note).not.toContain('opens the photograph');

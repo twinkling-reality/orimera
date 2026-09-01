@@ -25,5 +25,8 @@ describe('Atlas command strip', () => {
     expect(view.root.querySelectorAll('button')).toHaveLength(4);
     expect(view.root.querySelectorAll('.atlas-command-tooltip')).toHaveLength(4);
     expect(view.root.querySelector('.atlas-command-guide')).toBeNull();
+    expect(view.root.textContent).toContain('Index');
+    expect(view.root.textContent).toContain('Customize');
+    expect(view.root.textContent).toContain('Settings');
   });
 });

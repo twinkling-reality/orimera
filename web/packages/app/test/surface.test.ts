@@ -6,7 +6,7 @@ import type { EntityRecord, GraphSnapshot, OccurrenceRecord } from '@orimera/gra
 
 import { EvidenceCache } from '../src/evidence.js';
 import { buildDetail } from '../src/ui/detail.js';
-import { buildLibrary } from '../src/ui/library.js';
+import { buildWorldIndex } from '../src/ui/world-index.js';
 import { MAP_ORIENTATION_CAPTION, buildStatus } from '../src/ui/status.js';
 
 /**
@@ -140,7 +140,7 @@ describe('the provenance panel', () => {
 });
 
 describe('the desktop viewport boundary', () => {
-  it('has an explicit way back to the World Index', () => {
+  it('has an explicit way back to the index', () => {
     let closed = false;
     const detail = buildDetail(NO_EVIDENCE, {
       ...HANDLERS,
@@ -177,7 +177,7 @@ describe('the desktop viewport boundary', () => {
 describe('the Index evidence workspace', () => {
   it('exposes the existing four facet contracts and emits a typed facet change', () => {
     const onFacets = vi.fn();
-    const rail = buildLibrary({
+    const rail = buildWorldIndex({
       onEntity: () => undefined,
       onOccurrence: () => undefined,
       onSearch: () => undefined,
@@ -197,8 +197,8 @@ describe('the Index evidence workspace', () => {
 
   it('preserves keyboard focus while a presence facet rerenders the results', () => {
     const graph = snapshot([entity({ kind: 'person' })], [occurrence('o1', 'e1')]);
-    let rail: ReturnType<typeof buildLibrary>;
-    rail = buildLibrary({
+    let rail: ReturnType<typeof buildWorldIndex>;
+    rail = buildWorldIndex({
       onEntity: () => undefined,
       onOccurrence: () => undefined,
       onSearch: () => undefined,
@@ -217,7 +217,7 @@ describe('the Index evidence workspace', () => {
 
   it('identifies keyboard row activation so focus can move into the detail pane', () => {
     const onEntity = vi.fn();
-    const rail = buildLibrary({
+    const rail = buildWorldIndex({
       onEntity,
       onOccurrence: () => undefined,
       onSearch: () => undefined,
@@ -307,7 +307,7 @@ describe('the Map orientation caption', () => {
 
 describe('a name and a placeholder are not the same kind of thing', () => {
   function railOf(record: EntityRecord): HTMLElement {
-    const rail = buildLibrary({
+    const rail = buildWorldIndex({
       onEntity: () => undefined,
       onOccurrence: () => undefined,
       onSearch: () => undefined,
@@ -335,7 +335,7 @@ describe('a name and a placeholder are not the same kind of thing', () => {
   it('says which zero it is when nothing has been identified', () => {
     // "Nothing is identified" and "nothing matched your filter" are different facts, and only one
     // of them means the library is empty.
-    const rail = buildLibrary({
+    const rail = buildWorldIndex({
       onEntity: () => undefined,
       onOccurrence: () => undefined,
       onSearch: () => undefined,
@@ -347,7 +347,7 @@ describe('a name and a placeholder are not the same kind of thing', () => {
   it('never renders the open-question count as a fraction or a percentage', () => {
     // 5.5: the counter is allowed to read the same number forever. There is no completion metric
     // anywhere in this product, so there must be nothing here a progress ring could be built from.
-    const rail = buildLibrary({
+    const rail = buildWorldIndex({
       onEntity: () => undefined,
       onOccurrence: () => undefined,
       onSearch: () => undefined,

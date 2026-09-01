@@ -61,8 +61,8 @@ export function buildDetail(
   const close = el('button', {
     type: 'button',
     class: 'detail-close',
-    'aria-label': 'Back to the World Index',
-    text: 'Back to the Index',
+    'aria-label': 'Back to the index',
+    text: 'Back to Index',
   });
   close.addEventListener('click', () => handlers.onClose());
 

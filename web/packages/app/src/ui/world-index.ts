@@ -17,9 +17,10 @@ import type {
 import type { IndexFacets, IndexRow, IndexView } from '@orimera/world-index';
 import { ALL_FACETS, FACET_VALUES, buildIndexView } from '@orimera/world-index';
 import { say } from './copy.js';
-import { el, replace } from './dom.js';
+import { commandAction, el, replace } from './dom.js';
+import { buildRegionPlan, type RegionPoint } from './region-plan.js';
 
-export interface LibraryHandlers {
+export interface IndexHandlers {
   onEntity(entityId: string, activation?: 'keyboard' | 'pointer'): void;
   onOccurrence(occurrenceId: string, activation?: 'keyboard' | 'pointer'): void;
   onSearch(text: string): void;
@@ -27,14 +28,22 @@ export interface LibraryHandlers {
   onClose?(): void;
 }
 
-export interface LibraryPane {
+export interface IndexPane {
   readonly root: HTMLElement;
   render(snapshot: GraphSnapshot, state: string | IndexFacets, selected: string | null): void;
   focusSearch(): void;
 }
 
-export interface LibraryPresentation {
+export interface IndexPresentation {
   readonly preview?: boolean;
+  /**
+   * Region plan positions for the inset, in Atlas ground coordinates.
+   *
+   * Presentation only. The inset shows WHERE a row's regions sit relative to each other; it is
+   * never a source of identity, never a navigation control, and it does not decide membership.
+   * Omitted, the inset simply does not render.
+   */
+  readonly regions?: readonly RegionPoint[];
 }
 
 /** How many bare detections are listed before the workspace states the remainder. */
@@ -58,13 +67,13 @@ const SOURCE_LABELS: Readonly<Record<AssertionKind, string>> = Object.freeze({
   external: 'External, present only',
 });
 
-export function buildLibrary(
-  handlers: LibraryHandlers,
-  presentation: LibraryPresentation = {},
-): LibraryPane {
+export function buildWorldIndex(
+  handlers: IndexHandlers,
+  presentation: IndexPresentation = {},
+): IndexPane {
   const root = el('section', {
-    class: 'rail index-workspace',
-    'aria-label': 'World Index',
+    class: 'rail index-workspace held-plate',
+    'aria-label': 'Index',
   });
   const titleId = 'world-index-title';
   root.setAttribute('aria-labelledby', titleId);
@@ -72,17 +81,20 @@ export function buildLibrary(
   const search = el('input', {
     type: 'search',
     class: 'rail-search',
-    placeholder: 'Search names and evidence',
-    'aria-label': 'Search the World Index',
+    placeholder: 'Search people, places, and events',
+    'aria-label': 'Search the index',
   });
   const counter = el('p', { class: 'rail-counter', 'aria-live': 'polite' });
   const resultSummary = el('p', { class: 'index-result-summary', 'aria-live': 'polite' });
   const filterState = el('p', { class: 'index-filter-state' });
   const clear = el('button', { type: 'button', class: 'text-action index-clear', text: 'Clear filters' });
   const close = el('button', {
-    type: 'button', class: 'index-close', 'aria-label': 'Close the World Index', text: 'Return  I',
+    type: 'button', class: 'index-close', 'aria-label': 'Close the index', text: 'Return',
   });
   close.addEventListener('click', () => handlers.onClose?.());
+
+  const keyHint = (key: string, verb: string): HTMLElement =>
+    el('span', { class: 'index-key command-action' }, commandAction(key, verb));
 
   const identified = el('ul', { class: 'rail-list', 'aria-label': 'Index results' });
   const detections = el('ul', { class: 'rail-list detection-list', 'aria-label': 'Unidentified detections' });
@@ -142,29 +154,40 @@ export function buildLibrary(
     }),
   ]);
 
-  root.append(
-    el('header', { class: 'index-head' }, [
-      el('div', {}, [
-        el('p', { class: 'overlay-kicker', text: 'Evidence workspace' }),
-        el('h1', { id: titleId, text: 'Index' }),
-      ]),
-      el('div', { class: 'index-head-state' }, [counter, close]),
+  /*
+   * Nineteen checkboxes standing open is a taxonomy lesson, not a filter. The facet contract,
+   * its order, and its fieldset semantics are untouched; they simply start folded, so the
+   * resting surface is search and results. <details> keeps them keyboard-reachable and
+   * announced without a custom disclosure to get wrong.
+   */
+  const plan = buildRegionPlan(presentation.regions ?? [], { title: 'Region plan' });
+
+  const filters = el('details', { class: 'index-filters' }, [
+    el('summary', { class: 'index-filters-summary' }, [
+      el('span', { class: 'index-filters-label', text: 'Filters' }),
+      filterState,
     ]),
-    el('aside', { class: 'index-facets', 'aria-label': 'Index filters' }, [
-      el('div', { class: 'index-search-wrap' }, [search, filterState, clear]),
+    el('div', { class: 'index-filter-body' }, [
       kinds.root,
       statuses.root,
       presenceGroup,
       sources.root,
-      legend,
+      clear,
+    ]),
+  ]);
+
+  root.append(
+    el('header', { class: 'index-head' }, [
+      el('h1', { id: titleId, text: 'Index' }),
+      el('div', { class: 'index-head-state' }, [resultSummary, counter]),
+    ]),
+    el('aside', { class: 'index-facets', 'aria-label': 'Index filters' }, [
+      el('div', { class: 'index-search-wrap' }, [search]),
+      filters,
     ]),
     el('section', { class: 'index-results', 'aria-label': 'Index entries' }, [
       el('header', { class: 'index-results-head' }, [
-        el('div', {}, [
-          el('p', { class: 'index-section-label', text: 'Entities' }),
-          resultSummary,
-        ]),
-        el('p', { class: 'index-column-guide', text: 'Identity · presence · provenance' }),
+        el('p', { class: 'index-section-label', text: 'Entities' }),
       ]),
       identified,
       el('section', { class: 'detection-section', 'aria-label': 'Not identified' }, [
@@ -172,6 +195,16 @@ export function buildLibrary(
         detectionsNote,
         detections,
       ]),
+    ]),
+    plan.root,
+    el('footer', { class: 'index-foot' }, [
+      legend,
+      el('p', { class: 'index-keys' }, [
+        keyHint('Enter', 'Open'),
+        keyHint('Tab', 'Filters'),
+        keyHint('I', 'Return'),
+      ]),
+      close,
     ]),
   );
 
@@ -218,8 +251,8 @@ export function buildLibrary(
       resultSummary.textContent = `${view.resultCount} ${view.resultCount === 1 ? 'entity' : 'entities'}`;
       const activeCount = activeFacetCount(currentFacets);
       filterState.textContent = activeCount === 0
-        ? 'Showing the complete entity inventory.'
-        : `${activeCount} ${activeCount === 1 ? 'filter' : 'filters'} active.`;
+        ? 'All entities'
+        : `${activeCount} active`;
       clear.disabled = activeCount === 0;
       root.dataset['detailOpen'] = selected === null ? 'false' : 'true';
 
@@ -234,6 +267,9 @@ export function buildLibrary(
           ? view.rows.map((row) => entityRow(row, row.entityId === selected, handlers))
           : [emptyState(view, snapshot)],
       );
+
+      const activeRow = view.rows.find((row) => row.entityId === selected);
+      plan.render(new Set(activeRow?.islandIds ?? []), activeRow?.displayName ?? null);
 
       const bare = snapshot.occurrences.filter((occurrence) => occurrence.entityId === null);
       detectionsNote.textContent = bare.length === 0
@@ -291,7 +327,7 @@ function activeFacetCount(facets: IndexFacets): number {
     (facets.text.trim().length > 0 ? 1 : 0);
 }
 
-function entityRow(row: IndexRow, selected: boolean, handlers: LibraryHandlers): HTMLElement {
+function entityRow(row: IndexRow, selected: boolean, handlers: IndexHandlers): HTMLElement {
   const button = el('button', {
     type: 'button', class: 'rail-row', 'aria-current': selected ? 'true' : undefined,
   });
@@ -347,7 +383,7 @@ function legendItem(kind: 'user' | 'capture' | 'inference', label: string): HTML
 function detectionRow(
   occurrence: OccurrenceRecord,
   selected: boolean,
-  handlers: LibraryHandlers,
+  handlers: IndexHandlers,
 ): HTMLElement {
   const button = el('button', {
     type: 'button', class: 'rail-row is-bare', 'aria-current': selected ? 'true' : undefined,
