@@ -12,9 +12,11 @@ import { el } from './dom.js';
  * panel rather than here: it is one element that moves through "click to look around", "press X",
  * and the conversation itself, so the prompt and the open exchange remain one surface.
  *
- * **Escape is not handled anywhere in this file and must not be.** It has exactly one meaning
- * everywhere in Orimera: release the mouse. The browser owns it, the mode follows from the
- * `pointerlockchange` it causes, and reading the key here would be a bug rather than a shortcut.
+ * **Escape is not handled anywhere in this file and must not be.** While the pointer is locked it
+ * belongs to the browser: it releases the mouse, the mode follows from the `pointerlockchange`
+ * that causes, and reading the key here would be a bug rather than a shortcut. Once the lock is
+ * gone the browser has no job left for it, and the shell in `main.ts` uses it to step back one
+ * level. Both halves of that rule are about ownership, and neither of them is this file's.
  */
 
 export type ShellMode = 'traverse' | 'converse';

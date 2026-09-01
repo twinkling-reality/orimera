@@ -90,6 +90,27 @@ describe('first-person keyboard ownership', () => {
     controls.destroy();
   });
 
+  it('keeps left click for camera look and requires a keyboard interaction gesture', () => {
+    const canvas = document.createElement('canvas');
+    document.body.append(canvas);
+    const controls = new FirstPersonControls(canvas, { x: 0, y: 1.62, z: 0, yaw: 0, pitch: 0 });
+    const interact = vi.fn();
+    controls.onInteract = interact;
+    Object.defineProperty(document, 'pointerLockElement', {
+      configurable: true,
+      value: canvas,
+      writable: true,
+    });
+    document.dispatchEvent(new Event('pointerlockchange'));
+
+    canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
+    expect(interact).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', key: 'e' }));
+    expect(interact).toHaveBeenCalledOnce();
+    controls.destroy();
+  });
+
   it('uses X as the one keyboard summon contract', () => {
     const canvas = document.createElement('canvas');
     document.body.append(canvas);

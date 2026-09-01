@@ -83,7 +83,7 @@ export class FirstPersonControls {
 
   /** Fired when the browser's lock state changes. The application follows; it never drives. */
   onModeChange: ((mode: InputMode) => void) | null = null;
-  /** Interact. Bound to space, E, Enter and left click, exactly as the two-verb set requires. */
+  /** Interact. E is the visible world binding; Space and Enter remain keyboard alternatives. */
   onInteract: (() => void) | null = null;
   /** Summon or dismiss Companion. Bound to X and right click. */
   onSummon: (() => void) | null = null;
@@ -135,7 +135,8 @@ export class FirstPersonControls {
         void this.canvas.requestPointerLock();
         return;
       }
-      if (e.button === 0) this.onInteract?.();
+      // A left click belongs exclusively to entering/maintaining camera look. Treating the same
+      // gesture as Interact opened a memory surface when the person was only trying to look.
       if (e.button === 2) this.onSummon?.();
     });
     on(canvas, 'contextmenu', (e: Event) => e.preventDefault());

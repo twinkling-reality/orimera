@@ -300,7 +300,8 @@ image must be reachable from a flat keyboard-navigable list.
 ## 3. Two verbs, and the contextual affordance system
 
 The entire verb set is `Interact` (contextual, acts on the focused anchor) and `Summon Companion`
-(global, always available). Interact is bound to space, `E`, left click and `Enter`. Summon/dismiss
+(global, always available). Interact is visibly bound to `E`, with space and `Enter` retained as
+keyboard alternatives. Left click is reserved for entering and maintaining camera look. Summon/dismiss
 is bound to `X`, right click, and a persistent low-opacity affordance at bottom centre. The binding
 lives in the shared controls layer so disabled system surfaces cannot summon behind themselves.
 
