@@ -7,6 +7,8 @@ import {
   WORLD_ART_PROFILES,
   contrastRatio,
   deriveWorldUiColors,
+  mixHex,
+  perceptualColour,
   resolveWorldStyleParameters,
   worldStyleControls,
   worldArtProfile,
@@ -39,7 +41,12 @@ describe('world art profiles', () => {
   });
 
   it('does not accept an independently authored interface palette and guarantees readable roles', () => {
-    expect(ORIGIN_LANDSCAPE.ui.colors).toEqual(deriveWorldUiColors(ORIGIN_LANDSCAPE.palette));
+    expect(ORIGIN_LANDSCAPE.ui.colors)
+      .toEqual(deriveWorldUiColors(ORIGIN_LANDSCAPE.palette, ORIGIN_LANDSCAPE.interfacePalette));
+    expect(SURVEY_RELIEF.ui.colors)
+      .toEqual(deriveWorldUiColors(SURVEY_RELIEF.palette, SURVEY_RELIEF.interfacePalette));
+    // Survey Relief authors no interface roots, so it must still resolve from its scene alone.
+    expect(SURVEY_RELIEF.interfacePalette).toBeUndefined();
     expect(SURVEY_RELIEF.ui.colors).toEqual(deriveWorldUiColors(SURVEY_RELIEF.palette));
     expect(contrastRatio(
       ORIGIN_LANDSCAPE.ui.colors.ink,
@@ -53,6 +60,97 @@ describe('world art profiles', () => {
       ORIGIN_LANDSCAPE.ui.colors.companionText,
       ORIGIN_LANDSCAPE.ui.colors.companionSurface,
     )).toBeGreaterThanOrEqual(7);
+  });
+
+  it('carries an authored hue through derivation and leaves a grey world grey', () => {
+    // The whole interface once came from the ground root. When a world authored a near-white
+    // field, `#eef7f2`, every structural role arrived as grey: sRGB darkening keeps the channel
+    // ratio and throws away the channel difference. Chroma is the property that was lost, so
+    // chroma is the property asserted.
+    const aeroheart = ORIGIN_LANDSCAPE.ui.colors;
+    const chromatic = ['ink', 'body', 'accent', 'focus', 'shadow'] as const;
+    for (const role of chromatic) {
+      expect(perceptualColour(aeroheart[role]).chroma).toBeGreaterThan(0.02);
+    }
+    // Survey Relief authors no root above 0.07 chroma and is meant to stay a drab ledger. The
+    // floor may rescue a hue; it may not invent one.
+    const survey = SURVEY_RELIEF.ui.colors;
+    for (const role of chromatic) {
+      expect(perceptualColour(survey[role]).chroma).toBeLessThan(0.05);
+    }
+  });
+
+  it('uses contrast as a floor rather than as the thing that chooses a colour', () => {
+    // Every role once landed within 0.06 of its own minimum, so thirteen roles occupied two
+    // values and no component could build a hierarchy on top of them. Reading text must clear its
+    // floor with room to spare, and the reading ladder must actually descend.
+    const { ink, body, muted, raised, surface } = ORIGIN_LANDSCAPE.ui.colors;
+    expect(contrastRatio(ink, raised)).toBeGreaterThan(9);
+    expect(contrastRatio(ink, surface)).toBeGreaterThan(contrastRatio(body, surface));
+    expect(contrastRatio(body, surface)).toBeGreaterThan(contrastRatio(muted, surface));
+    expect(contrastRatio(muted, surface)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('leaves the reading roles enough margin to survive a real reading surface', () => {
+    // `surface` is the lightest ground a world has. A role corrected to exactly 4.5 against it is
+    // below 4.5 on the paper a held plate is actually made of, which took ninety labels in the
+    // Index to 3.97 while this suite stayed green.
+    for (const profile of [ORIGIN_LANDSCAPE, SURVEY_RELIEF]) {
+      const colors = profile.ui.colors;
+      const plate = mixHex(colors.raised, colors.ink, 0.07);
+      const reading = [
+        'body', 'muted', 'accent', 'secondary', 'warning', 'error', 'user',
+        'capture', 'inference', 'external',
+      ] as const;
+      for (const role of reading) {
+        expect(contrastRatio(colors[role], plate)).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it('separates the provenance triad by hue and not only by shape', () => {
+    // interaction-model.md 6.1 shows the three marks side by side in one row. While `brass` was
+    // the only root with chroma left, user provenance was red and the other two were the same
+    // grey as the body text.
+    const { user, capture, inference, surface } = ORIGIN_LANDSCAPE.ui.colors;
+    const separation = (left: string, right: string): number => {
+      const delta = Math.abs(perceptualColour(left).hue - perceptualColour(right).hue);
+      return Math.min(delta, Math.PI * 2 - delta);
+    };
+    expect(separation(user, capture)).toBeGreaterThan(0.7);
+    expect(separation(capture, inference)).toBeGreaterThan(0.7);
+    expect(separation(inference, user)).toBeGreaterThan(0.7);
+    for (const mark of [user, capture, inference]) {
+      expect(perceptualColour(mark).chroma).toBeGreaterThan(0.025);
+      expect(contrastRatio(mark, surface)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('lets a mark keep the light the world put in it', () => {
+    // A dot, a band rule and a callout edge are graphical objects, so 3:1 is the requirement.
+    // Correcting them to the reading floor shipped `#f96858` as `#be2f25`: same hue, no light.
+    const colors = ORIGIN_LANDSCAPE.ui.colors;
+    const pairs = [
+      ['user', 'userMark'], ['capture', 'captureMark'],
+      ['inference', 'inferenceMark'], ['external', 'externalMark'],
+    ] as const;
+    for (const [text, mark] of pairs) {
+      expect(contrastRatio(colors[mark], colors.surface)).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(colors[text], colors.surface)).toBeGreaterThanOrEqual(4.5);
+      // The mark is the brighter of the two, or the world authored something already dark.
+      expect(contrastRatio(colors[mark], colors.surface))
+        .toBeLessThanOrEqual(contrastRatio(colors[text], colors.surface) + 0.01);
+    }
+    // The world's one bright colour reaches the interface as a bright colour.
+    expect(perceptualColour(colors.userMark).chroma)
+      .toBeGreaterThanOrEqual(perceptualColour(ORIGIN_LANDSCAPE.palette.brass).chroma * 0.9);
+  });
+
+  it('keeps caution and user-provided provenance apart', () => {
+    // They were the same hex while one root carried the entire interface, which made "you said
+    // this" and "be careful" the same mark.
+    expect(ORIGIN_LANDSCAPE.ui.colors.warning).not.toBe(ORIGIN_LANDSCAPE.ui.colors.user);
+    expect(SURVEY_RELIEF.ui.colors.warning).not.toBe(SURVEY_RELIEF.ui.colors.user);
   });
 
   it('keeps exposure and art profile as orthogonal axes', () => {
@@ -93,7 +191,19 @@ describe('world art profiles', () => {
     expect(tuned.material.gloss).toBeLessThan(ORIGIN_LANDSCAPE.material.gloss);
     expect(tuned.geometry.detailCount).toBeLessThan(ORIGIN_LANDSCAPE.geometry.detailCount);
     expect(tuned.ui.colors).not.toEqual(ORIGIN_LANDSCAPE.ui.colors);
-    expect(tuned.ui.colors).toEqual(deriveWorldUiColors(tuned.palette));
+    expect(tuned.ui.colors).toEqual(deriveWorldUiColors(tuned.palette, tuned.interfacePalette));
+    // Exactly one module owns each output. The field controls move the field and leave the
+    // interface alone; the interface controls do the reverse. Two writers on one value is how a
+    // later module silently wins and a control stops meaning what its label says.
+    expect(tuned.palette).not.toEqual(ORIGIN_LANDSCAPE.palette);
+    expect(tuned.interfacePalette).toEqual(ORIGIN_LANDSCAPE.interfacePalette);
+    const resting = worldArtProfile('origin-landscape', 1, defaults);
+    const recoloured = worldArtProfile('origin-landscape', 1, { ...defaults, 'source-hue': 0.1 });
+    expect(recoloured.interfacePalette).not.toEqual(resting.interfacePalette);
+    expect(recoloured.palette).toEqual(resting.palette);
+    // Reading a recipe with no parameters and reading it at its own defaults are the same world.
+    expect(resting.palette).toEqual(ORIGIN_LANDSCAPE.palette);
+    expect(resting.interfacePalette).toEqual(ORIGIN_LANDSCAPE.interfacePalette);
     expect(tuned.ui.texture.kind).toBe('none');
     expect(tuned.ui.material.textureOpacity).toBe(0);
     expect(tuned.ui.motion.idleCycleMs).toBe(4_160);

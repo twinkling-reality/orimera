@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { worldStyleControls } from '@orimera/presentation';
 import {
   DEFAULT_PREFERENCES,
   PREFERENCES_KEY,
@@ -65,8 +66,13 @@ describe('Atlas preferences', () => {
       },
     });
 
-    expect(changed.worldStyleParameters).toEqual({
+    // The manifest is the authority on which controls exist, so this asserts the shape against it
+    // rather than against a copy that goes stale the next time a capability is registered.
+    expect(Object.keys(changed.worldStyleParameters).sort())
+      .toEqual(worldStyleControls('origin-landscape').map((control) => control.key).sort());
+    expect(changed.worldStyleParameters).toMatchObject({
       vitality: 0.35,
+      // Out of range, so the manifest's bound wins over the stored value.
       glass: 1,
       'relationship-energy': 0.2,
       'garden-density': 0.45,
@@ -74,6 +80,11 @@ describe('Atlas preferences', () => {
       'surface-finish': 'clear-lens',
       'world-tempo': 1.2,
     });
+    // A control the stored preferences never mentioned resolves to its declared default.
+    expect(changed.worldStyleParameters['source-hue'])
+      .toBe(worldStyleControls('origin-landscape')
+        .find((control) => control.key === 'source-hue')?.defaultValue);
+    expect(changed.worldStyleParameters['not-a-renderer-capability']).toBeUndefined();
     writePreferences(storage, changed);
     expect(readPreferences(storage).worldStyleParameters).toEqual(changed.worldStyleParameters);
   });

@@ -87,7 +87,12 @@ import {
   applyDocumentWorldStyle,
   themeForPreferences,
 } from './theme.js';
-import { companionAppearanceConfiguration, worldArtProfile } from '@orimera/presentation';
+import {
+  companionAppearanceConfiguration,
+  readSourceLight,
+  sourceLightParameters,
+  worldArtProfile,
+} from '@orimera/presentation';
 import {
   commandForKeystroke,
   initialWorldShell,
@@ -536,11 +541,7 @@ async function mount(): Promise<void> {
   const chrome = buildWorldChrome(shell!);
   const handleAtlasCommand = (command: AtlasCommand): void => {
     if (companionPanel.state() === 'open') dismissCompanion();
-    if (command === 'index') {
-      const opening = shellState.primary !== 'index';
-      dispatchShell({ type: 'toggle-index' });
-      if (opening) window.setTimeout(() => worldIndex.focusSearch(), 0);
-    }
+    if (command === 'index') dispatchShell({ type: 'toggle-index' });
     else if (command === 'map') dispatchShell({ type: 'toggle-map' });
     else if (command === 'options') dispatchShell({ type: 'toggle-options' });
     else dispatchShell({ type: 'toggle-controls' });
@@ -660,6 +661,25 @@ async function mount(): Promise<void> {
   optionsView = buildOptions({
     preferences,
     onChange: applyPreferences,
+    /*
+     * The person's own photographs, read as four control positions.
+     *
+     * It samples the blob URLs the renderer already holds rather than fetching again, so no extra
+     * authorized request is made for a colour, and it returns values rather than applying them:
+     * the existing preview and Apply own the change exactly as they do for a slider.
+     */
+    onReadSourceLight: async () => {
+      const catalog = previewSourceMedia;
+      if (catalog === undefined) return null;
+      const sources = [...catalog.values()]
+        .filter((entry) => entry.available && entry.url !== null)
+        .map((entry) => ({ url: entry.url as string, available: true }));
+      if (sources.length === 0) return null;
+      const { sampleSources } = await import('./media-sampler.js');
+      const reading = readSourceLight(await sampleSources(sources));
+      if (reading.sampled === 0) return null;
+      return sourceLightParameters(reading, preferences.worldStyleParameters);
+    },
     onPreview: (candidate) => {
       shell!.setAttribute('data-vignette', candidate.vignette);
       atlas?.binding.setFieldOfView(candidate.fieldOfView);
@@ -1132,6 +1152,11 @@ async function mount(): Promise<void> {
        * plate. Backspace keeps its meaning for people who learned it, but nobody guesses it.
        */
       if (event.code === 'Escape' && document.pointerLockElement === null) {
+        // Search is the innermost thing open, so it is the first thing Escape takes back.
+        if (shellState.primary === 'index' && worldIndex.closeSearch()) {
+          event.preventDefault();
+          return;
+        }
         if (companionPanel.state() === 'open') {
           event.preventDefault();
           dismissCompanion();
@@ -1154,6 +1179,14 @@ async function mount(): Promise<void> {
         modified: event.altKey || event.ctrlKey || event.metaKey,
         typing,
       });
+      if (
+        !typing && shellState.primary === 'index' &&
+        !event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyS'
+      ) {
+        event.preventDefault();
+        worldIndex.focusSearch();
+        return;
+      }
       if (command === 'toggle-index') {
         event.preventDefault();
         handleAtlasCommand('index');

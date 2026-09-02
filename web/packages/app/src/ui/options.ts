@@ -64,6 +64,13 @@ interface OptionsCallbacks {
   readonly preferences: AtlasPreferences;
   readonly onChange: (preferences: AtlasPreferences) => void;
   readonly onPreview?: (preferences: AtlasPreferences) => void;
+  /**
+   * Read the four `interface.*` registers out of the person's own photographs.
+   *
+   * Returns the control values, never a colour, and never applies them. It resolves to null when
+   * the library says nothing usable, which is a real answer and not a failure.
+   */
+  readonly onReadSourceLight?: () => Promise<Readonly<Record<string, number>> | null>;
   readonly onWorldDiscard?: (preferences: AtlasPreferences) => void;
   readonly onWorldApply?: (preferences: AtlasPreferences) => Promise<boolean>;
   readonly onWorldRollback?: (versionId: string) => Promise<AtlasPreferences | null>;
@@ -277,6 +284,35 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
   const resetWorld = el('button', {
     type: 'button', class: 'text-action', text: 'Reset this style',
   });
+  /*
+   * The one action in Customize that is about this person's own library rather than about a
+   * setting. It previews like every other change and it commits through the same Apply, because
+   * a world that recoloured itself the moment a photograph loaded would be a style edit nobody
+   * asked for.
+   */
+  const readSource = el('button', {
+    type: 'button', class: 'text-action world-style-source', text: 'Take colour from my photographs',
+  });
+  const readSourceNote = el('p', { class: 'option-note world-style-source-note' });
+  readSource.hidden = callbacks.onReadSourceLight === undefined;
+  readSourceNote.hidden = true;
+  readSource.addEventListener('click', () => {
+    if (callbacks.onReadSourceLight === undefined) return;
+    readSource.disabled = true;
+    readSourceNote.hidden = false;
+    readSourceNote.textContent = 'Reading your photographs…';
+    void callbacks.onReadSourceLight().then((values) => {
+      readSource.disabled = false;
+      if (values === null) {
+        readSourceNote.textContent =
+          'Your photographs did not carry enough colour to read. Nothing was changed.';
+        return;
+      }
+      readSourceNote.textContent =
+        'Previewing the colour your photographs carry. Apply keeps it; Undo preview drops it.';
+      preview({ worldStyleParameters: { ...current.worldStyleParameters, ...values } });
+    });
+  });
 
   render = (): void => {
     contrast.value = current.contrast;
@@ -481,6 +517,7 @@ export function buildOptions(callbacks: OptionsCallbacks): OptionsView {
         text: 'Companion designs can be reviewed here when an upstream proposal service supplies bounded profile values. Atlas does not generate recipes or execute model output in the browser.',
       }),
       proposalReview,
+      el('div', { class: 'world-style-source-action' }, [readSource, readSourceNote]),
       el('div', { class: 'world-style-actions' }, [undoWorld, resetWorld, applyWorld]),
       el('div', { class: 'world-style-history' }, [
         el('h3', { text: 'Version history' }),

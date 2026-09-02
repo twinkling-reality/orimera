@@ -7,7 +7,19 @@
  */
 
 :root {
-  --atlas-plane: color-mix(in srgb, var(--ui-shadow) 90%, var(--raised));
+  /*
+   * The material a held plate is made of.
+   *
+   * This was a near-black, derived from the world's shadow. That is the correct answer for a
+   * world you look into and the wrong one for a world made of light: a dark slab over a
+   * near-white field is the hardest cut on screen and becomes the loudest object in it, which is
+   * exactly backwards for a surface whose job is to stay quiet while exact media stays dominant.
+   * A light plate solves the problem the dark one was solving. The risk the dark plate was
+   * answering is a bright source veil sitting behind small type; paper at this opacity holds the
+   * near-black ink at better than 8:1 even directly over a photograph, and it lets the world's
+   * diffuse colour through as a wash instead of turning it to mud.
+   */
+  --atlas-plane: color-mix(in srgb, var(--raised) 93%, var(--ink));
 }
 
 :where(
@@ -19,17 +31,25 @@
   .settings-view,
   .map-caption
 ) {
-  --ink: var(--raised);
-  --ink-soft: color-mix(in srgb, var(--raised) 76%, transparent);
-  --ink-faint: color-mix(in srgb, var(--raised) 54%, transparent);
-  --accent: var(--accent-soft);
-  --focus: var(--accent-soft);
-  --edge: color-mix(in srgb, var(--raised) 18%, transparent);
+  /*
+   * Six roles used to be re-mapped here: ink, its two softer steps, accent, focus and edge. Every
+   * one of those overrides existed to survive a dark plate against a palette derived for a light
+   * ground. The plate is light now, so the derived roles apply directly and the overrides are
+   * gone. `--accent` and `--focus` in particular were both pointed at the warm evidence colour,
+   * which is why one hue was doing the work of three.
+   *
+   * An inner band steps away from the plate toward its ink rather than toward the plate's own
+   * colour, because on a light plate a tint of the plate is just the plate.
+   */
+  --plate-recess: color-mix(in srgb, var(--ink) 6%, transparent);
+  --plate-recess-strong: color-mix(in srgb, var(--ink) 10%, transparent);
   --material-archive: color-mix(in srgb, var(--atlas-plane) 88%, transparent);
   --material-system: color-mix(in srgb, var(--atlas-plane) 88%, transparent);
-  --material-instrument: color-mix(in srgb, var(--atlas-plane) 78%, transparent);
+  --material-instrument: color-mix(in srgb, var(--atlas-plane) 84%, transparent);
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--accent) 72%, transparent) transparent;
+  /* A scrollbar in the world's accent reads as a rule between two columns, which is the one thing
+   * this surface is not allowed to draw. It states position and nothing else. */
+  scrollbar-color: color-mix(in srgb, var(--ink) 20%, transparent) transparent;
 }
 
 :where(
@@ -63,7 +83,7 @@
   .instrument-register,
   .settings-pages
 )::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--accent) 66%, transparent);
+  background: color-mix(in srgb, var(--ink) 20%, transparent);
   border-radius: 1px;
 }
 
@@ -95,8 +115,8 @@
 
 .map-region-target {
   padding: 0.35rem 0.55rem;
-  color: color-mix(in srgb, var(--raised) 84%, transparent);
-  background: color-mix(in srgb, var(--atlas-plane) 78%, transparent);
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--atlas-plane) 82%, transparent);
   border: 0;
   border-left: 2px solid var(--accent-soft);
   border-radius: 0;
@@ -105,9 +125,9 @@
 
 .map-region-target:hover,
 .map-region-target:focus-visible {
-  color: var(--raised);
-  background: color-mix(in srgb, var(--atlas-plane) 92%, transparent);
-  outline: 1px solid var(--accent-soft);
+  color: var(--ink);
+  background: var(--atlas-plane);
+  outline: 1px solid var(--accent);
 }
 
 @media (min-width: 60.001rem) {
@@ -159,18 +179,28 @@
     padding: 0;
     color: var(--ink);
     /*
-     * Translucency has to be read against THIS world, not against the reference's.
-     * The panel this staging comes from floats over a dim blue city, where a heavily transparent
-     * plane still reads as a dark surface. Aeroheart is a near-white poster field, so the same
-     * alpha lets a bright source veil sit directly behind a row of small type and take the
-     * contrast with it. The world stays visible; it stops competing with the text.
+     * The plate carries its own opacity now.
+     *
+     * It used to be one layer among several: filled bands behind the header, the footer and the
+     * results head each added their own alpha, so most of the surface was opaque by accumulation
+     * rather than by decision. Removing those bands removed the opacity with them and put a
+     * legible photograph directly behind small type. A surface with no internal divisions has to
+     * be substantial in one layer. Enough of the world still reads through for its colour to
+     * wash the paper, which is the point; not enough for a source to be recognisable behind a
+     * line of text, which would make the evidence into decoration.
      */
     background:
       linear-gradient(102deg,
-        color-mix(in srgb, var(--atlas-plane) 88%, transparent),
-        color-mix(in srgb, var(--atlas-plane) 78%, transparent));
-    border: 1px solid var(--edge);
-    border-radius: 2px;
+        color-mix(in srgb, var(--atlas-plane) 95%, transparent),
+        color-mix(in srgb, var(--atlas-plane) 88%, transparent));
+    /*
+     * One hairline, at the top, and a corner soft enough to read as a held object rather than a
+     * cropped rectangle. A box drawn on all four sides makes the surface a container; the top
+     * edge alone makes it a thing catching light, which is the only border the style allows.
+     */
+    border: 0;
+    border-top: 1px solid var(--edge);
+    border-radius: 0.85rem;
     box-shadow: 0 1.6rem 5rem color-mix(in srgb, var(--ui-shadow) 44%, transparent);
     backdrop-filter: blur(var(--blur-system)) saturate(var(--saturation-system));
     transform: translate(var(--plate-shift), -50%) var(--plate-tilt);
@@ -181,6 +211,7 @@
     --plate-shift: calc(-50% - (var(--plate-narrow) + var(--plate-gap)) / 2);
   }
 
+  /* The one rule in the surface, under the title. Nothing else divides. */
   .index-head { border-bottom-color: var(--edge); }
 
   .index-close {
@@ -189,16 +220,12 @@
     border-color: var(--edge);
   }
 
-  .index-facets {
-    background: color-mix(in srgb, var(--atlas-plane) 16%, transparent);
-    border-bottom-color: var(--edge);
-  }
+  /* No fill and no rule. Both bands are separated from the results by their own padding, which is
+   * the only separator the style allows between parts of one surface. */
+  .index-facets,
+  .index-foot { background: transparent; }
 
-  .index-foot {
-    background: color-mix(in srgb, var(--atlas-plane) 22%, transparent);
-    border-top-color: var(--edge);
-  }
-
+  .index-workspace[data-search-open='false'] .index-search-wrap { display: none; }
   .index-search-wrap { border-bottom-color: transparent; }
 
   .index-workspace .rail-search,
@@ -215,10 +242,8 @@
 
   .index-results { padding-inline: 1.15rem; }
 
-  .index-results-head {
-    background: color-mix(in srgb, var(--atlas-plane) 92%, transparent);
-    border-bottom-color: var(--edge);
-  }
+  /* Solid because it occludes rows scrolling under it, which is a job, not a division. */
+  .index-results-head { background: var(--atlas-plane); }
 
   .index-results .rail-row {
     min-height: 4rem;
@@ -241,7 +266,7 @@
 
   #shell[data-primary='index'] > .detail .detail-close {
     color: var(--ink-soft);
-    background: color-mix(in srgb, var(--atlas-plane) 94%, transparent);
+    background: var(--atlas-plane);
     border-bottom-color: var(--edge);
   }
 
@@ -273,7 +298,7 @@
     z-index: 2;
     flex: 0 0 auto;
     padding: 0.7rem 1.15rem 0.6rem;
-    background: color-mix(in srgb, var(--atlas-plane) 94%, transparent);
+    background: var(--atlas-plane);
     border-bottom: 1px solid var(--edge);
   }
 
@@ -293,7 +318,7 @@
     flex: 0 0 auto;
     margin-top: auto;
     padding: 0.6rem 1.15rem;
-    background: color-mix(in srgb, var(--atlas-plane) 94%, transparent);
+    background: var(--atlas-plane);
     border-top: 1px solid var(--edge);
   }
 
@@ -309,7 +334,7 @@
   .instrument-nav {
     grid-column: 1;
     padding: 0.85rem 0.75rem;
-    background: color-mix(in srgb, var(--atlas-plane) 34%, transparent);
+    background: var(--plate-recess);
     border-right-color: var(--edge);
   }
 
@@ -360,12 +385,12 @@
     grid-column: 3;
     padding: 1.35rem 1.1rem;
     color: var(--ink);
-    background: color-mix(in srgb, var(--atlas-plane) 48%, transparent);
+    background: var(--plate-recess-strong);
     border-left-color: var(--edge);
   }
 
   .instrument-register .world-style-apply {
-    color: var(--ink);
+    color: var(--raised);
     background: var(--accent);
     border-color: var(--accent);
     border-radius: 1px;
@@ -386,7 +411,7 @@
   .atlas-instrument[data-section='companion'] .companion-workshop-preview::after {
     right: 50%;
     bottom: 0;
-    color: color-mix(in srgb, var(--raised) 60%, transparent);
+    color: var(--ink-faint);
     transform: translateX(50%);
   }
 
@@ -434,7 +459,7 @@
     align-content: start;
     gap: 0.35rem;
     padding: clamp(1rem, 2vw, 2rem) 1.2rem;
-    background: color-mix(in srgb, var(--atlas-plane) 18%, transparent);
+    background: var(--plate-recess);
     border-right: 1px solid var(--edge);
   }
 
@@ -527,7 +552,7 @@
     width: 100%;
     min-height: 2.35rem;
     color: var(--ink);
-    background: color-mix(in srgb, var(--atlas-plane) 56%, transparent);
+    background: color-mix(in srgb, var(--raised) 72%, transparent);
     border: 1px solid var(--edge);
     border-radius: 1px;
   }
@@ -606,11 +631,36 @@
   .settings-control-list dd { min-height: 2.6rem; padding-block: 0.55rem; }
 }
 
-:root:is([data-transparency='reduced'], [data-contrast='high']) :where(
-  .index-workspace,
+/*
+ * Access preferences outrank world material, and removing the blur is only half of that.
+ *
+ * appearance.css already states the rule for the Companion surfaces: a reading surface that drops
+ * `backdrop-filter` while keeping a translucent fill does not get calmer, it gets worse, because
+ * the world stops being a wash and becomes a legible photograph directly behind small type. The
+ * held plate arrived after that rule was written and took only its first half, so choosing
+ * "Reduced" put the greenhouse in sharp focus behind the Display controls.
+ *
+ * The material tokens have to be reset here rather than at `:root`. tokens.css already makes them
+ * opaque under high contrast, but a custom property is resolved from the nearest ancestor that
+ * declares it, and the plate group above redeclares all three translucent against `--atlas-plane`.
+ * The root override is therefore unreachable from inside a plate no matter what it is worth.
+ */
+/* Not wrapped in `:where()`, unlike the token group above. That group is deliberately weightless
+ * so a surface can answer it; this one is an access override and has to win, and the index detail
+ * declares its own material through an ID selector. */
+:root:is([data-transparency='reduced'], [data-contrast='high']) .held-plate,
+:root:is([data-transparency='reduced'], [data-contrast='high'])
   #shell[data-primary='index'] > .detail,
-  .atlas-instrument,
-  .settings-view
-) {
+:root:is([data-transparency='reduced'], [data-contrast='high']) .region-minimap,
+:root:is([data-transparency='reduced'], [data-contrast='high']) .map-caption {
+  --material-archive: var(--atlas-plane);
+  --material-system: var(--atlas-plane);
+  --material-instrument: var(--atlas-plane);
+  background: var(--atlas-plane);
+  backdrop-filter: none;
+}
+
+:root:is([data-transparency='reduced'], [data-contrast='high']) .map-region-target {
+  background: var(--atlas-plane);
   backdrop-filter: none;
 }

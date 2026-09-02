@@ -26,6 +26,23 @@ export const WORLD_STYLE_CAPABILITIES: Readonly<Record<string, WorldStyleCapabil
     options: Object.freeze(['source-paper', 'clear-lens']),
   }),
   'motion.tempo': Object.freeze({ capability: 'motion.tempo', kind: 'range', group: 'motion', min: 0.75, max: 1.25 }),
+  /*
+   * The interface's own colour, as four bounded numbers.
+   *
+   * These exist so that a palette read out of a person's photographs can enter the world through
+   * the same door as every other style change. The customization contract lets a proposal carry
+   * registered capability values and nothing else, so "take the colour from my library" cannot be
+   * five hex codes injected past validation; it has to be a reading expressed in the vocabulary
+   * the registry already enforces. That constraint turned out to be the better product too: what
+   * the photographs suggest arrives as slider positions the person can then move.
+   *
+   * `hue` is the full circle normalised to 0..1. The other three are bounded registers, not raw
+   * colours, so no value here can produce an interface that fails contrast.
+   */
+  'interface.hue': Object.freeze({ capability: 'interface.hue', kind: 'range', group: 'world', min: 0, max: 1 }),
+  'interface.warmth': Object.freeze({ capability: 'interface.warmth', kind: 'range', group: 'world', min: 0, max: 1 }),
+  'interface.depth': Object.freeze({ capability: 'interface.depth', kind: 'range', group: 'world', min: 0, max: 1 }),
+  'interface.light': Object.freeze({ capability: 'interface.light', kind: 'range', group: 'world', min: 0, max: 1 }),
 });
 
 export interface WorldStyleManifestIssue {

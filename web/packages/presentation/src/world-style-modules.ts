@@ -1,5 +1,5 @@
 import type { WorldStyleParameterValue } from '@orimera/atlas-core';
-import { mixHex, type WorldArtProfileSource } from './world-style-model.js';
+import { mixHex, oklchHex, type WorldArtProfileSource } from './world-style-model.js';
 
 export interface WorldStyleModule {
   readonly moduleId: string;
@@ -71,6 +71,52 @@ const AEROHEART_OPTICS: WorldStyleModule = Object.freeze({
         paper: mixHex('#fffaf2', '#fffefb', glass),
         brass: mixHex('#f96858', '#f96858', energy),
         sun: mixHex('#fff0b5', '#fff7d1', vitality),
+      },
+    };
+  },
+});
+
+/**
+ * The interface's own colour, from four bounded registers.
+ *
+ * This is the reviewed executable half of "take the colour from my photographs". The reading is
+ * done by `media-palette.ts`, which is pure and produces only numbers; this is the only place
+ * those numbers become colours, and it is trusted application code rather than data. That split
+ * is what keeps the feature inside the customization contract: a proposal carries four values in
+ * a registered range, and no proposal can carry a colour.
+ *
+ * Every output is constructed rather than interpolated between authored endpoints, because the
+ * hue is a full circle and there is no pair of endpoints a circle can be mixed between. Lightness
+ * and chroma stay inside ranges the derivation can build a readable interface from, so the person
+ * chooses the hue and the system keeps the guarantee.
+ */
+const SOURCE_LIGHT: WorldStyleModule = Object.freeze({
+  moduleId: 'source-light-v1',
+  capabilities: Object.freeze([
+    'interface.hue', 'interface.warmth', 'interface.depth', 'interface.light',
+  ]),
+  apply(
+    source: WorldArtProfileSource,
+    values: ReadonlyMap<string, WorldStyleParameterValue>,
+  ): WorldArtProfileSource {
+    const hue = numberValue(values, 'interface.hue') * Math.PI * 2;
+    const warmth = numberValue(values, 'interface.warmth');
+    const depth = numberValue(values, 'interface.depth');
+    const light = numberValue(values, 'interface.light');
+    // The warm mark sits on its own arc and the cool mark a fixed turn off the structural hue, so
+    // provenance, uncertainty and structure can never collapse onto one colour whatever a
+    // photograph says. The coefficients are solved so that the control defaults reproduce the
+    // authored resting palette exactly: a control at rest must change nothing.
+    const warmHue = 0.28 + warmth * 1.15;
+    const coolHue = hue + Math.PI * 0.41;
+    return {
+      ...source,
+      interfacePalette: {
+        ink: oklchHex(0.34 - depth * 0.1, 0.026 + depth * 0.03, hue),
+        plate: oklchHex(0.962 + light * 0.028, 0.022 - light * 0.009, warmHue + 0.97),
+        structure: oklchHex(0.625 - depth * 0.055, 0.075 + depth * 0.045, hue),
+        evidence: oklchHex(0.72 - warmth * 0.1, 0.155 + warmth * 0.13, warmHue),
+        uncertain: oklchHex(0.61 - depth * 0.065, 0.09 + depth * 0.036, coolHue),
       },
     };
   },
@@ -162,5 +208,6 @@ export const WORLD_STYLE_MODULES: readonly WorldStyleModule[] = Object.freeze([
   AEROHEART_OPTICS,
   REGISTERED_SURFACE,
   BOUNDED_TEMPO,
+  SOURCE_LIGHT,
   SURVEY_RELIEF_RESPONSE,
 ]);

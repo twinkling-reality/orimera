@@ -37,13 +37,24 @@ world-style or graph version families.
 The subject is a personal evidence world. The interface's job is to let someone move between the
 world, its evidence, and bounded appearance work without losing their place.
 
-- Palette: Open air `#5ea8b2`, horizon volume `#e8d8c7`, continuity depth `#153f4b`, relationship
-  gold `#ffd27a`, source ivory `#f8f3dc`, unresolved violet `#7c71b5`. Runtime components consume
-  their contrast-corrected semantic derivatives rather than these literals.
+- Style: **diffuse light**, defined as four rules in
+  [atlas-visual-language.md](atlas-visual-language.md) section 6. Colour as soft fields, a light
+  ground, structure from type and spacing rather than from boxes, and a summoned surface held in
+  the world at an angle.
+- Palette: **CORRECTED.** This listed a dark teal set the build has not used since `fac64ac`. The
+  roots are open air `#a8d5df`, haze `#fffaf4`, field `#eef7f2`, field lift `#dcefdc`, trace
+  `#ffac38`, paper `#fffdf8`, signal `#f96858`, field shadow `#b7c8e5`, sun `#fff3bf`. Runtime
+  components consume their derived semantic roles rather than these literals. See
+  [atlas-visual-language.md](atlas-visual-language.md) section 6 for the two derivation rules that
+  a light palette makes mandatory.
 - Type: the profile's validated display family for titles, body family for reading, utility family
   for shortcuts, state, and evidence metadata. No component-owned fallback is added.
-- Materials: Index and evidence use the archive material; Atlas workshop pages use the instrument
-  material; Controls and accessibility use the more opaque protected system material.
+- Materials: **CORRECTED.** The held plate was a near-black slab, derived from the world's shadow.
+  That is right for a world you look into and wrong for a world made of light, where it becomes the
+  hardest cut and the loudest object on screen. The plate is paper. Index and evidence use the
+  archive material; Atlas workshop pages use the instrument material; Controls and accessibility use
+  the more opaque protected system material. All three are now tints of that paper, and an inner
+  band steps toward the ink rather than toward the plate's own colour.
 - Signature: a **source register** runs through the Index workspace. It aligns filters, result
   selection, provenance, and the open detail as one evidence instrument. It is structural, not a
   decorative timeline: its marks identify the active facet/result and the provenance class in use.

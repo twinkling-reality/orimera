@@ -20,7 +20,10 @@ export interface WorldStyleRecipeV1 {
 export const AEROHEART_CONTROLS: readonly WorldStyleParameterDefinition[] = [
   {
     key: 'vitality', capability: 'world.vitality', kind: 'range', group: 'world',
-    label: 'Color vitality', description: 'Tunes one shared color family across the memory field and its interface surfaces.',
+    // It used to claim the interface too. Once the interface had its own four controls, two
+    // modules were writing the same output and the later one silently won, which is the exact
+    // shape of bug that costs an afternoon. One owner per output: this one owns the field.
+    label: 'Color vitality', description: 'Tunes the colour of the memory field itself.',
     min: 0, max: 1, step: 0.05, defaultValue: 0.82,
   },
   {
@@ -51,6 +54,30 @@ export const AEROHEART_CONTROLS: readonly WorldStyleParameterDefinition[] = [
       { value: 'clear-lens', label: 'Clear lens' },
     ],
     defaultValue: 'source-paper',
+  },
+  {
+    key: 'source-hue', capability: 'interface.hue', kind: 'range', group: 'world',
+    label: 'Interface hue',
+    description: 'The colour the interface is built from. Reading it from your photographs sets this.',
+    min: 0, max: 1, step: 0.01, defaultValue: 0.6,
+  },
+  {
+    key: 'source-warmth', capability: 'interface.warmth', kind: 'range', group: 'world',
+    label: 'Evidence warmth',
+    description: 'How warm the mark for your own words and your own photographs runs.',
+    min: 0, max: 1, step: 0.01, defaultValue: 0.19,
+  },
+  {
+    key: 'source-depth', capability: 'interface.depth', kind: 'range', group: 'world',
+    label: 'Reading depth',
+    description: 'How deep the reading colour sits. It never goes light enough to be hard to read.',
+    min: 0, max: 1, step: 0.01, defaultValue: 0.36,
+  },
+  {
+    key: 'source-light', capability: 'interface.light', kind: 'range', group: 'world',
+    label: 'Plate light',
+    description: 'How much light the summoned surfaces hold.',
+    min: 0, max: 1, step: 0.01, defaultValue: 0.86,
   },
   {
     key: 'world-tempo', capability: 'motion.tempo', kind: 'range', group: 'motion',
@@ -105,17 +132,51 @@ const AEROHEART_SOURCE: WorldArtProfileSource = {
     gloss: 0.82,
     edgeStrength: 0.86,
   },
+  /*
+   * The resting field, and exactly what `aeroheart-optics-v1` builds at its control defaults.
+   *
+   * Eight of these ten drifted by one to six units from what the module constructs, so a world
+   * read without parameters and the same world read at its own defaults were not the same world.
+   * Nothing visible depended on it yet, which is precisely why it was worth closing: it is the
+   * same two-writers hazard that has already cost this project three broken renders, sitting
+   * quietly in the values everything else is derived from.
+   */
   palette: {
-    sky: '#a8d5df',
-    haze: '#fffaf4',
-    terrain: '#eef7f2',
-    terrainLift: '#dcefdc',
+    sky: '#a2d4df',
+    haze: '#fffaf3',
+    terrain: '#eaf6f0',
+    terrainLift: '#d6ecdc',
     path: '#ffac38',
-    stone: '#fffaf2',
-    stoneShadow: '#b7c8e5',
-    paper: '#fffdf8',
+    stone: '#fffcf6',
+    stoneShadow: '#b3c3e3',
+    paper: '#fffdf9',
     brass: '#f96858',
-    sun: '#fff3bf',
+    sun: '#fff6cc',
+  },
+  /*
+   * Aeroheart says what its interface is made of rather than inheriting it from the field.
+   *
+   * The scene is deliberately pale: eight of its ten roots sit under 0.05 chroma, which is
+   * correct for a world made of light and leaves nothing for an interface to be built out of.
+   * Borrowing scene parts meant the reading colour was the ground, the plate was the paper, and
+   * the only hue with any strength, the coral, had to serve as accent, provenance and caution at
+   * once. These five each mean one thing, and the field stays as pale as it should be.
+   */
+  /*
+   * The resting interface, and exactly what `source-light-v1` builds at its control defaults.
+   *
+   * These two paths have to agree byte for byte. An unparameterised read of this recipe returns
+   * these literals without running a module, and a read with defaults supplied runs the module and
+   * constructs them; if the two disagreed, a world would change colour the first time anybody
+   * touched an unrelated slider, and a test comparing against "the resting state" would be
+   * comparing against whichever path it happened to take.
+   */
+  interfacePalette: {
+    ink: '#17333b',
+    plate: '#fffaf0',
+    structure: '#318fa5',
+    evidence: '#fa6a5b',
+    uncertain: '#7b71b5',
   },
   semanticChannels: {
     provenance: ['hue', 'shape'],
@@ -232,7 +293,7 @@ export const WORLD_STYLE_RECIPES: readonly WorldStyleRecipeV1[] = [
     origin: 'authored',
     profile: AEROHEART_SOURCE,
     controls: AEROHEART_CONTROLS,
-    modules: ['aeroheart-optics-v1', 'registered-surface-v1', 'bounded-tempo-v1'],
+    modules: ['aeroheart-optics-v1', 'registered-surface-v1', 'bounded-tempo-v1', 'source-light-v1'],
   },
   {
     schemaVersion: 1,

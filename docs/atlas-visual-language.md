@@ -18,10 +18,13 @@ ending at a frame. At distance the image has slight chromatic separation and dif
 registers it. Its colour continues below as a low-contrast reflection, so the source affects the
 space without pretending to reconstruct the photographed place.
 
-The navigation surface is a **continuity field**, not a floor. Near the viewer it has directional
-optical interference and enough contrast to establish depth. At grazing angles and distance it
-converges to the exact haze colour used by the sky. Local terrain rises therefore disappear into
-air instead of drawing a hard ground/sky cut.
+The navigation surface is a **continuity field**, not a floor. **CORRECTED:** it was a deep teal
+body until `fac64ac` moved Aeroheart to a light field, and it now reads as near-white paper carrying
+directional optical interference. Contrast near the viewer comes from the interference and the
+source reflection rather than from a dark ground. At grazing angles and distance it converges to the
+exact haze colour used by the sky. Local terrain rises therefore disappear into air instead of
+drawing a hard ground/sky cut, and the convergence is now nearly total: the horizon is a change in
+structure, not a change in value.
 
 Frutiger Aero contributes optimism, air, water, glass, and familiar optical material. Vectorheart
 contributes restraint, exact vector relationships, and graphic contrast. Aeroheart does not borrow
@@ -71,8 +74,8 @@ off-axis and the aperture supplies the highest information density.
 
 The continuity field and sky share one horizon value:
 
-- near field: deep teal body plus slow low-frequency and crossing interference;
-- middle field: lifted teal and source reflection establish scale;
+- near field: light paper body plus slow low-frequency and crossing interference;
+- middle field: lifted mint and source reflection establish scale;
 - distance/grazing field: analytic convergence to the sky haze value;
 - upper atmosphere: clear cyan-teal with restrained cloud structure and a small warm sun;
 - Map: the sky shell is hidden and camera clear colour matches the cartographic field, preventing a
@@ -131,15 +134,55 @@ fixture. It is not a second product identity.
 
 ## 6. Palette and material
 
+**CORRECTED.** This section published a dark teal palette that the build has not used since
+`fac64ac`. The artefact is `packages/presentation/src/world-style-recipes.ts`, which moved
+Aeroheart from a world you look into to a world made of light. The palette below is the one the
+code actually holds.
+
+The style is **diffuse light**, and it is four rules rather than a look:
+
+1. Colour arrives as large soft fields, never as a fill inside a shape.
+2. The ground is light, so the darkest thing on screen is the reading.
+3. Structure is carried by type, spacing and one shared margin. A container is drawn only where
+   two things would otherwise be mistaken for one.
+4. A summoned surface is an object held in the world at an angle, not a page laid over it.
+
+What follows from those: no dividers between rows of the same kind, no filled bands behind
+headers and footers, one hairline per surface rather than one per section, no card, no drop
+shadow standing in for hierarchy, and no ornament of any kind. Every one of those is something
+the interface currently does and will stop doing.
+
 World palette before personal media contributes local colour:
 
-- **open air** `#5ea8b2` — optical clarity and upper atmosphere;
-- **horizon volume** `#e8d8c7` — the shared field/sky convergence colour;
-- **continuity depth** `#153f4b` — near-field body;
-- **continuity lift** `#609b9c` — optical interference and region response;
-- **relationship gold** `#ffd27a` — confirmed continuity only;
-- **source ivory** `#f8f3dc` — edge registration and readable optical light;
-- **unresolved violet** `#7c71b5` — unavailable and uncertain structure.
+- **open air** `#a8d5df`: upper atmosphere and the interface's structural hue;
+- **haze** `#fffaf4`: the shared field/sky convergence colour;
+- **field** `#eef7f2`: near-field body, light rather than deep;
+- **field lift** `#dcefdc`: optical interference, region response, capture provenance;
+- **trace** `#ffac38`: relationship continuity and caution;
+- **paper** `#fffdf8`: edge registration and readable optical light;
+- **signal** `#f96858`: the one warm root: user-provided provenance and the evidence accent;
+- **field shadow** `#b7c8e5`: inferred and uncertain structure;
+- **sun** `#fff3bf`: warm light and the Companion's accent.
+
+**The palette is light, so the interface may not be derived by darkening the ground.** Two rules,
+both in `packages/presentation/src/world-style-model.ts`, exist because their absence cost the
+interface every colour it had:
+
+1. **A role is placed at an authored perceptual lightness, and contrast correction is only a
+   floor.** When each role was handed a world colour and left for the contrast corrector to
+   darken, all thirteen landed within 0.06 of their own minimum. The interface occupied two
+   values, and no component work could build a hierarchy out of that.
+2. **Darkening happens in OKLCH, not by mixing toward black in sRGB.** An sRGB mix preserves the
+   channel ratio and destroys the channel difference, so a pale tint darkens to grey: `#eef7f2`
+   taken to a readable value arrived at `#545756`, four points of chroma out of the twelve it
+   started with. Every structural role in the interface is a darkened world colour, so that one
+   property decided what the whole interface looked like.
+
+Two further rules follow from the light ground. Structural roles read from the ground and the air
+together rather than from the ground alone, so a world that authors a light field still has a hue
+to spend. And the reading floor carries a margin above the requirement, because a role corrected
+to exactly 4.5 against the lightest theoretical surface is below 4.5 on the paper a held plate is
+actually made of.
 
 The Companion encounter is not assigned a second palette. Its deep optical surface, memory text,
 accent, evidence, confirmation, and uncertainty roles are derived from the world roots above and

@@ -3,16 +3,27 @@ import {
   MIN_SURFACE_PRESENCE,
   contrastRatio,
   deriveWorldUiColors,
+  interfacePaletteFromWorld,
+  mixHex,
+  perceptualColour,
   worldSilhouetteTone,
   type WorldArtProfile,
   type WorldArtProfileSource,
   type WorldAtmosphereForm,
+  type WorldInterfacePalette,
   type WorldPalette,
   type WorldSurfaceForm,
   type WorldUiColors,
   type WorldUiRecipe,
   type WorldUiStyle,
 } from './world-style-model.js';
+import {
+  MEDIA_SAMPLE_EDGE,
+  readSourceLight,
+  sourceLightParameters,
+  type MediaSample,
+  type SourceLightReading,
+} from './media-palette.js';
 import { WORLD_STYLE_MODULES } from './world-style-modules.js';
 import {
   WorldStyleRegistry,
@@ -27,9 +38,12 @@ import {
 
 export type WorldArtProfileId = string;
 export type {
+  MediaSample,
+  SourceLightReading,
   WorldArtProfile,
   WorldArtProfileSource,
   WorldAtmosphereForm,
+  WorldInterfacePalette,
   WorldPalette,
   WorldSurfaceForm,
   WorldStyleParameters,
@@ -40,6 +54,7 @@ export type {
 };
 export {
   AEROHEART_CONTROLS,
+  MEDIA_SAMPLE_EDGE,
   MIN_SURFACE_PRESENCE,
   SURVEY_RELIEF_CONTROLS,
   WORLD_STYLE_MODULES,
@@ -47,6 +62,11 @@ export {
   WorldStyleRegistry,
   contrastRatio,
   deriveWorldUiColors,
+  interfacePaletteFromWorld,
+  mixHex,
+  readSourceLight,
+  sourceLightParameters,
+  perceptualColour,
   worldSilhouetteTone,
 };
 

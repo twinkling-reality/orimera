@@ -116,6 +116,28 @@ The profile contains one shared visual DNA palette. The renderer consumes its sk
 relationship, and unresolved roots directly. A trusted deterministic adapter derives interface
 ground, surface, ink, focus, provenance, uncertainty, and Companion roles from those same roots and
 corrects them to minimum contrast. A profile can no longer author a second, unrelated UI palette.
+
+**CORRECTED.** "Corrects them to minimum contrast" was the whole specification of the adapter, and
+it was not enough to keep a world recognisable. Four constraints now bind it, all in
+`packages/presentation/src/world-style-model.ts` and all profile-agnostic:
+
+1. Each role is placed at an authored perceptual lightness before any correction runs. Contrast
+   correction is a floor and never the thing that chooses a colour. Without this every role landed
+   on its own minimum and the interface held two values total.
+2. Lightness changes happen in OKLCH. Mixing toward black in sRGB preserves the channel ratio and
+   destroys the channel difference, so a world with a pale ground lost every hue it authored.
+3. Structural roles read from the ground and the air together. Reading from the ground alone was
+   correct only while the ground happened to be dark, and it silently failed the moment a world
+   authored a light field.
+4. The reading floor carries a margin above the requirement, because a role corrected against the
+   lightest theoretical surface is below the requirement on the actual surface a component builds
+   from it.
+
+A small chroma floor may rescue a hue that a world did author from vanishing at low lightness. It
+may never introduce a hue, and it is set low enough that a deliberately desaturated profile such as
+the Survey regression fixture still resolves to a desaturated interface. That asymmetry is the
+test: the same adapter must make one world colourful and leave the other drab, without knowing
+either profile's identity.
 Its versioned interface expression may still select reviewed type families, blur/saturation,
 registered texture family and blend, and interaction/idle motion. Components own shape, hit area,
 layout, reading order, accessibility, and behavior; they consume the derived roles and do not

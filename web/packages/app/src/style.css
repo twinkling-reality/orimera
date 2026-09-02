@@ -401,10 +401,10 @@ button.ghost {
   color: var(--ground);
 }
 
-.mark-user { background: var(--user); }
-.mark-capture { background: var(--capture); }
-.mark-inference { background: var(--inference); }
-.mark-external { background: var(--external); }
+.mark-user { background: var(--user-mark); }
+.mark-capture { background: var(--capture-mark); }
+.mark-inference { background: var(--inference-mark); }
+.mark-external { background: var(--external-mark); }
 
 .mark.is-absent {
   background: none;
@@ -480,9 +480,9 @@ button.ghost {
   margin-bottom: 0.8rem;
 }
 
-.band-told { border-left-color: var(--user); }
-.band-captures { border-left-color: var(--capture); }
-.band-inferred { border-left-color: var(--inference); }
+.band-told { border-left-color: var(--user-mark); }
+.band-captures { border-left-color: var(--capture-mark); }
+.band-inferred { border-left-color: var(--inference-mark); }
 .band-unknown { border-left-color: var(--ink-faint); }
 
 .band ul {
@@ -647,7 +647,7 @@ button.ghost {
 .confirm-utterance {
   margin: 0;
   padding-left: 0.8rem;
-  border-left: 2px solid var(--user);
+  border-left: 2px solid var(--user-mark);
   font-style: italic;
 }
 
@@ -1267,9 +1267,11 @@ kbd {
   font-family: var(--ui-font-utility);
   font-size: 0.68rem;
   line-height: 1;
+  /* A key cap on paper: the plate's strongest value carrying its lightest, which is both the most
+   * legible form and the one a keyboard key actually has. */
   color: var(--raised);
-  background: var(--focus);
-  border: 1px solid color-mix(in srgb, var(--raised) 48%, transparent);
+  background: var(--ink);
+  border: 1px solid transparent;
   border-radius: var(--radius-label);
 }
 
@@ -1306,10 +1308,10 @@ kbd {
   border-left: 2px solid var(--ink-faint);
 }
 
-.ov-callout[data-provenance='capture'] { border-left-color: var(--capture); }
-.ov-callout[data-provenance='inference'] { border-left-color: var(--inference); }
-.ov-callout[data-provenance='user'] { border-left-color: var(--user); }
-.ov-callout[data-provenance='external'] { border-left-color: var(--external); }
+.ov-callout[data-provenance='capture'] { border-left-color: var(--capture-mark); }
+.ov-callout[data-provenance='inference'] { border-left-color: var(--inference-mark); }
+.ov-callout[data-provenance='user'] { border-left-color: var(--user-mark); }
+.ov-callout[data-provenance='external'] { border-left-color: var(--external-mark); }
 
 /* A person is a CITATION, never a reconstruction: a timestamped marker over the position the
  * detection was estimated at. Dashed while proposed, solid once the account holder confirms it,
@@ -2097,7 +2099,6 @@ kbd {
     gap: 0.55rem 0.9rem;
     min-width: 0;
     padding: 0.7rem 1.15rem 0.75rem;
-    border-bottom: 1px solid var(--edge);
   }
 
   .index-search-wrap { flex: 1 1 16rem; min-width: 0; }
@@ -2142,7 +2143,6 @@ kbd {
     display: grid;
     gap: 0.3rem;
     padding-bottom: 0.85rem;
-    border-bottom: 1px solid var(--edge);
   }
 
   .index-result-summary,
@@ -2241,7 +2241,6 @@ kbd {
     align-items: center;
     gap: 1.25rem;
     padding: 0.6rem 1.15rem 0.7rem;
-    border-top: 1px solid var(--edge);
   }
 
   .index-keys {
@@ -2308,7 +2307,6 @@ kbd {
     gap: 1rem;
     padding: 1rem 0 0.75rem;
     background: var(--material-archive);
-    border-bottom: 1px solid var(--edge);
   }
 
   .index-result-summary { color: var(--ink); font-size: 0.9rem; }
@@ -2317,12 +2315,16 @@ kbd {
 
   .index-results .rail-row {
     position: relative;
-    grid-template-columns: 4.5rem minmax(9rem, 1fr) minmax(9rem, 0.8fr) auto;
+    /*
+     * Three columns of slack put three wide gaps in a row, and with the separating rules gone the
+     * eye lost the line between a name and its marks. The name takes the slack; the metadata and
+     * the marks travel together at the right. One gap to cross instead of three.
+     */
+    grid-template-columns: 4.5rem minmax(9rem, 1fr) auto auto;
     gap: 0.45rem 0.8rem;
     min-height: 3.6rem;
     padding: 0.62rem 0.6rem 0.62rem 0.8rem;
     border: 0;
-    border-bottom: 1px solid var(--edge);
     border-radius: 0;
   }
 
@@ -2367,7 +2369,7 @@ kbd {
   }
 
   .row-confidence-band::before { width: 100%; background: var(--edge); }
-  .row-confidence-band::after { background: var(--inference); }
+  .row-confidence-band::after { background: var(--inference-mark); }
   .row-confidence-band[data-confidence='low']::after { width: 33%; }
   .row-confidence-band[data-confidence='medium']::after { width: 66%; }
   .row-confidence-band[data-confidence='high']::after { width: 100%; }
@@ -2386,8 +2388,8 @@ kbd {
     padding: 1rem 1.15rem 2rem;
     background: var(--material-archive);
     border: 0;
-    border-left: 1px solid var(--edge);
-    border-radius: 0 0 var(--radius-panel) 0;
+    border-top: 1px solid var(--edge);
+    border-radius: 0.85rem;
     box-shadow: none;
     backdrop-filter: none;
   }
@@ -2399,7 +2401,6 @@ kbd {
     width: 100%;
     padding: 0.75rem 0;
     background: var(--material-archive);
-    border-bottom: 1px solid var(--edge);
     text-align: left;
   }
 }
@@ -2779,7 +2780,6 @@ kbd {
     gap: 0.4rem;
     min-width: 0;
     padding: 0 1.15rem 1.2rem 0.9rem;
-    border-left: 1px solid var(--edge);
   }
 
   .index-plan-figure {

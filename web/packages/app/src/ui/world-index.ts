@@ -31,7 +31,10 @@ export interface IndexHandlers {
 export interface IndexPane {
   readonly root: HTMLElement;
   render(snapshot: GraphSnapshot, state: string | IndexFacets, selected: string | null): void;
+  /** Reveal the search field and put the caret in it. */
   focusSearch(): void;
+  /** Put search away. Refuses while a query is live, because a hidden filter is a lie. */
+  closeSearch(): boolean;
 }
 
 export interface IndexPresentation {
@@ -77,6 +80,15 @@ export function buildWorldIndex(
   });
   const titleId = 'world-index-title';
   root.setAttribute('aria-labelledby', titleId);
+  /*
+   * Search rests closed.
+   *
+   * A permanent input band spends the widest line of the surface on a control nobody has asked
+   * for yet, and it made the first thing in the Index a request for typing rather than the
+   * evidence. It is summoned with a key like every other Atlas verb, and it is announced in the
+   * same command row as the rest of them.
+   */
+  root.dataset['searchOpen'] = 'false';
 
   const search = el('input', {
     type: 'search',
@@ -201,6 +213,7 @@ export function buildWorldIndex(
       legend,
       el('p', { class: 'index-keys' }, [
         keyHint('Enter', 'Open'),
+        keyHint('S', 'Search'),
         keyHint('Tab', 'Filters'),
         keyHint('I', 'Return'),
       ]),
@@ -238,7 +251,14 @@ export function buildWorldIndex(
   return {
     root,
     focusSearch() {
+      root.dataset['searchOpen'] = 'true';
       search.focus();
+      search.select();
+    },
+    closeSearch() {
+      if (search.value.trim().length > 0) return false;
+      root.dataset['searchOpen'] = 'false';
+      return true;
     },
     render(snapshot, state, selected) {
       currentFacets = typeof state === 'string' ? { ...ALL_FACETS, text: state } : state;
@@ -254,6 +274,7 @@ export function buildWorldIndex(
         ? 'All entities'
         : `${activeCount} active`;
       clear.disabled = activeCount === 0;
+      if (currentFacets.text.trim().length > 0) root.dataset['searchOpen'] = 'true';
       root.dataset['detailOpen'] = selected === null ? 'false' : 'true';
 
       kinds.reflect();

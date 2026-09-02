@@ -100,6 +100,7 @@ import type { SourceMediaCatalog } from './source-media.js';
 import { sourceMediaForIsland } from './source-media.js';
 import { createWorldField, type WorldField } from './world-field.js';
 import { createComposedWorld, type ComposedWorld } from './composed-world.js';
+import { createRegionMass, type RegionMass } from './region-mass.js';
 import type { PointMap } from './opm.js';
 import type { PointCloud } from './point-cloud.js';
 import { createPointCloud } from './point-cloud.js';
@@ -201,6 +202,7 @@ export class AtlasBinding {
   readonly sourceFirst: SourceFirstGrove;
   readonly topology: WorldTopologySnapshot;
   readonly composedWorld: ComposedWorld;
+  readonly regionMass: RegionMass;
   readonly customization: WorldCustomizationController;
   readonly neighborhoodIndex: NeighborhoodIndex;
   readonly renderRoot: pc.Entity;
@@ -274,6 +276,7 @@ export class AtlasBinding {
     sourceFirst: SourceFirstGrove,
     topology: WorldTopologySnapshot,
     composedWorld: ComposedWorld,
+    regionMass: RegionMass,
     customization: WorldCustomizationController,
     neighborhoodIndex: NeighborhoodIndex,
     renderRoot: pc.Entity,
@@ -299,6 +302,7 @@ export class AtlasBinding {
     this.sourceFirst = sourceFirst;
     this.topology = topology;
     this.composedWorld = composedWorld;
+    this.regionMass = regionMass;
     this.customization = customization;
     this.neighborhoodIndex = neighborhoodIndex;
     this.renderRoot = renderRoot;
@@ -419,6 +423,10 @@ export class AtlasBinding {
       initialArtProfile,
       theme,
     );
+    // What the Map looks down on. Built from the same anchors the ground view already draws, so
+    // it cannot drift from what the world actually holds, and enabled only at the Map vantage.
+    const regionMass = createRegionMass(device, options.scene, initialArtProfile);
+    renderRoot.addChild(regionMass.entity);
     const customization = new WorldCustomizationController({
       topologyDigest: topology.topologyDigest,
       regionIds: new Set(options.scene.islands.map((island) => island.islandId)),
@@ -561,6 +569,7 @@ export class AtlasBinding {
       sourceFirst,
       topology,
       composedWorld,
+      regionMass,
       customization,
       neighborhoodIndex,
       renderRoot,
@@ -640,6 +649,7 @@ export class AtlasBinding {
   private setProfileVisuals(profile: WorldArtProfile): void {
     this.invalidate();
     this.composedWorld.setProfile(profile);
+    this.regionMass.applyProfile(profile);
     this.field.setProfile(profile);
     this.sourceFirst.setProfile(profile);
     this.setClearColours(profile);
@@ -774,6 +784,7 @@ export class AtlasBinding {
     this.invalidate();
     if (active === (this.mapState !== null)) return;
     this.composedWorld.setMapActive(active);
+    this.regionMass.setMapActive(active);
     if (this.camera.camera !== undefined && this.camera.camera !== null) {
       this.camera.camera.clearColor.copy(active ? this.mapClearColor : this.skyClearColor);
     }
@@ -1220,6 +1231,7 @@ export class AtlasBinding {
     this.field.destroy();
     this.sourceFirst.destroy();
     this.composedWorld.destroy();
+    this.regionMass.destroy();
     for (const visual of this.islands) visual.cloud.destroy();
     this.app.destroy();
   }

@@ -51,6 +51,33 @@ export interface WorldPalette {
   readonly sun: string;
 }
 
+/**
+ * What the interface is made of.
+ *
+ * The interface used to be derived entirely from `WorldPalette`, which describes the 3D scene.
+ * That made single roots serve unrelated jobs: `brass` was the world's warm signal AND
+ * user-provenance AND caution, and `terrain` was the ground AND the reading colour AND the plate
+ * AND capture-provenance. There was no root meaning "the hue this interface is built from", so
+ * one had to be synthesised by mixing the ground with the air, and a world that authored a light
+ * ground silently lost every structural colour it had.
+ *
+ * Five roots, one job each. A recipe may omit this entirely, in which case it is derived from the
+ * world palette exactly as before, so an existing profile keeps its appearance and a new one can
+ * choose to say what its interface is made of instead of inheriting an accident.
+ */
+export interface WorldInterfacePalette {
+  /** The reading colour. Every textual role descends from this hue. */
+  readonly ink: string;
+  /** The material a summoned surface is made of. */
+  readonly plate: string;
+  /** The interface's own hue: accent, focus, active state, selection. */
+  readonly structure: string;
+  /** The warm mark: user-provided provenance and the evidence accent. */
+  readonly evidence: string;
+  /** The cool mark: inference, uncertainty, unresolved. */
+  readonly uncertain: string;
+}
+
 export interface WorldUiColors {
   readonly ground: string;
   readonly surface: string;
@@ -67,6 +94,19 @@ export interface WorldUiColors {
   readonly capture: string;
   readonly inference: string;
   readonly external: string;
+  /**
+   * The same four provenance meanings at mark strength.
+   *
+   * A dot, a band rule and a callout edge are graphical objects, not text, and the requirement
+   * for those is 3:1 rather than 4.5. Correcting them to the reading floor took the one bright
+   * colour this world authored, `#f96858`, and shipped it as `#be2f25`: the hue survived and the
+   * light went out of it. Two strengths per meaning keeps text readable without turning every
+   * saturated mark into a darker version of the body copy.
+   */
+  readonly userMark: string;
+  readonly captureMark: string;
+  readonly inferenceMark: string;
+  readonly externalMark: string;
   readonly companionSurface: string;
   readonly companionSurfaceHover: string;
   readonly companionText: string;
@@ -148,6 +188,8 @@ export interface WorldArtProfileSource {
     readonly edgeStrength: number;
   };
   readonly palette: WorldPalette;
+  /** Omitted means "derive my interface from my scene", which is the historical behaviour. */
+  readonly interfacePalette?: WorldInterfacePalette;
   readonly semanticChannels: {
     readonly provenance: readonly ['hue', 'shape'];
     readonly confirmation: readonly ['hue', 'stroke'];
@@ -162,6 +204,10 @@ export interface WorldArtProfile extends Omit<WorldArtProfileSource, 'ui'> {
 }
 
 const HEX = /^#[0-9a-f]{6}$/i;
+/** Exactly these five, so a recipe cannot smuggle an unbounded sixth interface colour. */
+const INTERFACE_PALETTE_ROOTS = [
+  'ink', 'plate', 'structure', 'evidence', 'uncertain',
+] as const satisfies readonly (keyof WorldInterfacePalette)[];
 const channel = (hex: string, offset: number): number => Number.parseInt(hex.slice(offset, offset + 2), 16);
 
 export const mixHex = (from: string, to: string, amount: number): string => {
@@ -185,56 +231,283 @@ export const contrastRatio = (foreground: string, background: string): number =>
   return (lighter + 0.05) / (darker + 0.05);
 };
 
+/**
+ * Perceptual lightness, so darkening a colour does not also drain it.
+ *
+ * Mixing toward `#000000` in sRGB scales all three channels by the same factor. The channel
+ * *ratio* survives and the channel *difference* does not, so a pale tint darkens into grey:
+ * `#eef7f2` taken to a readable value arrives at `#545756`, four points of chroma out of the
+ * twelve it started with. Every structural role in this file is a darkened world colour, so that
+ * one property decided what the whole interface looked like. OKLCH separates lightness from hue
+ * and chroma and lets a role be moved along one axis without losing the other two.
+ */
+interface Oklch {
+  readonly l: number;
+  readonly c: number;
+  readonly h: number;
+}
+
+const toLinear = (value: number): number =>
+  (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+const toGamma = (value: number): number =>
+  (value <= 0.0031308 ? value * 12.92 : 1.055 * value ** (1 / 2.4) - 0.055);
+
+const toOklch = (hex: string): Oklch => {
+  const [red, green, blue] = [1, 3, 5].map((offset) => toLinear(channel(hex, offset) / 255)) as
+    [number, number, number];
+  const long = Math.cbrt(0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue);
+  const medium = Math.cbrt(0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue);
+  const short = Math.cbrt(0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue);
+  const lightness = 0.2104542553 * long + 0.7936177850 * medium - 0.0040720468 * short;
+  const a = 1.9779984951 * long - 2.4285922050 * medium + 0.4505937099 * short;
+  const b = 0.0259040371 * long + 0.7827717662 * medium - 0.8086757660 * short;
+  return { l: lightness, c: Math.hypot(a, b), h: Math.atan2(b, a) };
+};
+
+const oklabChannels = (lightness: number, a: number, b: number): readonly number[] => {
+  const long = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const medium = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const short = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+  return [
+    toGamma(4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short),
+    toGamma(-1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short),
+    toGamma(-0.0041960863 * long - 0.7034186147 * medium + 1.7076147010 * short),
+  ];
+};
+
+/**
+ * Back to sRGB, giving up chroma rather than hue when the request is outside the gamut.
+ *
+ * A hue that shifts under clipping is a different colour, and provenance reads by hue. Reducing
+ * chroma at the requested lightness keeps the mark identifiable as the same one.
+ */
+const fromOklch = ({ l, c, h }: Oklch): string => {
+  const inGamut = (chroma: number): readonly number[] | null => {
+    const channels = oklabChannels(l, Math.cos(h) * chroma, Math.sin(h) * chroma);
+    return channels.every((value) => value >= -0.001 && value <= 1.001) ? channels : null;
+  };
+  let resolved = inGamut(c);
+  if (resolved === null) {
+    let low = 0;
+    let high = c;
+    resolved = oklabChannels(l, 0, 0);
+    for (let iteration = 0; iteration < 24; iteration += 1) {
+      const chroma = (low + high) / 2;
+      const attempt = inGamut(chroma);
+      if (attempt === null) high = chroma; else { resolved = attempt; low = chroma; }
+    }
+  }
+  return `#${resolved
+    .map((value) => Math.round(Math.max(0, Math.min(1, value)) * 255).toString(16).padStart(2, '0'))
+    .join('')}`;
+};
+
+/**
+ * A world colour read perceptually.
+ *
+ * Exposed because "did this world's hue survive derivation" is not answerable from a hex string,
+ * and it is exactly the question a green test suite failed to ask while the interface lost every
+ * colour it had. `lightness` is 0 to 1, `chroma` is OKLCH chroma, and `hue` is radians.
+ */
+export function perceptualColour(hex: string): {
+  readonly lightness: number;
+  readonly chroma: number;
+  readonly hue: number;
+} {
+  const { l, c, h } = toOklch(hex);
+  return Object.freeze({ lightness: l, chroma: c, hue: h });
+}
+
+/**
+ * Construct a colour from perceptual lightness, chroma and hue.
+ *
+ * Exported because a hue is a circle and there is no pair of authored endpoints a circle can be
+ * mixed between, so a module that takes a hue as a parameter has to build its colours rather than
+ * interpolate them. This is the only constructor, so gamut mapping stays in one place.
+ */
+export function oklchHex(lightness: number, chroma: number, hue: number): string {
+  return fromOklch({ l: lightness, c: Math.max(0, chroma), h: hue });
+}
+
+/** Place a world colour at an authored lightness, keeping its hue and at least `chromaFloor`. */
+const toneAt = (hex: string, lightness: number, chromaFloor = 0): string => {
+  const { c, h } = toOklch(hex);
+  return fromOklch({ l: lightness, c: Math.max(c, chromaFloor), h });
+};
+
+/**
+ * The contrast floor, walked along lightness rather than toward black.
+ *
+ * This only ever rescues a role that fails its minimum. It is not allowed to be the thing that
+ * decides what a role looks like, which is what it had become.
+ */
 const accessibleTone = (candidate: string, background: string, minimum: number): string => {
   if (contrastRatio(candidate, background) >= minimum) return candidate;
-  const target = relativeLuminance(background) > 0.42 ? '#000000' : '#ffffff';
-  let low = 0;
-  let high = 1;
-  let resolved = target;
-  for (let iteration = 0; iteration < 18; iteration += 1) {
-    const amount = (low + high) / 2;
-    const mixed = mixHex(candidate, target, amount);
-    if (contrastRatio(mixed, background) >= minimum) {
-      resolved = mixed;
-      high = amount;
+  const { l, c, h } = toOklch(candidate);
+  const darken = relativeLuminance(background) > 0.35;
+  let low = darken ? 0 : l;
+  let high = darken ? l : 1;
+  let resolved = fromOklch({ l: darken ? 0 : 1, c, h });
+  for (let iteration = 0; iteration < 20; iteration += 1) {
+    const lightness = (low + high) / 2;
+    const walked = fromOklch({ l: lightness, c, h });
+    if (contrastRatio(walked, background) >= minimum) {
+      resolved = walked;
+      if (darken) low = lightness; else high = lightness;
+    } else if (darken) {
+      high = lightness;
     } else {
-      low = amount;
+      low = lightness;
     }
   }
   return resolved;
 };
 
-/** Semantic interface roles always come from the same roots as the rendered world. */
-export function deriveWorldUiColors(palette: WorldPalette): WorldUiColors {
-  const ground = mixHex(palette.haze, palette.paper, 0.3);
-  const surface = mixHex(palette.haze, palette.paper, 0.58);
-  const raised = mixHex(palette.paper, palette.sun, 0.18);
-  const companionSurface = accessibleTone(palette.terrain, palette.paper, 7);
+/**
+ * The authored lightness ladder.
+ *
+ * Every role is placed at a perceptual lightness first and only then checked against its contrast
+ * floor, because the previous derivation had no ladder at all: it handed each role a near-white
+ * world colour, and `accessibleTone` was the only thing that ever darkened it. Every role
+ * therefore landed within 0.06 of its own floor, so the whole interface occupied two values, 7:1
+ * for `ink` and 4.5:1 for the other twelve, and no amount of component work could build a
+ * hierarchy out of it. Contrast correction is a floor. It is not a colour picker.
+ */
+const INTERFACE_LIGHTNESS = Object.freeze({
+  ink: 0.3,
+  body: 0.46,
+  muted: 0.52,
+  accent: 0.51,
+  secondary: 0.53,
+  focus: 0.58,
+  warning: 0.52,
+  error: 0.48,
+  user: 0.53,
+  capture: 0.52,
+  inference: 0.53,
+  external: 0.53,
+  companionSurface: 0.32,
+  companionSurfaceHover: 0.4,
+  companionAccent: 0.85,
+  companionSecondary: 0.82,
+  companionUnavailable: 0.78,
+  shadow: 0.22,
+  vignette: 0.36,
+});
+
+/**
+ * The smallest chroma a structural role may arrive at.
+ *
+ * A world is allowed to be grey. Survey Relief authors every root under 0.07 chroma and must stay
+ * a drab ledger. What a world may not do is lose a hue it did author, which is what happened when
+ * the ground root moved to a near-white tint: 0.012 chroma survives being placed at low lightness
+ * arithmetically and disappears visually. This floor is small enough that an intentionally grey
+ * palette stays grey and large enough that a pale one still reads as coloured. It lifts chroma; it
+ * never chooses a hue, so a profile's identity still decides what colour the interface is.
+ */
+const STRUCTURE_CHROMA_FLOOR = 0.022;
+const EVIDENCE_CHROMA_FLOOR = 0.03;
+
+/**
+ * The reading floor, with the margin a real surface costs.
+ *
+ * `surface` is the lightest reading ground a world has, near-white for a light world. A role
+ * corrected to exactly 4.5 against it is not at 4.5 anywhere a component actually puts it: a
+ * held plate is made of a paper a few points darker than the theoretical white, and that alone
+ * took every mid role to 3.9. Deriving against the lightest possible ground and shipping the bare
+ * minimum is how a palette passes its own test and fails on screen, so the mid roles clear the
+ * requirement against `surface` by enough to survive the surfaces built from it. The lightness
+ * ladder above is set so this rarely engages; it is the safety net, not the author.
+ */
+const READING_FLOOR = 5.2;
+
+/** Graphical objects and controls, which WCAG separates from text at 3:1. */
+const MARK_FLOOR = 3;
+
+/**
+ * The interface a world gets when it does not say what its interface is made of.
+ *
+ * This is the historical derivation, preserved exactly, so an existing profile is unchanged by
+ * the arrival of authored interface roots. Structure reads from the ground and the air together:
+ * reading it from the ground alone was only ever right while the ground was dark, and the moment
+ * a world authored a light field every structural role went grey.
+ */
+export function interfacePaletteFromWorld(palette: WorldPalette): WorldInterfacePalette {
+  return Object.freeze({
+    ink: mixHex(palette.terrain, palette.sky, 0.5),
+    plate: mixHex(palette.paper, palette.sun, 0.18),
+    structure: palette.sky,
+    evidence: palette.brass,
+    uncertain: palette.stoneShadow,
+  });
+}
+
+/**
+ * Semantic interface roles, from five roots that mean one job each.
+ *
+ * They used to be read off `WorldPalette`, which describes the 3D scene, so single scene parts
+ * served unrelated interface jobs and a world that changed its ground silently changed its
+ * reading colour, its plate and two of its provenance marks at the same time.
+ */
+export function deriveWorldUiColors(
+  palette: WorldPalette,
+  authored?: WorldInterfacePalette,
+): WorldUiColors {
+  const face = authored ?? interfacePaletteFromWorld(palette);
+  const ground = mixHex(palette.haze, face.plate, 0.3);
+  const surface = mixHex(palette.haze, face.plate, 0.58);
+  const raised = face.plate;
+  const structural = (lightness: number): string =>
+    toneAt(face.ink, lightness, STRUCTURE_CHROMA_FLOOR);
+  const companionSurface = accessibleTone(
+    structural(INTERFACE_LIGHTNESS.companionSurface), face.plate, 7);
   return Object.freeze({
     ground,
     surface,
     raised,
-    ink: accessibleTone(palette.terrain, raised, 7),
-    body: accessibleTone(mixHex(palette.terrain, palette.terrainLift, 0.16), surface, 4.5),
-    muted: accessibleTone(mixHex(palette.terrain, palette.haze, 0.26), surface, 4.5),
-    accent: accessibleTone(mixHex(palette.terrain, palette.terrainLift, 0.34), surface, 4.5),
-    secondary: accessibleTone(palette.brass, surface, 4.5),
-    focus: accessibleTone(palette.terrainLift, ground, 3),
-    warning: accessibleTone(palette.brass, surface, 4.5),
-    error: accessibleTone(mixHex('#a6404c', palette.brass, 0.12), surface, 4.5),
-    user: accessibleTone(palette.brass, surface, 4.5),
-    capture: accessibleTone(mixHex(palette.terrain, palette.terrainLift, 0.42), surface, 4.5),
-    inference: accessibleTone(palette.stoneShadow, surface, 4.5),
-    external: accessibleTone(mixHex(palette.stoneShadow, palette.brass, 0.28), surface, 4.5),
+    ink: accessibleTone(structural(INTERFACE_LIGHTNESS.ink), raised, 7),
+    body: accessibleTone(structural(INTERFACE_LIGHTNESS.body), surface, READING_FLOOR),
+    muted: accessibleTone(structural(INTERFACE_LIGHTNESS.muted), surface, READING_FLOOR),
+    accent: accessibleTone(toneAt(face.structure, INTERFACE_LIGHTNESS.accent), surface, READING_FLOOR),
+    secondary: accessibleTone(toneAt(face.evidence, INTERFACE_LIGHTNESS.secondary), surface, READING_FLOOR),
+    focus: accessibleTone(toneAt(face.structure, INTERFACE_LIGHTNESS.focus), ground, 3),
+    // Caution and user-provided provenance were the same colour while `brass` was the only root
+    // with any chroma left. They are different questions and the palette already carries a second
+    // warm root for the second one.
+    warning: accessibleTone(toneAt(palette.path, INTERFACE_LIGHTNESS.warning), surface, READING_FLOOR),
+    error: accessibleTone(
+      toneAt(mixHex('#a6404c', face.evidence, 0.12), INTERFACE_LIGHTNESS.error), surface, READING_FLOOR),
+    user: accessibleTone(toneAt(face.evidence, INTERFACE_LIGHTNESS.user), surface, READING_FLOOR),
+    // The provenance triad is read as three marks side by side, so the three must separate by hue
+    // and not only by shape. They take the world's growth, air-shadow and warm roots.
+    capture: accessibleTone(
+      toneAt(palette.terrainLift, INTERFACE_LIGHTNESS.capture, EVIDENCE_CHROMA_FLOOR), surface, READING_FLOOR),
+    inference: accessibleTone(
+      toneAt(face.uncertain, INTERFACE_LIGHTNESS.inference, EVIDENCE_CHROMA_FLOOR),
+      surface, READING_FLOOR),
+    external: accessibleTone(
+      toneAt(mixHex(face.uncertain, face.evidence, 0.4), INTERFACE_LIGHTNESS.external,
+        EVIDENCE_CHROMA_FLOOR), surface, READING_FLOOR),
+    // Marks keep the lightness the world authored and only move if they fail 3:1.
+    userMark: accessibleTone(face.evidence, surface, MARK_FLOOR),
+    captureMark: accessibleTone(
+      toneAt(palette.terrainLift, toOklch(palette.terrainLift).l, EVIDENCE_CHROMA_FLOOR),
+      surface, MARK_FLOOR),
+    inferenceMark: accessibleTone(face.uncertain, surface, MARK_FLOOR),
+    externalMark: accessibleTone(
+      mixHex(face.uncertain, face.evidence, 0.4), surface, MARK_FLOOR),
     companionSurface,
-    companionSurfaceHover: mixHex(companionSurface, palette.terrainLift, 0.18),
-    companionText: accessibleTone(palette.paper, companionSurface, 7),
-    companionAccent: accessibleTone(palette.sun, companionSurface, 4.5),
-    companionSecondary: accessibleTone(palette.terrainLift, companionSurface, 4.5),
+    companionSurfaceHover: structural(INTERFACE_LIGHTNESS.companionSurfaceHover),
+    companionText: accessibleTone(face.plate, companionSurface, 7),
+    companionAccent: accessibleTone(
+      toneAt(palette.sun, INTERFACE_LIGHTNESS.companionAccent), companionSurface, 4.5),
+    companionSecondary: accessibleTone(
+      toneAt(palette.terrainLift, INTERFACE_LIGHTNESS.companionSecondary), companionSurface, 4.5),
     companionInk: companionSurface,
-    companionUnavailable: accessibleTone(palette.stoneShadow, companionSurface, 4.5),
-    shadow: mixHex(palette.terrain, '#000000', 0.72),
-    vignette: mixHex(palette.terrain, '#000000', 0.58),
+    companionUnavailable: accessibleTone(
+      toneAt(face.uncertain, INTERFACE_LIGHTNESS.companionUnavailable), companionSurface, 4.5),
+    shadow: structural(INTERFACE_LIGHTNESS.shadow),
+    vignette: structural(INTERFACE_LIGHTNESS.vignette),
   });
 }
 
@@ -256,6 +529,9 @@ const freezeSource = (source: WorldArtProfileSource): WorldArtProfileSource => O
   field: Object.freeze({ ...source.field }),
   material: Object.freeze({ ...source.material }),
   palette: Object.freeze({ ...source.palette }),
+  ...(source.interfacePalette === undefined
+    ? {}
+    : { interfacePalette: Object.freeze({ ...source.interfacePalette }) }),
   semanticChannels: Object.freeze({
     provenance: Object.freeze([...source.semanticChannels.provenance]) as readonly ['hue', 'shape'],
     confirmation: Object.freeze([...source.semanticChannels.confirmation]) as readonly ['hue', 'stroke'],
@@ -309,6 +585,17 @@ export function validateWorldArtProfileSource(source: WorldArtProfileSource): vo
   for (const [name, colour] of Object.entries(source.palette)) {
     if (!HEX.test(colour)) throw new TypeError(`invalid ${source.profileId} palette token ${name}`);
   }
+  if (source.interfacePalette !== undefined) {
+    const face = source.interfacePalette;
+    for (const name of INTERFACE_PALETTE_ROOTS) {
+      if (!HEX.test(face[name])) {
+        throw new TypeError(`invalid ${source.profileId} interface token ${name}`);
+      }
+    }
+    if (Object.keys(face).length !== INTERFACE_PALETTE_ROOTS.length) {
+      throw new TypeError(`unexpected ${source.profileId} interface palette roots`);
+    }
+  }
   for (const [name, family] of Object.entries(source.ui.typography)) {
     if (!WORLD_UI_FONT_FAMILIES.has(family)) {
       throw new TypeError(`unregistered ${source.profileId} UI font ${name}`);
@@ -348,7 +635,7 @@ export function validateWorldArtProfileSource(source: WorldArtProfileSource): vo
 export function createWorldArtProfile(source: WorldArtProfileSource): WorldArtProfile {
   validateWorldArtProfileSource(source);
   const frozen = freezeSource(source);
-  const colors = deriveWorldUiColors(frozen.palette);
+  const colors = deriveWorldUiColors(frozen.palette, frozen.interfacePalette);
   return Object.freeze({
     ...frozen,
     ui: Object.freeze({ ...frozen.ui, colors }),
@@ -363,6 +650,9 @@ export function copyWorldArtProfileSource(source: WorldArtProfileSource): WorldA
     field: { ...source.field },
     material: { ...source.material },
     palette: { ...source.palette },
+    ...(source.interfacePalette === undefined
+      ? {}
+      : { interfacePalette: { ...source.interfacePalette } }),
     semanticChannels: {
       provenance: [...source.semanticChannels.provenance],
       confirmation: [...source.semanticChannels.confirmation],
