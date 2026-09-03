@@ -438,9 +438,10 @@ drain when the current role is a superuser, has BYPASSRLS, or owns any row-level
 role starts and cannot see another workspace, while the bootstrap owner is rejected. The same
 check runs in the API lifespan and the dedicated worker command before either accepts work.
 
-There are now forty-eight workspace-keyed FORCE RLS tables. The package-export receipt is the
-latest; it is append-only and scoped by the same session workspace as the protected world state
-whose Merkle root it records.
+There are now fifty workspace-keyed FORCE RLS tables. The package-export receipt is append-only
+and scoped by the same session workspace as the protected world state whose Merkle root it
+records; migration 0024's `reconstruction_scene` and `reconstruction_scene_member` are the two
+most recent, and are append-only for a different reason, given in that file.
 
 
 ### 5.2 What a deployment additionally needs
@@ -999,10 +1000,21 @@ deployment setting instead.
 cross-workspace SELECT policy on `capture` and `artifact` granted to `orimera_purge`. Replacing
 that with a maintained holder count on `blob` is **not the right change now**.
 
+**CORRECTED 2026-09-03.** The policy now covers a third relation,
+`reconstruction_scene_member`, because migration 0024 gave `purge_releases_bytes` a clause that
+reads it: a scene artifact is a fact about N photographs and holds its bytes only while every
+member is live. `artifact` also gained `scene_id`, so it is three tables and one more column, and
+`orimera.db.roles.PURGE_CROSS_WORKSPACE_TABLES` is the list rather than a sentence. The direction
+of a blindness over the new table is the opposite of the one this paragraph is about: it
+over-refuses rather than destroying, so the cost of getting it wrong is a deletion that never
+completes rather than another tenant's photograph.
+
 **What is reproduced here**: the structural half. `artifact` carries exactly two indexes,
 `artifact_pkey` and `artifact_workspace_id_idempotency_key_key`. There is **no index on
 `artifact.content_sha256` or on `artifact.source_blob_sha256`**, so `purge_releases_bytes` scans
-the artifact table on every purge job.
+the artifact table on every purge job. **CORRECTED: it now carries a third**,
+`artifact_scene_idx` on `(workspace_id, scene_id) where scene_id is not null`, which the purge
+enqueue uses and which does nothing for the scan this paragraph measures.
 
 **What is not reproduced here, and is recorded as the assessment's own measurement**: that the
 predicate costs about 30 ms per target at 660,000 artifacts, falls to about 0.144 ms with one

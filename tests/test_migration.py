@@ -131,6 +131,8 @@ def test_every_migration_is_a_single_transaction_with_no_down_path(migration):
         "world_interaction_policy_proposal",
         "world_interaction_policy_preview",
         "world_interaction_policy_audit_event",
+        "reconstruction_scene",
+        "reconstruction_scene_member",
     ],
 )
 def test_every_required_table_exists(table):

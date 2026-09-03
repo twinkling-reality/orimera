@@ -320,6 +320,20 @@ def read_point_map(
         # serve and nothing was deleted. It is indistinguishable from absence, and is answered
         # as absence rather than as a fault the caller could do anything about.
         return None
+    if row["source_blob_sha256"] is None:
+        # A scene artifact, reaching a read that has no way to answer for one. Migration 0024
+        # made ``source_blob_sha256`` nullable so that a fact about N photographs can name a
+        # scene instead, and the liveness question below is an OR over the captures holding one
+        # blob, which is the WRONG reduction for a set: ``tombstone_blocks_scene`` is the right
+        # one and this function does not ask it.
+        #
+        # **Unreachable today, and guarded rather than asserted.** ``_ONE`` filters on
+        # ``POINT_MAP_KIND`` and a point map is always a derivative of one photograph, so the
+        # only way here is a caller passing a different kind, which no route does. But the
+        # protection is a filter on another line, and the failure without this was a TypeError
+        # inside ``bytes(None)`` rather than a refusal: a 500 on a read whose whole job is to
+        # refuse safely. Answered as absence, which is what it is to this reader.
+        return None
     holder = connection.execute(
         _LIVE_HOLDER, (workspace, bytes(row["source_blob_sha256"]))
     ).fetchone()

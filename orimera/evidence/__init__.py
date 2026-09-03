@@ -18,6 +18,12 @@ from orimera.evidence.address import (
 )
 from orimera.evidence.blob import DIGEST_BYTES, HASH_ALGORITHM, BlobId
 from orimera.evidence.region import PPM, DisplayGeometry, Rect, Region
+from orimera.evidence.scene import (
+    SCENE_DIGEST_VERSION,
+    SCENE_NAMESPACE,
+    scene_id_for,
+    scene_member_digest,
+)
 from orimera.evidence.timebase import (
     IMAGE_TIME_BASE,
     NS_PER_SECOND,
@@ -36,6 +42,8 @@ __all__ = [
     "NS_PER_SECOND",
     "PHOTOGRAPH_INTERVAL",
     "PPM",
+    "SCENE_DIGEST_VERSION",
+    "SCENE_NAMESPACE",
     "SPAN_FORMAT_VERSION",
     "URI_SCHEME",
     "BlobId",
@@ -49,5 +57,7 @@ __all__ = [
     "TimeInterval",
     "ns_to_seconds",
     "parse_uri",
+    "scene_id_for",
+    "scene_member_digest",
     "seconds_to_ns",
 ]

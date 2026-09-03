@@ -1,0 +1,708 @@
+"""A fact about N photographs, and the deletion of one of them.
+
+ADR-0009 D9. Every artifact before migration 0024 is keyed to exactly one source blob, which is
+what the purge cascade and the export projector join on, and a pose receipt, a splat and a
+placement record are facts about a set. D9 gives them a subject and requires that deletion reach
+it: "a tombstone path that reaches a scene artifact through any of its members".
+
+**The reduction inverts, and that is what every test here is about.** For an artifact of one
+photograph the question is an OR over the captures holding a blob: imported twice is one artifact
+and two captures, and deleting one withdraws nothing. ``purge_releases_bytes`` and
+``orimera/graph/geometry.py`` both read that way and are right to. For a fact about eight
+photographs, deleting ONE withdraws it, because a receipt over eight is not a claim about the
+seven that are left.
+
+**Three members, and the one that is deleted is the middle one.** D9's no-ship rule is "the test
+that deletes one of N members and asserts the bytes are released and the export changes", and a
+test that deleted every member would pass on either reduction, which is the failure the defect
+register calls this project's recurring one. Two members would leave the surviving-member
+assertions trivial. The middle one rather than an end, because the presentation order this
+workspace is read in is ``started_at`` then ``capture_id``, so a deletion at either end would be
+indistinguishable from an off-by-one in anything that walks the list.
+
+The export half of the no-ship rule is not here. It lives with the projector, which does not yet
+read a scene at all.
+"""
+
+from __future__ import annotations
+
+import secrets
+import uuid
+
+import psycopg
+import pytest
+from orimera.db.roles import (
+    PURGE_CROSS_WORKSPACE_TABLES,
+    PURGE_ROLE,
+    RUNTIME_ROLE,
+    provision_purge_role,
+    provision_runtime_role,
+)
+from orimera.deletion import queue
+from orimera.deletion.worker import PurgeWorker
+from orimera.evidence.blob import BlobId
+from orimera.evidence.scene import scene_id_for, scene_member_digest
+from orimera.ingest.pipeline import PhotoIngestPipeline
+from orimera.store.local import LocalContentAddressedStore
+
+from conftest import CountingVisionModel, iso, write_photo, write_point_map
+
+#: Suffixed, because a role is a CLUSTER object and the harness's "the database name must contain
+#: test" guard does not reach one. See the same comment in ``tests/test_purge.py``.
+_PURGE_ROLE = f"{PURGE_ROLE}_scene"
+_APP_ROLE = f"{RUNTIME_ROLE}_scene"
+_PURGE_PASSWORD = secrets.token_urlsafe(32)
+_APP_PASSWORD = secrets.token_urlsafe(32)
+
+#: The receipt's own bytes, distinct from every photograph and from every point map, so that a
+#: test which destroyed the wrong object says so rather than passing because two payloads
+#: happened to be equal.
+_RECEIPT = b"a pose receipt over three photographs"
+
+
+class SceneWorkspace:
+    """Three photographs, a scene over all three, and a receipt that is a fact about the set."""
+
+    def __init__(self, repository, store, scratch, captures, scene_id, receipt_id) -> None:
+        self.repository = repository
+        self.store = store
+        self.scratch = scratch
+        self.workspace_id = repository.workspace_id
+        #: In ingest order. ``captures[1]`` is the member every deletion test removes.
+        self.captures = captures
+        self.scene_id = scene_id
+        self.receipt_id = receipt_id
+        self.receipt_digest = BlobId.of_bytes(_RECEIPT)
+
+    def rows(self, sql: str, *params):
+        return self.repository.connection.execute(sql, params).fetchall()
+
+    def one(self, sql: str, *params):
+        return self.repository.connection.execute(sql, params).fetchone()
+
+    def releases(self, blob: BlobId) -> bool:
+        """Ask the destroy predicate directly, which is what the worker does before acting."""
+        row = self.one(
+            "select purge_releases_bytes(%s) as releases", blob.digest
+        )
+        assert row is not None
+        return bool(row["releases"])
+
+    def blocked(self, scene_id: uuid.UUID | None = None) -> bool:
+        row = self.one(
+            "select tombstone_blocks_scene(%s, %s) as blocked",
+            self.workspace_id,
+            scene_id or self.scene_id,
+        )
+        assert row is not None
+        return bool(row["blocked"])
+
+    def delete(self, capture_id: uuid.UUID) -> uuid.UUID:
+        """Delete a photograph the way the product does, which is one call and nothing else.
+
+        No ``update capture set deleted_at``. That line in ``tests/test_purge.py``'s helper was
+        migration 0015's defect 1: the fixture supplied a production step the shipping code did
+        not have, and every test passed against a flow that did not exist.
+        """
+        return self.repository.insert_tombstone(
+            scope="capture",
+            capture_id=capture_id,
+            requested_by=uuid.uuid4(),
+            reason="the user deleted this photograph",
+        )
+
+    def database(self, *, role: str | None = None, password: str | None = None):
+        import os
+        import urllib.parse
+
+        from orimera.db.session import Database
+
+        base = os.environ["ORIMERA_TEST_DATABASE_URL"]
+        options = urllib.parse.quote(f"-csearch_path={self.scratch},public", safe="")
+        url = f"{base}{'&' if '?' in base else '?'}options={options}"
+        if role is not None:
+            parsed = urllib.parse.urlsplit(url)
+            netloc = f"{role}:{password}@{parsed.hostname}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            url = urllib.parse.urlunsplit(parsed._replace(netloc=netloc))
+        return Database(url=url)
+
+    def worker(self) -> PurgeWorker:
+        return PurgeWorker(
+            self.database(role=_PURGE_ROLE, password=_PURGE_PASSWORD),
+            self.store,
+            frozenset({self.workspace_id}),
+            name="test-scene-purge",
+        )
+
+
+def _insert_scene(workspace, capture_ids) -> uuid.UUID:
+    """Write a scene and its members with raw SQL, because nothing in ``orimera/`` writes one.
+
+    That is deliberate rather than missing. D9 says no scene-level artifact ships before this
+    test exists, so the identity and the deletion path land before any producer does, and a test
+    that drove a producer would be waiting on one. It is the same arrangement
+    ``test_a_person_scoped_withdrawal_reaches_no_derivative`` uses to write a tombstone the
+    product cannot express.
+    """
+    scene_id = scene_id_for(capture_ids)
+    workspace.repository.connection.execute(
+        "insert into reconstruction_scene (scene_id, workspace_id, member_digest) "
+        "values (%s, %s, %s)",
+        (scene_id, workspace.workspace_id, scene_member_digest(capture_ids)),
+    )
+    for ordinal, capture_id in enumerate(capture_ids):
+        workspace.repository.connection.execute(
+            "insert into reconstruction_scene_member "
+            "(workspace_id, scene_id, capture_id, ordinal, registered) "
+            "values (%s, %s, %s, %s, true)",
+            (workspace.workspace_id, scene_id, capture_id, ordinal),
+        )
+    return scene_id
+
+
+def _insert_scene_artifact(
+    workspace, scene_id: uuid.UUID, payload: bytes = _RECEIPT
+) -> uuid.UUID:
+    """A pose receipt over a scene, in the store and in the spine.
+
+    ``stage_key`` names a stage that is not in the registry, and that is honest rather than
+    sloppy: no pose stage exists, ``artifact`` carries no foreign key onto the registry, and the
+    descriptor read left-joins ``stage_definition`` precisely so that a row whose definition was
+    never recorded reports None rather than a guess.
+
+    **The identity key carries the payload digest as well as the scene**, and that is not
+    tidiness. Keyed on the scene alone, a second call for one scene collides with
+    ``unique (workspace_id, idempotency_key)`` and raises ``UniqueViolation``, which is an
+    ``IntegrityError`` and is indistinguishable from the refusal a tombstone guard raises. The
+    write-guard test below passed on that collision with the guard removed entirely, which is
+    the "test that passes without exercising its case" the defect register calls this project's
+    recurring failure.
+    """
+    stored = workspace.store.put_bytes(payload)
+    artifact_id = uuid.uuid4()
+    workspace.repository.connection.execute(
+        "insert into artifact (artifact_id, workspace_id, kind, scene_id, stage_key, "
+        "stage_version, params_digest, input_digest, idempotency_key, content_sha256, "
+        "storage_key, byte_size) "
+        "values (%s, %s, 'pose_receipt', %s, 'pose', 1, %s, %s, %s, %s, %s, %s)",
+        (
+            artifact_id,
+            workspace.workspace_id,
+            scene_id,
+            b"\x01" * 32,
+            b"\x02" * 32,
+            f"pose:{scene_id}:{stored.blob_id.hex}",
+            stored.blob_id.digest,
+            workspace.store.key_for(stored.blob_id),
+            stored.byte_size,
+        ),
+    )
+    return artifact_id
+
+
+@pytest.fixture
+def scene(tmp_path, photo_dir, repository, spine_schema):
+    """Three photographs, each with its own point map, one scene over all three, one receipt."""
+    _psycopg, scratch = spine_schema
+    store = LocalContentAddressedStore(tmp_path / "blobs")
+    pipeline = PhotoIngestPipeline(repository, store, vision=CountingVisionModel())
+
+    captures = []
+    for name, when, payload in (
+        ("a.jpg", iso(9), b"point map for a"),
+        ("b.jpg", iso(10), b"point map for b"),
+        ("c.jpg", iso(11), b"point map for c"),
+    ):
+        outcome = pipeline.ingest_file(write_photo(photo_dir, name, when=when))
+        assert outcome.error is None, outcome.error
+        blob = BlobId.of_bytes((photo_dir / name).read_bytes())
+        write_point_map(repository, store, blob, payload)
+        captures.append(
+            repository.connection.execute(
+                "select capture_id from capture where blob_sha256 = %s", (blob.digest,)
+            ).fetchone()["capture_id"]
+        )
+
+    import os
+    import urllib.parse
+
+    from orimera.db.session import Database
+
+    base = os.environ["ORIMERA_TEST_DATABASE_URL"]
+    options = urllib.parse.quote(f"-csearch_path={scratch},public", safe="")
+    owner = Database(url=f"{base}{'&' if '?' in base else '?'}options={options}")
+    with owner.unscoped() as connection:
+        connection.execute(f"set search_path to {scratch}, public")
+        provision_runtime_role(connection, role=_APP_ROLE, password=_APP_PASSWORD)
+        provision_purge_role(connection, role=_PURGE_ROLE, password=_PURGE_PASSWORD)
+
+    workspace = SceneWorkspace(repository, store, scratch, captures, None, None)
+    workspace.scene_id = _insert_scene(workspace, captures)
+    workspace.receipt_id = _insert_scene_artifact(workspace, workspace.scene_id)
+    return workspace
+
+
+# -- the identity ------------------------------------------------------------------------------
+
+
+def test_a_scene_id_is_the_same_on_every_machine_and_in_any_order():
+    """Deterministic, order independent, and duplicate free, because the subject is a set."""
+    first = uuid.UUID("018f0000-0000-7000-8000-000000000001")
+    second = uuid.UUID("018f0000-0000-7000-8000-000000000002")
+    third = uuid.UUID("018f0000-0000-7000-8000-000000000003")
+
+    assert scene_id_for([first, second, third]) == scene_id_for([third, first, second])
+    assert scene_id_for([first, second, first]) == scene_id_for([first, second])
+    assert scene_id_for([first, second]) != scene_id_for([first, second, third])
+    # Spelled out rather than derived from the function under test. An expectation written as
+    # `scene_id_for(members)` would agree with any implementation, including one that returned a
+    # constant.
+    assert str(scene_id_for([first])) == str(uuid.uuid5(
+        uuid.UUID("2b7c9e14-5d38-5a4f-8c61-7e0d9a3b5f28"),
+        scene_member_digest([first]).hex(),
+    ))
+
+
+def test_the_scene_digest_is_frozen_to_these_exact_bytes():
+    """A golden value, because every input to this digest is a constant nothing else pins.
+
+    ``scene_id`` is the primary key of ``reconstruction_scene``, the target of
+    ``artifact.scene_id``'s composite foreign key, and the join key of every membership row.
+    Its inputs are the namespace, the format version and the domain separator, and all three are
+    frozen the moment a producer writes its first scene: changing any of them makes
+    ``scene_id_for`` return a different uuid for photographs that already have one, so the
+    existing rows become unreachable by derivation.
+
+    **The other tests in this file cannot catch that**, because each of them reaches the
+    constants only through the function under test and therefore agrees with any value. Measured,
+    not supposed: the domain separator was silently changed to a placeholder string in this
+    working tree and the whole 1222-test suite stayed green. This is the test that goes red.
+
+    The expectation is spelled out. Deriving it from ``scene_member_digest`` would be the exact
+    mistake ``test_a_scene_id_is_the_same_on_every_machine_and_in_any_order`` warns about, one
+    level down.
+    """
+    members = [
+        uuid.UUID("018f0000-0000-7000-8000-000000000001"),
+        uuid.UUID("018f0000-0000-7000-8000-000000000002"),
+        uuid.UUID("018f0000-0000-7000-8000-000000000003"),
+    ]
+    assert scene_member_digest(members).hex() == (
+        "9fe138a116dd57ebb034c3653c3b94fe4225ad7f7d39defde981c59f91742179"
+    )
+    assert str(scene_id_for(members)) == "8bae8bc2-028c-5428-96ed-126f2ce62eab"
+    # A second set, so a digest that ignored its members entirely would still fail.
+    assert scene_member_digest(members[:1]).hex() == (
+        "495f52c3b4d3620ba450685e056e4812380d0f9c0781bbf6a39d8016fabd06a0"
+    )
+    assert str(scene_id_for(members[:1])) == "ae94f036-fe13-5ba8-b6d2-9925923c16ce"
+
+
+def test_a_scene_of_no_photographs_has_no_identity():
+    """A digest over nothing is a name every empty question would share."""
+    with pytest.raises(ValueError, match="cannot be empty"):
+        scene_id_for([])
+
+
+# -- the subject -------------------------------------------------------------------------------
+
+
+def test_an_artifact_names_a_scene_or_a_photograph_and_never_both(scene):
+    """The check constraint is what survives ``source_blob_sha256`` losing ``not null``.
+
+    Relaxing that column is the one widening migration 0024 makes, and without this an artifact
+    could name a scene and a photograph at once, which is two subjects for one claim, or neither,
+    which is a derivative of nothing.
+    """
+    blob = scene.rows("select blob_sha256 from capture order by capture_id")[0]["blob_sha256"]
+    for description, source, scene_id in (
+        ("both", bytes(blob), scene.scene_id),
+        ("neither", None, None),
+    ):
+        with (
+            pytest.raises(psycopg.errors.CheckViolation),
+            scene.repository.connection.transaction(),
+        ):
+            scene.repository.connection.execute(
+                "insert into artifact (artifact_id, workspace_id, kind, source_blob_sha256, "
+                "scene_id, stage_key, stage_version, params_digest, input_digest, "
+                "idempotency_key) values (%s, %s, 'pose_receipt', %s, %s, 'pose', 1, %s, %s, %s)",
+                (
+                    uuid.uuid4(),
+                    scene.workspace_id,
+                    source,
+                    scene_id,
+                    b"\x01" * 32,
+                    b"\x02" * 32,
+                    f"pose:{description}",
+                ),
+            )
+
+
+def test_a_scene_artifact_of_each_stage_is_its_own_row_in_the_current_view(scene):
+    """``distinct on`` treats NULLs as equal, so the widening needed the view's key to move.
+
+    Without ``scene_id`` in it, every scene artifact of one stage in one workspace collapses into
+    one row and ``artifact_current`` reports that a workspace holds one pose receipt however many
+    it holds.
+    """
+    second = _insert_scene(scene, scene.captures[:2])
+    _insert_scene_artifact(scene, second, payload=b"a pose receipt over two photographs")
+    rows = scene.rows("select artifact_id from artifact_current where kind = 'pose_receipt'")
+    assert len(rows) == 2, rows
+
+
+# -- the predicate -----------------------------------------------------------------------------
+
+
+def test_a_scene_every_member_of_which_is_live_is_not_blocked(scene):
+    """The control for every test below. A predicate that always blocked would pass them all."""
+    assert scene.blocked() is False
+
+
+def test_a_scene_with_no_members_blocks(scene):
+    """Fail closed. An unbuilt scene and an invisible one are the same answer to this session.
+
+    ``reconstruction_scene_member`` carries FORCE row-level security, so a session that never set
+    ``orimera.workspace_id`` reads it as empty, and answering "nothing blocks it" to a question
+    whose inputs could not be seen is the direction ``_require_workspace_context`` exists to
+    prevent. The ordering discipline it forces is members first, then the artifact.
+    """
+    assert scene.blocked(_empty_scene(scene, 0x09)) is True
+
+
+def test_the_deletion_of_one_member_reaches_a_scene_two_members_still_stand_in(scene):
+    """The inversion, asked of the predicate directly.
+
+    This is the test that goes red on the reduction ``orimera/graph/geometry.py`` warns about.
+    ``_LIVE_HOLDER`` is an OR over the captures holding a blob and is right for a per-capture
+    artifact; copied to a scene it asks "is any member still live", which after this deletion is
+    emphatically true, and a corridor would be served after a photograph in it was deleted.
+    """
+    scene.delete(scene.captures[1])
+
+    live = scene.rows("select capture_id from capture where deleted_at is null")
+    assert len(live) == 2, "the other two photographs must still be there for this to mean anything"
+    assert scene.blocked() is True
+
+
+def test_a_scene_the_deleted_photograph_was_never_in_is_untouched(scene):
+    """The control on the other side, and without it "ANY" could just mean "always".
+
+    Two scenes over one workspace: the fixture's over all three photographs, and a second over
+    the two that survive. Deleting the middle one must withdraw the first and leave the second
+    exactly as it was, bytes included. A predicate that reached every scene in the workspace
+    rather than every scene the photograph was in would pass every other test in this file.
+    """
+    survivor = _insert_scene(scene, [scene.captures[0], scene.captures[2]])
+    survivor_receipt = _insert_scene_artifact(
+        scene, survivor, payload=b"a pose receipt over the two survivors"
+    )
+    survivor_bytes = BlobId.of_bytes(b"a pose receipt over the two survivors")
+
+    scene.delete(scene.captures[1])
+
+    assert scene.blocked() is True, "the scene holding the deleted photograph"
+    assert scene.blocked(survivor) is False, "the scene that never held it"
+    assert scene.releases(survivor_bytes) is False
+
+    outcome = scene.worker().drain()
+    assert outcome.failed == 0, outcome.errors
+    assert scene.store.exists(survivor_bytes), "a receipt over two live photographs was destroyed"
+    assert scene.one(
+        "select purged_at from artifact where artifact_id = %s", survivor_receipt
+    )["purged_at"] is None
+    assert not scene.rows(
+        "select purge_id from purge_job where target_kind = 'artifact' and target_ref = %s",
+        survivor_bytes.hex,
+    ), "a scene the deleted photograph was never in was asked to be destroyed"
+
+
+def test_an_interval_redaction_blocks_the_scene_without_asking_for_its_bytes(scene):
+    """Both halves of the same paragraph, and they answer different questions.
+
+    A redaction over the whole frame of a still image withdraws the scene from every read, which
+    is what ``tombstone_blocks_scene`` covers and ``purge_releases_bytes`` deliberately does not:
+    migration 0013's scope paragraph says the purger does not act on interval scope, "because a
+    redaction removes a moment and not a photograph", and migration 0015's trigger returns early
+    for that scope so nothing is enqueued at all. Withheld and still on the disk, exactly as
+    ``test_an_interval_redaction_over_the_whole_frame_withdraws_the_geometry_too`` records for a
+    point map.
+    """
+    tombstone = scene.repository.insert_tombstone(
+        scope="interval",
+        capture_id=scene.captures[1],
+        track_key="img",
+        interval_ns=[(0, 1)],
+        requested_by=uuid.uuid4(),
+        reason="the user redacted a moment",
+    )
+    assert scene.one(
+        "select deleted_at from capture where capture_id = %s", scene.captures[1]
+    )["deleted_at"] is None
+    assert scene.blocked() is True
+    assert scene.rows("select purge_id from purge_job where tombstone_id = %s", tombstone) == []
+
+
+# -- the write guards --------------------------------------------------------------------------
+
+
+def test_a_scene_artifact_over_a_deleted_photograph_cannot_be_written(scene):
+    """0011's guard asked ``tombstone_blocks_derivative`` of a column a scene artifact has not.
+
+    With ``source_blob_sha256`` null, every branch of that predicate except the workspace one is
+    dead, because ``c.blob_sha256 = NULL`` is never true. So without the branch migration 0024
+    adds, a receipt over deleted photographs inserts cleanly, which is the exact leak R7 was.
+
+    **Matched on the refusal's own message, not on ``IntegrityError``.** ``UniqueViolation`` is
+    an ``IntegrityError`` too, and with the guard's branch removed this test still passed on a
+    duplicate identity key until the payload was made to vary. What is asserted is that the
+    tombstone guard is what refused.
+    """
+    scene.delete(scene.captures[1])
+    with (
+        pytest.raises(psycopg.errors.IntegrityError, match="tombstoned: write refused"),
+        scene.repository.connection.transaction(),
+    ):
+        _insert_scene_artifact(scene, scene.scene_id, payload=b"a receipt written too late")
+
+
+def _empty_scene(scene, marker: int) -> uuid.UUID:
+    scene_id = uuid.uuid4()
+    scene.repository.connection.execute(
+        "insert into reconstruction_scene (scene_id, workspace_id, member_digest) "
+        "values (%s, %s, %s)",
+        (scene_id, scene.workspace_id, bytes([marker]) * 32),
+    )
+    return scene_id
+
+
+def test_a_member_naming_a_deleted_photograph_is_refused(scene):
+    """A scene is built out of live photographs, asserted at insert rather than found at read.
+
+    The liveness branch, matched on its own message rather than on any error: the composite
+    foreign key would also raise here if the capture row were gone, and those are two different
+    facts.
+    """
+    scene.delete(scene.captures[1])
+    later = _empty_scene(scene, 0x08)
+    with (
+        pytest.raises(psycopg.errors.Error, match="absent or deleted"),
+        scene.repository.connection.transaction(),
+    ):
+        scene.repository.connection.execute(
+                "insert into reconstruction_scene_member "
+                "(workspace_id, scene_id, capture_id, ordinal) values (%s, %s, %s, 0)",
+                (scene.workspace_id, later, scene.captures[1]),
+            )
+
+
+def test_a_member_naming_a_redacted_photograph_is_refused_too(scene):
+    """The other branch, and the one the liveness check cannot reach.
+
+    An interval redaction leaves ``deleted_at`` null, so the photograph is live and the liveness
+    check above passes. What refuses it is ``tombstone_blocks_capture``, which covers interval
+    scope. Without this branch a scene could be assembled out of frames the user had redacted.
+    """
+    scene.repository.insert_tombstone(
+        scope="interval",
+        capture_id=scene.captures[1],
+        track_key="img",
+        interval_ns=[(0, 1)],
+        requested_by=uuid.uuid4(),
+        reason="the user redacted a moment",
+    )
+    assert scene.one(
+        "select deleted_at from capture where capture_id = %s", scene.captures[1]
+    )["deleted_at"] is None
+    later = _empty_scene(scene, 0x07)
+    with (
+        pytest.raises(psycopg.errors.IntegrityError, match="tombstoned: write refused"),
+        scene.repository.connection.transaction(),
+    ):
+        scene.repository.connection.execute(
+                "insert into reconstruction_scene_member "
+                "(workspace_id, scene_id, capture_id, ordinal) values (%s, %s, %s, 0)",
+                (scene.workspace_id, later, scene.captures[1]),
+            )
+
+
+def test_a_membership_cannot_be_edited_out_from_under_a_deletion(scene):
+    """The insert guard is worth nothing without this, and it was missing.
+
+    ``tg_guard_reconstruction_scene_member`` fires ``before insert``, and the runtime role holds
+    ``select, insert, update`` on every table. So an UPDATE that re-points a member away from the
+    photograph that was deleted would un-withdraw a scene a tombstone had already reached, and
+    deletion is monotonic: del-1 says there is no undo, and an UPDATE would be one.
+
+    Both tables and both statements, because a DELETE of the member row does the same thing by a
+    different route and the runtime role's lack of DELETE is a grant rather than a rule.
+    """
+    scene.delete(scene.captures[1])
+    assert scene.blocked() is True
+
+    for statement, params in (
+        (
+            "update reconstruction_scene_member set capture_id = %s "
+            "where workspace_id = %s and scene_id = %s and capture_id = %s",
+            (scene.captures[0], scene.workspace_id, scene.scene_id, scene.captures[1]),
+        ),
+        (
+            "delete from reconstruction_scene_member "
+            "where workspace_id = %s and scene_id = %s and capture_id = %s",
+            (scene.workspace_id, scene.scene_id, scene.captures[1]),
+        ),
+        (
+            "update reconstruction_scene set member_digest = %s where scene_id = %s",
+            (b"\x00" * 32, scene.scene_id),
+        ),
+    ):
+        with (
+            pytest.raises(psycopg.errors.IntegrityError, match="append-only"),
+            scene.repository.connection.transaction(),
+        ):
+            scene.repository.connection.execute(statement, params)
+
+    assert scene.blocked() is True, "the scene was un-withdrawn"
+
+
+def test_a_workspace_deletion_reaches_every_scene_in_it(scene):
+    """The other disjunct of the enqueue, which no other test executes.
+
+    The scene branch of ``tg_tombstone_enqueues_its_purge`` is
+    ``new.scope = 'workspace' or exists (a member row naming new.capture_id)``, and every other
+    test here takes the second half. A workspace tombstone names no capture at all, so the first
+    half is the only thing that reaches a scene artifact, and without it deleting a whole
+    workspace would leave its receipts on disk while ``tombstone_purge_is_complete`` reported the
+    workspace purged: migration 0015's defect 2, in the one scope that file exists to have fixed.
+    """
+    survivor = _insert_scene(scene, [scene.captures[0], scene.captures[2]])
+    _insert_scene_artifact(scene, survivor, payload=b"a second receipt")
+    second_bytes = BlobId.of_bytes(b"a second receipt")
+
+    tombstone = scene.repository.insert_tombstone(
+        scope="workspace",
+        requested_by=uuid.uuid4(),
+        reason="the user deleted the whole workspace",
+    )
+    queued = {
+        row["target_ref"]
+        for row in scene.rows(
+            "select target_ref from purge_job where tombstone_id = %s and target_kind = 'artifact'",
+            tombstone,
+        )
+    }
+    assert scene.receipt_digest.hex in queued
+    assert second_bytes.hex in queued
+
+    outcome = scene.worker().drain()
+    assert outcome.failed == 0, outcome.errors
+    assert not scene.store.exists(scene.receipt_digest)
+    assert not scene.store.exists(second_bytes)
+    # Completion for a workspace tombstone asks about the workspace rather than about the enqueue
+    # snapshot, and an unpurged scene artifact would keep it false for ever.
+    assert scene.one(
+        "select tombstone_purge_is_complete(%s) as done", tombstone
+    )["done"] is True
+
+
+# -- the bytes ---------------------------------------------------------------------------------
+
+
+def test_a_receipt_holds_its_bytes_while_every_member_is_live(scene):
+    """The fail-open catch, and it is the reason the destroy predicate grew a third clause.
+
+    A scene artifact has no ``source_blob_sha256``, so the inner join in the artifact clause
+    drops it out of the question entirely and the answer comes back "destroy these bytes" while
+    every member of the scene is live. That is correction 2's shape, created by the widening
+    rather than fixed by it.
+    """
+    assert scene.releases(scene.receipt_digest) is False
+
+
+def test_deleting_one_member_of_three_enqueues_the_receipt(scene):
+    """The enqueue reaches artifacts by joining ``capture`` on ``source_blob_sha256``.
+
+    A scene artifact cannot be found that way, so without migration 0024's third insert this is
+    not a failure and not an error: zero rows, an empty queue, and ``tombstone_purge_is_complete``
+    answering true because a tombstone with no jobs is complete.
+    """
+    tombstone = scene.delete(scene.captures[1])
+    queued = {
+        row["target_ref"]
+        for row in scene.rows(
+            "select target_ref from purge_job where tombstone_id = %s and target_kind = 'artifact'",
+            tombstone,
+        )
+    }
+    assert scene.receipt_digest.hex in queued, "the receipt was never asked to be destroyed"
+
+
+def test_deleting_one_member_of_three_releases_the_receipts_bytes(scene):
+    """D9's no-ship rule, the bytes half, end to end through the product's own path.
+
+    Four steps and each fails for its own reason: the queue holds the receipt, the predicate
+    says the bytes may go, the worker destroys them and the store agrees they are gone, and the
+    two surviving photographs keep everything of their own. The last one is not decoration. A
+    purger that destroyed the whole workspace would satisfy the first three.
+
+    **Some jobs are skipped and that is the deduplication case working**, so it is checked rather
+    than tolerated. The three fixture photographs differ only in an EXIF timestamp, so their
+    renditions are byte identical and ``CountingVisionModel`` returns one payload for all three:
+    one object, three artifact rows, two of them belonging to photographs nobody deleted. Every
+    skip below is asserted to be one of those. A bare ``skipped == 0`` would have been wrong here,
+    and a bare ``failed == 0`` would have let a real skip of the receipt through.
+    """
+    survivors = [
+        BlobId(bytes(row["content_sha256"]))
+        for row in scene.rows(
+            "select a.content_sha256 from artifact a join capture c "
+            "on c.blob_sha256 = a.source_blob_sha256 and c.workspace_id = a.workspace_id "
+            "where c.capture_id in (%s, %s) and a.content_sha256 is not null",
+            scene.captures[0],
+            scene.captures[2],
+        )
+    ]
+    assert survivors, "the surviving photographs must own derivatives for the control to bite"
+    assert scene.store.exists(scene.receipt_digest)
+
+    scene.delete(scene.captures[1])
+    outcome = scene.worker().drain()
+
+    assert outcome.blocked is None, outcome.blocked
+    assert outcome.failed == 0, outcome.errors
+    assert scene.one(
+        "select state from purge_job where target_kind = 'artifact' and target_ref = %s",
+        scene.receipt_digest.hex,
+    )["state"] == "done", "the receipt was deferred rather than destroyed"
+    assert not scene.store.exists(scene.receipt_digest), "the receipt's bytes are still on disk"
+    assert scene.one(
+        "select purged_at from artifact where artifact_id = %s", scene.receipt_id
+    )["purged_at"] is not None
+    for blob in survivors:
+        assert scene.store.exists(blob), f"{blob.hex[:12]} belonged to a photograph nobody deleted"
+
+    # Every deferral is a hash a photograph nobody deleted still owns, which is the shared-object
+    # case rather than a predicate that refused too much.
+    for row in scene.rows("select target_ref from purge_job where state = 'skipped'"):
+        assert BlobId.from_hex(row["target_ref"]) in survivors, row["target_ref"]
+
+
+def test_the_purger_sees_the_membership_of_every_workspace(scene):
+    """Correction 7, asked of the relation migration 0024 added to the destroy predicate.
+
+    ``blob`` is shared between workspaces, so "does anything still hold these bytes" is a question
+    about every one of them, and a purger that could see only its own answers it in the direction
+    that destroys another tenant's photograph. The predicate now reads
+    ``reconstruction_scene_member`` too, and a narrowed view of that relation would report a scene
+    with no live members and release bytes another workspace's receipt is made of.
+    """
+    assert "reconstruction_scene_member" in PURGE_CROSS_WORKSPACE_TABLES
+    with scene.database(role=_PURGE_ROLE, password=_PURGE_PASSWORD).session(
+        scene.workspace_id
+    ) as connection:
+        visibility = queue.read_visibility(connection)
+        assert visibility.refusal is None, visibility.refusal
+        assert visibility.sees_every_workspace

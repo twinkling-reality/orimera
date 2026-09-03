@@ -2,15 +2,20 @@
 
 Neither setting is optional, and neither is a convenience.
 
-*   **``orimera.workspace_id``.** 48 tables are under FORCE row-level security keyed on
+*   **``orimera.workspace_id``.** 50 tables are under FORCE row-level security keyed on
     ``current_workspace()``, whose policy is ``workspace_id = current_workspace()`` and which
-    reads exactly this setting. A twenty-third, ``consent_record``, is forced too and keyed on
-    the tenant instead, which is why the number here counts the workspace-keyed ones rather than
-    the forced ones. A session that does not declare a workspace therefore reads nothing and
-    writes nothing: every SELECT returns empty and every INSERT fails its WITH CHECK. The
-    tombstone and epistemic guards go further and call ``assert_workspace_context()``, which
-    raises rather than failing open, because a guard that silently sees no tombstones is worse
-    than no guard at all. So a connection is only ever handed out with a workspace attached.
+    reads exactly this setting. One more, ``consent_record``, is forced too and keyed on the
+    tenant instead, which is why the number here counts the workspace-keyed ones rather than the
+    forced ones. "One more" rather than an ordinal, because the ordinal read "twenty-third"
+    beside a count of forty-eight and had read that way through several migrations: only the
+    count is measured, by
+    ``test_the_prose_count_of_workspace_isolated_tables_matches_the_schema`` against a live
+    schema, and it reads nothing at all out of a word. A session that does not declare a
+    workspace therefore reads nothing and writes nothing: every SELECT returns empty and every
+    INSERT fails its WITH CHECK. The tombstone and epistemic guards go further and call
+    ``assert_workspace_context()``, which raises rather than failing open, because a guard that
+    silently sees no tombstones is worse than no guard at all. So a connection is only ever
+    handed out with a workspace attached.
 
 *   **UTC.** PostgreSQL renders ``timestamptz`` in the session time zone, so a connection left
     on the server's local zone hands back ``2026-08-28T13:47-04:00`` for a column the code
@@ -122,7 +127,7 @@ class Database:
         that is false for the role the composition actually uses.
 
         *   **As a role row-level security reaches**, which ``orimera_app`` is, every one of the
-            forty-eight forced tables reads empty. The policy is ``workspace_id =
+            fifty workspace-keyed forced tables reads empty. The policy is ``workspace_id =
             current_workspace()``, ``current_workspace()`` is NULL with nothing declared, and
             ``NULL = anything`` is not true. So a caller that wanted workspace data and reached
             for this gets an empty result rather than another workspace's rows.

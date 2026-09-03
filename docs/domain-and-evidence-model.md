@@ -1109,6 +1109,24 @@ and `::test_current_workspace_is_defined_before_anything_calls_it`.
 `(source_blob_sha256, stage_key, stage_version, params_digest, input_digest)`. Not `capture_id`, because
 two captures of the same bytes should share derivatives. Not wall-clock time, obviously.
 
+**CORRECTED 2026-09-03. `source_blob_sha256` is no longer `not null`, and the block below still
+says it is.** ADR-0009 D9 requires a subject for a fact about N photographs: a pose receipt, a
+splat and a placement record are not derivatives of one blob, and keying them to whichever
+member's bytes happened to land in the column would present a corridor as one photograph's
+geometry. Migration 0024 adds `artifact.scene_id`, relaxes `source_blob_sha256`, and keeps the
+guarantee with a check constraint rather than with a `not null`:
+
+```sql
+constraint an_artifact_names_one_subject check (
+  (source_blob_sha256 is not null) <> (scene_id is not null))
+```
+
+So an artifact still names exactly one subject; it is no longer always the same kind of subject.
+The identity key above is unchanged for a per-blob derivative and is not what identifies a scene
+artifact: that is `reconstruction_scene.scene_id`, a uuid5 over the sorted member capture ids,
+computed by `orimera.evidence.scene`. The reduction over a scene INVERTS, and section 6.4 is
+where that is written down.
+
 ```sql
 create table artifact (
   artifact_id        uuid primary key,   -- DETERMINISTIC: uuid_v5(ns, idempotency_key)
@@ -1249,6 +1267,11 @@ create view artifact_current as
    where superseded_by is null and purged_at is null
    order by workspace_id, source_blob_sha256, stage_key, stage_version desc;
 ```
+
+**CORRECTED 2026-09-03.** `distinct on` treats NULLs as equal, so once `source_blob_sha256`
+became nullable this view collapsed every scene artifact of one stage in one workspace into a
+single row. Migration 0024 adds `scene_id` to the key, in the same position in both the
+`distinct on` and the `order by`. The column list is unchanged.
 
 ### 5.4 This is a cost control, not only a correctness control
 
@@ -1476,6 +1499,20 @@ interval redaction leaves `capture.deleted_at` null and enqueues no purge job. T
 row above says are marked `needs_repair` are not marked: `mark_needs_repair` has exactly one
 caller, `PhotoIngestPipeline.persist_artifact`, and it is the unreproducible-bytes case rather
 than anything a tombstone reaches. The embeddings the row says are deleted are not deleted.
+
+*A capture deletion now also reaches every scene that photograph was a member of, and the
+reduction over a scene is the INVERSE of the one over a blob.* ADR-0009 D9: a pose receipt, a
+splat and a placement record are facts about N photographs, and "a tombstone path that reaches a
+scene artifact through any of its members" means deleting ONE of eight withdraws the receipt.
+That is the opposite of the rule for a per-capture artifact, where a photograph imported twice is
+one artifact and two captures and deleting one withdraws nothing. Migration 0024 carries both:
+`tombstone_blocks_scene` answers "may this be served or written" and covers workspace, capture
+and interval scope; the third clause of `purge_releases_bytes` answers "may these bytes be
+destroyed" and asks `capture.deleted_at`, so it does not act on interval scope, for the reason
+the row above already gives. `reconstruction_scene_member` is append-only, because a membership
+that could be edited afterwards is a deletion that could be undone by an UPDATE, and del-1 says
+deletion is monotonic. Pinned by `tests/test_scene_identity.py`, whose delete-one-of-three case
+is D9's own no-ship rule.
 
 The refusal half is deliberately narrower than this row and is not a gap.
 `tombstone_blocks_derivative` has no interval branch, and migration 0011 says why: "a redaction

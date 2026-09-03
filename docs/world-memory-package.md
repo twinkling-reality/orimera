@@ -34,8 +34,11 @@ directory.
 The receipt records the protected current-version IDs, profile version, Merkle root, manifest
 digest, optional parent root, Ed25519 public-key fingerprint, actor, export policy, and database
 time. None of those audit rows feed the package root, so exporting unchanged state with the same
-lineage produces the same root. The receipt is the forty-eighth workspace-keyed FORCE RLS table and
-rejects update and delete.
+lineage produces the same root. The receipt is a workspace-keyed FORCE RLS table and rejects
+update and delete. It was described here as "the forty-eighth", which stopped being true at the
+next migration that added one: the count is measured by
+`test_the_prose_count_of_workspace_isolated_tables_matches_the_schema` and an ordinal in prose is
+not.
 
 No signing key is generated implicitly. `project` requires an explicit Ed25519 private-key path.
 `keygen-test` is named and reported as ephemeral test material; tests generate keys only in their

@@ -45,6 +45,8 @@ from typing import Final
 
 import psycopg
 
+from orimera.db.roles import PURGE_CROSS_WORKSPACE_TABLES
+
 __all__ = [
     "CROSS_WORKSPACE_POLICY",
     "DESTROYABLE_KINDS",
@@ -115,12 +117,13 @@ class Visibility:
         """Why this connection must not destroy anything, or None when it may."""
         if self.sees_every_workspace:
             return None
+        named = ", ".join(f"`{table}`" for table in PURGE_CROSS_WORKSPACE_TABLES)
         return (
-            f"connected as {self.role!r}, which has no cross-workspace read of `capture` and "
-            "`artifact`. `blob` is shared between workspaces, so this connection would answer "
-            "\"does anything still hold these bytes\" about its own workspace only and destroy "
-            "objects another one is using. Point ORIMERA_PURGE_DATABASE_URL at the "
-            "`orimera_purge` role that `orimera-db` provisions"
+            f"connected as {self.role!r}, which has no cross-workspace read of {named}. `blob` "
+            "is shared between workspaces, so this connection would answer \"does anything still "
+            "hold these bytes\" about its own workspace only and destroy objects another one is "
+            "using. Point ORIMERA_PURGE_DATABASE_URL at the `orimera_purge` role that "
+            "`orimera-db` provisions"
         )
 
 
@@ -131,16 +134,25 @@ def read_visibility(connection: psycopg.Connection) -> Visibility:
     a deployment that pointed it at the writer used to get a silent, narrowed purge: measured,
     one destroyed object, zero skipped, a tombstone recorded complete, and another workspace's
     live photograph gone. The docstring said this was reported and nothing reported it.
+
+    **The table list is taken from the grant rather than written out here**, because the question
+    is whether the role can see the whole of what ``purge_releases_bytes`` reads, and that grew a
+    relation in migration 0024. A list spelled twice would go on reporting a full view over a
+    table the predicate had started reading through a narrowed one, which is the same failure as
+    correction 7 with nothing loud about it.
     """
+    tables = list(PURGE_CROSS_WORKSPACE_TABLES)
     row = connection.execute(
         "select current_user as role, "
         "  (select count(distinct tablename) from pg_policies "
-        "    where policyname = %s and tablename in ('capture', 'artifact') "
+        "    where policyname = %s and tablename = any(%s) "
         "      and current_user = any(roles)) as tables",
-        (CROSS_WORKSPACE_POLICY,),
+        (CROSS_WORKSPACE_POLICY, tables),
     ).fetchone()
     assert row is not None
-    return Visibility(role=str(row["role"]), sees_every_workspace=int(row["tables"]) == 2)
+    return Visibility(
+        role=str(row["role"]), sees_every_workspace=int(row["tables"]) == len(tables)
+    )
 
 
 @dataclass(frozen=True, slots=True)

@@ -44,6 +44,7 @@ from orimera.errors import OrimeraError
 
 __all__ = [
     "EXECUTOR_ROLE",
+    "PURGE_CROSS_WORKSPACE_TABLES",
     "PURGE_ROLE",
     "READ_ONLY_TABLES",
     "RUNTIME_ROLE",
@@ -87,6 +88,27 @@ _ADMIN_ONLY_SEQUENCES: Final = ("predicate_predicate_id_seq",)
 #: What the purger may read, and it reads it across every workspace. Identifiers, content
 #: hashes and deletion markers: enough to answer "does anything still hold these bytes" and
 #: nothing else. A policy cannot restrict columns, so this grant is what does.
+#:
+#: ``reconstruction_scene_member`` is here because migration 0024 gave ``purge_releases_bytes``
+#: a third clause that reads it, and a purger blind to another workspace's membership answers
+#: that clause about its own workspace alone.
+#:
+#: **The direction it fails in is the opposite of correction 7's, and saying so is the point.**
+#: Blindness over ``capture`` DESTROYED another tenant's photograph, which is why that grant
+#: exists. Blindness here does the reverse: the clause asks whether any member of a scene holding
+#: these bytes is deleted, and a purger that sees no membership rows finds no deleted member,
+#: concludes the artifact still holds them, and refuses. That is the safe direction, so this
+#: grant is not preventing a leak. It is preventing a permanent stall: two workspaces holding one
+#: scene artifact's bytes would each refuse for ever, each blind to the other's deletion, and a
+#: deletion the user asked for would never complete while ``tombstone_purge_is_complete`` went on
+#: reporting it incomplete. A deletion that silently never finishes is still a deletion that did
+#: not happen.
+#:
+#: **This dict names columns, so it depends on the schema being current.** ``grant select
+#: (scene_id) on artifact`` fails outright against a database before migration 0024, rather than
+#: granting less than it says. That is the right direction and it is already the order
+#: ``orimera-db provision`` runs in: migrations, then roles, which is what its own description
+#: says it does.
 _PURGE_READS: Final = {
     "capture": ("capture_id", "workspace_id", "blob_sha256", "deleted_at"),
     "artifact": (
@@ -94,10 +116,19 @@ _PURGE_READS: Final = {
         "workspace_id",
         "content_sha256",
         "source_blob_sha256",
+        "scene_id",
         "storage_key",
         "purged_at",
     ),
+    "reconstruction_scene_member": ("workspace_id", "scene_id", "capture_id"),
 }
+
+#: The tables :data:`_PURGE_READS` gives the cross-workspace policy to, in a public form, because
+#: :func:`orimera.deletion.queue.read_visibility` has to ask the database whether the connected
+#: role actually holds that policy on all of them. Derived rather than repeated: a table added
+#: above and forgotten there would leave the visibility check reporting a full view over a
+#: relation the purger reads through a narrowed one, which is the silent half of correction 7.
+PURGE_CROSS_WORKSPACE_TABLES: Final = tuple(sorted(_PURGE_READS))
 
 #: Read as well, and with no policy beside it: `blob` is not workspace-scoped and carries no
 #: row-level security at all, so the column grant is the whole of the restriction here. It is
