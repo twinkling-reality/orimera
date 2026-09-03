@@ -6,9 +6,11 @@
  * two-package change; nothing here names `playcanvas`, and `.dependency-cruiser.cjs` would fail
  * the build if it did.
  *
- * **No point maps are passed, and that is the honest state.** `AtlasBinding` takes one point map
- * per island and renders islands without one as anchors only. Nothing reconstructs yet, so the
- * map is empty and every region is anchors in space. That is rung 4 rendered as rung 4.
+ * **Point maps arrive from the caller, and an island without one is anchors only.**
+ * `AtlasBinding` takes one point map per island; a region absent from the map is rung 4 rendered
+ * as rung 4. This file does not decide which regions have geometry and must not: production
+ * reads that from the API and the preview loads a reconstruction from disk, and a default
+ * chosen here would be a third answer that neither of them asked for.
  *
  * It is also the thesis under test. Reconstruction quality never participates in the truth
  * guarantee: a region with no geometry at all still resolves every citation to the exact
@@ -40,7 +42,7 @@ export interface MountedAtlas {
   dispose(): void;
 }
 
-/** No island has geometry yet. Empty, rather than a map of empty point maps. */
+/** What a caller with no reconstructions passes. Empty, rather than a map of empty point maps. */
 const NO_POINT_MAPS: ReadonlyMap<IslandId, PointMap> = new Map();
 
 export async function mountAtlas(
@@ -56,13 +58,14 @@ export async function mountAtlas(
     readonly artProfileParameters?: WorldStyleParameters;
     readonly sourceMedia?: SourceMediaCatalog;
     readonly reducedMotion?: boolean;
+    readonly pointMaps?: ReadonlyMap<IslandId, PointMap>;
   },
 ): Promise<MountedAtlas> {
   const binding = await AtlasBinding.create({
     canvas,
     overlayParent,
     scene,
-    pointMaps: NO_POINT_MAPS,
+    pointMaps: presentation?.pointMaps ?? NO_POINT_MAPS,
     ...(presentation === undefined
       ? {}
       : {

@@ -27,7 +27,12 @@ import './unified-interface.css';
 
 import type { GraphSnapshot, OccurrenceRecord } from '@orimera/graph-client';
 import { ApiError } from '@orimera/graph-client';
-import { anchorId as toAnchorId, islandId as toIslandId } from '@orimera/atlas-core';
+import {
+  anchorId as toAnchorId,
+  islandId as toIslandId,
+  localVec3,
+  type IslandId,
+} from '@orimera/atlas-core';
 import {
   FACET_KEYS,
   confirmationFor,
@@ -37,7 +42,8 @@ import {
   type IndexFacets,
 } from '@orimera/world-index';
 import { mountAtlas, type MountedAtlas } from './atlas.js';
-import type { SourceMediaCatalog } from '@orimera/atlas-react/playcanvas';
+import type { PointMap, SourceMediaCatalog } from '@orimera/atlas-react/playcanvas';
+import { footprintRadiusOf } from '@orimera/atlas-react/playcanvas';
 import {
   applicationTitle,
   credentials,
@@ -48,14 +54,14 @@ import {
 import { EvidenceCache } from './evidence.js';
 import { listBatches, watchBatch, type BatchSummary } from './formation.js';
 import { toUpdateProposal } from './proposal.js';
-import { buildScene } from './scene.js';
+import { buildScene, type ReconstructedGeometry } from './scene.js';
 import { openSession, type Session } from './session.js';
 import { buildConfirm } from './ui/confirm.js';
 import { buildCompanionEncounter } from './ui/companion-encounter.js';
 import { resolveCompanionPlacement } from './ui/companion-placement.js';
 import { buildAtlasCommands, type AtlasCommand } from './ui/atlas-commands.js';
 import { buildControlsGuide } from './ui/controls-guide.js';
-import { buildOptions, type AtlasInstrumentSection } from './ui/options.js';
+import { buildOptions } from './ui/options.js';
 import { buildWorldChrome } from './ui/world-chrome.js';
 import { buildCompanionStage, type CompanionStage } from './ui/companion-stage.js';
 import { createCompanionController } from './companion.js';
@@ -117,12 +123,39 @@ let mountedCompanionStage: CompanionStage | null = null;
 let settingsStylePreviewId: string | null = null;
 let interactionPolicies: InteractionPolicyClient | null = null;
 let previewSourceMedia: SourceMediaCatalog | undefined;
+let previewPointMaps_: ReadonlyMap<IslandId, PointMap> | undefined;
+
 let worldStyles: WorldStyleClient | null = null;
 let worldStyleConnection: WorldStyleConnection | null = null;
 let worldStyleFailure: string | null = null;
 let sourceMediaSession: SourceMediaSession | null = null;
 let sourceMediaNotices: readonly string[] = Object.freeze([]);
 let stopWorldStyleProposalInbox: (() => void) | null = null;
+
+/**
+ * What each decoded point map says about its region, for the scene graph.
+ *
+ * The rung and the viewpoint are read off the container rather than assumed: `rung` is fixed at
+ * 3 by the format, and `viewpoint.position` is the camera the reconstruction was recovered from.
+ * Reading them here keeps `scene.ts` free of the container format while still letting the scene
+ * graph describe a region by the geometry it is actually holding.
+ */
+function reconstructionsOf(
+  maps: ReadonlyMap<IslandId, PointMap> | undefined,
+): ReadonlyMap<IslandId, ReconstructedGeometry> {
+  const out = new Map<IslandId, ReconstructedGeometry>();
+  for (const [islandId, map] of maps ?? []) {
+    const [x, y, z] = map.header.viewpoint.position;
+    out.set(islandId, {
+      rung: map.header.rung,
+      viewpointLocal: localVec3(x, y, z),
+      // The renderer's own function, so the region's stated size and the radius its cloud
+      // dissolves at cannot drift apart.
+      footprintRadiusLocal: footprintRadiusOf(map.header),
+    });
+  }
+  return out;
+}
 window.addEventListener('pagehide', () => sourceMediaSession?.dispose(), { once: true });
 const systemAppearance = window.matchMedia('(prefers-color-scheme: dark)');
 const systemReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -223,6 +256,7 @@ function askForToken(): void {
 async function start(token: string): Promise<void> {
   if (preview) {
     previewSourceMedia = (await import('./dev/preview-media.js')).PREVIEW_SOURCE_MEDIA;
+    previewPointMaps_ = await (await import('./dev/preview-point-maps.js')).previewPointMaps();
   }
   credentials_ = preview
     ? previewCredentials(window.location.origin)
@@ -309,7 +343,7 @@ async function mount(): Promise<void> {
   // would open every refresh by asking the question the user just answered.
   currentCompanion.observeSnapshot(current);
 
-  const built = buildScene(current);
+  const built = buildScene(current, 1, new Map(), new Map(), reconstructionsOf(previewPointMaps_));
   // A graph write remounts every surface. Stop the previous field before replacing its node, or
   // its frame loop and observers would survive invisibly for the rest of the session.
   mountedCompanionStage?.dispose();
@@ -362,7 +396,6 @@ async function mount(): Promise<void> {
       confirm.show(proposalId, summary, utterance);
     },
   });
-  let openInstrumentSection = (_section: AtlasInstrumentSection): void => undefined;
   function dismissCompanion(): void {
     companionController.dismiss();
     companionStage.setState('resting');
@@ -380,17 +413,15 @@ async function mount(): Promise<void> {
       reflectTurnState(companionController.current());
       finishFirstUse();
     },
+    onEvidence: (index) => {
+      const handle = companionController.evidenceAt(index);
+      if (handle !== null) void currentEvidence.open(handle);
+    },
     onSay: (text) => {
       companionController.say(text);
       reflectTurnState(companionController.current());
       finishFirstUse();
     },
-    onEvidence: (index) => {
-      const handle = companionController.evidenceAt(index);
-      if (handle !== null) void currentEvidence.open(handle);
-    },
-    onCustomizeCompanion: () => openInstrumentSection('companion'),
-    onCustomizeWorld: () => openInstrumentSection('world'),
   });
   companionController.attach(companionPanel);
 
@@ -818,11 +849,6 @@ async function mount(): Promise<void> {
       optionsView.reportWorldLifecycle('failed', describeWorldStyleFailure(error));
     }
   });
-  openInstrumentSection = (section): void => {
-    if (companionPanel.state() === 'open') dismissCompanion();
-    if (shellState.primary !== 'options') dispatchShell({ type: 'toggle-options' });
-    optionsView.showSection(section);
-  };
   const settingsView = buildControlsGuide({
     preferences,
     onChange: applyPreferences,
@@ -1021,6 +1047,7 @@ async function mount(): Promise<void> {
       ? { artProfileParameters: preferences.worldStyleParameters }
       : {}),
     ...(previewSourceMedia === undefined ? {} : { sourceMedia: previewSourceMedia }),
+    ...(previewPointMaps_ === undefined ? {} : { pointMaps: previewPointMaps_ }),
     reducedMotion: systemReducedMotion.matches,
   });
   (canvas as HTMLCanvasElement).dataset.companionRenderer = 'svg';
@@ -1179,6 +1206,15 @@ async function mount(): Promise<void> {
         modified: event.altKey || event.ctrlKey || event.metaKey,
         typing,
       });
+      if (
+        !typing && companionPanel.state() === 'open' &&
+        !event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyE'
+      ) {
+        if (companionPanel.openEvidence()) {
+          event.preventDefault();
+          return;
+        }
+      }
       if (
         !typing && shellState.primary === 'index' &&
         !event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyS'

@@ -4,11 +4,14 @@
 the Atlas renders whichever rung the region earned. This is that gate for the single-photograph
 path, and what it can and cannot award is worth stating plainly rather than implying.
 
-**It can award rung 3 or rung 4, and nothing else.** Rung 1 needs structure from motion and a
-trained splat; rung 2 needs recovered poses and a coverage analysis over them. Neither producer
-exists, so a gate that could return 1 or 2 would be a gate with unreachable branches, and an
-unreachable branch that looks reachable is how a system ends up claiming a rung it never earned.
-When those producers exist this gate grows the branches with them.
+**It can award rung 3 or rung 4, and nothing else, and that is now a statement about its INPUT
+rather than about what exists.** This function sees one ``DepthPrediction`` from one photograph.
+Rung 1 needs structure from motion and a trained splat, and rung 2 needs recovered poses and a
+coverage analysis over them; both are facts about a set of photographs, and neither can be read
+off a single frame however the branches were written. So this gate does not grow those branches.
+The rungs above 3 are decided by the quality receipts their own controllers return, over a scene
+rather than over a capture, and a gate with unreachable branches that look reachable is how a
+system ends up claiming a rung it never earned.
 
 **Rung 3 has "no gate that can fail", and this does not contradict that.** The specification's
 claim is that monocular depth is DEFINED for every image, and it is. What it does not promise is

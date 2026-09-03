@@ -29,5 +29,15 @@ Missing values remain absent and block the gate. Synthetic or development observ
 contract but can never pass the real-corpus gate. The existing `min_valid_fraction_milli = 150`
 stage parameter remains explicitly unvalidated and unchanged.
 
+`max_depth_step_milli = 100` joins it as a second explicitly unvalidated parameter. It drops the
+points that span a silhouette, which a monocular model produces wherever a pixel covers two
+surfaces at different depths, and it was chosen on ONE photograph: at 100 it removed 3.04% of the
+map and left the receding pavement and a bicycle standing proud of a wall intact, and at 50 it
+began deleting that bicycle's frame and wheel rims. A single image is not a corpus, so the number
+carries the same status as the one above and the same reason for being a stage parameter: an edit
+changes the stage key and regenerates rather than leaving stale point maps behind. The
+`discontinuityDropped` statistic now travels in every `.opm`, so the distribution needed to review
+this threshold can be read off a real corpus the same way the valid fraction is.
+
 No consented OGC-1 corpus, signed consent record, or real quality observations were found locally on
 2026-08-31. Therefore Phase 3A has a productionized contract but has **not** passed its roadmap gate.

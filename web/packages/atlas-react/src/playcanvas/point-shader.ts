@@ -33,6 +33,7 @@
  *   uSegState[16] vec4  x unconfirmed, y provenance slot 0..3, z presence-marker-only, w conf floor
  *   uIsland       vec4  x emphasis scalar, y footprint radius local, z dissolve band start, w scale
  *   uPoint        vec4  x size gain, y max size px, z projection scale px, w time seconds
+ *   uSupportFloor float floor on the alpha divisor that widens a thinly sampled sprite
  *   uFog          vec4  x start, y end, z density, w enabled
  *   uFogColor     vec3
  *   uPalette[4]   vec4  one per provenance class: capture, inference, user, external
@@ -51,6 +52,8 @@ uniform vec3 view_position;
 uniform vec4 uSegState[16];
 uniform vec4 uIsland;
 uniform vec4 uPoint;
+/** Lower bound on the per-point support divisor. 1.0 disables spacing-aware sizing. */
+uniform float uSupportFloor;
 uniform vec4 uFog;
 
 varying vec4 vColor;
@@ -107,7 +110,19 @@ void main(void) {
 
     // Perspective-correct sprite size, clamped so a near point cannot become a screen-filling
     // quad and a far one never falls below a pixel.
-    gl_PointSize = clamp(uPoint.x * uPoint.z / max(viewDist, 0.001), 1.0, uPoint.y);
+    //
+    // A point stands for its OWN cell rather than an average one. uPoint.x is the world width
+    // that suits a sample at the map's median spacing; the alpha channel says how much coarser
+    // this particular sample is, so dividing by it widens the sprite exactly where the surface
+    // was sampled thinly. Sky thirty metres out and pavement at a grazing angle stop being a
+    // scatter of dots with holes between them and become the faint, coarse surface they are:
+    // the fragment stage is already dimming them by the same number, so a widened splat reads as
+    // less certain rather than as more geometry.
+    //
+    // uSupportFloor is 1.0 for a producer whose alpha is not a spacing ratio, which makes the
+    // division exactly 1 and leaves that file rendering as it always did.
+    float spread = uPoint.x / max(aColor.a, uSupportFloor);
+    gl_PointSize = clamp(spread * uPoint.z / max(viewDist, 0.001), 1.0, uPoint.y);
 
     float fogAmount = 0.0;
     if (uFog.w > 0.5) {
@@ -164,11 +179,17 @@ void main(void) {
     float luma = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
     rgb = mix(vec3(luma), rgb, 0.35 + 0.65 * emphasis);
 
-    // CONFIDENCE DIMS, IT DOES NOT ERASE. The vertex stage has already used confidence to thin
-    // the cloud stochastically, so applying it a second time as coverage would delete an
-    // uncertain surface twice over and leave nothing. Here it only darkens: a low-confidence
-    // region reads as present but faint, which is what "honestly incomplete" should look like.
-    rgb *= 0.45 + 0.55 * vColor.a;
+    // CONFIDENCE FADES TOWARD THE GROUND, IT DOES NOT ERASE AND IT DOES NOT DARKEN. The vertex
+    // stage has already used confidence to thin the cloud stochastically, so applying it a
+    // second time as coverage would delete an uncertain surface twice over and leave nothing.
+    //
+    // It fades toward the ground colour rather than toward black, because "faint" has to mean
+    // faint in the theme the world is actually wearing. Multiplying the albedo down assumes a
+    // dark sky: on the light origin landscape it drove low-confidence points AWAY from the
+    // background and a barely sampled surface came out as the most prominent thing on screen,
+    // which is the exact inverse of what this line is for. Mixing toward the ground reads as
+    // receding under both themes, and that is the whole claim being made.
+    rgb = mix(rgb, uFogColor, (1.0 - vColor.a) * 0.55);
     rgb *= uExposure;
 
     // Coverage is the sprite footprint and the emphasis, and nothing else.
@@ -322,7 +343,8 @@ fn fragmentMain(input : FragmentInput) -> FragmentOutput {
 
     // Confidence dims rather than erases, exactly as in the GLSL path. The vertex stage already
     // thinned the cloud by confidence; charging it again would delete uncertain surfaces twice.
-    rgb = rgb * (0.45 + 0.55 * input.vColor.a) * uniform.uExposure;
+    // Fades toward the ground rather than toward black. See the GLSL source for why.
+    rgb = mix(rgb, uniform.uFogColor, (1.0 - input.vColor.a) * 0.55) * uniform.uExposure;
 
     let coverage : f32 = (0.35 + 0.65 * emphasis) * (1.0 - input.vSemantic.z * 0.45);
     if (coverage < 0.2) {

@@ -66,14 +66,25 @@ describe('per-point semantic state', () => {
     }
   });
 
-  it('marks inferred, unconfirmed segments as unconfirmed and confirmed capture as not', () => {
+  it('marks proposed segments as unconfirmed and asserted surface as not', () => {
     const packed = packSemantics(defaultSemanticsFor(header(SEGMENTS)));
-    // facade: capture-supported and confirmed, so it reads as settled.
+    // facade: surface with no identity claim attached, so there is nothing to be unconfirmed
+    // about and the per-point dissolve stays off. How well sampled it is rides the alpha.
     expect(packed[2 * 4]).toBe(0);
     // water: a low-confidence proposal, so it must LOOK unconfirmed.
     expect(packed[1 * 4]).toBe(1);
     // vegetation: also a proposal, at medium confidence.
     expect(packed[5 * 4]).toBe(1);
+  });
+
+  it('never calls reconstructed geometry capture-supported', () => {
+    // `ProvenanceClass`: capture is "a deterministic property of the recording"; inference is
+    // "ANY model output, however confident". A depth network's opinion about where a wall is
+    // fails the first and meets the second, whatever class the segment carries.
+    const table = defaultSemanticsFor(header(SEGMENTS));
+    expect(table.every((s) => s.provenance !== 'capture')).toBe(true);
+    expect(table.find((s) => s.cls === 'structure')?.provenance).toBe('inference');
+    expect(table.find((s) => s.cls === 'ground')?.provenance).toBe('inference');
   });
 
   it('keeps the four provenance classes visually distinct rather than collapsing them', () => {

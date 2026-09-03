@@ -52,6 +52,9 @@ export { AnchorOverlay } from './anchor-overlay.js';
 
 export { MapRegionOverlay } from './map-region-overlay.js';
 
+export type { RegionRelief, ReliefCell } from './region-relief.js';
+export { createRegionRelief, sampleRelief } from './region-relief.js';
+
 export { worldFieldBufferShape } from './world-field.js';
 
 export type { ComposedWorld } from './composed-world.js';

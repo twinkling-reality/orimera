@@ -41,6 +41,57 @@ def _image(width: int = 40, height: int = 30) -> Image.Image:
     return image
 
 
+def _stepped(near: float = 2.0, far: float = 10.0) -> DepthPrediction:
+    """Two fronto-parallel surfaces meeting down the middle of a 4x2 frame.
+
+    The only depth structure in the whole suite, and it is here rather than in `FlatDepthModel`
+    on purpose: the double is a plane because the plumbing behaves identically whatever the
+    depths are, and the one property that does not is the silhouette drop.
+    """
+    width, height = 4, 2
+    points: list[float] = []
+    for row in range(height):
+        for column in range(width):
+            # x and y scale with depth, as a real camera's rays do, so the far patch is sampled
+            # more coarsely than the near one instead of sharing a synthetic grid pitch.
+            depth = near if column < 2 else far
+            points.extend((column * depth * 0.1, row * depth * 0.1, -depth))
+    return DepthPrediction(
+        width=width,
+        height=height,
+        points=points,
+        valid=bytes([1] * (width * height)),
+        fov_y_degrees=55.0,
+        metric=True,
+        model_id="stepped-double",
+    )
+
+
+def _mixed_sampling() -> DepthPrediction:
+    """Mostly near surface with a distant strip down one side, sampled as a camera would.
+
+    The proportions matter and are not arbitrary. Support is a ratio against the map's OWN median
+    spacing, so a map that is half coarse puts the median in the middle and both halves clamp to
+    full support. A photograph is not like that: most of the frame is the scene in front of you
+    and the far stuff is a minority, which is the arrangement that makes the measure discriminate.
+    """
+    width, height = 16, 4
+    points: list[float] = []
+    for row in range(height):
+        for column in range(width):
+            depth = 2.0 if column < 12 else 10.0
+            points.extend((column * depth * 0.1, row * depth * 0.1, -depth))
+    return DepthPrediction(
+        width=width,
+        height=height,
+        points=points,
+        valid=bytes([1] * (width * height)),
+        fov_y_degrees=55.0,
+        metric=True,
+        model_id="mixed-sampling-double",
+    )
+
+
 def _decode(data: bytes) -> dict:
     assert data[0:4] == b"OPM1"
     length = int.from_bytes(data[4:8], "little")
@@ -74,6 +125,53 @@ def test_the_container_is_what_the_renderer_reads():
     assert report.source_camera_contract_aligned is True
     assert report.point_count == points.count
     assert report.metric is True
+
+
+def test_the_declared_aspect_is_the_photograph_and_not_the_model_grid():
+    """A 3:2 photograph must reconstruct, and it did not.
+
+    REGRESSION, 2026-09-03. A depth model works at a bounded resolution and rounds to whole
+    pixels, so a 3:2 source arrives at the builder as 1.4884 rather than 1.5. The stage declared
+    that rounded number as the viewpoint's aspect, both validators compare the declared aspect
+    against `sourceImage`, and every source that was not exactly 4:3 was refused. A pipeline that
+    can only reconstruct one aspect ratio cannot reconstruct a photograph library.
+
+    The field describes the camera that took the photograph, so the photograph's own dimensions
+    are the only faithful statement of it. The vertical field of view beside it still comes from
+    the model, because a resize preserves it and the model is what recovered it.
+    """
+    source = _image(1500, 1000)
+    prediction = FlatDepthModel().predict(source)
+    assert prediction.width / prediction.height != source.width / source.height, (
+        "this test is pointless unless the model's working grid rounds the aspect away"
+    )
+    points = build_point_map(prediction, source)
+
+    accepted = encode_opm(
+        points,
+        generator="test",
+        viewpoint=Viewpoint(
+            fov_y_degrees=prediction.fov_y_degrees,
+            aspect=source.width / source.height,
+        ),
+        source_size=source.size,
+        metric=True,
+    )
+    assert validate_opm(accepted).source_camera_contract_aligned is True
+
+    with pytest.raises(ValueError, match="aspect"):
+        validate_opm(
+            encode_opm(
+                points,
+                generator="test",
+                viewpoint=Viewpoint(
+                    fov_y_degrees=prediction.fov_y_degrees,
+                    aspect=prediction.width / prediction.height,
+                ),
+                source_size=source.size,
+                metric=True,
+            )
+        )
 
 
 def test_integrity_refuses_a_point_behind_the_declared_source_camera():
@@ -211,6 +309,103 @@ def test_a_placed_point_is_coloured_from_the_photograph_it_came_from():
     assert tuple(points.color[0:3]) == expected
 
 
+def test_a_plane_has_no_silhouette_to_drop():
+    """The filter must cost nothing where there is no discontinuity, which is the whole of the
+    double. A test suite that quietly lost points to it would be measuring the filter's bugs.
+    """
+    prediction = FlatDepthModel().predict(_image())
+    points = build_point_map(prediction, _image(), max_depth_step=0.10)
+    assert points.count == prediction.width * prediction.height
+    assert points.statistics["discontinuityDropped"] == 0.0
+
+
+def test_a_silhouette_drops_the_points_on_both_sides_of_it():
+    """A pixel spanning the edge of a near surface lands in the air between it and the far one,
+    and from a single view there is nothing that says which of the two the point belongs to. So
+    both go, and the outer column of each surface is what survives.
+    """
+    points = build_point_map(_stepped(), _image(4, 2), max_depth_step=0.10)
+    assert points.count == 4
+    assert points.statistics["discontinuityDropped"] == 4.0
+    # The survivors are the two surfaces themselves, at their own depths and nowhere between.
+    depths = sorted({-points.position[index * 3 + 2] for index in range(points.count)})
+    assert depths == pytest.approx([2.0, 10.0])
+
+
+def test_the_silhouette_filter_can_be_turned_off():
+    """`None` is what a caller comparing against the unfiltered map passes. It has to keep every
+    placed point, or the comparison is against a third thing that is neither.
+    """
+    points = build_point_map(_stepped(), _image(4, 2), max_depth_step=None)
+    assert points.count == 8
+    assert points.statistics["discontinuityDropped"] == 0.0
+
+
+def test_the_statistics_account_for_every_source_pixel():
+    """Placed, dropped for the silhouette, and never placed at all. A reader has to be able to
+    recover the prediction's own valid fraction from the file, because the gate reads that one
+    and `validFraction` here counts only what survived to be written.
+    """
+    prediction = FlatDepthModel(valid_fraction=0.5).predict(_image())
+    points = build_point_map(prediction, _image(), max_depth_step=0.10)
+    statistics = points.statistics
+    placed_by_the_model = sum(1 for byte in prediction.valid if byte)
+    assert statistics["placedPoints"] + statistics["discontinuityDropped"] == placed_by_the_model
+    assert statistics["sourcePixels"] == float(prediction.width * prediction.height)
+
+
+def test_a_plane_is_supported_evenly_because_it_is_sampled_evenly():
+    """The alpha channel is a ratio against the map's own median spacing, so the double, whose
+    samples are a uniform grid, must come out flat. Anything else means the measure is reading
+    something other than spacing.
+    """
+    prediction = FlatDepthModel().predict(_image())
+    points = build_point_map(prediction, _image())
+    alphas = [points.color[index * 4 + 3] for index in range(points.count)]
+    assert min(alphas) > 200
+    assert points.statistics["meanSupport"] > 0.95
+    assert points.statistics["medianSampleSpacingM"] > 0
+
+
+def test_a_coarsely_sampled_surface_says_so_in_the_alpha_channel():
+    """The far patch is five times further away, so its samples land five times further apart and
+    each one stands for twenty-five times the surface. That is the whole point of the channel: it
+    is the sky and the grazing pavement that must arrive marked, not the wall in front of you.
+    """
+    points = build_point_map(_mixed_sampling(), _image(16, 4))
+    near = [
+        points.color[i * 4 + 3]
+        for i in range(points.count)
+        if -points.position[i * 3 + 2] < 5.0
+    ]
+    far = [
+        points.color[i * 4 + 3]
+        for i in range(points.count)
+        if -points.position[i * 3 + 2] > 5.0
+    ]
+    assert near and far
+    assert max(far) < min(near), "the distant strip must not claim the support of the near surface"
+
+
+def test_support_is_a_ratio_of_two_measured_lengths_and_not_a_probability():
+    """`ConfidenceBand` in atlas-core deliberately cannot hold a percentage, because one implies a
+    frequency guarantee nothing calibrated. This channel reports coverage, so the denominator it
+    is a ratio of has to travel with the file or the numerator cannot be checked.
+    """
+    points = build_point_map(_mixed_sampling(), _image(16, 4))
+    reference = points.statistics["medianSampleSpacingM"]
+    assert reference > 0
+    # Every alpha is the reference over that point's own spacing, clamped at full support.
+    assert all(0 <= points.color[i * 4 + 3] <= 255 for i in range(points.count))
+
+
+@pytest.mark.parametrize("value", [0.0, -0.1])
+def test_a_max_depth_step_that_could_not_describe_a_step_is_refused(value: float):
+    """Zero would drop every point with any neighbour at all, which is a silent empty file."""
+    with pytest.raises(ValueError, match="must be positive"):
+        build_point_map(FlatDepthModel().predict(_image()), _image(), max_depth_step=value)
+
+
 # ---------------------------------------------------------------------------------------------
 # The gate
 
@@ -233,10 +428,13 @@ def test_a_frame_with_almost_nothing_placed_earns_rung_four_rather_than_a_bad_ru
     assert "placed" in decision.reason
 
 
-def test_the_gate_can_award_only_the_rungs_whose_producers_exist():
-    """Rungs 1 and 2 need structure from motion and a trained splat. Neither producer exists, and
-    a gate with an unreachable branch that looks reachable is how a system claims a rung it never
-    earned.
+def test_the_gate_can_award_only_the_rungs_one_photograph_can_earn():
+    """Rungs 1 and 2 are facts about a SET of photographs, and this gate sees one prediction.
+
+    Structure from motion and a trained splat are properties of several frames together, so no
+    branch here could read one however it was written, and a gate with an unreachable branch that
+    looks reachable is how a system claims a rung it never earned. The rungs above 3 are decided
+    by the quality receipts their own controllers return, over a scene rather than a capture.
     """
     awarded = {
         decide_rung(FlatDepthModel(valid_fraction=f).predict(_image(8, 8))).rung

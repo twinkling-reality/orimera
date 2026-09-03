@@ -51,10 +51,21 @@ export interface SegmentSemantics {
 /**
  * The default epistemic reading of a monocular point map.
  *
- * Every point in a rung 3 reconstruction is a model output, so the honest default provenance is
- * `inference` and not `capture` (domain-and-evidence-model epi-1: a detection is an inference).
- * Structure that the reconstruction resolved confidently reads as capture-supported; water and
- * vegetation, which the generator degrades in blotches, read as low-confidence inference.
+ * Every point in a rung 3 reconstruction is a model output, so the provenance is `inference` for
+ * every class, including structure and ground. `ProvenanceClass` defines `capture` as "a
+ * deterministic property of the recording: bytes, dimensions, EXIF" and `inference` as "ANY model
+ * output, however confident" (epi-1), and a depth network's opinion about where a wall is fails
+ * the first definition and meets the second. Structure once read as `capture` here, which was a
+ * fixture convenience: the synthetic generator's structure IS exact, and calling real
+ * reconstruction the same thing told the interface a photograph had measured a wall it had only
+ * been used to guess at.
+ *
+ * The LINK STATE is a separate question and stays `confirmed` for surfaces. `LinkState` is
+ * defined between an occurrence and an entity, and an unsegmented shell asserts no identity at
+ * all: it says "there is surface here", not "that is the glasshouse". There is nothing to be
+ * unconfirmed about, so the per-point dissolve that `readsAsUnconfirmed` drives stays off, and
+ * how well sampled a point is travels in the alpha channel instead. Water and vegetation keep
+ * their proposals, because the generator degrades those in blotches and that IS a claim.
  *
  * This mapping is a DEFAULT for the bake-off fixture, not a claim about a real capture. Real
  * per-segment epistemics come from graph-client; the shape of what the shader consumes is the
@@ -67,7 +78,7 @@ export function defaultSemanticsFor(header: OpmHeader): SegmentSemantics[] {
       case 'ground':
         return {
           ...s,
-          provenance: 'capture' as const,
+          provenance: 'inference' as const,
           linkState: 'confirmed' as const,
           confidence: 'high' as const,
         };

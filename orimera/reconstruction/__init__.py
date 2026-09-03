@@ -13,13 +13,27 @@ rendered and displayed with the rung it earned; it is never what a citation open
 
 **What is here.** A depth model behind a protocol, with MoGe-2 as the real implementation and a
 flat plane as the double; the point-map builder that drops what the model could not place; the
-``.opm`` writer the renderer already reads; and the quality gate that decides between rung 3 and
-rung 4 and can decide nothing else, because the producers of rungs 1 and 2 do not exist.
+``.opm`` writer the renderer already reads; the quality gate that decides between rung 3 and rung
+4 for one photograph; and the job controllers for the rungs above it, ``pose`` for camera
+recovery, ``splat`` for training and ``navigation`` for corridors.
+
+**What "above rung 3" means here, precisely, because the distinction keeps being lost.** The
+controllers exist and are contract tested. ``pose`` now also has a backend that runs, the
+in-process ``pycolmap_executor``, so camera recovery is executable on an ordinary machine.
+``splat`` does not: it delegates to a reviewed container entrypoint that nobody has built, and
+gsplat is CUDA only, so no splat has ever been trained here. Nothing in ``orimera.ingest`` calls
+any of the three, so no rung above 3 is published to the Atlas by any pipeline today. ``gate.py``
+decides rung 3 or rung 4 for a single photograph and is not the gate for the rungs above it;
+those are the quality receipts the controllers return.
 """
 
 from __future__ import annotations
 
-from orimera.reconstruction.build import DEFAULT_SEGMENT, build_point_map
+from orimera.reconstruction.build import (
+    DEFAULT_MAX_DEPTH_STEP,
+    DEFAULT_SEGMENT,
+    build_point_map,
+)
 from orimera.reconstruction.depth import DepthModel, DepthPrediction
 from orimera.reconstruction.gate import MIN_VALID_FRACTION, RungDecision, decide_rung
 from orimera.reconstruction.navigation import (
@@ -53,6 +67,7 @@ from orimera.reconstruction.validation import (
 )
 
 __all__ = [
+    "DEFAULT_MAX_DEPTH_STEP",
     "DEFAULT_SEGMENT",
     "MIN_VALID_FRACTION",
     "OPM_MAGIC",

@@ -101,6 +101,7 @@ import { sourceMediaForIsland } from './source-media.js';
 import { createWorldField, type WorldField } from './world-field.js';
 import { createComposedWorld, type ComposedWorld } from './composed-world.js';
 import { createRegionMass, type RegionMass } from './region-mass.js';
+import { createRegionRelief, type RegionRelief } from './region-relief.js';
 import type { PointMap } from './opm.js';
 import type { PointCloud } from './point-cloud.js';
 import { createPointCloud } from './point-cloud.js';
@@ -203,6 +204,7 @@ export class AtlasBinding {
   readonly topology: WorldTopologySnapshot;
   readonly composedWorld: ComposedWorld;
   readonly regionMass: RegionMass;
+  readonly regionRelief: RegionRelief;
   readonly customization: WorldCustomizationController;
   readonly neighborhoodIndex: NeighborhoodIndex;
   readonly renderRoot: pc.Entity;
@@ -277,6 +279,7 @@ export class AtlasBinding {
     topology: WorldTopologySnapshot,
     composedWorld: ComposedWorld,
     regionMass: RegionMass,
+    regionRelief: RegionRelief,
     customization: WorldCustomizationController,
     neighborhoodIndex: NeighborhoodIndex,
     renderRoot: pc.Entity,
@@ -303,6 +306,7 @@ export class AtlasBinding {
     this.topology = topology;
     this.composedWorld = composedWorld;
     this.regionMass = regionMass;
+    this.regionRelief = regionRelief;
     this.customization = customization;
     this.neighborhoodIndex = neighborhoodIndex;
     this.renderRoot = renderRoot;
@@ -425,7 +429,21 @@ export class AtlasBinding {
     );
     // What the Map looks down on. Built from the same anchors the ground view already draws, so
     // it cannot drift from what the world actually holds, and enabled only at the Map vantage.
-    const regionMass = createRegionMass(device, options.scene, initialArtProfile);
+    // Relief first: it decides which regions have a measured surface, and the mass draws marks
+    // for the ones that do not. A region cannot be both without saying its own extent twice.
+    const regionRelief = createRegionRelief(
+      device,
+      options.scene,
+      options.pointMaps,
+      initialArtProfile,
+    );
+    renderRoot.addChild(regionRelief.entity);
+    const regionMass = createRegionMass(
+      device,
+      options.scene,
+      initialArtProfile,
+      regionRelief.reconstructed,
+    );
     renderRoot.addChild(regionMass.entity);
     const customization = new WorldCustomizationController({
       topologyDigest: topology.topologyDigest,
@@ -570,6 +588,7 @@ export class AtlasBinding {
       topology,
       composedWorld,
       regionMass,
+      regionRelief,
       customization,
       neighborhoodIndex,
       renderRoot,
@@ -650,6 +669,7 @@ export class AtlasBinding {
     this.invalidate();
     this.composedWorld.setProfile(profile);
     this.regionMass.applyProfile(profile);
+    this.regionRelief.applyProfile(profile);
     this.field.setProfile(profile);
     this.sourceFirst.setProfile(profile);
     this.setClearColours(profile);
@@ -785,6 +805,7 @@ export class AtlasBinding {
     if (active === (this.mapState !== null)) return;
     this.composedWorld.setMapActive(active);
     this.regionMass.setMapActive(active);
+    this.regionRelief.setMapActive(active);
     if (this.camera.camera !== undefined && this.camera.camera !== null) {
       this.camera.camera.clearColor.copy(active ? this.mapClearColor : this.skyClearColor);
     }
@@ -1232,6 +1253,7 @@ export class AtlasBinding {
     this.sourceFirst.destroy();
     this.composedWorld.destroy();
     this.regionMass.destroy();
+    this.regionRelief.destroy();
     for (const visual of this.islands) visual.cloud.destroy();
     this.app.destroy();
   }

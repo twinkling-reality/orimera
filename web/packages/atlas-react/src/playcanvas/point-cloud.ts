@@ -71,6 +71,17 @@ export interface PointCloud {
 const DEFAULT_SIZE_GAIN = 0.05;
 const DEFAULT_MAX_SIZE_PX = 10;
 
+/**
+ * How far a thinly sampled sprite may be widened, as the smallest support it is divided by.
+ *
+ * 0.12 caps the growth at a little over eight times. There has to be a cap: support approaches
+ * zero for a sample standing alone, and an uncapped divisor turns one point at the edge of the
+ * sky into a sprite that fills the screen. Eight is measured rather than picked, on the courtyard
+ * at 512 px, it is the ratio between the median sample spacing and the coarsest sampling that
+ * still belongs to a readable surface rather than to the far haze.
+ */
+const SUPPORT_FLOOR = 0.12;
+
 const ATTRIBUTES = {
   aPosition: pc.SEMANTIC_POSITION,
   aColor: pc.SEMANTIC_COLOR,
@@ -206,6 +217,15 @@ export function createPointCloud(options: PointCloudOptions): PointCloud {
   material.setParameter('uFog', [footprint * 0.9, footprint * 3.2, 1.2, 1]);
   material.setParameter('uExposure', 1.25);
   material.setParameter('uPoint', [options.sizeGain ?? DEFAULT_SIZE_GAIN, options.maxSizePx ?? DEFAULT_MAX_SIZE_PX, 900, 0]);
+  // Spacing-aware sizing, but only for a producer that says its alpha is a spacing ratio. Every
+  // other file keeps a floor of 1, which makes the shader's divisor exactly 1 and leaves it
+  // rendering as it always did. Reinterpreting another writer's channel on a guess is how one
+  // producer's confidence silently becomes another's geometry.
+  const spacing = map.header.statistics?.['medianSampleSpacingM'];
+  material.setParameter(
+    'uSupportFloor',
+    typeof spacing === 'number' && spacing > 0 ? SUPPORT_FLOOR : 1,
+  );
   material.setParameter('uIsland', [
     1,
     footprint,

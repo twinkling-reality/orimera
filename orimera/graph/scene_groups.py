@@ -1,8 +1,11 @@
 """The time-and-position clustering ingest computed, and the rung each capture earned.
 
-Together because a group's rung is the best any of its members reached, so the two reads are one
-question asked at two granularities. Neither is an island: ADR-0005 leaves that open until the
-corpus has been measured, and a server that shipped an island id would settle it by accident.
+Together because a group's rung is the WORST any of its members earned, so the two reads are one
+question asked at two granularities. Worst rather than best because a region is navigable at the
+level of its weakest part, which is the reduction `payload.py` documents and `max` implements:
+the rungs run 1 for a full splat to 4 for no geometry, so the largest number is the poorest
+result. Neither is an island: ADR-0005 leaves that open until the corpus has been measured, and a
+server that shipped an island id would settle it by accident.
 """
 
 from __future__ import annotations

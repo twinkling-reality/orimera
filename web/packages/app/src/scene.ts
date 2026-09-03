@@ -40,6 +40,7 @@ import type {
   IslandPlacement,
   LayoutInputIsland,
   LayoutCoverage,
+  LocalVec3,
   ReconstructionRung,
 } from '@orimera/atlas-core';
 import {
@@ -80,6 +81,35 @@ import type {
  * different sentences.
  */
 export const NO_GEOMETRY_RUNG: ReconstructionRung = 4;
+
+/**
+ * What a region's geometry says about itself, for a caller that actually loaded some.
+ *
+ * The scene graph cannot read a `.opm`, and must not learn how: it would put a container format
+ * in the path of a module whose job is layout. So the caller that decoded one passes back the
+ * three facts the scene needs, and a region with no entry here is still rung 4 with an arrival at
+ * eye height on an anchor disc, which is what every region was before any of them had geometry.
+ */
+export interface ReconstructedGeometry {
+  readonly rung: ReconstructionRung;
+  /** Where the camera stood, in the island's local frame. The point map's own origin. */
+  readonly viewpointLocal: LocalVec3;
+  /**
+   * How far the geometry actually reaches, in local units.
+   *
+   * The SAME number the renderer dissolves the cloud at, and that is the point of taking it from
+   * the caller rather than deriving a second one here. The anchor disc it replaces is about five
+   * metres across; the courtyard's geometry reaches thirty-six, and every system that reads a
+   * footprint, representation tier, neighbourhood radius, arrival containment, layout separation
+   * and the region's own mass on the Map, was being told the region was a seventh of its size.
+   *
+   * The far tail inflates it: a monocular model puts the sky tens of metres out, so the last few
+   * percent of the radius is barely sampled surface. That is a reason to clamp the sky IN THE
+   * RECONSTRUCTION, where the support channel already identifies it, and not a reason for the
+   * scene graph to quietly disagree with the geometry the renderer is drawing.
+   */
+  readonly footprintRadiusLocal: number;
+}
 
 /** Local units. The disc the anchors of one island are seeded on. */
 const ANCHOR_DISC_SPACING = 1.6;
@@ -176,6 +206,7 @@ export function buildScene(
   layoutVersion = 1,
   persistedPlacements: ReadonlyMap<IslandId, IslandPlacement> = new Map(),
   creationOrdinals: ReadonlyMap<IslandId, number> = new Map(),
+  reconstructions: ReadonlyMap<IslandId, ReconstructedGeometry> = new Map(),
 ): SceneBuild {
   const kept = snapshot.islands.slice(0, MAX_ISLANDS);
   const omitted = snapshot.islands.slice(MAX_ISLANDS);
@@ -218,7 +249,12 @@ export function buildScene(
   const inputs: LayoutInputIsland[] = placed.map(({ record, anchors }) => ({
     islandId: toIslandId(record.islandId),
     creationOrdinal: resolvedOrdinals.get(toIslandId(record.islandId))!,
-    footprintRadiusLocal: footprintOf(anchors),
+    // The solver separates regions by the sum of their radii, so it has to be given the same
+    // size the island will report. Left on the anchor disc, a reconstructed region would be
+    // packed as though it were five metres wide and would overlap its neighbours on the Map.
+    footprintRadiusLocal:
+      reconstructions.get(toIslandId(record.islandId))?.footprintRadiusLocal
+      ?? footprintOf(anchors),
     scale: 1,
     layoutEntities: layoutEntitiesOf(anchors),
     // Backend persistence is a separate task. This seam is deliberately supplied by the caller:
@@ -235,18 +271,32 @@ export function buildScene(
       creationOrdinal: resolvedOrdinals.get(toIslandId(record.islandId))!,
       createdAt: orderingKey(record),
       placement: layout.placements.get(toIslandId(record.islandId)) ?? originPlacement(),
-      rung: record.rung ?? NO_GEOMETRY_RUNG,
+      // Geometry that is actually loaded outranks the record. The record reports what the
+      // SERVER has run; a region holding a decoded point map is standing in rung 3 geometry
+      // right now, and a scene graph that called it rung 4 would have the renderer draw a
+      // point cloud inside a region every other system was told has none.
+      rung: reconstructions.get(toIslandId(record.islandId))?.rung
+        ?? record.rung
+        ?? NO_GEOMETRY_RUNG,
       // Not metric even at rung 3. A monocular point map has a real metric scale of its own,
       // but an island's frame is the ATLAS's, and where a region sits there is a layout
       // decision carrying no real-world meaning. Making the island metric would let a query
       // measure across a placement, which is risk R-48. The metric frame that does exist is
       // the point map's, and a question answered from it has to go through the point map.
       scaleIsMetric: false,
-      footprintRadiusLocal: footprintOf(anchors),
-      // The centre of the disc, at eye height. Not "where the camera stood": nothing recovered a
-      // camera pose, and `viewpointLocal` on a rung 4 island is where the first run arrives
-      // rather than a claim about where anybody was standing.
-      viewpointLocal: localVec3(0, 1.6, 0),
+      // The geometry's reach when there is geometry, the anchor disc when there is not. A
+      // region holding a point map is as big as what it contains, not as big as the ring its
+      // labels happen to sit on.
+      footprintRadiusLocal:
+        reconstructions.get(toIslandId(record.islandId))?.footprintRadiusLocal
+        ?? footprintOf(anchors),
+      // Where the camera stood, when a point map recovered it. A 2.5D shell has observed
+      // surfaces on one side only, so the one place it is whole is the place it was seen from,
+      // and arriving anywhere else shows the back of a photograph. Without geometry this falls
+      // back to the centre of the disc at eye height, which is not a claim about where anybody
+      // was standing but simply where the first run arrives.
+      viewpointLocal: reconstructions.get(toIslandId(record.islandId))?.viewpointLocal
+        ?? localVec3(0, 1.6, 0),
       anchors,
       layoutEntities: layoutEntitiesOf(anchors),
     }),

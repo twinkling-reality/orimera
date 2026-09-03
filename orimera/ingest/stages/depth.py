@@ -76,7 +76,11 @@ def run(
         spec, input_artifact_ids=[intake.artifact_id], input_blob=blob_id
     ) as recorder:
         prediction = model.predict(upright)
-        points = build_point_map(prediction, upright)
+        points = build_point_map(
+            prediction,
+            upright,
+            max_depth_step=int(spec.params["max_depth_step_milli"]) / 1000,
+        )
         decision = decide_rung(
             prediction,
             min_valid_fraction=int(spec.params["min_valid_fraction_milli"]) / 1000,
@@ -86,7 +90,22 @@ def run(
             generator=prediction.model_id,
             viewpoint=Viewpoint(
                 fov_y_degrees=prediction.fov_y_degrees,
-                aspect=prediction.width / max(1, prediction.height),
+                # The SOURCE camera's aspect, not the model's working resolution.
+                #
+                # CORRECTED 2026-09-03. This read `prediction.width / prediction.height`, and both
+                # validators check the declared aspect against `sourceImage`, which is the source
+                # photograph's own dimensions. A model that downscales to a longest edge rounds to
+                # whole pixels, so a 3:2 photograph became 512x341 and declared 1.5015 against a
+                # source of 1.5, and every validator refused it. Measured: 1280x960 passed and both
+                # 1500x1000 and 3000x2000 raised "viewpoint.aspect does not match sourceImage", so
+                # the depth stage could reconstruct nothing but exactly 4:3 sources.
+                #
+                # The frustum this field describes is the camera that took the photograph, and the
+                # only faithful statement of its shape is the photograph's own dimensions. The
+                # vertical field of view beside it comes from the model because it is what the
+                # model recovered, and a resize preserves it; the aspect does not come from the
+                # model because a rounded working grid is an implementation detail of inference.
+                aspect=upright.width / max(1, upright.height),
             ),
             source_size=upright.size,
             # Carried from the model rather than assumed. A map that is not metric produces a

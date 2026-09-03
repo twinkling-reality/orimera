@@ -185,6 +185,11 @@ STAGES: Final[dict[str, StageSpec]] = {
             # and a point map is 18 bytes per pixel, so this is a size decision and a storage
             # decision at once: 512 is roughly 190k points and 3.4 MB per photograph.
             "max_edge_px": 512,
+            # How far a point's depth may disagree with its neighbour's before it is read as
+            # spanning a silhouette rather than lying on a surface. Milli, like the fraction
+            # above, so the params stay integers and the digest stays stable across platforms
+            # that would not agree on the last bit of a float.
+            "max_depth_step_milli": 100,
             "container": "opm/1",
         },
     ),

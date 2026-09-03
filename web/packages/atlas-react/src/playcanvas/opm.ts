@@ -53,6 +53,16 @@ export interface OpmHeader {
   readonly colorAlpha: 'confidence';
   readonly segments: readonly OpmSegment[];
   readonly sections: readonly OpmSection[];
+  /**
+   * What the producer measured about the map, keyed by name. Optional, because the format has
+   * always allowed a producer to report nothing, and a reader must not require a number that a
+   * writer never claimed to have measured.
+   *
+   * `medianSampleSpacingM` is the one the renderer reads: it is the denominator the alpha channel
+   * is a ratio of, and its presence is what says the alpha is a spacing ratio rather than an
+   * opaque per-point confidence.
+   */
+  readonly statistics?: Readonly<Record<string, number>>;
 }
 
 export interface PointMap {

@@ -23,7 +23,7 @@
  */
 
 import * as pc from 'playcanvas';
-import { atlasMapPose, localToAtlas, type AtlasScene } from '@orimera/atlas-core';
+import { atlasMapPose, localToAtlas, type AtlasScene, type IslandId } from '@orimera/atlas-core';
 import type { WorldArtProfile } from '@orimera/presentation';
 
 export interface RegionMass {
@@ -98,6 +98,15 @@ export function createRegionMass(
   device: pc.GraphicsDevice,
   scene: AtlasScene,
   profile: WorldArtProfile,
+  /**
+   * Regions already drawn as measured relief by `region-relief.ts`.
+   *
+   * They are skipped rather than drawn underneath. Composition rule 2 forbids a duplicate
+   * readable body, and a stack of marks standing inside the surface those same detections were
+   * recovered from is exactly that: one region saying its own size twice, in two vocabularies,
+   * at the same vantage.
+   */
+  reconstructed: ReadonlySet<IslandId> = new Set(),
 ): RegionMass {
   const altitude = atlasMapPose(scene).position.y;
   const markHeight = altitude * MARK_HEIGHT_OF_ALTITUDE;
@@ -141,6 +150,7 @@ export function createRegionMass(
   };
 
   for (const island of scene.islands) {
+    if (reconstructed.has(island.islandId)) continue;
     // One factor per region, from its own footprint, so a dense region and a sparse one open up
     // by the same amount and their relative sizes survive.
     const footprint = Math.max(0.5, island.footprintRadiusLocal * island.placement.scale);
