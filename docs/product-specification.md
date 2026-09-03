@@ -221,6 +221,21 @@ Two rules from the research, carried without softening:
 - **Rung 2 is the highest value engineering investment in the ladder**, because it converts the most
   common partial success into something that reads as intentional rather than broken.
 
+**The ladder admits no generated rung and no generated segment.** Every rung is defined by what was
+recovered from photographs. Generatively completed geometry, meaning surface a world model invents
+where no camera looked, is refused, and generated material of any kind, if it is ever shown at all,
+is governed by [adr/0008-generated-geometry.md](adr/0008-generated-geometry.md).
+
+**CORRECTED 2026-09-03, the rung 2 row.** The Producer column above says "the same splat" with thin
+coverage. That was written before the corridor artifact existed, and the code it describes already
+disagrees: `orimera/reconstruction/navigation.py` publishes rung 2 from the corridor's own measured
+clearance, slope and destinations, and a splat appears nowhere in its inputs. What defines rung 2 is
+its fourth column, what the user gets. Two substrates deliver it: an accepted splat with thin
+coverage, or camera poses with the monocular point maps of rung 3 placed at them. The artifact
+records which, and the displayed sentence says so, because posed relief is not photoreal and must
+never be described as though it were. See
+[adr/0009-the-ladder-above-rung-3.md](adr/0009-the-ladder-above-rung-3.md) D2.
+
 Reconstruction never runs in the live demo path.
 
 ### 5.1 The rung is visible, and that is the point

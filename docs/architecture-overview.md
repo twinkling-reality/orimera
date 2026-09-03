@@ -554,7 +554,7 @@ section 2.1.
 | The evidence address, the epistemic model and the assertion log | Domain and evidence model document, not yet written |
 | Consent scopes, deletion cascade and the misuse guards | Privacy, consent and threat model document, not yet written |
 | Model selection and routing | Validated technology and model selection document, not yet written |
-| Reconstruction rungs and their quality bar | Reconstruction findings document, not yet written |
+| Reconstruction rungs and their quality bar | [reconstruction-findings.md](reconstruction-findings.md) for the measurements, [adr/0009-the-ladder-above-rung-3.md](adr/0009-the-ladder-above-rung-3.md) for how the rungs above 3 are earned |
 | The domain and deployment account | **OPEN** |
 | Who owns the weekly uptime check | **OPEN** |
 
