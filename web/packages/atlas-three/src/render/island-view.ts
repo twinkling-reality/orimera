@@ -62,7 +62,12 @@ export class IslandView {
     // Uint16 non-normalized arrives in GLSL as a float 0..65535 through `vertexAttribPointer`.
     // A segment id is a small integer and this avoids a second float buffer over four million
     // points, which would be 16 MB of VRAM to say what two bytes already say.
-    geometry.setAttribute('aSegment', new BufferAttribute(data.segment, 1));
+    //
+    // Two components since OPM/2: channel 0 is the segment id and channel 1 is a flags word
+    // this binding does not read. ADR-0010 D4 says outright that whether bit 0 removes the
+    // silhouette fringing "is the thing to measure before writing it", so consuming it here
+    // would be inventing an appearance for a number nobody has looked at.
+    geometry.setAttribute('aTags', new BufferAttribute(data.tags, 2));
 
     // Set the bounding sphere from the header rather than letting three compute it. Three's
     // computation is a full pass over the position array; the writer already knows the answer.
@@ -107,7 +112,7 @@ export class IslandView {
     this.points.updateMatrix();
     this.points.matrixAutoUpdate = false;
 
-    this.gpuBytes = data.position.byteLength + data.color.byteLength + data.segment.byteLength;
+    this.gpuBytes = data.position.byteLength + data.color.byteLength + data.tags.byteLength;
   }
 
   get occupancyGrid(): OccupancyGrid | null {

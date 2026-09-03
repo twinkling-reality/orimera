@@ -9,13 +9,25 @@
  * silent drift into a loud throw.
  *
  * `fetch` -> `arrayBuffer()` -> three typed-array views. Nothing iterates a point.
+ *
+ * **This reads OPM/2.** ADR-0010 gave the container a version and both of its writers moved, so a
+ * reader left at version 1 would be a binding that can no longer open any file this product
+ * produces. This package is ADR-0003's option A and ADR-0003 chose PlayCanvas, so it is the
+ * losing candidate rather than a shipped path; it is carried forward anyway, because the ADR is
+ * settled "by deleting a package rather than by unpicking one" and a package that quietly stopped
+ * being able to read the format would be neither deleted nor working.
  */
 
 export const OPM_MAGIC = 'OPM1';
-export const OPM_VERSION = 1;
+export const OPM_VERSION = 2;
+/** The version this one replaces, refused by name on read. ADR-0010 D9. */
+export const SUPERSEDED_OPM_VERSION = 1;
+
+/** Bit 0 of a point's flags channel: a neighbour of this point went to the silhouette drop. */
+export const TAG_ONE_SIDED = 0x0001;
 
 export interface OpmSectionRef {
-  readonly name: 'position' | 'color' | 'segment';
+  readonly name: string;
   readonly byteOffset: number;
   readonly byteLength: number;
 }
@@ -39,11 +51,19 @@ export interface OpmHeader {
     readonly fovYDeg: number;
   };
   readonly sourceImage: { readonly width: number; readonly height: number };
+  /** The grid the points were unprojected from, which is not the photograph. ADR-0010 D6. */
+  readonly modelImage: { readonly width: number; readonly height: number };
   readonly bounds: {
     readonly min: readonly [number, number, number];
     readonly max: readonly [number, number, number];
   };
-  /** The writer asserts this is `"confidence"`. Checked, because the shader depends on it. */
+  /**
+   * `support` or `confidence`, declared by the writer. Checked, because the shader depends on it.
+   *
+   * An enum since OPM/2. This binding's point material reads the channel as confidence, so it
+   * refuses a file that says `support`: the honest answer for a reader that cannot present a
+   * quantity is to say so, and the alternative is drawing coverage as though it were belief.
+   */
   readonly colorAlpha: string;
   readonly segments: readonly OpmSegment[];
   readonly sections: readonly OpmSectionRef[];
@@ -56,13 +76,13 @@ export interface PointMapData {
   readonly position: Float32Array;
   /** RGB plus ALPHA = per-point confidence, not opacity. 4 bytes per point, normalized. */
   readonly color: Uint8Array;
-  /** Semantic label id, indexes `header.segments`. */
-  readonly segment: Uint16Array;
+  /** Two uint16 per point: the semantic label id, which indexes `header.segments`, then flags. */
+  readonly tags: Uint16Array;
   /** Bytes on the wire, for the bake-off's transfer column. */
   readonly byteLength: number;
 }
 
-function section(header: OpmHeader, name: OpmSectionRef['name']): OpmSectionRef {
+function section(header: OpmHeader, name: string): OpmSectionRef {
   const s = header.sections.find((x) => x.name === name);
   if (s === undefined) throw new Error(`.opm is missing the '${name}' section`);
   return s;
@@ -85,6 +105,12 @@ export function decodeOpm(buffer: ArrayBuffer): PointMapData {
     new TextDecoder().decode(new Uint8Array(buffer, 8, headerLength)),
   ) as OpmHeader;
 
+  if (header.version === SUPERSEDED_OPM_VERSION) {
+    throw new Error(
+      `.opm version ${SUPERSEDED_OPM_VERSION}, this reader speaks ${OPM_VERSION}. There is no `
+        + 'upgrade on read: regenerate the file rather than converting it',
+    );
+  }
   if (header.version !== OPM_VERSION) {
     throw new Error(`.opm version ${header.version}, this reader speaks ${OPM_VERSION}`);
   }
@@ -101,13 +127,13 @@ export function decodeOpm(buffer: ArrayBuffer): PointMapData {
   const n = header.pointCount;
   const pos = section(header, 'position');
   const col = section(header, 'color');
-  const seg = section(header, 'segment');
+  const tags = section(header, 'tags');
 
   return Object.freeze({
     header,
     position: new Float32Array(buffer, pos.byteOffset, n * 3),
     color: new Uint8Array(buffer, col.byteOffset, n * 4),
-    segment: new Uint16Array(buffer, seg.byteOffset, n),
+    tags: new Uint16Array(buffer, tags.byteOffset, n * 2),
     byteLength: buffer.byteLength,
   });
 }

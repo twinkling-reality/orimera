@@ -82,13 +82,15 @@ export function buildOccupancyGrid(data: PointMapData, extent: number): Occupanc
   for (const s of data.header.segments) roles[s.id] = ROLE[roleOf(s.cls)];
 
   const pos = data.position;
-  const seg = data.segment;
+  const tags = data.tags;
   const count = data.header.pointCount;
   const inv = n / (2 * extent);
 
   // Pass 1: floor, support and water, per column.
   for (let i = 0; i < count; i += 1) {
-    const role = roles[seg[i]!]!;
+    // Channel 0 of the tags attribute. Channel 1 is the flags word and has no bearing on
+    // containment: a point beside a silhouette drop still stands where it stands.
+    const role = roles[tags[i * 2]!]!;
     if (role === ROLE.ignore) continue;
     const x = pos[i * 3]!;
     const y = pos[i * 3 + 1]!;
@@ -109,7 +111,9 @@ export function buildOccupancyGrid(data: PointMapData, extent: number): Occupanc
 
   // Pass 2: the body band. A second pass rather than a second grid keyed on an unknown floor.
   for (let i = 0; i < count; i += 1) {
-    const role = roles[seg[i]!]!;
+    // Channel 0 of the tags attribute. Channel 1 is the flags word and has no bearing on
+    // containment: a point beside a silhouette drop still stands where it stands.
+    const role = roles[tags[i * 2]!]!;
     if (role !== ROLE.support && role !== ROLE.obstruct) continue;
     const x = pos[i * 3]!;
     const y = pos[i * 3 + 1]!;

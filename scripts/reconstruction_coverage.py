@@ -14,7 +14,9 @@ fixture with the default input:
 
     .venv/bin/python scripts/reconstruction_coverage.py
 
-Input: an OPM/1 point map, given as the only argument. Default, relative to the repository
+Input: an `.opm` point map, given as the only argument. Version agnostic: it reads `position`
+and `color` through the header's own section list, which is what ADR-0010 D2 makes authoritative,
+so it worked unchanged across the OPM/1 to OPM/2 bump. Default, relative to the repository
 root: web/packages/app/public/fixtures/memory/glasshouse-courtyard.opm. Standard library only.
 
 Usage:  .venv/bin/python scripts/reconstruction_coverage.py [map.opm]

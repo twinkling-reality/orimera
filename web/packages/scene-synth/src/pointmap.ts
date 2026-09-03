@@ -18,8 +18,25 @@ import type { DepthBuffers } from './raster.js';
  * box, so an unmodified renderer draws a low-confidence point fainter with no shader work at
  * all. "An unconfirmed candidate must LOOK unconfirmed" then holds by default rather than by
  * remembering to implement it. The header records `colorAlpha: "confidence"` so nobody has to
- * infer it.
+ * infer it, and under OPM/2 that field is an enum whose other value is `support`: this generator
+ * writes a belief and the reconstruction path writes coverage, and a reader is now told which.
+ *
+ * THE SEGMENT ID SHARES AN ATTRIBUTE WITH A FLAGS WORD. ADR-0010 D3 widened the container's
+ * two-byte segment channel to a four-byte `tags` section of two uint16 channels, because WebGPU
+ * rejects a vertex stream whose arrayStride is not a multiple of 4 and the renderer binding was
+ * paying a per-point CPU pass to widen it. Channel 1 carries bit 0 of D4, whether this point had
+ * a neighbour carved at an occlusion boundary.
  */
+
+/**
+ * Bit 0 of a point's flags channel: a four-neighbour was carved at an occlusion boundary.
+ *
+ * Declared beside the type that carries the channel rather than in `format/opm.ts`, which is the
+ * same placement `orimera/reconstruction/pointmap.py` has and the arrangement that keeps the
+ * dependency one-way: the writer reads the point map, and the point map knows nothing about the
+ * container it will be written into.
+ */
+export const TAG_ONE_SIDED = 0x0001;
 
 export interface PointMap {
   readonly count: number;
@@ -27,7 +44,8 @@ export interface PointMap {
   readonly position: Float32Array;
   /** 4 bytes per point: R, G, B, confidence. */
   readonly color: Uint8Array;
-  readonly segment: Uint16Array;
+  /** 2 uint16 per point, interleaved: segment id then flags. */
+  readonly tags: Uint16Array;
   readonly min: readonly [number, number, number];
   readonly max: readonly [number, number, number];
 }
@@ -46,6 +64,7 @@ export function buildPointMap(
   k: Intrinsics,
   keep: Uint8Array,
   confidence: Uint8Array,
+  oneSided: Uint8Array,
   count: number,
   segments: readonly Segment[],
   prims: readonly Primitive[],
@@ -55,7 +74,7 @@ export function buildPointMap(
 ): PointMap {
   const position = new Float32Array(count * 3);
   const color = new Uint8Array(count * 4);
-  const segment = new Uint16Array(count);
+  const tags = new Uint16Array(count * 2);
   const [ox, oy, oz] = eye;
 
   let min: [number, number, number] = [Infinity, Infinity, Infinity];
@@ -88,7 +107,8 @@ export function buildPointMap(
       if (hz > max[2]) max[2] = hz;
 
       const seg = segments[prims[buf.prim[i]!]!.segment]!;
-      segment[w] = seg.id;
+      tags[w * 2] = seg.id;
+      tags[w * 2 + 1] = oneSided[i] === 1 ? TAG_ONE_SIDED : 0;
 
       const nx = buf.normal[i * 3]! / 127;
       const ny = buf.normal[i * 3 + 1]! / 127;
@@ -117,5 +137,5 @@ export function buildPointMap(
     throw new Error(`point map wrote ${w} points but the mask said ${count}`);
   }
 
-  return { count, position, color, segment, min, max };
+  return { count, position, color, tags, min, max };
 }

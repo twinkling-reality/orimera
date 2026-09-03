@@ -74,12 +74,13 @@ function synthetic(): PointMapData {
 
   const header = {
     format: 'orimera-point-map',
-    version: 1,
+    version: 2,
     pointCount: segs.length,
     rung: 3,
     metric: true,
     viewpoint: { position: [0, 1.55, 0], forward: [0, 0, -1], fovYDeg: 55 },
     sourceImage: { width: 100, height: 100 },
+    modelImage: { width: 100, height: 100 },
     bounds: { min: [-8, 0, -8], max: [8, 2, 8] },
     colorAlpha: 'confidence',
     segments: [
@@ -95,7 +96,9 @@ function synthetic(): PointMapData {
     header,
     position: new Float32Array(pts),
     color: new Uint8Array(segs.length * 4).fill(255),
-    segment: new Uint16Array(segs),
+    // Two channels per point since OPM/2: the segment id, then a flags word this double leaves
+    // at zero because nothing here has a silhouette to drop.
+    tags: new Uint16Array(segs.flatMap((id) => [id, 0])),
     byteLength: 0,
   };
 }

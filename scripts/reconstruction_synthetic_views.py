@@ -52,7 +52,7 @@ BG = 246
 def parse_args():
     parser = argparse.ArgumentParser(description='Render eight synthetic views of an OPM point map with known poses.')
     parser.add_argument('spike_dir', type=Path, help='directory to write images/ and ground_truth.json into')
-    parser.add_argument('--opm', type=Path, default=DEFAULT_OPM, help='OPM/1 point map to render')
+    parser.add_argument('--opm', type=Path, default=DEFAULT_OPM, help='.opm point map to render, any version')
     parser.add_argument('--gain', type=float, default=0.04, help='world footprint of a sprite, metres')
     parser.add_argument('--max-px', type=float, default=12.0, help='pixel clamp on the sprite size')
     parser.add_argument('--suffix', default='', help='suffix on the image directory, image names and ground truth')

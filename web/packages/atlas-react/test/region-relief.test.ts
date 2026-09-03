@@ -41,7 +41,7 @@ function map(options: {
   return {
     header: {
       format: 'orimera-point-map',
-      version: 1,
+      version: 2,
       pointCount: count,
       rung: 3,
       frame: 'local',
@@ -57,15 +57,18 @@ function map(options: {
         aspect: 4 / 3,
       },
       sourceImage: { width: cols, height: rows },
+      modelImage: { width: cols, height: rows },
       bounds: { min: [0, 0, Math.min(z0, z1)], max: [cols - 1, 1, Math.max(z0, z1)] },
-      colorAlpha: 'confidence',
+      // Support, because this double stands in for what the reconstruction path writes and the
+      // relief sampler reads the channel as coverage.
+      colorAlpha: 'support',
       segments: [{ id: 0, name: 'unsegmented', cls: 'structure' }],
       sections: [],
     },
     buffer: new ArrayBuffer(0),
     position,
     color,
-    segment: new Uint16Array(count),
+    tags: new Uint16Array(count * 2),
     planarContiguous: true,
     packedByteOffset: 0,
     packedByteLength: 0,

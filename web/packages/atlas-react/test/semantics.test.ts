@@ -17,7 +17,7 @@ import {
 const header = (segments: OpmHeader['segments']): OpmHeader =>
   ({
     format: 'orimera-point-map',
-    version: 1,
+    version: 2,
     pointCount: 1,
     rung: 3,
     frame: 'local',
@@ -33,6 +33,7 @@ const header = (segments: OpmHeader['segments']): OpmHeader =>
       aspect: 4 / 3,
     },
     sourceImage: { width: 400, height: 300 },
+    modelImage: { width: 400, height: 300 },
     bounds: { min: [0, 0, 0], max: [1, 1, 1] },
     colorAlpha: 'confidence',
     segments,

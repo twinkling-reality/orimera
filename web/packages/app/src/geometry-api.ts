@@ -116,14 +116,19 @@ export function regionsByCapture(
 /**
  * The container this build can decode.
  *
- * `decodeOpm` refuses anything but version 1 by name, and ADR-0010 gives the format a version 2
- * whose validators "refuse version 1 by name" in turn. This constant and that decoder move
- * together or a region silently shows nothing. A descriptor with a null container is attempted
- * rather than refused: null means no stage definition was recorded for that artifact's parameter
- * digest, which is a fact about an older corpus rather than a statement that the bytes are
- * unreadable, and the decoder is then the check.
+ * `decodeOpm` refuses anything but version 2 by name, and ADR-0010 D9 is refuse and regenerate
+ * with no upgrade on read. This constant and that decoder move together or a region silently
+ * shows nothing: it was `opm/1` until ADR-0010 was built, and the CORRECTED paragraph in that
+ * record names this loader as the third writer its migration had to reach.
+ *
+ * A descriptor with a null container is attempted rather than refused: null means no stage
+ * definition was recorded for that artifact's parameter digest, which is a fact about an older
+ * corpus rather than a statement that the bytes are unreadable, and the decoder is then the
+ * check. **A descriptor that says `opm/1` is refused here rather than at the decoder**, which
+ * costs one region a fetch of several megabytes it could not have read, and the message names
+ * the version rather than the file.
  */
-const SUPPORTED_CONTAINER = 'opm/1';
+const SUPPORTED_CONTAINER = 'opm/2';
 
 interface GeometryWire {
   readonly captureId: string;

@@ -114,7 +114,10 @@ Two things follow that are easy to get wrong, so they are stated rather than imp
   that its error is bounded and its effect is capped, and it is recorded as unvalidated. Making
   spread the criterion would reintroduce, as the gate, the exact inference this decision rejects.
 
-**D6. A posed multi-view set is a rung 3 sub-state over unchanged OPM/1 files.** The specification
+**D6. A posed multi-view set is a rung 3 sub-state over unchanged member files.** *Written as
+"unchanged OPM/1 files"; ADR-0010 was built on 2026-09-03 and the container is now OPM/2. The
+decision is unaffected, because what it turns on is that placement does not change the FILE, and
+OPM/2 D7 keeps placement out of the container for the same reason.* The specification
 already says rung 3 point maps are "placed at recovered poses where they exist". Placement is
 therefore not a container change: the files stay byte identical with their origin viewpoints, and
 a separate digest-bound placement record names its members by content hash and says where each
@@ -195,6 +198,14 @@ carries a regeneration path.** What the delivery route contributes is that the b
 deliberately does NOT filter `superseded_by`, so an old row stays fetchable; that is the only
 reason a stale record would degrade rather than break, and it is documented in
 `orimera/graph/geometry.py` as a decision rather than left as an omission.
+
+*DISCHARGED 2026-09-03. OPM/2 went first.* ADR-0010 is built, the depth stage's params now read
+`"container": "opm/2"`, and every point map an existing corpus held is refused by name and
+rewritten under a new idempotency key. So D6 may be built without a regeneration path for a
+record written before the bump, because no such record exists: nothing has ever written one. The
+constraint is retired rather than solved, which is the cheapest of the two outcomes it offered,
+and it is retired only for this bump. **A third container version would recreate it**, and at
+that point D6's records WILL exist and the regeneration path becomes the only option left.
 
 **D11 is now larger than it was, not smaller.** `buildScene` already lets loaded geometry outrank
 the recorded rung, on the stated grounds that "a region holding a decoded point map is standing in

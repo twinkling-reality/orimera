@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeOpm, encodeOpm } from '../src/format/opm.js';
+import { PACKED_STRIDE_BYTES, TAG_ONE_SIDED, decodeOpm, encodeOpm } from '../src/format/opm.js';
 import { DEFAULT_GENERATE, POINT_LADDER, generatePointMap } from '../src/generate.js';
 import { buildFixtureScene } from '../src/island-fixture.js';
 import { SEGMENTS } from '../src/scene.js';
@@ -23,7 +23,7 @@ describe('the generator is deterministic and exact', () => {
     expect(a.points.count).toBe(b.points.count);
     expect(Array.from(a.points.position)).toEqual(Array.from(b.points.position));
     expect(Array.from(a.points.color)).toEqual(Array.from(b.points.color));
-    expect(Array.from(a.points.segment)).toEqual(Array.from(b.points.segment));
+    expect(Array.from(a.points.tags)).toEqual(Array.from(b.points.tags));
     expect(a.sourceWidth).toBe(b.sourceWidth);
   });
 
@@ -39,7 +39,7 @@ describe('the generator is deterministic and exact', () => {
       expect(r.points.count).toBe(target);
       expect(r.points.position.length).toBe(target * 3);
       expect(r.points.color.length).toBe(target * 4);
-      expect(r.points.segment.length).toBe(target);
+      expect(r.points.tags.length).toBe(target * 2);
     }
   });
 
@@ -112,7 +112,7 @@ describe('the output is a 2.5D shell, not a cloud in a box', () => {
   it('thins surfaces unevenly, because the reasons for thinning are physical', () => {
     const perSegment = new Map<number, number>();
     for (let i = 0; i < r.points.count; i += 1) {
-      const s = r.points.segment[i]!;
+      const s = r.points.tags[i * 2]!;
       perSegment.set(s, (perSegment.get(s) ?? 0) + 1);
     }
     // Several distinct segments must be present, and the distribution must not be flat.
@@ -141,7 +141,26 @@ describe('the output is a 2.5D shell, not a cloud in a box', () => {
 
   it('labels every point with a segment id from the declared table', () => {
     const known = new Set(SEGMENTS.map((s) => s.id));
-    for (let i = 0; i < r.points.count; i += 1) expect(known.has(r.points.segment[i]!)).toBe(true);
+    for (let i = 0; i < r.points.count; i += 1) expect(known.has(r.points.tags[i * 2]!)).toBe(true);
+  });
+
+  it('marks the points beside a carved occlusion boundary, and only those', () => {
+    // ADR-0010 D4's bit 0. The count is the interesting assertion rather than the mechanism: a
+    // writer that marked everything or nothing would satisfy "the channel exists", and both are
+    // the failure the flag exists to avoid. Carving happens at depth cliffs, which this scene
+    // has and which the honesty model's own statistics count, so a share of the points is
+    // marked and it is a minority.
+    let marked = 0;
+    const flags = new Set<number>();
+    for (let i = 0; i < r.points.count; i += 1) {
+      const word = r.points.tags[i * 2 + 1]!;
+      flags.add(word);
+      if (word & TAG_ONE_SIDED) marked += 1;
+    }
+    // Nothing but bit 0 is ever set, which is what the production validator checks for.
+    expect([...flags].sort()).toEqual([0, TAG_ONE_SIDED]);
+    expect(marked).toBeGreaterThan(0);
+    expect(marked).toBeLessThan(r.points.count / 2);
   });
 });
 
@@ -165,21 +184,99 @@ describe('the .opm container', () => {
     expect(decoded.header.pointCount).toBe(r.points.count);
     expect(Array.from(decoded.position)).toEqual(Array.from(r.points.position));
     expect(Array.from(decoded.color)).toEqual(Array.from(r.points.color));
-    expect(Array.from(decoded.segment)).toEqual(Array.from(r.points.segment));
+    expect(Array.from(decoded.tags)).toEqual(Array.from(r.points.tags));
   });
 
-  it('aligns every section to 16 bytes, so both engines get zero-copy views', () => {
-    for (const s of decoded.header.sections) expect(s.byteOffset % 16).toBe(0);
+  it('aligns the first section and packs the rest behind it, back to back', () => {
+    // CHANGED BY ADR-0010, which supersedes this writer's per-section sixteen-byte alignment by
+    // name. PlayCanvas computes its own tightly packed planar offsets, so a gap anywhere cost a
+    // per-point CPU repack. What has to hold is that the first section is aligned, that nothing
+    // sits between them, and that every section still starts where a typed-array view may.
+    //
+    // THIS COUNT CANNOT SEE THE DEFECT ON ITS OWN, and the test below is the one that can. At
+    // twenty thousand points every section length is already a multiple of sixteen, so aligning
+    // each section and packing them tightly produce the same file: ADR-0010's "contiguous only
+    // when the point count happened to be a multiple of four" is exactly this blind spot. The
+    // assertion is kept because it is a real fixture at a real ladder count; it is not the one
+    // standing between this writer and the old layout.
+    const sections = decoded.header.sections;
+    expect(sections[0]!.byteOffset % 16).toBe(0);
+    for (const [index, section] of sections.entries()) {
+      if (index === 0) continue;
+      const previous = sections[index - 1]!;
+      expect(section.byteOffset).toBe(previous.byteOffset + previous.byteLength);
+    }
+    expect(sections.find((s) => s.name === 'position')!.byteOffset % 4).toBe(0);
+    expect(sections.find((s) => s.name === 'tags')!.byteOffset % 2).toBe(0);
   });
 
-  it('costs exactly 18 bytes per point plus the header', () => {
+  it('stays contiguous at a point count that is not a multiple of four', () => {
+    // FIVE POINTS, AND THE NUMBER IS THE TEST. Sixty bytes of position, twenty of colour and
+    // twenty of tags: none of the three is a multiple of sixteen, so a writer that aligned each
+    // section would leave four bytes of padding in front of the colour section and the file
+    // would fall off the renderer's zero-copy path. That is what the production validator was
+    // refusing these files for, and it is why ADR-0010 names the old alignment as superseded.
+    //
+    // Encoded from a hand-built map rather than from the generator, because the generator hits
+    // exact counts on the bake-off ladder and every one of those is a multiple of four.
+    const five = encodeOpm(
+      {
+        count: 5,
+        position: new Float32Array(15),
+        color: new Uint8Array(20),
+        tags: new Uint16Array(10),
+        min: [0, 0, -1] as const,
+        max: [0, 0, -1] as const,
+      },
+      r.meta,
+    );
+    const buffer = five.buffer.slice(five.byteOffset, five.byteOffset + five.byteLength);
+    const sections = decodeOpm(buffer as ArrayBuffer).header.sections;
+    expect(sections.map((s) => s.byteLength)).toEqual([60, 20, 20]);
+    expect(sections[0]!.byteOffset % 16).toBe(0);
+    for (const [index, section] of sections.entries()) {
+      if (index === 0) continue;
+      const previous = sections[index - 1]!;
+      expect(section.byteOffset).toBe(previous.byteOffset + previous.byteLength);
+    }
+    // Still legal views: float32 needs a multiple of four and uint16 a multiple of two.
+    expect(sections[0]!.byteOffset % 4).toBe(0);
+    expect(sections[2]!.byteOffset % 2).toBe(0);
+  });
+
+  it('costs exactly 20 bytes per point plus the header', () => {
+    // Eighteen under OPM/1. The two extra bytes are the tags section's flags channel, which the
+    // WebGPU binding was already paying for per point on the CPU.
     const payload = decoded.header.sections.reduce((n, s) => n + s.byteLength, 0);
-    expect(payload).toBe(r.points.count * 18);
+    expect(PACKED_STRIDE_BYTES).toBe(20);
+    expect(payload).toBe(r.points.count * PACKED_STRIDE_BYTES);
+  });
+
+  it('refuses an OPM/1 container by name rather than reading it as this version', () => {
+    // ADR-0010 D9 is refuse and regenerate. This decoder is the reference one, so it has to
+    // refuse an old file as loudly as the production validator does, and name what makes a new
+    // one: for this generator's fixtures that is `pnpm synth`.
+    const one = encoded.slice();
+    const view = new DataView(one.buffer, one.byteOffset, one.byteLength);
+    const headerLength = view.getUint32(4, true);
+    const text = new TextDecoder().decode(one.subarray(8, 8 + headerLength));
+    const downgraded = new TextEncoder().encode(text.replace('"version":2', '"version":1'));
+    expect(downgraded.length).toBe(headerLength);
+    one.set(downgraded, 8);
+    const buffer = one.buffer.slice(one.byteOffset, one.byteOffset + one.byteLength) as ArrayBuffer;
+    expect(() => decodeOpm(buffer)).toThrow(/OPM\/1/);
+    expect(() => decodeOpm(buffer)).toThrow(/pnpm synth/);
   });
 
   it('states the viewpoint, the rung and what the alpha channel means', () => {
     expect(decoded.header.rung).toBe(3);
+    expect(decoded.header.version).toBe(2);
+    // A belief, from the honesty model, and declared as such. The other legal value is
+    // `support`, which is what the reconstruction path writes.
     expect(decoded.header.colorAlpha).toBe('confidence');
+    // Both grids, per ADR-0010 D6. This generator rasterises at the resolution it reports, so
+    // they are equal; what matters is that the file states it rather than leaving it inferable.
+    expect(decoded.header.modelImage).toEqual(decoded.header.sourceImage);
     expect(decoded.header.forward).toBe('-Z');
     expect(decoded.header.up).toBe('+Y');
     expect(decoded.header.units).toBe('metres');

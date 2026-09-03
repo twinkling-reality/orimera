@@ -129,6 +129,7 @@ export function generatePointMap(options: Partial<GenerateOptions> & { targetPoi
     k,
     mask.keep,
     mask.confidence,
+    mask.oneSided,
     count,
     SEGMENTS,
     PRIMITIVES,
@@ -150,6 +151,12 @@ export function generatePointMap(options: Partial<GenerateOptions> & { targetPoi
       aspect: opts.aspect,
     },
     sourceImage: { width, height },
+    // This generator rasterises at the resolution it reports, so the model grid IS the
+    // photograph. Stated rather than left inferable; ADR-0010 D6.
+    modelImage: { width, height },
+    // A belief, from the honesty model in `honesty.ts`, and not the counted coverage the
+    // reconstruction path writes. An enum since OPM/2 so a reader is told which.
+    colorAlpha: 'confidence',
     metric: true,
     segments: SEGMENTS,
     statistics: {

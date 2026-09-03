@@ -35,7 +35,24 @@ both put metres between adjacent samples and both now say so.
 That number is coverage and not belief. ``ConfidenceBand`` in `atlas-core` deliberately cannot
 hold a percentage, because a percentage implies a frequency guarantee nothing has calibrated, and
 this channel makes no such claim: it reports how much surface one sample was asked to stand for,
-which is counted rather than estimated.
+which is counted rather than estimated. **OPM/2 says so in the header**: ``colorAlpha`` is now an
+enum and this producer declares ``support``, so a renderer that sizes a sprite by coverage is no
+longer telling itself that it read a confidence.
+
+**A survivor beside a dropped point is marked, and this is the one thing the renderer cannot work
+out for itself.** ADR-0010 D4 adds bit 0 of the tags flags channel: this point had a four-
+neighbour removed by the silhouette test above. A loader that rebuilds the image lattice by
+reprojecting every point through the header's own camera can already see that the cell beside
+this one is empty, and it cannot see why. An empty cell the model never placed is where the
+observed surface honestly ends; an empty cell this stage took is a surface that continues with
+its rim removed, and the two want opposite treatments when a tangent frame is estimated from
+neighbours. Only this stage knows which it was, because only this stage still has the point it
+dropped.
+
+**A pixel at the edge of the grid is NOT marked**, and the distinction is the whole value of the
+flag. It has fewer neighbours because the photograph ends, which is a fact a loader can see for
+itself from the lattice. Marking it here would make bit 0 mean "this point has a missing
+neighbour", which is the thing that needed no help.
 """
 
 from __future__ import annotations
@@ -48,7 +65,7 @@ from typing import Final
 from PIL import Image
 
 from orimera.reconstruction.depth import DepthPrediction
-from orimera.reconstruction.pointmap import PointMap, Segment
+from orimera.reconstruction.pointmap import TAG_ONE_SIDED, PointMap, Segment
 
 __all__ = ["DEFAULT_MAX_DEPTH_STEP", "DEFAULT_SEGMENT", "build_point_map"]
 
@@ -215,11 +232,14 @@ def build_point_map(
 
     positions = array("f")
     colours = bytearray()
-    segments = array("H")
+    tags = array("H")
 
+    width = prediction.width
+    height = prediction.height
     bridged = 0
+    one_sided = 0
     support_total = 0
-    for index in range(prediction.width * prediction.height):
+    for index in range(width * height):
         if not prediction.valid[index]:
             continue
         if bridging is not None and bridging[index]:
@@ -230,14 +250,19 @@ def build_point_map(
         colours += pixels[base : base + 3]
         colours.append(support[index])
         support_total += support[index]
-        segments.append(DEFAULT_SEGMENT.id)
+        flags = 0
+        if bridging is not None and _lost_a_neighbour(bridging, index, width, height):
+            flags |= TAG_ONE_SIDED
+            one_sided += 1
+        tags.append(DEFAULT_SEGMENT.id)
+        tags.append(flags)
 
-    placed = len(segments)
+    placed = len(tags) // 2
     total = prediction.width * prediction.height
     return PointMap(
         position=positions,
         color=colours,
-        segment=segments,
+        tags=tags,
         segments=[DEFAULT_SEGMENT],
         # Measured, not estimated, and every number here describes THIS FILE rather than the
         # prediction behind it. The two now differ: the quality gate reads the prediction's own
@@ -254,5 +279,32 @@ def build_point_map(
             # ratios and no denominator, which is a number that cannot be checked.
             "medianSampleSpacingM": 0.0 if math.isinf(reference) else reference,
             "meanSupport": 0.0 if placed == 0 else support_total / (placed * _FULL_SUPPORT),
+            # How many survivors carry bit 0. Recorded because the flag's whole justification is
+            # a measurement that has been taken on one map: ADR-0010 D4 puts it at "about a
+            # tenth of a percent of points" and says outright that whether it removes the
+            # fringing "is the thing to measure before writing it". A number per file is what
+            # makes that measurable on the next one.
+            "oneSidedPoints": float(one_sided),
         },
     )
+
+
+def _lost_a_neighbour(bridging: bytearray, index: int, width: int, height: int) -> bool:
+    """Was a four-neighbour of this pixel dropped by the silhouette test?
+
+    Four-neighbour rather than eight, because that is the lattice a load-time tangent frame is
+    estimated on: the row and column neighbours are the two half-extents, and a diagonal
+    contributes to neither.
+
+    Grid edges are not neighbours and their absence is not a drop. See the module docstring: a
+    point at the border of the photograph is missing a neighbour for a reason a loader can work
+    out from the lattice, and folding that in here would cost the flag its meaning.
+    """
+    row, column = divmod(index, width)
+    if column > 0 and bridging[index - 1]:
+        return True
+    if column + 1 < width and bridging[index + 1]:
+        return True
+    if row > 0 and bridging[index - width]:
+        return True
+    return row + 1 < height and bridging[index + width]

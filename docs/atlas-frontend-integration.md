@@ -79,6 +79,14 @@ computes SHA-256 over what arrived, and compares it **to the descriptor** rather
 response's own `ETag`. Bytes that fail never reach the decoder. A page with no `SubtleCrypto`
 loads no geometry at all and says so, rather than decoding what it could not check.
 
+**The container the loader accepts is `opm/2`**, which is a constant in that file and moves with
+the decoder in `@orimera/atlas-react`. ADR-0010 D9 is refuse and regenerate with no upgrade on
+read, so a descriptor naming `opm/1` is refused from the list rather than fetched and failed at
+the decoder: the region loses its geometry, the reason names the version, and several megabytes
+that could not have been read are never transferred. A descriptor whose container is null is
+attempted anyway, because null means no stage definition was recorded for that artifact's
+parameter digest rather than that the bytes are unreadable, and the decoder is then the check.
+
 A region attempts one reconstruction. `AtlasBinding` takes one point map per island and, until
 the placement record of ADR-0009 D6 exists, nothing records where a second camera stood; the first
 descriptor the server returned for a region is the one attempted and every other one becomes an

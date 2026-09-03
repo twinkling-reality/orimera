@@ -108,6 +108,17 @@ def run(
                 aspect=upright.width / max(1, upright.height),
             ),
             source_size=upright.size,
+            # The grid the points were unprojected from, which OPM/2 states beside the
+            # photograph rather than leaving to be inferred from a point count (ADR-0010 D6).
+            # The two differ by the model's own rounding and both are facts the renderer needs:
+            # the source frustum places the camera, and the model lattice is what a load-time
+            # tangent frame is estimated on.
+            model_size=(prediction.width, prediction.height),
+            # What `build_point_map` actually put in the alpha channel. Support and not
+            # confidence: it is a spacing ratio, which is coverage, counted rather than believed.
+            # Declared rather than left for a renderer to infer from the presence of a statistics
+            # key, which is the format flag nobody declared as one that ADR-0010 D5 closes.
+            color_alpha="support",
             # Carried from the model rather than assumed. A map that is not metric produces a
             # region that is not metric, and a spatial question over it refuses with a stated
             # reason instead of estimating a distance.

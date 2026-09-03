@@ -53,22 +53,44 @@ worth measuring.
 One file, one fetch, zero parsing. GLB-shaped:
 
 ```
-0..3    magic "OPM1"
+0..3    magic "OPM1"                          the FORMAT, not the version
 4..7    uint32 LE  header byte length
-8..     UTF-8 JSON header, space padded to a 16-byte boundary
+8..     UTF-8 JSON header, space padded so the FIRST section starts 16-byte aligned
         position  float32 x3   (12 B/point)   local frame, metres, +Y up, -Z forward
-        color     uint8   x4   ( 4 B/point)   R, G, B, and ALPHA = CONFIDENCE
-        segment   uint16  x1   ( 2 B/point)   semantic label, table in the header
+        color     uint8   x4   ( 4 B/point)   R, G, B, and ALPHA = see colorAlpha
+        tags      uint16  x2   ( 4 B/point)   x segment label, y flags word
 ```
 
-18 bytes per point. Every section starts on a 16-byte boundary, so both engines
-get zero-copy typed-array views.
+20 bytes per point. Only the first section is aligned and the rest pack tightly
+behind it, which is what keeps both engines on a zero-copy typed-array view: a
+per-section alignment left a gap for every point count that was not a multiple
+of four, and ADR-0010 supersedes it by name.
 
-**Alpha is confidence, not opacity.** Both engines support a normalised RGBA
-vertex colour out of the box, so an unmodified renderer draws a low-confidence
-point fainter with no shader work: "an unconfirmed candidate must look
-unconfirmed" holds by default rather than by remembering to implement it. The
-header says `"colorAlpha": "confidence"` so nobody has to infer it.
+`version` is 2. **OPM/1 is refused by name rather than upgraded on read**
+(ADR-0010 D9): regenerate the fixtures with `pnpm synth`.
+
+**Every offset and stride comes from the header's section list** (ADR-0010 D2).
+A reader computes them rather than knowing them, and a section a reader has
+never heard of is skipped rather than refused, so the next attribute is not
+another version.
+
+**Alpha is confidence or support, and the file says which.** Both engines
+support a normalised RGBA vertex colour out of the box, so an unmodified
+renderer draws a low-confidence point fainter with no shader work: "an
+unconfirmed candidate must look unconfirmed" holds by default rather than by
+remembering to implement it. `colorAlpha` is an enum since OPM/2: this generator
+writes `confidence`, a belief its own honesty model produces, and
+`orimera.reconstruction` writes `support`, which is counted coverage. Both used
+to say `confidence` and the renderer told them apart by whether a statistics key
+was present, which is a format flag nobody had declared as one.
+
+**The tags flags word.** Bit 0 says this point had a four-neighbour carved at an
+occlusion boundary, which is the one thing a loader cannot work out from the
+lattice it reprojects: an empty cell the rasteriser never hit is where the
+surface honestly ends, and an empty cell the carve took is a surface continuing
+with its rim removed. The remaining fifteen bits are reserved and validated
+zero. Nothing renders bit 0 yet; ADR-0010 D4 says whether it removes the
+silhouette fringing is the thing to measure before consuming it.
 
 ### Why not something standard
 
@@ -82,7 +104,7 @@ header says `"colorAlpha": "confidence"` so nobody has to infer it.
   reconstruction ladder, explicitly not splats. Encoding points as degenerate
   splats would misrepresent the rung and tilt the bake-off toward the splat path.
   When experiment X-1 produces a real splat, load real SOG alongside this.
-- **glTF POINTS.** Viable. Rejected because `segment` and `confidence` become
+- **glTF POINTS.** Viable. Rejected because `tags` and `confidence` become
   non-standard `_SEGMENT` / `_CONFIDENCE` attributes needing custom plumbing in
   both loaders, and PlayCanvas's glTF loader builds a full entity graph on the
   way in. More moving parts inside the measurement, no gain. `.opm` is
@@ -98,15 +120,23 @@ const at = (name) => header.sections.find((s) => s.name === name);
 
 const position = new Float32Array(buffer, at('position').byteOffset, header.pointCount * 3);
 const color    = new Uint8Array(buffer,   at('color').byteOffset,    header.pointCount * 4);
-const segment  = new Uint16Array(buffer,  at('segment').byteOffset,  header.pointCount);
+const tags     = new Uint16Array(buffer,  at('tags').byteOffset,     header.pointCount * 2);
 ```
 
+Note the lengths come from the header's own section list rather than from
+constants: `at(name).byteLength / elementBytes` is the general form, and the
+counts above are the same expression written out for the three sections OPM/2
+declares.
+
 three.js: `geometry.setAttribute('position', new THREE.BufferAttribute(position, 3))`,
-`'color'` with `normalized = true`, `'segment'` as a plain `BufferAttribute`.
+`'color'` with `normalized = true`, `'tags'` as a plain `BufferAttribute` of 2.
 
 PlayCanvas: build a `pc.VertexFormat` of `SEMANTIC_POSITION` (`TYPE_FLOAT32`, 3),
-`SEMANTIC_COLOR` (`TYPE_UINT8`, 4, normalized), `SEMANTIC_ATTR0` (`TYPE_UINT16`, 1)
-and hand each view to a `pc.VertexBuffer`.
+`SEMANTIC_COLOR` (`TYPE_UINT8`, 4, normalized), `SEMANTIC_ATTR0` (`TYPE_UINT16`, 2)
+and hand each view to a `pc.VertexBuffer`. **Two components, not one**: WebGPU
+rejects a vertex stream whose `arrayStride` is not a multiple of 4, outright and
+silently in a release engine build, which is the defect ADR-0010 D3 closed by
+widening the channel in the container instead of on the CPU.
 
 Neither path touches a point individually on the CPU. That is the requirement.
 

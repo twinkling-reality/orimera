@@ -44,8 +44,23 @@ from orimera.reconstruction.navigation import (
     build_corridor_artifact,
     validate_corridor_artifact,
 )
-from orimera.reconstruction.opm import OPM_MAGIC, OPM_VERSION, Viewpoint, encode_opm
-from orimera.reconstruction.pointmap import POINT_STRIDE_BYTES, PointMap, Segment
+from orimera.reconstruction.opm import (
+    OPM_MAGIC,
+    OPM_SECTIONS,
+    OPM_VERSION,
+    SUPERSEDED_OPM_VERSION,
+    ColorAlpha,
+    Viewpoint,
+    encode_opm,
+)
+from orimera.reconstruction.pointmap import (
+    MAX_SEGMENT_ID,
+    POINT_STRIDE_BYTES,
+    RESERVED_TAG_FLAGS,
+    TAG_ONE_SIDED,
+    PointMap,
+    Segment,
+)
 from orimera.reconstruction.pose import (
     CommandResult,
     PoseBuildManifest,
@@ -69,10 +84,16 @@ from orimera.reconstruction.validation import (
 __all__ = [
     "DEFAULT_MAX_DEPTH_STEP",
     "DEFAULT_SEGMENT",
+    "MAX_SEGMENT_ID",
     "MIN_VALID_FRACTION",
     "OPM_MAGIC",
+    "OPM_SECTIONS",
     "OPM_VERSION",
     "POINT_STRIDE_BYTES",
+    "RESERVED_TAG_FLAGS",
+    "SUPERSEDED_OPM_VERSION",
+    "TAG_ONE_SIDED",
+    "ColorAlpha",
     "CommandResult",
     "CorridorArtifact",
     "CorridorBuildManifest",

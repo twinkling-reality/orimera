@@ -30,6 +30,14 @@ import {
  * zero-copy `Uint8Array` view of the fetched file. `packedVertexBytes` reports when it is not
  * satisfied and a copy was made, because a per-point CPU pass inside a render benchmark is
  * exactly the kind of thing that should never be silent.
+ *
+ * **THE WEBGPU REPACK IS GONE, AND THE CONTAINER IS WHY.** This binding used to widen the
+ * segment channel from one uint16 to two on the CPU, for every point of every cloud, on WebGPU
+ * only: a planar uint16 channel is a vertex stream with `arrayStride` 2, WebGL2 accepts it,
+ * PlayCanvas's debug build only warns, and WebGPU rejects the pipeline outright and silently in
+ * a release build. The note left here said "the right long-term fix is for the container to
+ * store `segment` as 4 bytes". ADR-0010 D3 did that. Both graphics paths now upload the same
+ * zero-copy view of the file, and the two shader sources read the same two channels.
  */
 
 export interface PointCloudOptions {
@@ -85,7 +93,7 @@ const SUPPORT_FLOOR = 0.12;
 const ATTRIBUTES = {
   aPosition: pc.SEMANTIC_POSITION,
   aColor: pc.SEMANTIC_COLOR,
-  aSegment: pc.SEMANTIC_ATTR8,
+  aTags: pc.SEMANTIC_ATTR8,
 } as const;
 
 /** `ShaderDesc` is documented but not exported from the engine's type surface, so it is restated. */
@@ -109,64 +117,49 @@ function buildShaderDesc(blend: boolean): ShaderDesc {
   };
 }
 
-/**
- * Repack the planar buffer with `segment` widened from uint16 to uint16x2.
- *
- * Layout out: position 12N, colour 4N, segment 4N, which is 20 bytes per point against the
- * container's 18. The positions and colours are moved with two `set` calls, so only the segment
- * channel costs a per-point loop.
- */
-function padSegmentChannel(map: PointMap): { bytes: Uint8Array; copied: boolean } {
-  const n = map.header.pointCount;
-  const out = new Uint8Array(20 * n);
-  out.set(new Uint8Array(map.position.buffer, map.position.byteOffset, 12 * n), 0);
-  out.set(map.color, 12 * n);
-  const padded = new Uint16Array(out.buffer, 16 * n, 2 * n);
-  const source = map.segment;
-  for (let i = 0; i < n; i += 1) padded[i * 2] = source[i]!;
-  return { bytes: out, copied: true };
-}
-
 export function createPointCloud(options: PointCloudOptions): PointCloud {
   const { device, map, semantics } = options;
   const n = map.header.pointCount;
 
-  /**
-   * THE 2-BYTE SEGMENT CHANNEL IS A HARD WEBGPU ERROR, NOT A PERFORMANCE HINT.
-   *
-   * The `.opm` container stores `segment` as one uint16 per point, which in a planar layout means
-   * a vertex stream with `arrayStride` 2. PlayCanvas's own debug build only warns about this
-   * ("element size not multiple of 4 can have performance impact"), and WebGL2 accepts it without
-   * complaint. WebGPU rejects it outright: `Vertex buffer arrayStride (2) is not a multiple of 4`,
-   * the pipeline is invalid, and in the RELEASE engine build nothing is reported.
-   *
-   * So the same bytes that upload zero-copy on WebGL2 cannot be bound on WebGPU at all. Padding
-   * the channel to two components costs 2 extra bytes per point of VRAM and one CPU pass over the
-   * whole cloud, which is precisely the per-point JavaScript the container was designed to avoid.
-   * It is done here rather than hidden, `repacked` reports it, and the right long-term fix is for
-   * the container to store `segment` as 4 bytes.
-   */
-  const needsSegmentPadding = device.isWebGPU === true;
-  const segmentComponents = needsSegmentPadding ? 2 : 1;
-
   // Non-interleaved (planar) format. The third argument is what selects it, and it makes the
   // element offsets a function of the vertex count, which is why the format is built per cloud.
+  //
+  // The tags stream is two uint16 channels on BOTH graphics paths, which is what the container
+  // now stores. `arrayStride` is therefore 4 and WebGPU accepts the pipeline; see the module
+  // comment for what this cost before ADR-0010 D3. The engine's own debug assertion about a
+  // non-interleaved element size that is not a multiple of four also stops firing, which is the
+  // warning that named this defect in the first place.
   const format = new pc.VertexFormat(
     device,
     [
       { semantic: pc.SEMANTIC_POSITION, components: 3, type: pc.TYPE_FLOAT32 },
       { semantic: pc.SEMANTIC_COLOR, components: 4, type: pc.TYPE_UINT8, normalize: true },
-      {
-        semantic: pc.SEMANTIC_ATTR8,
-        components: segmentComponents,
-        type: pc.TYPE_UINT16,
-        normalize: false,
-      },
+      { semantic: pc.SEMANTIC_ATTR8, components: 2, type: pc.TYPE_UINT16, normalize: false },
     ],
     n,
   );
 
-  const packed = needsSegmentPadding ? padSegmentChannel(map) : packedVertexBytes(map);
+  // THE ENGINE'S LAYOUT AND THE FILE'S HAVE TO BE THE SAME BYTES, and neither is written here.
+  //
+  // A non-interleaved format makes the element offsets a function of the vertex count: the engine
+  // places channel k at the sum of the element sizes before it, times the count, and reports the
+  // total as `verticesByteSize`. The file's packed region is the same expression over the .opm
+  // section registry. If a section is ever added to one and not the other, every channel after it
+  // is read from the wrong place, the cloud renders as noise and nothing reports a fault. ADR-0010
+  // D2 made the section list authoritative, so that is now a live possibility rather than a
+  // hypothetical, and the two totals are compared once per cloud.
+  //
+  // `verticesByteSize` and NOT `format.size`. The latter rounds every element up to four bytes,
+  // so it was already 20 when the container packed 18: it would have accepted the old layout and
+  // is not the quantity that has to agree.
+  if (format.verticesByteSize !== map.packedByteLength) {
+    throw new RangeError(
+      `the vertex format reads ${format.verticesByteSize} bytes and the container packs `
+        + `${map.packedByteLength} for ${n} points; a section is in one and not the other`,
+    );
+  }
+
+  const packed = packedVertexBytes(map);
   const vertexBuffer = new pc.VertexBuffer(device, format, n, {
     usage: pc.BUFFER_STATIC,
     data: packed.bytes as unknown as ArrayBuffer,
@@ -217,14 +210,20 @@ export function createPointCloud(options: PointCloudOptions): PointCloud {
   material.setParameter('uFog', [footprint * 0.9, footprint * 3.2, 1.2, 1]);
   material.setParameter('uExposure', 1.25);
   material.setParameter('uPoint', [options.sizeGain ?? DEFAULT_SIZE_GAIN, options.maxSizePx ?? DEFAULT_MAX_SIZE_PX, 900, 0]);
-  // Spacing-aware sizing, but only for a producer that says its alpha is a spacing ratio. Every
+  // Spacing-aware sizing, but only for a producer that SAYS its alpha is a spacing ratio. Every
   // other file keeps a floor of 1, which makes the shader's divisor exactly 1 and leaves it
   // rendering as it always did. Reinterpreting another writer's channel on a guess is how one
   // producer's confidence silently becomes another's geometry.
-  const spacing = map.header.statistics?.['medianSampleSpacingM'];
+  //
+  // The condition used to be the presence of a `medianSampleSpacingM` statistic, which ADR-0010
+  // calls out by name: "the renderer tells them apart by the presence of a statistics key, which
+  // is a format flag that nobody declared as one". D5 made `colorAlpha` an enum, so the file now
+  // says which quantity it holds and this reads the declaration. The statistic is still the
+  // denominator the ratio was formed against and is still worth reading back; it is no longer
+  // what decides the meaning of a channel.
   material.setParameter(
     'uSupportFloor',
-    typeof spacing === 'number' && spacing > 0 ? SUPPORT_FLOOR : 1,
+    map.header.colorAlpha === 'support' ? SUPPORT_FLOOR : 1,
   );
   material.setParameter('uIsland', [
     1,

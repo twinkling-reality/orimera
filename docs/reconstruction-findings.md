@@ -268,6 +268,70 @@ justifies, and it is not a normal.
 
 ---
 
+## 5.1 What OPM/2 costs, and what its one-sided flag actually marks
+
+**MEASURED 2026-09-03**, on the same photograph, by regenerating it through the current depth
+stage under the new container. Harness: a standalone script in the same spirit as the ones above,
+run once and not committed; every number below is reproducible from the committed writer plus the
+photograph. The run reproduced section 1 exactly, which is the check that says the container
+change moved nothing else: 190,570 points, a 3.04 percent silhouette drop, mean support 0.733 and
+a 1.43 cm median sample spacing, all identical.
+
+ADR-0010 asks for both of these numbers under "what must be measured before this is final".
+
+### The byte cost, on a real map rather than in arithmetic
+
+| Quantity | OPM/1 | OPM/2 |
+| --- | --- | --- |
+| File | 3,431,492 bytes | 3,812,696 bytes |
+| Payload at 190,570 points | 3,430,260 bytes | 3,811,400 bytes |
+| Stride | 18 bytes a point | 20 bytes a point |
+| The segment channel | 381,140 bytes | 762,280 bytes as `tags` |
+| JSON header | 1,133 bytes | 1,191 bytes |
+| Header region, prefix and padding included | 1,232 bytes | 1,296 bytes |
+
+**+381,140 bytes, or 11.11 percent per region at an unchanged point count.** The whole of it is
+the tags section's second uint16 channel. The JSON header grew by 58 bytes for `modelImage`, the
+`colorAlpha` value and the renamed section, and the reserved region it sits in by 64; that is
+0.002 percent of the file and is noise beside the channel.
+
+Read that against what it replaces rather than against zero. The WebGPU binding was allocating a
+20-byte-per-point buffer anyway and filling the extra 2 bytes with a per-point CPU loop over every
+point of every cloud, so on that path the change costs 11.11 percent of transfer and disk to
+remove a pass over 190,570 points at load. On WebGL2 it is 11.11 percent for a flags channel
+nothing renders yet. **At 512 px a photograph is 3.8 MB rather than 3.4 MB, and a thousand-region
+library is 3.8 GB rather than 3.4 GB.** That is the number to weigh, and it is the reason
+`max_edge_px` is a stage parameter: the same decision at 1024 px is four times the figure either
+way.
+
+### Bit 0 marks 2.07 percent of points, not a tenth of a percent
+
+| Quantity | Points | Share |
+| --- | --- | --- |
+| Dropped by the silhouette test | 5,973 | 3.04 percent of the model grid |
+| Survivors carrying bit 0 | 3,943 | **2.07 percent of the file** |
+| Points with a tangent frame on one axis only (section 5) | 201 | 0.105 percent of the file |
+| Points with no tangent frame at all (section 5) | 36 | 0.019 percent of the file |
+
+**ADR-0010 D4 says the flag "addresses about a tenth of a percent of points", and that sentence
+is comparing two different populations.** The tenth of a percent is section 5's count of points
+whose load-time tangent frame came out degenerate on an axis. Bit 0, as the record defines it,
+marks a point that lost ANY of its four neighbours to the drop, and that is a twentyfold larger
+set: a point can lose its left neighbour and still be framed from its right one.
+
+Both numbers are correct and neither is the other. Which one matters depends on what a renderer
+does with the flag, and that is unmeasured: if the treatment is "estimate this frame differently",
+the population is the 201; if it is "do not stretch a frame across a rim that was removed", it is
+the 3,943. **The flag as specified is the coarser signal**, and the finer one is recoverable from
+it at load, because a point marked on both row neighbours is exactly the degenerate case. So
+nothing is lost by the coarse flag and the record's cost/benefit sentence understates the marked
+population by twenty times.
+
+What is still unmeasured is the thing D4 itself names: whether consuming bit 0 removes the
+silhouette fringing, "by rendering with and without it and looking". Nothing consumes it yet.
+
+---
+
 ## 6. Environment
 
 - The reconstruction extra could not be installed on macOS from `uv.lock` because the lock pinned

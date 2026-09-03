@@ -27,8 +27,8 @@
  * substitution inside shader text is exactly where these two would silently diverge.
  *
  *   aPosition   vec3   local frame, metres, +Y up, -Z forward
- *   aColor      vec4   rgb albedo, ALPHA IS CONFIDENCE (documented in the .opm header)
- *   aSegment    float  semantic segment id, indexes uSegState
+ *   aColor      vec4   rgb albedo, ALPHA IS SUPPORT OR CONFIDENCE, declared by the .opm header
+ *   aTags       vec2   x semantic segment id, indexes uSegState; y flags word, bit 0 one-sided
  *
  *   uSegState[16] vec4  x unconfirmed, y provenance slot 0..3, z presence-marker-only, w conf floor
  *   uIsland       vec4  x emphasis scalar, y footprint radius local, z dissolve band start, w scale
@@ -43,7 +43,18 @@
 export const POINT_VERTEX_GLSL = /* glsl */ `
 attribute vec3 aPosition;
 attribute vec4 aColor;
-attribute float aSegment;
+/**
+ * Two components since OPM/2, and the same two on both graphics paths.
+ *
+ * ADR-0010 D3 widened the container's segment attribute to a four-byte tags section of two
+ * uint16 channels, because WebGPU rejects a vertex stream whose arrayStride is not a multiple of
+ * 4. The binding used to widen it on the CPU for WebGPU only, so this attribute was one float
+ * here and a vec2 there from the same bytes. It is now the same shape in both, and y is a
+ * flags word that nothing reads yet: ADR-0010 D4 says outright that whether bit 0 removes the
+ * silhouette fringing "is the thing to measure before writing it", and consuming it before that
+ * measurement would be inventing an appearance for a number nobody has looked at.
+ */
+attribute vec2 aTags;
 
 uniform mat4 matrix_model;
 uniform mat4 matrix_viewProjection;
@@ -67,7 +78,7 @@ float hash1(float n) {
 }
 
 void main(void) {
-    int seg = int(aSegment + 0.5);
+    int seg = int(aTags.x + 0.5);
     vec4 state = uSegState[seg];
 
     float presenceOnly = state.z;
@@ -217,27 +228,28 @@ export const POINT_VERTEX_WGSL = /* wgsl */ `
 attribute aPosition : vec3f;
 attribute aColor : vec4f;
 /**
- * NOTE THE TYPE AND THE COMPONENT COUNT. BOTH DIFFER FROM THE GLSL PATH, AND BOTH ARE FORCED.
+ * NOTE THE TYPE. THE COMPONENT COUNT NO LONGER DIFFERS FROM THE GLSL PATH; THE SPELLING DOES.
  *
- * WebGPU requires every vertex stream's arrayStride to be a multiple of 4, so the WebGPU vertex
- * format widens segment from one uint16 to two (see padSegmentChannel in point-cloud.ts). The
- * attribute therefore arrives as a two-component integer here and as a one-component float on
- * WebGL2, from the same source bytes.
+ * WebGPU requires every vertex stream's arrayStride to be a multiple of 4. Under OPM/1 the
+ * container stored one uint16 per point and this binding widened it on the CPU for WebGPU only,
+ * so the attribute was two components here and one on WebGL2 from the same bytes. ADR-0010 D3
+ * put the four-byte tags section in the container instead, so both paths now read the same two
+ * channels and the per-point pass is gone.
  *
  * PlayCanvas rewrites the input struct field to the integer form and emits a private variable of
  * the DECLARED type plus a cast:
  *
- *     @location(8) aSegment: vec2u,      // in the generated VertexInput struct
- *     var<private> aSegment : vec2f;     // what this source actually reads
- *     aSegment = vec2f(input.aSegment);  // inserted by _pcCopyInputs
+ *     @location(8) aTags: vec2u,      // in the generated VertexInput struct
+ *     var<private> aTags : vec2f;     // what this source actually reads
+ *     aTags = vec2f(input.aTags);     // inserted by _pcCopyInputs
  *
- * So the body must read the BARE NAME, never input.aSegment, which has the other type. Declaring
- * a type the engine's float-to-int map does not cover emits aSegment: null into the struct and
+ * So the body must read the BARE NAME, never input.aTags, which has the other type. Declaring
+ * a type the engine's float-to-int map does not cover emits aTags: null into the struct and
  * fails to parse, and that failure is SILENT in the release engine build: the pipeline is
  * rejected, the draw is dropped, the canvas stays empty and the frame rate goes up. The harness
  * has a render-validity guard because of exactly this.
  */
-attribute aSegment : vec2f;
+attribute aTags : vec2f;
 
 uniform matrix_model : mat4x4f;
 uniform matrix_viewProjection : mat4x4f;
@@ -260,7 +272,7 @@ fn hash1(n : f32) -> f32 {
 fn vertexMain(input : VertexInput) -> VertexOutput {
     var output : VertexOutput;
 
-    let seg : i32 = i32(aSegment.x);
+    let seg : i32 = i32(aTags.x);
     let state : vec4f = uniform.uSegState[seg];
 
     let presenceOnly : f32 = state.z;

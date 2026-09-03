@@ -18,10 +18,10 @@ const align = (n: number): number => Math.ceil(n / 16) * 16;
 
 /** A minimal, valid `.opm`. `seed` changes the bytes so two maps are distinguishable. */
 function buildOpm(seed = 0, count = 4): ArrayBuffer {
-  const sizes = { position: count * 12, color: count * 4, segment: count * 2 };
+  const sizes = { position: count * 12, color: count * 4, tags: count * 4 };
   const header = (offsets: [number, number, number]) => ({
     format: 'orimera-point-map',
-    version: 1,
+    version: 2,
     pointCount: count,
     rung: 3,
     frame: 'local',
@@ -37,13 +37,14 @@ function buildOpm(seed = 0, count = 4): ArrayBuffer {
       aspect: 4 / 3,
     },
     sourceImage: { width: 400, height: 300 },
+    modelImage: { width: 400, height: 300 },
     bounds: { min: [-3, 0, -8], max: [4, 2, -1] },
     colorAlpha: 'confidence',
     segments: [{ id: 0, name: 'ground', cls: 'ground' }],
     sections: [
       { name: 'position', type: 'float32', components: 3, normalized: false, byteOffset: offsets[0], byteLength: sizes.position },
       { name: 'color', type: 'uint8', components: 4, normalized: true, byteOffset: offsets[1], byteLength: sizes.color },
-      { name: 'segment', type: 'uint16', components: 1, normalized: false, byteOffset: offsets[2], byteLength: sizes.segment },
+      { name: 'tags', type: 'uint16', components: 2, normalized: false, byteOffset: offsets[2], byteLength: sizes.tags },
     ],
   });
 
@@ -51,13 +52,13 @@ function buildOpm(seed = 0, count = 4): ArrayBuffer {
   const dataStart = 8 + align(probe.length + 96);
   const positionAt = align(dataStart);
   const colorAt = align(positionAt + sizes.position);
-  const segmentAt = align(colorAt + sizes.color);
-  const total = align(segmentAt + sizes.segment);
+  const tagsAt = align(colorAt + sizes.color);
+  const total = align(tagsAt + sizes.tags);
 
   const bytes = new Uint8Array(total);
   const view = new DataView(bytes.buffer);
   const headerBytes = new TextEncoder().encode(
-    JSON.stringify(header([positionAt, colorAt, segmentAt])),
+    JSON.stringify(header([positionAt, colorAt, tagsAt])),
   );
   bytes.set(new TextEncoder().encode('OPM1'), 0);
   view.setUint32(4, headerBytes.length, true);
@@ -87,7 +88,7 @@ const descriptor = (overrides: Record<string, unknown> = {}) => {
     kind: 'point_map',
     stage_key: 'depth',
     stage_version: 1,
-    container: 'opm/1',
+    container: 'opm/2',
     state: 'available',
     reason: null,
     needs_repair: false,
@@ -396,7 +397,10 @@ describe('production reconstruction geometry', () => {
         descriptor({
           capture_id: CAPTURE_B,
           artifact_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-          container: 'opm/2',
+          // OPM/1, which this build refuses by name. ADR-0010 D9 is refuse and regenerate, and
+          // the descriptor says the version before the transfer starts, so the region is skipped
+          // rather than sent several megabytes it could not have read.
+          container: 'opm/1',
           reference: { href: '/geometry/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
         }),
       ],

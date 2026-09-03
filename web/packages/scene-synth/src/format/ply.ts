@@ -37,7 +37,10 @@ export function encodePly(points: PointMap, comment: string): Uint8Array {
     out[headerBytes.length + o + 13] = points.color[i * 4 + 1]!;
     out[headerBytes.length + o + 14] = points.color[i * 4 + 2]!;
     out[headerBytes.length + o + 15] = points.color[i * 4 + 3]!;
-    view.setUint16(o + 16, points.segment[i]!, true);
+    // The segment id only. PLY is the eyeballing side output, and the tags section's flags
+    // channel has no PLY property declared for it: a viewer that showed it would be showing a
+    // number nothing in MeshLab can interpret. The .opm is the file that carries everything.
+    view.setUint16(o + 16, points.tags[i * 2]!, true);
   }
 
   return out;

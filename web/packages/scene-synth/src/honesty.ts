@@ -75,6 +75,21 @@ export interface KeepMask {
   readonly keep: Uint8Array;
   /** 0..255. Rides in the colour buffer's alpha channel; see format/opm.ts. */
   readonly confidence: Uint8Array;
+  /**
+   * One byte per pixel, non-zero where a KEPT pixel had a four-neighbour carved at an occlusion
+   * boundary. Rides in bit 0 of the tags flags channel; ADR-0010 D4.
+   *
+   * Computed here because this is where the carve mask exists. It is deliberately NOT "this
+   * pixel has a missing neighbour": a neighbour that was a miss is a frustum or sky boundary and
+   * a neighbour dropped by the grazing, texture or range dice is thin sampling, and a loader can
+   * see both of those for itself from the lattice it reprojects. What it cannot see is that a
+   * neighbour was REMOVED at a silhouette, which is a surface continuing with its rim taken off.
+   *
+   * Taken before `trimToExactly`, which zeroes further keep entries to hit an exact point count.
+   * A pixel lost to that is lost to arithmetic rather than to a silhouette, so folding it in
+   * would make the flag mean something the fixture's own honesty model does not.
+   */
+  readonly oneSided: Uint8Array;
   readonly keptCount: number;
   readonly stats: {
     readonly missed: number;
@@ -248,9 +263,27 @@ export function computeKeepMask(
     }
   }
 
+  // A kept pixel beside a carved one. Four-neighbour rather than eight, because that is the
+  // lattice a load-time tangent frame is estimated on: the row and column neighbours are the two
+  // half-extents and a diagonal contributes to neither.
+  const oneSided = new Uint8Array(n);
+  for (let py = 0; py < height; py += 1) {
+    for (let px = 0; px < width; px += 1) {
+      const i = py * width + px;
+      if (keep[i] === 0) continue;
+      const lost =
+        (px > 0 && carved[i - 1] === 1) ||
+        (px + 1 < width && carved[i + 1] === 1) ||
+        (py > 0 && carved[i - width] === 1) ||
+        (py + 1 < height && carved[i + width] === 1);
+      if (lost) oneSided[i] = 1;
+    }
+  }
+
   return {
     keep,
     confidence,
+    oneSided,
     keptCount: kept,
     stats: {
       missed,

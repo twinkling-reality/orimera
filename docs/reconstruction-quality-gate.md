@@ -6,9 +6,19 @@ Status: **implemented measurement contract; real gate blocked**.
 persisted. The PlayCanvas reader independently validates its untrusted byte boundary before it
 constructs typed-array views. Both sides check the format, version, rung, explicit metric flag,
 camera axes, source dimensions and aspect, field of view, bounds, section types, exact lengths,
-alignment, and container range. The production validator additionally checks every position is
-finite, in front of the source camera, and agrees with the declared bounds, and that every point
-uses a declared segment.
+alignment, and container range. Since OPM/2 ([adr/0010-opm-2.md](adr/0010-opm-2.md)) both also
+refuse version 1 **by name**, with a message naming the regeneration path rather than a converter,
+check that `colorAlpha` declares which quantity the alpha channel holds, and check `modelImage`
+against `sourceImage` for reachability by one uniform resize rather than for equality.
+
+**The division of labour between the two is per-point work, and it is deliberate.** The production
+validator additionally checks every position is finite, in front of the source camera, and agrees
+with the declared bounds; that every point uses a declared segment id inside the range the
+renderer's semantic table can index; and that every reserved bit of the tags flags channel is
+zero. The reader does none of those, because the one requirement of that module is no per-point
+JavaScript: parsing cost must not land inside a number that is supposed to be about rendering.
+Reading is therefore weaker than writing here, on purpose, and the writer's boundary is the one
+that stands in front of a durable artifact.
 
 The renderer exposes a source-panel envelope derived from the artifact's measured depth bounds and
 source-camera frustum. That envelope is an observed presentation extent only. It is not navigation,
@@ -37,7 +47,9 @@ began deleting that bicycle's frame and wheel rims. A single image is not a corp
 carries the same status as the one above and the same reason for being a stage parameter: an edit
 changes the stage key and regenerates rather than leaving stale point maps behind. The
 `discontinuityDropped` statistic now travels in every `.opm`, so the distribution needed to review
-this threshold can be read off a real corpus the same way the valid fraction is.
+this threshold can be read off a real corpus the same way the valid fraction is. `oneSidedPoints`
+joins it under OPM/2 and counts the survivors that lost a neighbour to that drop, which is the
+population ADR-0010 D4's flag marks and a number that had never been measured.
 
 No consented OGC-1 corpus, signed consent record, or real quality observations were found locally on
 2026-08-31. Therefore Phase 3A has a productionized contract but has **not** passed its roadmap gate.

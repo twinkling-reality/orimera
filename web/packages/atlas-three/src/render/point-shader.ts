@@ -39,7 +39,7 @@ export const POINT_VERTEX_SHADER = /* glsl */ `
 precision highp float;
 
 in vec4 aColor;      // rgb albedo, ALPHA = per-point reconstruction confidence
-in float aSegment;   // semantic label id, indexes uSegmentState
+in vec2 aTags;       // x semantic label id, indexes uSegmentState; y flags word, unread
 
 uniform sampler2D uSegmentState;  // 256x1 RGBA8: emphasis, unconfirmed, provenance, flags
 
@@ -89,7 +89,7 @@ void cull() {
 }
 
 void main() {
-  int seg = int(aSegment + 0.5);
+  int seg = int(aTags.x + 0.5);
   vec4 state = texelFetch(uSegmentState, ivec2(seg, 0), 0);
   float emphasis    = state.r;
   float unconfirmed = state.g;
