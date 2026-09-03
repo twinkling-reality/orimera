@@ -118,6 +118,7 @@ def project_world_package(
                     cursor,
                     world_id,
                     pointers,
+                    workspace_id=workspace_id,
                     evaluation_reports=evaluation_reports,
                     parent_merkle_root_sha256=parent_merkle_root_sha256,
                 )
@@ -208,6 +209,7 @@ def _project_components(
     world_id: str,
     pointers: Mapping[str, uuid.UUID | None],
     *,
+    workspace_id: uuid.UUID,
     evaluation_reports: Sequence[Path],
     parent_merkle_root_sha256: str | None,
 ) -> dict[str, Any]:
@@ -245,12 +247,67 @@ def _project_components(
         "and not exists (select 1 from tombstone t where t.scope='assertion' "
         "and t.assertion_id=a.assertion_id and t.effective_at<=now()) order by a.assertion_id"
     ).fetchall()
+    # **The scene predicate is asked ONCE, here, and every other query is filtered by its
+    # answer.** ADR-0009 D9 gives a fact about N photographs a subject, and the reduction over
+    # that subject INVERTS: a derivative of one photograph survives while any live capture holds
+    # its bytes, and a scene artifact is withdrawn by the deletion of ONE of its members, because
+    # a receipt over eight photographs is not a claim about the seven that are left.
+    #
+    # Asking it once is not tidiness, it is what makes the package internally consistent.
+    # Repeatable read fixes which ROWS this transaction sees, so two calls agree about the
+    # tombstone table. It does not fix the CLOCK: `tombstone_blocks_scene` reaches
+    # `tombstone_blocks_capture`, which filters `t.effective_at <= clock_timestamp()`, and
+    # `clock_timestamp()` advances between statements. A tombstone committed before the snapshot
+    # with an `effective_at` falling between two calls would be invisible to the first and
+    # visible to the second, and the package would then describe a receipt whose subject it had
+    # already dropped. Nothing in this repository writes a future `effective_at`, so it is
+    # unreachable today and it is designed out rather than commented around.
+    #
+    # The workspace filter is explicit rather than left to row-level security, which is what the
+    # older queries in this function rely on. Both are correct in production; only this one is
+    # falsifiable by a test, because the harness connects as the schema owner and a superuser
+    # bypasses row-level security entirely, so no test here can see a missing predicate.
+    live_scenes = [
+        row["scene_id"]
+        for row in cursor.execute(
+            "select s.scene_id from reconstruction_scene s where s.workspace_id=%s "
+            "and not tombstone_blocks_scene(s.workspace_id,s.scene_id) order by s.scene_id",
+            (workspace_id,),
+        ).fetchall()
+    ]
+    scenes = cursor.execute(
+        "select s.scene_id from reconstruction_scene s "
+        "where s.workspace_id=%s and s.scene_id = any(%s) order by s.scene_id",
+        (workspace_id, live_scenes),
+    ).fetchall()
+    scene_members = cursor.execute(
+        "select m.scene_id,m.capture_id,m.ordinal,m.registered "
+        "from reconstruction_scene_member m where m.workspace_id=%s and m.scene_id = any(%s) "
+        "order by m.scene_id,m.ordinal,m.capture_id",
+        (workspace_id, live_scenes),
+    ).fetchall()
+    # **The two halves are deliberately not symmetric, and the asymmetry belongs to the older
+    # clause.** `tombstone_blocks_scene` covers interval scope, so a redaction over a member's
+    # whole frame withdraws the scene. The per-capture clause tests `deleted_at`, which an
+    # interval tombstone never sets, so a redacted photograph's own point map is still described
+    # here while `orimera/graph/geometry.py` answers 410 for it. Measured, not supposed. That is
+    # a pre-existing inconsistency in the clause this change did not write.
+    #
+    # `a.scene_id is null` on the first branch is REDUNDANT and is kept anyway. Migration 0024's
+    # `an_artifact_names_one_subject` already makes the two branches mutually exclusive, so
+    # removing it changes no row and no test, which was checked rather than assumed. It stays
+    # because the query is a disjunction over two kinds of subject and a reader should be able to
+    # see that without holding a check constraint in their head, and it is called out as
+    # redundant so that nobody later reads it as the thing keeping the branches apart.
     artifacts = cursor.execute(
         "select a.artifact_id,a.kind,a.stage_key,a.stage_version,a.params_digest,a.input_digest,"
-        "a.content_sha256,a.byte_size,a.superseded_by,a.purged_at,a.needs_repair "
-        "from artifact a where exists (select 1 from capture c "
-        "where c.blob_sha256=a.source_blob_sha256 and c.deleted_at is null) "
-        "order by a.artifact_id"
+        "a.content_sha256,a.byte_size,a.superseded_by,a.purged_at,a.needs_repair,a.scene_id "
+        "from artifact a where "
+        "(a.scene_id is null and exists (select 1 from capture c "
+        " where c.blob_sha256=a.source_blob_sha256 and c.deleted_at is null)) "
+        "or a.scene_id = any(%s) "
+        "order by a.artifact_id",
+        (live_scenes,),
     ).fetchall()
 
     span_ids = {row["span_id"]: _urn("span", row["span_id"]) for row in spans}
@@ -262,6 +319,11 @@ def _project_components(
     artifact_ids = {
         row["artifact_id"]: _urn("artifact", row["artifact_id"]) for row in artifacts
     }
+    scene_ids = {row["scene_id"]: _urn("scene", row["scene_id"]) for row in scenes}
+    members_by_scene: dict[Any, list[Mapping[str, Any]]] = {}
+    for row in scene_members:
+        if row["scene_id"] in scene_ids:
+            members_by_scene.setdefault(row["scene_id"], []).append(row)
 
     graph = {
         "assertions": [
@@ -364,6 +426,10 @@ def _project_components(
                 "integrity": "needs-repair" if row["needs_repair"] else "recorded",
                 "kind": row["kind"],
                 "params_sha256": row["params_digest"],
+                # Which subject this artifact is about, when the subject is a set. Null for the
+                # ordinary case of a derivative of one photograph, whose source is carried in
+                # `provenance/events.json` rather than here.
+                "scene": _mapped_or_urn(scene_ids, "scene", row["scene_id"]),
                 "stage": {"key": row["stage_key"], "version": row["stage_version"]},
                 "state": (
                     "purged"
@@ -395,6 +461,39 @@ def _project_components(
             }
             for assertion in graph["assertions"]
             if assertion["predicate"] == "reconstruction_rung_is"
+        ],
+        # The subject of every scene-level claim, so a reader can resolve "a fact about these
+        # eight photographs" to the eight. The member ids are the SAME pseudonyms
+        # `memory/graph.json` uses for its captures, which is what makes the join possible without
+        # putting a real identifier in the package.
+        #
+        # `capture_ids[...]` is indexed rather than defaulted, and that is the decision. A member
+        # missing from the exported captures would mean the scene query and the capture query
+        # disagreed inside one snapshot, which repeatable read makes impossible; minting a URN for
+        # it instead would put a reference into the package that resolves to nothing, and nothing
+        # in `verify_package` checks referential closure, so it would verify clean and be wrong.
+        # **`member_digest` is deliberately NOT exported**, and it was until a review worked out
+        # what it hands over. `scene_id_for` is `uuid5(SCENE_NAMESPACE, digest.hex())` over a
+        # namespace that is a public constant in this repository, so the digest reconstructs the
+        # database's real `scene_id` primary key, which is exactly what `_urn` pseudonymises on
+        # the line below. It bought nothing in exchange: a package holder has no raw capture ids,
+        # so they cannot recompute the digest and check it, which is the only thing exporting it
+        # could have been for.
+        "scenes": [
+            {
+                "members": [
+                    {
+                        "capture_id": capture_ids[member["capture_id"]],
+                        "ordinal": member["ordinal"],
+                        # Null means nobody measured it, which is not false: an unmeasured member
+                        # supports no scene-level claim. ADR-0009 D4.
+                        "registered": member["registered"],
+                    }
+                    for member in members_by_scene.get(row["scene_id"], ())
+                ],
+                "scene_id": scene_ids[row["scene_id"]],
+            }
+            for row in scenes
         ],
     }
     structure, world_sections = _structure(cursor, world_id, pointers["structure_snapshot_id"])

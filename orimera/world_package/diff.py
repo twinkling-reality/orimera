@@ -12,7 +12,25 @@ from typing import Any
 from orimera.canonical import canonical_json
 from orimera.world_package.package import MANIFEST_PATH, verify_package
 
-_IDENTITY_KEYS = ("@id", "id", "capture_id", "entity_id", "occurrence_id", "tombstone_id")
+#: How a list item is recognised as the same item across two packages, so a change reads as one
+#: entry added or removed rather than as the whole list replaced.
+#:
+#: ``artifact_id`` and ``scene_id`` were added for ADR-0009 D9, whose no-ship rule is that
+#: deleting one of a scene's members changes the export. Without them every item in
+#: ``reconstruction/artifacts.json`` is unidentified, ``_identified`` returns None for the list,
+#: and the entire list collapses to a single opaque ``replaced`` change. Section 6.6 promises
+#: that "the diff between two versions is the honest answer to what changed"; a diff that cannot
+#: name which artifact went is not that answer.
+_IDENTITY_KEYS = (
+    "@id",
+    "id",
+    "artifact_id",
+    "capture_id",
+    "entity_id",
+    "occurrence_id",
+    "scene_id",
+    "tombstone_id",
+)
 
 
 @dataclass(frozen=True, slots=True)

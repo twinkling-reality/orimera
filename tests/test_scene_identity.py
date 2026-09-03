@@ -20,17 +20,23 @@ assertions trivial. The middle one rather than an end, because the presentation 
 workspace is read in is ``started_at`` then ``capture_id``, so a deletion at either end would be
 indistinguishable from an off-by-one in anything that walks the list.
 
-The export half of the no-ship rule is not here. It lives with the projector, which does not yet
-read a scene at all.
+Both halves of the no-ship rule are here, under "the export" below: the bytes go through the
+purge queue and the export through ``orimera/world_package/projector.py``. They are in one file
+rather than split across this and ``tests/test_world_package_postgres.py`` because D9 states them
+as one rule, and a reader checking whether it is met should not have to find the second half.
 """
 
 from __future__ import annotations
 
+import datetime as dt
+import json
 import secrets
 import uuid
+from pathlib import Path
 
 import psycopg
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from orimera.db.roles import (
     PURGE_CROSS_WORKSPACE_TABLES,
     PURGE_ROLE,
@@ -44,6 +50,7 @@ from orimera.evidence.blob import BlobId
 from orimera.evidence.scene import scene_id_for, scene_member_digest
 from orimera.ingest.pipeline import PhotoIngestPipeline
 from orimera.store.local import LocalContentAddressedStore
+from orimera.world_package import diff_packages, project_world_package
 
 from conftest import CountingVisionModel, iso, write_photo, write_point_map
 
@@ -127,6 +134,21 @@ class SceneWorkspace:
                 netloc += f":{parsed.port}"
             url = urllib.parse.urlunsplit(parsed._replace(netloc=netloc))
         return Database(url=url)
+
+    def export(self, output: Path, *, parent: str | None = None):
+        """Project a package the way the command line does, one consistent snapshot."""
+        return project_world_package(
+            self.repository.connection,
+            workspace_id=self.workspace_id,
+            actor=uuid.uuid4(),
+            output=output,
+            private_key=Ed25519PrivateKey.generate(),
+            parent_merkle_root_sha256=parent,
+        )
+
+    @staticmethod
+    def reconstruction(result) -> dict:
+        return json.loads((result.output / "reconstruction/artifacts.json").read_text())
 
     def worker(self) -> PurgeWorker:
         return PurgeWorker(
@@ -688,6 +710,335 @@ def test_deleting_one_member_of_three_releases_the_receipts_bytes(scene):
     # case rather than a predicate that refused too much.
     for row in scene.rows("select target_ref from purge_job where state = 'skipped'"):
         assert BlobId.from_hex(row["target_ref"]) in survivors, row["target_ref"]
+
+
+# -- the export -------------------------------------------------------------------------------
+
+
+@pytest.mark.postgres
+def test_deleting_one_member_of_three_changes_the_export(scene, tmp_path):
+    """D9's no-ship rule, the export half. Both halves are the rule; this is the second.
+
+    "No scene-level artifact ships before the test that deletes one of N members and asserts the
+    bytes are released and the export changes."
+
+    **Asserted on the component payload, not on the Merkle root and not on ``diff.changed``.**
+    Inserting any tombstone rewrites ``deletion/tombstones.json`` and moves the root by itself, so
+    a root-level assertion passes with the projector completely unchanged and proves nothing about
+    scenes. ``tests/test_world_package_postgres.py`` has a deletion test written that way, and it
+    is correct for what it covers because it also asserts on ``memory/graph.json``.
+
+    **The before-assertion is an assertion, not setup.** With the projector's scene clause
+    reverted the receipt is absent from the export BEFORE the deletion too, so a test written only
+    as "absent afterwards" would pass against a projector that never exported it at all. That is
+    the shape this project's defect register calls its recurring failure, and it is why the first
+    three lines below assert rather than arrange.
+    """
+    before = scene.export(tmp_path / "before.wmp")
+    body = scene.reconstruction(before)
+    receipt = next(
+        item for item in body["items"] if item["content_sha256"] == scene.receipt_digest.hex
+    )
+    assert receipt["scene"] is not None, "a scene artifact reached the package with no subject"
+    exported_scene = next(s for s in body["scenes"] if s["scene_id"] == receipt["scene"])
+    assert len(exported_scene["members"]) == 3
+    # The subject resolves against the same pseudonyms the graph uses for its captures, which is
+    # what makes "a fact about these three photographs" checkable by a third party.
+    graph_captures = {
+        row["capture_id"]
+        for row in json.loads((before.output / "memory/graph.json").read_text())["captures"]
+    }
+    assert {member["capture_id"] for member in exported_scene["members"]} <= graph_captures
+
+    scene.delete(scene.captures[1])
+    after = scene.export(tmp_path / "after.wmp", parent=before.merkle_root_sha256)
+    body = scene.reconstruction(after)
+
+    assert not [
+        item for item in body["items"] if item["content_sha256"] == scene.receipt_digest.hex
+    ], "the receipt survived the deletion of one of its three photographs"
+    assert body["scenes"] == [], "the scene itself survived"
+    # The control. Deleting one photograph must not empty the package: the other two keep their
+    # own point maps, and a projector that dropped everything would satisfy the assertion above.
+    surviving = {item["content_sha256"] for item in body["items"]}
+    assert len(surviving) >= 2, body["items"]
+
+    difference = diff_packages(before.output, after.output)
+    assert "reconstruction/artifacts.json" in difference.changed_files
+    # Named rather than collapsed. Without `artifact_id` in the diff's identity keys the whole
+    # item list is one opaque "replaced" entry, and section 6.6 promises the diff is the honest
+    # answer to what changed.
+    named = [
+        change
+        for change in difference.semantic_changes
+        if change["kind"] == "removed"
+        and change.get("pointer", "").startswith("/reconstruction~1artifacts.json/items/")
+    ]
+    assert named, difference.semantic_changes
+    # And the subject, which is what `scene_id` earns its place in `_IDENTITY_KEYS` for. Without
+    # it the `scenes` list has no identity key either and collapses to one opaque `replaced`,
+    # so a reader is told the scene list changed and not that a scene went.
+    assert [
+        change
+        for change in difference.semantic_changes
+        if change["kind"] == "removed"
+        and change.get("pointer", "").startswith("/reconstruction~1artifacts.json/scenes/")
+    ], difference.semantic_changes
+
+
+@pytest.mark.postgres
+@pytest.mark.postgres
+def test_the_deleted_photographs_own_point_map_leaves_the_export_too(scene, tmp_path):
+    """The clause this change rewrote, asserted from the side that was already working.
+
+    The per-capture branch of the artifacts query moved: it used to be the whole ``where`` and is
+    now the first half of an ``or``, behind a new ``a.scene_id is null`` guard. Nothing in this
+    file asserted the behaviour it already had, so a rewrite that broke it would have been caught
+    only by tests about other things.
+    """
+    doomed = {
+        bytes(row["content_sha256"]).hex()
+        for row in scene.rows(
+            "select a.content_sha256 from artifact a join capture c "
+            "on c.blob_sha256 = a.source_blob_sha256 and c.workspace_id = a.workspace_id "
+            "where c.capture_id = %s and a.content_sha256 is not null",
+            scene.captures[1],
+        )
+    }
+    assert doomed, "the deleted photograph must own derivatives for this to mean anything"
+    before = {item["content_sha256"] for item in scene.reconstruction(
+        scene.export(tmp_path / "before.wmp"))["items"]}
+    assert doomed <= before
+
+    scene.delete(scene.captures[1])
+    after = {item["content_sha256"] for item in scene.reconstruction(
+        scene.export(tmp_path / "after.wmp"))["items"]}
+    # Its renditions and vision payloads are byte-identical to the survivors' and are still held
+    # by them, so only the artifacts nothing else owns are expected to go.
+    survivors = {
+        bytes(row["content_sha256"]).hex()
+        for row in scene.rows(
+            "select a.content_sha256 from artifact a join capture c "
+            "on c.blob_sha256 = a.source_blob_sha256 and c.workspace_id = a.workspace_id "
+            "where c.capture_id in (%s, %s) and a.content_sha256 is not null",
+            scene.captures[0],
+            scene.captures[2],
+        )
+    }
+    assert (doomed - survivors), "the deleted photograph owned nothing of its own"
+    assert not (doomed - survivors) & after, "a deleted photograph's own derivative was exported"
+
+
+@pytest.mark.postgres
+def test_a_redaction_over_a_members_whole_frame_withdraws_the_scene_from_the_export(
+    scene, tmp_path
+):
+    """The claim the projector's comment rests on, made executable.
+
+    An interval redaction never sets ``capture.deleted_at``, so a scene clause written against
+    that column would keep the receipt in the package. ``tombstone_blocks_scene`` covers interval
+    scope, which is the whole reason the projector asks the predicate rather than testing the
+    column, and without this test that sentence is a comment nothing checks.
+
+    **The photograph itself stays**, and its own point map's descriptor stays with it, which is
+    the pre-existing inconsistency the same comment records: the older per-capture clause tests
+    ``deleted_at`` too. Asserted here rather than left implicit so that closing that gap fails
+    this test and brings somebody to the comment.
+    """
+    before = scene.reconstruction(scene.export(tmp_path / "before.wmp"))
+    assert any(
+        item["content_sha256"] == scene.receipt_digest.hex for item in before["items"]
+    )
+
+    scene.repository.insert_tombstone(
+        scope="interval",
+        capture_id=scene.captures[1],
+        track_key="img",
+        interval_ns=[(0, 1)],
+        requested_by=uuid.uuid4(),
+        reason="the user redacted a moment",
+    )
+    assert scene.one(
+        "select deleted_at from capture where capture_id = %s", scene.captures[1]
+    )["deleted_at"] is None
+
+    after = scene.reconstruction(scene.export(tmp_path / "after.wmp"))
+    assert not any(
+        item["content_sha256"] == scene.receipt_digest.hex for item in after["items"]
+    ), "a receipt over a redacted frame is still described in the package"
+    assert after["scenes"] == []
+    # The photograph is still live, so it is still in the graph, and its own point map is still
+    # described. That second half is the gap, not the guarantee.
+    redacted_point_map = scene.one(
+        "select a.content_sha256 from artifact a join capture c "
+        "on c.blob_sha256 = a.source_blob_sha256 and c.workspace_id = a.workspace_id "
+        "where c.capture_id = %s and a.kind = 'point_map'",
+        scene.captures[1],
+    )
+    assert bytes(redacted_point_map["content_sha256"]).hex() in {
+        item["content_sha256"] for item in after["items"]
+    }, "the older clause started covering interval scope; update the projector comment with it"
+
+
+def test_a_scene_the_deleted_photograph_was_never_in_stays_in_the_export(scene, tmp_path):
+    """The over-reach control, on the export side.
+
+    A predicate that dropped every scene in the workspace rather than every scene the photograph
+    was in would pass the test above.
+    """
+    survivor = _insert_scene(scene, [scene.captures[0], scene.captures[2]])
+    _insert_scene_artifact(scene, survivor, payload=b"a receipt over the two survivors")
+    survivor_bytes = BlobId.of_bytes(b"a receipt over the two survivors")
+
+    scene.delete(scene.captures[1])
+    body = scene.reconstruction(scene.export(tmp_path / "after.wmp"))
+
+    kept = [item for item in body["items"] if item["content_sha256"] == survivor_bytes.hex]
+    assert len(kept) == 1, "a scene the deleted photograph was never in left the package"
+    assert len(body["scenes"]) == 1
+    # Two members, and the ordinals and registration the scene was built with. NOT compared
+    # against "every live capture in the workspace", which after this deletion is also exactly
+    # those two and would make the assertion true of any membership at all.
+    assert len(body["scenes"][0]["members"]) == 2
+    assert [
+        (member["ordinal"], member["registered"]) for member in body["scenes"][0]["members"]
+    ] == [(0, True), (1, True)]
+
+
+def _stranger_holding_the_same_receipt(scene, captures):
+    """A second workspace that ran the same job over the same photographs, sharing one object.
+
+    Realistic rather than contrived: ``blob`` is not workspace-scoped, so two workspaces that
+    import the same photographs share one row and one stored object per photograph, and a
+    deterministic reconstruction over the same set produces byte-identical receipt bytes. One
+    object, two artifact rows, two scenes.
+
+    Written through a session scoped to the stranger, because every guard involved calls
+    ``assert_workspace_context`` and a connection that declared workspace A may not write rows
+    into workspace B. That is the guard working, not an obstacle to route around.
+    """
+    stranger = uuid.uuid4()
+    with scene.database().session(stranger) as connection:
+        their_captures = []
+        for capture_id in captures:
+            blob = scene.one(
+                "select blob_sha256 from capture where capture_id = %s", capture_id
+            )["blob_sha256"]
+            their_captures.append(
+                connection.execute(
+                    "insert into capture (workspace_id, blob_sha256) values (%s, %s) "
+                    "returning capture_id",
+                    (stranger, bytes(blob)),
+                ).fetchone()["capture_id"]
+            )
+        their_scene = scene_id_for(their_captures)
+        connection.execute(
+            "insert into reconstruction_scene (scene_id, workspace_id, member_digest) "
+            "values (%s, %s, %s)",
+            (their_scene, stranger, scene_member_digest(their_captures)),
+        )
+        for ordinal, capture_id in enumerate(their_captures):
+            connection.execute(
+                "insert into reconstruction_scene_member "
+                "(workspace_id, scene_id, capture_id, ordinal, registered) "
+                "values (%s, %s, %s, %s, true)",
+                (stranger, their_scene, capture_id, ordinal),
+            )
+        connection.execute(
+            "insert into artifact (artifact_id, workspace_id, kind, scene_id, stage_key, "
+            "stage_version, params_digest, input_digest, idempotency_key, content_sha256, "
+            "storage_key, byte_size) "
+            "values (%s, %s, 'pose_receipt', %s, 'pose', 1, %s, %s, %s, %s, %s, %s)",
+            (
+                uuid.uuid4(),
+                stranger,
+                their_scene,
+                b"\x01" * 32,
+                b"\x02" * 32,
+                f"pose:{their_scene}",
+                scene.receipt_digest.digest,
+                scene.store.key_for(scene.receipt_digest),
+                len(_RECEIPT),
+            ),
+        )
+    return stranger, their_captures
+
+
+def test_a_receipt_another_workspace_still_stands_behind_is_not_destroyed(scene):
+    """Correction 7's shape, for the relation migration 0024 added to the destroy predicate.
+
+    ``blob`` is shared between workspaces, so "may these bytes be destroyed" is a question about
+    every workspace, and the predicate is only as truthful as the caller can see. For the scene
+    clause the failure direction is the opposite of correction 7's: a purger blind to the other
+    workspace's membership finds no deleted member there, concludes the artifact still holds the
+    bytes, and REFUSES. So this asserts the safe direction is taken for the right reason, and the
+    next test asserts the bytes do eventually go, because a purge that always refuses is not a
+    purge.
+    """
+    stranger, _their_captures = _stranger_holding_the_same_receipt(scene, scene.captures)
+
+    scene.delete(scene.captures[1])
+    outcome = scene.worker().drain()
+
+    assert outcome.failed == 0, outcome.errors
+    assert scene.store.exists(scene.receipt_digest), (
+        "a receipt another workspace still stands behind was destroyed, which breaks every "
+        "citation that workspace has into it"
+    )
+    assert scene.one(
+        "select state from purge_job where target_kind = 'artifact' and target_ref = %s",
+        scene.receipt_digest.hex,
+    )["state"] == "skipped"
+    # And this workspace's tombstone is NOT recorded as purged, because it is not.
+    assert scene.one(
+        "select purge_completed_at from tombstone where scope = 'capture'"
+    )["purge_completed_at"] is None
+    assert stranger is not None, "the second workspace was never created"
+
+
+def test_the_receipt_goes_once_no_workspace_stands_behind_it(scene, monkeypatch):
+    """The other half, and without it the test above is satisfied by a purger that never acts.
+
+    A deferral is correct while somebody still holds the bytes and is a permanent stall if the
+    predicate can never be satisfied. Once the second workspace deletes a member of its own scene,
+    nothing stands behind the object and the deferred job destroys it.
+
+    ``RETRY_AFTER`` is collapsed rather than waited out, which is the pattern
+    ``tests/test_purge.py`` already uses for the same reason: a skipped job backs off fifteen
+    minutes so a permanently-held blob does not spin, and this test is about the predicate
+    flipping rather than about the clock. **The predicate is also asserted directly**, because
+    without that the drain assertion alone could pass on a job that was never deferred in the
+    first place.
+    """
+    stranger, their_captures = _stranger_holding_the_same_receipt(scene, scene.captures)
+    scene.delete(scene.captures[1])
+    scene.worker().drain()
+    # The RECEIPT's own job, not a count. Two unrelated jobs defer here anyway, because the three
+    # fixture photographs render identically and share one rendition object and one vision
+    # object, so a bare `skipped >= 1` is satisfied without the receipt being deferred at all.
+    assert scene.one(
+        "select state from purge_job where target_kind = 'artifact' and target_ref = %s",
+        scene.receipt_digest.hex,
+    )["state"] == "skipped"
+    assert scene.store.exists(scene.receipt_digest)
+    assert scene.releases(scene.receipt_digest) is False
+
+    with scene.database().session(stranger) as connection:
+        connection.execute(
+            "insert into tombstone (workspace_id, scope, capture_id, requested_by, reason) "
+            "values (%s, 'capture', %s, %s, 'the other workspace deleted one too')",
+            (stranger, their_captures[1], uuid.uuid4()),
+        )
+    assert scene.releases(scene.receipt_digest) is True, (
+        "nothing stands behind these bytes and the predicate still refuses them"
+    )
+
+    monkeypatch.setattr(queue, "RETRY_AFTER", dt.timedelta(0))
+    outcome = scene.worker().drain()
+    assert outcome.failed == 0, outcome.errors
+    assert not scene.store.exists(scene.receipt_digest), (
+        "no workspace stands behind these bytes any more and they are still on disk"
+    )
 
 
 def test_the_purger_sees_the_membership_of_every_workspace(scene):

@@ -1,11 +1,15 @@
 # ADR-0009: How the ladder earns rungs 1 and 2, and what a posed rung 3 is
 
-- Status: **ACCEPTED as a design; partially implemented.** Two pieces exist and run: the pose
-  backend (`orimera/reconstruction/pycolmap_executor.py`) and **D10, the delivery route**
+- Status: **ACCEPTED as a design; partially implemented.** Three pieces exist and run: the pose
+  backend (`orimera/reconstruction/pycolmap_executor.py`), **D10, the delivery route**
   (`orimera/graph/geometry.py`, `orimera/api/routes/geometry.py`,
-  `web/packages/app/src/geometry-api.ts`), which D10 itself required to come first. Everything
-  else here is decided and not built. Each decision names what it would touch, so that building
-  it is execution rather than reopening.
+  `web/packages/app/src/geometry-api.ts`), which D10 itself required to come first, and **D9's
+  scene identity and its deletion path** (migration 0024, `orimera/evidence/scene.py`, the scene
+  clauses in `orimera/world_package/projector.py`), whose no-ship test is the one thing D9 said
+  had to exist before anything above rung 3 ships. D9's scene-level rung assertion is still
+  outstanding, and no producer writes a scene, so nothing ships one yet. Everything else here is
+  decided and not built. Each decision names what it would touch, so that building it is
+  execution rather than reopening.
 - Date: 2026-09-03
 - Deciders: Orimera build. Four independent proposals were scored by judges on honesty, on the
   metric frame and query path, and on what could be implemented now on this machine.
@@ -152,7 +156,13 @@ in that scheme. They get one: a scene identity with an explicit many-to-many sou
 scene-level rung assertion whose support spans are the whole-image spans of every registered
 member, and a tombstone path that reaches a scene artifact through any of its members. **No
 scene-level artifact ships before the test that deletes one of N members and asserts the bytes are
-released and the export changes.** The reduction over a group changes with it: worst-first stays
+released and the export changes.** *BUILT 2026-09-03. The identity is migration 0024's
+`reconstruction_scene` and `reconstruction_scene_member`, both append-only because a membership that
+could be edited afterwards is a deletion that could be undone by an UPDATE. The tombstone path is
+`tombstone_blocks_scene`, one predicate in SQL, reaching a scene through ANY member. The no-ship
+test is in `tests/test_scene_identity.py`. What is NOT built is the scene-level rung assertion,
+which is the remaining clause of this decision, and no producer writes a scene, so nothing ships one
+yet.* The reduction over a group changes with it: worst-first stays
 right for panels, because a hole is a hole, and is wrong for a scene, because four unregistered
 photographs are not holes in a corridor, they are photographs that open as photographs.
 
@@ -298,4 +308,13 @@ tombstone reaches it.
 - The filled fraction of the frustum union for a real multi-photograph capture, against the
   single-photograph decomposition already measured.
 - Every threshold named in D3 and D4, each against a corpus that does not exist yet.
-- The deletion test of D9, before any scene-level artifact ships.
+- ~~The deletion test of D9, before any scene-level artifact ships.~~ **BUILT 2026-09-03**, both
+  halves, in `tests/test_scene_identity.py`: three photographs, one scene over them, and the middle
+  one deleted through `insert_tombstone`. The bytes half asserts the receipt is enqueued, that
+  `purge_releases_bytes` releases it, that the purger destroys it and the store agrees, and that the
+  two surviving photographs keep everything of their own. The export half asserts the receipt and
+  its scene are in `reconstruction/artifacts.json` BEFORE the deletion and absent after, on the
+  component payload rather than on the Merkle root, because any tombstone moves the root by itself.
+  Two controls sit beside them: a second scene the deleted photograph was never in survives both,
+  and a second workspace standing behind the same receipt bytes stops them being destroyed until it
+  deletes too.
