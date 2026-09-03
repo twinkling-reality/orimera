@@ -12,6 +12,11 @@
  * reads that from the API and the preview loads a reconstruction from disk, and a default
  * chosen here would be a third answer that neither of them asked for.
  *
+ * That sentence was false when it was written, and ADR-0009 D10 says so: "the app's own comment
+ * claiming that production reads point maps from an API describes an implementation that does not
+ * exist". It is true now. `geometry-api.ts` is the production reader, `dev/preview-point-maps.ts`
+ * is the preview one, and `main.ts` holds one variable that either of them fills.
+ *
  * It is also the thesis under test. Reconstruction quality never participates in the truth
  * guarantee: a region with no geometry at all still resolves every citation to the exact
  * original photograph, and this file is where that stops being a claim in a document.

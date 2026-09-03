@@ -1449,6 +1449,44 @@ the experiment plan as the test most likely to find a real bug.
 | **Entity** | entity, links, proposals, entity-level aggregates | entity-level embeddings and exemplars, display name | occurrences (still anonymous), the underlying media, `identity_rejection` rows, so re-detection does not re-propose the deleted identity |
 | **Workspace** | everything | everything, including blobs | an audit stub |
 
+**CORRECTED 2026-09-03. The Entity row above describes a cascade that nothing runs, and the
+Interval row describes one that runs only in part.** The table is the specification; this
+paragraph is what is built, and the two disagree.
+
+*Entity scope does not reach any derivative, and it cannot be requested.* Two facts, either of
+which alone would be enough. `IngestRepository.insert_tombstone` takes no `entity_id`, and
+`tombstone` constrains `scope = 'entity'` to name one, so **no code path in this repository can
+write an entity-scope tombstone at all**. Written directly in SQL, it still enqueues nothing:
+migration 0015's `tg_tombstone_enqueues_its_purge` returns early for every scope but `capture`
+and `workspace`, so no `purge_job` row exists, nothing is soft-marked, and no entity-level
+embedding, exemplar or display name is destroyed. What an entity tombstone *does* do is refuse
+future writes, through `tombstone_blocks_entity`, which the `assertion`, `embedding` and
+`entity_link` triggers call. That is a write guard, not a cascade. Note also that
+`tombstone_purge_is_complete` returns true for a tombstone with no jobs, so an entity tombstone
+is "complete" having destroyed nothing; only the worker writes `purge_completed_at`, and with no
+job to claim it never runs, so the column stays null and nothing reports the discrepancy.
+
+*The reconstructed geometry a person appears in is correctly untouched by that*, which is the
+first consequence below working as designed rather than a second gap. `orimera/graph/geometry.py`
+asks `tombstone_blocks_capture`, which covers workspace, capture and interval scope and
+deliberately not entity scope.
+
+*Interval scope soft-marks nothing and repairs nothing.* The same early return applies, so an
+interval redaction leaves `capture.deleted_at` null and enqueues no purge job. The artifacts the
+row above says are marked `needs_repair` are not marked: `mark_needs_repair` has exactly one
+caller, `PhotoIngestPipeline.persist_artifact`, and it is the unreproducible-bytes case rather
+than anything a tombstone reaches. The embeddings the row says are deleted are not deleted.
+
+The refusal half is deliberately narrower than this row and is not a gap.
+`tombstone_blocks_derivative` has no interval branch, and migration 0011 says why: "a redaction
+removes a moment and not a photograph", so a new derivative is written and then repaired rather
+than refused. What closes the loop for a **still image** is that section 1.5 gives it the single
+interval `[0, 1)`: there is no surviving moment to repair from, so the delivery route in
+`orimera/graph/geometry.py` asks `tombstone_blocks_capture`, which does cover interval scope, and
+serves nothing derived from a redacted frame. That module says the same thing from its own side,
+including the case that would make it the wrong predicate.
+`tests/test_geometry_delivery.py` pins this paragraph.
+
 Three consequences that must not be softened:
 
 - **Entity deletion is not media deletion, and the UI must say so.** Deleting a person removes the name,

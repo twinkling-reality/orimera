@@ -1,8 +1,11 @@
 # ADR-0009: How the ladder earns rungs 1 and 2, and what a posed rung 3 is
 
-- Status: **ACCEPTED as a design; partially implemented.** The pose backend exists and runs
-  (`orimera/reconstruction/pycolmap_executor.py`). Everything else here is decided and not built.
-  Each decision names what it would touch, so that building it is execution rather than reopening.
+- Status: **ACCEPTED as a design; partially implemented.** Two pieces exist and run: the pose
+  backend (`orimera/reconstruction/pycolmap_executor.py`) and **D10, the delivery route**
+  (`orimera/graph/geometry.py`, `orimera/api/routes/geometry.py`,
+  `web/packages/app/src/geometry-api.ts`), which D10 itself required to come first. Everything
+  else here is decided and not built. Each decision names what it would touch, so that building
+  it is execution rather than reopening.
 - Date: 2026-09-03
 - Deciders: Orimera build. Four independent proposals were scored by judges on honesty, on the
   metric frame and query path, and on what could be implemented now on this machine.
@@ -150,7 +153,9 @@ released and the export changes.** The reduction over a group changes with it: w
 right for panels, because a hole is a hole, and is wrong for a scene, because four unregistered
 photographs are not holes in a corridor, they are photographs that open as photographs.
 
-**D10. Nothing above rung 3 reaches a viewer until something serves geometry at all.** There is no
+**D10. Nothing above rung 3 reaches a viewer until something serves geometry at all. BUILT
+2026-09-03.** The paragraph is left in the tense it was written in, and what was built follows
+it. There is no
 production path by which any point map reaches the renderer: no route serves artifact bytes, and
 the only loader in the workspace is a development preview, while the app's own comment claiming
 that production reads point maps from an API describes an implementation that does not exist. So a
@@ -158,6 +163,47 @@ posed set, a corridor and a designed void would all be built against nothing. **
 is the first item of work, before any of the above**, and it carries the authentication and digest
 rules that the residency design already assumes: bytes in hand, a bearer in the header, and the
 content hash verified against the descriptor that named it.
+
+*What was built.* `GET /geometry` is a descriptor list keyed by capture, carrying the container,
+the byte size and the SHA-256; `GET /geometry/{artifact_id}` is the bytes. The client fetches with
+the bearer in the header, hashes what arrived, and compares it to the descriptor rather than to
+the response's own `ETag`, which would be checking the response against itself. Neither route
+ships an island id, because ADR-0005 leaves that to the client, and neither ships a rung, because
+the recorded claim already arrives on the graph payload and a second copy on the wire is the
+divergence D11 objects to.
+
+Three properties the route has that this record did not ask for, each forced by the clause about
+the digest. It refuses range requests, because a client cannot check a fragment against a digest
+of the whole, and it is the only byte route in this API that does. It answers **410** rather than
+404 for something the user deleted, asking `tombstone_blocks_capture` rather than
+`artifact.purged_at`, so a deletion reaches the read before the purger reaches the bytes. And a
+page without `SubtleCrypto` loads no geometry at all, because the third clause of this decision is
+not a preference.
+
+*What it did not settle, and two things it changed the shape of.* A region attempts one point map
+and any others it holds are counted as `unplaced`, because D6's placement record does not exist.
+That is the first thing this now unblocks.
+
+**D6 and ADR-0010 have an ordering constraint that neither record names, and this route is what
+makes it visible.** D6 binds a placement record to its members by content hash. ADR-0010 D9 is
+"refuse and regenerate", and the container string lives in the depth stage's params, which are
+inside `params_digest` and therefore inside the idempotency key, so an OPM/2 bump writes a new
+artifact row with a new `content_sha256` for every capture. Any placement record written between
+D6 and OPM/2 would then name hashes no descriptor list will ever return, and D9 offers no
+regeneration path for a record it did not anticipate. **Either OPM/2 goes first, or D6's record
+carries a regeneration path.** What the delivery route contributes is that the by-id byte route
+deliberately does NOT filter `superseded_by`, so an old row stays fetchable; that is the only
+reason a stale record would degrade rather than break, and it is documented in
+`orimera/graph/geometry.py` as a decision rather than left as an omission.
+
+**D11 is now larger than it was, not smaller.** `buildScene` already lets loaded geometry outrank
+the recorded rung, on the stated grounds that "a region holding a decoded point map is standing in
+rung 3 geometry right now". That was true of one preview fixture and is now true of every
+production region that gains geometry, and `Island.rung` is a mode switch rather than a label: it
+selects the world recipe, the movement model, the arrival pose and whether the source-first grove
+is built. So the scene graph's rung is what the renderer draws, and the rung D11 has to display is
+what the region earned, worst-first across its captures. **Those are two different numbers and
+D11 has to name both**, which the record does not yet do.
 
 **D11. The rung is displayed, from the recorded claim rather than from the container.**
 Specification 5.1 says the rung is shown as part of a region's identity and calls it the honesty
@@ -185,6 +231,17 @@ receipt is accepted, and until a scene artifact exists to carry it, no pose job 
 capture set outside a scratch location that is purged on a timer.** This is stated as a decision
 rather than a future concern because the executor that makes those directories now exists and
 runs.
+
+*One detail found while building D10, recorded here because it changes what implementing D12
+means.* "The job directory is deleted when the receipt is accepted" is not implementable as
+written: `receipt.json` and `manifest.json` live **inside** the job directory, and they are what
+lets a completed manifest "return its verified report without invoking COLMAP again". Deleting
+the directory would destroy the resumption and reuse path along with the descriptors. The
+separation a fix has to keep is between the working database, which is a derivative of
+photographs, and the receipt, which is a statement about a computation;
+`tests/test_geometry_delivery.py` pins that they are still two different files and fails if
+either moves. The rest of D12 stands: nothing registers the directory as an artifact, so no
+tombstone reaches it.
 
 ## Alternatives rejected
 

@@ -46,6 +46,7 @@ from orimera.api.body_limit import BodyLimit, BodyTooLarge
 from orimera.api.routes import (
     evidence,
     formation,
+    geometry,
     graph,
     health,
     identity,
@@ -148,6 +149,7 @@ def create_app(services: Services | None = None, *, verify: bool = True) -> Fast
 
     app.include_router(health.router)
     app.include_router(graph.router)
+    app.include_router(geometry.router)
     app.include_router(selection.router)
     app.include_router(identity.router)
     app.include_router(evidence.router)

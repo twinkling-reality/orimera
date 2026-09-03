@@ -291,7 +291,7 @@ describe('the Map orientation caption', () => {
     const bar = buildStatus({
       omittedRegionCount: 0,
       undrawable: new Map(),
-      sourceMediaNotices: [
+      notices: [
         'Missing source evidence: no evidence was recorded',
         'Source not authorized: this session cannot load the source',
       ],

@@ -2,8 +2,15 @@
  * The one reconstructed region in the preview, loaded from a real `.opm` on disk.
  *
  * This module is imported by the preview path only, for the same reason `preview-media.ts` is:
- * production reads its geometry from the API, and a development build that shipped a fixture
- * path into it would be a second source of truth for what a region contains.
+ * production reads its geometry from the API through `geometry-api.ts`, and a development build
+ * that shipped a fixture path into that would be a second source of truth for what a region
+ * contains.
+ *
+ * **It skips the digest check the production path is built around, and that is the difference
+ * between the two.** There is no descriptor here to check against: the file is named by this
+ * module and read from the dev server's own directory, so what would be verified is a claim
+ * nobody made. The production loader refuses bytes that fail their digest and this one cannot,
+ * which is one more reason it may only be reached behind `?preview=1` in a development build.
  *
  * **The file is a reconstruction, not a fixture.** `glasshouse-courtyard.opm` was produced by
  * `orimera.reconstruction` from `glasshouse-courtyard.jpg`, the same photograph the courtyard

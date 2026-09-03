@@ -28,12 +28,13 @@ from orimera.api.authorisation import load_token_directory
 from orimera.api.routes import routable_paths
 from orimera.api.services import Services
 from orimera.epistemics.assertions import AssertionWriter
+from orimera.evidence.blob import BlobId
 from orimera.identity import IdentityRepository, name_occurrence
 from orimera.ingest.batch import IntakeBatch
 from orimera.ingest.pipeline import PhotoIngestPipeline
 from orimera.store.local import LocalContentAddressedStore
 
-from conftest import DEFAULT_PAYLOAD, CountingVisionModel, write_photo
+from conftest import DEFAULT_PAYLOAD, CountingVisionModel, write_photo, write_point_map
 
 #: Routes that are deliberately unauthenticated, with the reason each one is.
 PUBLIC_ROUTES: dict[str, str] = {
@@ -49,6 +50,8 @@ PUBLIC_ROUTES: dict[str, str] = {
 #: missing from here and from PUBLIC_ROUTES fails `test_every_route_is_covered_by_this_file`.
 ROUTE_PROBES: dict[tuple[str, str], dict] = {
     ("GET", "/graph"): {},
+    ("GET", "/geometry"): {},
+    ("GET", "/geometry/{artifact_id}"): {},
     ("GET", "/selection/catalogue"): {},
     ("POST", "/selection"): {"json": {"intent": "captures"}},
     ("POST", "/selection/packet"): {"json": {"intent": "captures"}},
@@ -165,7 +168,8 @@ class Deployment:
     """An application over the test schema, with two tokens: one owner and one stranger."""
 
     def __init__(
-        self, client, store, owner, stranger, span_id, occurrence_id, entity_id, batch_id
+        self, client, store, owner, stranger, span_id, occurrence_id, entity_id, batch_id,
+        artifact_id,
     ) -> None:
         self.client = client
         self.store = store
@@ -175,6 +179,7 @@ class Deployment:
         self.occurrence_id = occurrence_id
         self.entity_id = entity_id
         self.batch_id = batch_id
+        self.artifact_id = artifact_id
 
     def _request(self, token: str, method: str, path: str, **kwargs):
         headers = {"Authorization": f"Bearer {token}", **kwargs.pop("headers", {})}
@@ -193,7 +198,7 @@ class Deployment:
             "{preview_id}", str(uuid.uuid4())
         ).replace("{source_id}", str(uuid.uuid4())).replace(
             "{job_id}", str(uuid.uuid4())
-        )
+        ).replace("{artifact_id}", str(self.artifact_id))
 
 
 @pytest.fixture
@@ -235,6 +240,15 @@ def deployment(tmp_path, photo_dir, repository, spine_schema, monkeypatch):
         "select span_id from evidence_span where modality = 'still_image' limit 1"
     ).fetchone()
 
+    # A point map of the same photograph, written by hand because this deployment runs with no
+    # depth model. It exists so the sweep below asks the geometry route a question it can answer
+    # with a 200 for the owner, rather than a 404 that would make every authorisation assertion
+    # about it pass for the wrong reason.
+    blob = repository.connection.execute(
+        "select blob_sha256 from capture limit 1"
+    ).fetchone()
+    artifact_id, _ = write_point_map(repository, store, BlobId(bytes(blob["blob_sha256"])))
+
     # A real batch, so the formation route has something to be asked about. Opened and closed
     # immediately: an open batch would make the stream wait for events that are never coming.
     batch = IntakeBatch.open(repository, label="test")
@@ -266,7 +280,7 @@ def deployment(tmp_path, photo_dir, repository, spine_schema, monkeypatch):
     with TestClient(app) as client:
         yield Deployment(
             client, store, owner, stranger, span["span_id"], occurrence["occurrence_id"],
-            named.entity_id, batch.batch_id,
+            named.entity_id, batch.batch_id, artifact_id,
         )
 
 
@@ -354,8 +368,28 @@ def test_a_stranger_gets_the_same_answer_for_a_real_id_and_an_invented_one(deplo
 
 def test_the_owner_can_read_what_the_stranger_cannot(deployment):
     """Otherwise every test above would pass on an application that refused everybody."""
-    for path in ("/evidence/{span_id}", "/evidence/{span_id}/region"):
+    for path in (
+        "/evidence/{span_id}",
+        "/evidence/{span_id}/region",
+        "/geometry/{artifact_id}",
+    ):
         assert deployment.as_owner("GET", deployment.fill(path)).status_code == 200
+
+
+def test_a_stranger_probing_a_real_artifact_id_learns_nothing_from_it(deployment):
+    """The IDOR case for geometry, and it is sharper here than for evidence.
+
+    ``artifact_id`` is ``uuid5`` over an idempotency key that contains no workspace, so a
+    stranger who ingested the same photograph holds a row under the identical id. Guessing is
+    therefore free, and what stops it is the workspace scoping rather than the id being secret.
+    """
+    real = deployment.as_stranger("GET", deployment.fill("/geometry/{artifact_id}"))
+    invented = deployment.as_stranger("GET", f"/geometry/{uuid.uuid4()}")
+    assert real.status_code == 404
+    assert real.json() == invented.json() == {
+        "code": "unknown_reference",
+        "detail": "no such geometry",
+    }
 
 
 # -- health -------------------------------------------------------------------------------

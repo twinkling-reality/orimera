@@ -10,7 +10,15 @@ export const MAP_ORIENTATION_CAPTION =
 export interface StatusInput {
   readonly omittedRegionCount: number;
   readonly undrawable: ReadonlyMap<OccurrenceKind, number>;
-  readonly sourceMediaNotices?: readonly string[];
+  /**
+   * Everything the world could not load, one line each, in the order it was discovered.
+   *
+   * Renamed from `sourceMediaNotices` when reconstruction geometry gained a production loader and
+   * a second kind of notice arrived. The name says what the field is rather than where the first
+   * caller's strings came from, so the next kind does not need a third field or a misleading
+   * second use of this one.
+   */
+  readonly notices?: readonly string[];
 }
 
 function counted(count: number, singular: string, plural: string): string {
@@ -42,7 +50,7 @@ export function buildStatus(input: StatusInput): HTMLElement {
     );
   }
 
-  for (const notice of input.sourceMediaNotices ?? []) {
+  for (const notice of input.notices ?? []) {
     bar.append(el('p', { class: 'status-warning source-status', text: notice }));
   }
 

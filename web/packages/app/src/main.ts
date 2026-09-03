@@ -83,6 +83,13 @@ import {
   type WorldStyleVersionRecord,
 } from './world-style-api.js';
 import { SourceMediaClient, type SourceMediaSession } from './source-media-api.js';
+import {
+  GeometryClient,
+  regionsByCapture,
+  type GeometryIssue,
+  type GeometryIssueState,
+  type HeldPointMaps,
+} from './geometry-api.js';
 import { worldStyleProposalInbox } from './world-style-proposals.js';
 import {
   InteractionPolicyClient,
@@ -123,13 +130,23 @@ let mountedCompanionStage: CompanionStage | null = null;
 let settingsStylePreviewId: string | null = null;
 let interactionPolicies: InteractionPolicyClient | null = null;
 let previewSourceMedia: SourceMediaCatalog | undefined;
-let previewPointMaps_: ReadonlyMap<IslandId, PointMap> | undefined;
+/**
+ * The geometry the world is currently drawing, whichever side it came from.
+ *
+ * One variable rather than two, because `mount` must not know: production reads it from the
+ * API through `geometry-api.ts` and the preview loads a reconstruction from disk, and a mount
+ * that branched on which would be a second place for the two to diverge.
+ */
+let pointMaps_: ReadonlyMap<IslandId, PointMap> | undefined;
+/** What the last production load decoded, by artifact id, so a re-mount re-fetches no bytes. */
+let heldPointMaps_: HeldPointMaps | undefined;
 
 let worldStyles: WorldStyleClient | null = null;
 let worldStyleConnection: WorldStyleConnection | null = null;
 let worldStyleFailure: string | null = null;
 let sourceMediaSession: SourceMediaSession | null = null;
 let sourceMediaNotices: readonly string[] = Object.freeze([]);
+let geometryNotices: readonly string[] = Object.freeze([]);
 let stopWorldStyleProposalInbox: (() => void) | null = null;
 
 /**
@@ -256,7 +273,7 @@ function askForToken(): void {
 async function start(token: string): Promise<void> {
   if (preview) {
     previewSourceMedia = (await import('./dev/preview-media.js')).PREVIEW_SOURCE_MEDIA;
-    previewPointMaps_ = await (await import('./dev/preview-point-maps.js')).previewPointMaps();
+    pointMaps_ = await (await import('./dev/preview-point-maps.js')).previewPointMaps();
   }
   credentials_ = preview
     ? previewCredentials(window.location.origin)
@@ -322,6 +339,88 @@ async function start(token: string): Promise<void> {
   await mount();
 }
 
+/**
+ * The production reconstruction load. ADR-0009 D10, from the client's side.
+ *
+ * **Regions are resolved from the snapshot the world is drawn from**, not from a second read.
+ * The server ships capture ids and no island id, because ADR-0005 leaves what an island is to
+ * the client; `regionsByCapture` puts them through the islands this snapshot already resolved,
+ * so a shell lands in the region its own anchors did.
+ *
+ * **It runs on every mount, and that is what makes a deletion reach the renderer.** Called once
+ * at start-up it would not: `mount()` re-reads the same decoded maps after every committed
+ * write, so a photograph deleted in this session would keep its reconstruction on screen at full
+ * fidelity for the life of the tab, and the 410 the delivery route so carefully produces would be
+ * observable only during boot. The list is re-read each time and the bytes are not: a map already
+ * decoded is handed back through `byArtifact`, so the recurring cost is a few hundred bytes of
+ * JSON and the recurring benefit is that a region whose descriptor has gone loses its geometry.
+ *
+ * **A failure here is never a failure of the world.** A region with no geometry is rung 4, which
+ * is a real rung with a real experience, and the whole thesis is that reconstruction quality
+ * never participates in the truth guarantee. So every failure becomes a notice on the status bar
+ * and the Atlas mounts either way, exactly as the development preview already behaves when a
+ * fixture is missing. What previously could still take the world down was a request that never
+ * settled; every one of them now carries a deadline.
+ */
+async function loadGeometry(
+  where: { baseUrl: string; token: string },
+  from: GraphSnapshot,
+): Promise<void> {
+  try {
+    const loaded = await new GeometryClient(where)
+      .load(regionsByCapture(from.islands), heldPointMaps_);
+    pointMaps_ = loaded.pointMaps;
+    heldPointMaps_ = loaded.byArtifact;
+    geometryNotices = geometryNoticesFor(loaded.issues);
+  } catch (error) {
+    pointMaps_ = undefined;
+    heldPointMaps_ = undefined;
+    geometryNotices = Object.freeze([
+      `Reconstructions unavailable: ${error instanceof Error ? error.message : 'the request failed'}`,
+    ]);
+  }
+}
+
+/**
+ * One line per kind of failure, with a count, rather than one line per photograph.
+ *
+ * `unplaced` is the ordinary state of a photograph in a multi-photograph region rather than an
+ * anomaly, so a corpus of eighty photographs across five regions produces seventy-five identical
+ * sentences. Rendered one per line they become the page. Counting them keeps the disclosure and
+ * loses none of it: the count is the honest number and the first reason says what the kind means.
+ */
+function geometryNoticesFor(issues: readonly GeometryIssue[]): readonly string[] {
+  const byState = new Map<GeometryIssueState, GeometryIssue[]>();
+  for (const issue of issues) {
+    const held = byState.get(issue.state);
+    if (held === undefined) byState.set(issue.state, [issue]);
+    else held.push(issue);
+  }
+  return Object.freeze(
+    [...byState].map(([state, group]) => {
+      const label = GEOMETRY_NOTICE[state];
+      const first = group[0]!.reason;
+      return group.length === 1
+        ? `${label}: ${first}`
+        : `${label}: ${group.length} reconstructions. ${first}`;
+    }),
+  );
+}
+
+/** What each geometry failure is called on screen. One phrase per state, and no state hidden. */
+const GEOMETRY_NOTICE: Record<GeometryIssueState, string> = {
+  bytes_missing: 'Reconstruction bytes unavailable',
+  unsupported_container: 'Reconstruction container unsupported',
+  verification_failed: 'Reconstruction failed its digest check',
+  unverifiable: 'Reconstruction could not be verified',
+  undecodable: 'Reconstruction could not be read',
+  unplaced: 'Reconstruction not placed',
+  no_region: 'Reconstruction has no region',
+  unauthorized: 'Reconstruction not authorized',
+  timed_out: 'Reconstruction timed out',
+  error: 'Reconstruction loading error',
+};
+
 async function mount(): Promise<void> {
   const current = snapshot;
   const currentSession = session;
@@ -338,12 +437,17 @@ async function mount(): Promise<void> {
     return;
   }
 
+  // Geometry, re-read here rather than once at start-up. See `loadGeometry`: the list is what
+  // carries a deletion to the renderer, and the bytes are not re-fetched. The preview fills the
+  // same slot from disk and must not be overwritten by a route it does not serve.
+  if (!preview) await loadGeometry(currentCredentials, current);
+
   // The turn engine outlives a re-mount, so it is told about the new graph rather than rebuilt.
   // Rebuilding it would discard the memory of what has already been asked, and the Companion
   // would open every refresh by asking the question the user just answered.
   currentCompanion.observeSnapshot(current);
 
-  const built = buildScene(current, 1, new Map(), new Map(), reconstructionsOf(previewPointMaps_));
+  const built = buildScene(current, 1, new Map(), new Map(), reconstructionsOf(pointMaps_));
   // A graph write remounts every surface. Stop the previous field before replacing its node, or
   // its frame loop and observers would survive invisibly for the rest of the session.
   mountedCompanionStage?.dispose();
@@ -921,7 +1025,7 @@ async function mount(): Promise<void> {
       buildStatus({
         omittedRegionCount: built.omitted.length,
         undrawable: built.undrawable,
-        sourceMediaNotices,
+        notices: [...sourceMediaNotices, ...geometryNotices],
       }),
   ]);
 
@@ -1047,7 +1151,7 @@ async function mount(): Promise<void> {
       ? { artProfileParameters: preferences.worldStyleParameters }
       : {}),
     ...(previewSourceMedia === undefined ? {} : { sourceMedia: previewSourceMedia }),
-    ...(previewPointMaps_ === undefined ? {} : { pointMaps: previewPointMaps_ }),
+    ...(pointMaps_ === undefined ? {} : { pointMaps: pointMaps_ }),
     reducedMotion: systemReducedMotion.matches,
   });
   (canvas as HTMLCanvasElement).dataset.companionRenderer = 'svg';

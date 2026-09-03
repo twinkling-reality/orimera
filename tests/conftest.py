@@ -155,6 +155,43 @@ def write_photo(directory: Path, name: str, **kwargs: Any) -> Path:
     return path
 
 
+def write_point_map(repository, store, blob_id, payload: bytes = b"not a real .opm"):
+    """Put a point-map artifact of ``blob_id`` in the store and the spine, and return its row.
+
+    The payload is deliberately NOT a valid container. The delivery route serves bytes and
+    verifies them against the hash the store holds them under; it does not parse them, and a
+    test that fed it a real ``.opm`` would be unable to tell those two things apart. The
+    decoder's own contract is tested on the other side of the wire, in
+    ``web/packages/atlas-react/test/opm.test.ts``.
+
+    The identity key is the real one from :mod:`orimera.ingest.stages`, so the row this writes is
+    the row the depth stage would write. Writing it by hand rather than running the stage is what
+    lets the API tests run with no depth model, a 1.3 GB checkpoint and torch.
+    """
+    from orimera.ingest.stages import artifact_id_for, idempotency_key, input_digest_of, stage
+
+    spec = stage("depth")
+    binding = {"model_id": "test/depth-model"}
+    input_digest = input_digest_of([])
+    key = idempotency_key(blob_id, spec, input_digest, binding=binding)
+    stored = store.put_bytes(payload)
+    repository.insert_artifact(
+        artifact_id=artifact_id_for(key),
+        kind=spec.output_kind,
+        source_blob=blob_id,
+        stage_key=spec.key,
+        stage_version=spec.version,
+        params_digest=spec.params_digest,
+        input_digest=input_digest,
+        idempotency_key=key,
+        content_sha256=stored.blob_id.digest,
+        storage_key=store.key_for(stored.blob_id),
+        byte_size=stored.byte_size,
+        produced_by_event=None,
+    )
+    return artifact_id_for(key), stored.blob_id
+
+
 DEFAULT_PAYLOAD: dict[str, Any] = {
     "scene_description": "A red block above a blue bar, photographed head on.",
     "objects": [
