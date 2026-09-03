@@ -49,11 +49,15 @@ dependencies = [
 # Reconstruction, and why it is optional rather than a dependency.
 #
 # MoGe-2 is MIT and is the selected monocular depth model, but installing it means torch and a
-# 1.3 GB checkpoint, and MoGe 3.0.0 declares `torchvision>=0.19` for which no wheel matching macOS
-# arm64 exists at the current torch. So it installs WITHOUT its transitive dependencies and with
-# the four it actually needs at run time listed here. `utils3d_moge` is a different package from
-# the `utils3d` on PyPI, which is an unrelated stub; installing that one fails a long way from the
-# cause, with `module 'utils3d' has no attribute 'pt'`.
+# 1.3 GB checkpoint, and MoGe 3.0.0 declares far more than it loads: `torchvision>=0.19`, gradio,
+# trimesh, matplotlib, a git `pipeline` and a git `flex-gemm` that needs triton, and triton has
+# no macOS wheel at all. So MoGe is locked WITHOUT its declared dependencies and with the six it
+# actually imports at run time listed here. The override that does that is
+# `[[tool.uv.dependency-metadata]]` under `[tool.uv]` below, next to the torch index arrangement
+# that keeps this one lock installable on both macOS and Linux.
+# `utils3d_moge` is a different package from the `utils3d` on PyPI, which is an unrelated stub;
+# installing that one fails a long way from the cause, with `module 'utils3d' has no attribute
+# 'pt'`.
 #
 # An instance without this extra still ingests a corpus and reports the depth stage as not run,
 # which is the same arrangement the vision stage has. A pipeline that could not run without a
@@ -75,6 +79,20 @@ reconstruction = [
   "moge @ git+https://github.com/microsoft/MoGe.git@74fbce054ebed49800de42d0ad0e83495065719a",
   "utils3d_moge @ git+https://github.com/EasternJournalist/utils3d-moge.git@62f09d58509485564e24d5d9f6aac9ee9ebc0c37",
   "huggingface_hub>=0.26",
+]
+# Pose recovery, deliberately its own extra rather than part of `reconstruction`.
+#
+# `pycolmap` publishes a macOS arm64 wheel, needs no CUDA and pulls no torch, so it installs where
+# the depth stack cannot and must not be entangled with the platform-forked torch arrangement in
+# `[tool.uv]` below. Keeping it separate means an instance can recover camera poses without
+# installing a 1.3 GB checkpoint, and the depth extra keeps resolving if this one ever cannot.
+#
+# The version is pinned rather than lower-bounded because it is the backend an in-process
+# reconstruction runs, and the receipt records which version produced a pose. VERIFIED 2026-09-02:
+# 4.2.0 ships `macosx_14_0_arm64` wheels for CPython 3.10 through 3.14 and reports `has_cuda`
+# False, so the wheel is a CPU build on this platform.
+pose = [
+  "pycolmap==4.2.0",
 ]
 
 [project.scripts]
@@ -144,6 +162,66 @@ allow-direct-references = true
 # The ML stack lags Python 3.14 (the system interpreter here), so the interpreter is pinned
 # rather than merely lower-bounded. .python-version holds the concrete pin for `uv run`.
 package = true
+# Every package in the lock must have a wheel for both platforms the depth stage runs on, or
+# `uv lock` fails here rather than `uv sync` failing on the other machine. Without this uv is
+# satisfied by any one wheel per package, which is how a lock carrying a Linux-only torch passed
+# `--locked` in CI and in the image and could not be installed on the Mac that runs MoGe.
+required-environments = [
+  "sys_platform == 'darwin' and platform_machine == 'arm64'",
+  "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+# Where torch comes from, and why it is spelled out here.
+#
+# The pinned MoGe commit carries its own `[[tool.uv.index]]` for PyTorch's cu130 wheels and a
+# `[tool.uv.sources]` that sends torch and torchvision there, and uv applied both while reading
+# MoGe's metadata although nothing in this file named that index. Verified on 2026-09-03 with
+# uv 0.12.5: a project whose only dependency is the MoGe git URL locks torch from
+# `download.pytorch.org/whl/cu130`. That index publishes Linux and Windows wheels only, and
+# MoGe's own `environments = [linux, win32]` is a root-only setting that is NOT inherited, so
+# the lock claimed macOS and pinned a torch that does not exist for it. The fix is the one the
+# uv PyTorch guide gives (https://docs.astral.sh/uv/guides/integration/pytorch/, retrieved
+# 2026-09-02): declare the indexes here, both `explicit` so nothing else is resolved against
+# them, and fork the torch source on platform. macOS takes the CPU index, whose arm64 wheel
+# runs on Metal through MPS; Linux keeps cu130, which is what a GPU host wants and what the
+# previous lock already pinned. torchvision needs no source because the metadata override
+# below removes it from the resolution.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", marker = "sys_platform == 'darwin'" },
+  { index = "pytorch-cu130", marker = "sys_platform == 'linux'" },
+]
+
+# What MoGe needs at run time, as the lock sees it. MoGe 3.0.0's metadata lists gradio, trimesh,
+# matplotlib, torchvision, a git `pipeline` and a git `flex-gemm` that requires triton, and
+# `moge.model.v2`, the one module this package imports, loads none of them: traced through
+# `sys.modules` on 2026-09-03, it reaches torch, numpy, cv2, scipy, huggingface_hub and
+# utils3d_moge and nothing else outside the standard library. Declaring that here replaces the
+# metadata uv would otherwise read from the checkout, so the resolution stops carrying packages
+# with no macOS wheel on behalf of code that never runs. Pinned to the version so a bump of the
+# MoGe commit that changes its version drops this override rather than silently keeping it, and
+# `required-environments` above then reports what the new metadata cannot install.
+[[tool.uv.dependency-metadata]]
+name = "moge"
+version = "3.0.0"
+requires-dist = [
+  "torch",
+  "numpy",
+  "opencv-python-headless",
+  "scipy",
+  "huggingface_hub",
+  "utils3d_moge",
+]
 
 [tool.ruff]
 line-length = 100
