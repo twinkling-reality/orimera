@@ -18,6 +18,7 @@ __all__ = [
     "ArtifactRow",
     "CaptureArtifactRow",
     "current_for_captures",
+    "exact_for_captures",
     "find",
     "insert",
     "insert_scene",
@@ -73,6 +74,46 @@ def current_for_captures(
             byte_size=int(row["byte_size"]),
         )
         for row in rows
+    }
+
+
+def exact_for_captures(
+    scope: WorkspaceScope,
+    *,
+    artifact_ids_by_capture: dict[uuid.UUID, uuid.UUID],
+    kind: str,
+) -> dict[uuid.UUID, CaptureArtifactRow]:
+    """Resolve exact immutable build inputs, including artifacts later superseded.
+
+    A queued scene names artifact ids and content hashes. Re-resolving the current artifact at
+    execution time would change the build after it was admitted, so this query accepts only the
+    named row and still applies the live-capture, purge and tombstone boundaries.
+    """
+    if not artifact_ids_by_capture:
+        return {}
+    capture_ids = list(artifact_ids_by_capture)
+    artifact_ids = list(artifact_ids_by_capture.values())
+    rows = scope.connection.execute(
+        "select c.capture_id,a.artifact_id,a.content_sha256,a.storage_key,a.byte_size "
+        "from capture c join artifact a on a.workspace_id=c.workspace_id "
+        "and a.source_blob_sha256=c.blob_sha256 where c.workspace_id=%s "
+        "and c.capture_id=any(%s::uuid[]) and a.artifact_id=any(%s::uuid[]) "
+        "and c.deleted_at is null and a.kind=%s and a.purged_at is null "
+        "and a.content_sha256 is not null and a.storage_key is not null "
+        "and a.byte_size is not null "
+        "and not tombstone_blocks_capture(c.workspace_id,c.capture_id)",
+        (scope.workspace_id, capture_ids, artifact_ids, kind),
+    ).fetchall()
+    return {
+        row["capture_id"]: CaptureArtifactRow(
+            capture_id=row["capture_id"],
+            artifact_id=row["artifact_id"],
+            content_sha256=bytes(row["content_sha256"]),
+            storage_key=row["storage_key"],
+            byte_size=int(row["byte_size"]),
+        )
+        for row in rows
+        if artifact_ids_by_capture.get(row["capture_id"]) == row["artifact_id"]
     }
 
 

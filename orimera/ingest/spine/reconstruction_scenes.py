@@ -31,6 +31,7 @@ def insert_completed(
     scene_id: uuid.UUID,
     member_digest: bytes,
     scene_members: list[tuple[uuid.UUID, bool]],
+    job_id: uuid.UUID | None = None,
 ) -> bool:
     """Record one completed scene and its registration outcomes atomically.
 
@@ -77,26 +78,56 @@ def insert_completed(
         if (
             scene is None
             or bytes(scene["member_digest"]) != member_digest
-            or actual_members != scene_members
+            or [capture_id for capture_id, _registered in actual_members] != capture_ids
+            or (job_id is None and actual_members != scene_members)
         ):
-            raise ValueError(
-                "an existing reconstruction scene disagrees with the completed result"
-            )
+            raise ValueError("an existing reconstruction scene disagrees with the completed result")
+        if job_id is not None:
+            with scope.connection.cursor() as build_cursor:
+                build_cursor.executemany(
+                    "insert into reconstruction_scene_build_member "
+                    "(workspace_id,job_id,capture_id,ordinal,registered) "
+                    "values (%s,%s,%s,%s,%s) on conflict do nothing",
+                    [
+                        (scope.workspace_id, job_id, capture_id, ordinal, registered)
+                        for ordinal, (capture_id, registered) in enumerate(scene_members)
+                    ],
+                )
+            build_rows = scope.connection.execute(
+                "select capture_id,registered from reconstruction_scene_build_member "
+                "where workspace_id=%s and job_id=%s order by ordinal,capture_id",
+                (scope.workspace_id, job_id),
+            ).fetchall()
+            build_members = [(row["capture_id"], bool(row["registered"])) for row in build_rows]
+            if build_members != scene_members:
+                raise ValueError(
+                    "an existing reconstruction build disagrees with the completed result"
+                )
     return inserted
 
 
 def members(
-    scope: WorkspaceScope, scene_id: uuid.UUID
+    scope: WorkspaceScope, scene_id: uuid.UUID, *, job_id: uuid.UUID | None = None
 ) -> list[ReconstructionSceneMemberRow]:
     """Every member in presentation order, including its registration outcome."""
-    rows = scope.connection.execute(
-        "select m.capture_id, m.ordinal, m.registered, c.blob_sha256 "
-        "from reconstruction_scene_member m "
-        "join capture c on c.workspace_id = m.workspace_id and c.capture_id = m.capture_id "
-        "where m.workspace_id = %s and m.scene_id = %s "
-        "order by m.ordinal, m.capture_id",
-        (scope.workspace_id, scene_id),
-    ).fetchall()
+    if job_id is None:
+        rows = scope.connection.execute(
+            "select m.capture_id,m.ordinal,m.registered,c.blob_sha256 "
+            "from reconstruction_scene_member m join capture c "
+            "on c.workspace_id=m.workspace_id and c.capture_id=m.capture_id "
+            "where m.workspace_id=%s and m.scene_id=%s order by m.ordinal,m.capture_id",
+            (scope.workspace_id, scene_id),
+        ).fetchall()
+    else:
+        rows = scope.connection.execute(
+            "select m.capture_id,m.ordinal,m.registered,c.blob_sha256 "
+            "from reconstruction_scene_build_member m join reconstruction_scene_job j "
+            "on j.workspace_id=m.workspace_id and j.job_id=m.job_id join capture c "
+            "on c.workspace_id=m.workspace_id and c.capture_id=m.capture_id "
+            "where m.workspace_id=%s and m.job_id=%s and j.scene_id=%s "
+            "order by m.ordinal,m.capture_id",
+            (scope.workspace_id, job_id, scene_id),
+        ).fetchall()
     return [
         ReconstructionSceneMemberRow(
             capture_id=row["capture_id"],

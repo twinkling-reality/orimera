@@ -8,8 +8,16 @@ import psycopg
 import pytest
 from orimera.evidence.blob import BlobId
 from orimera.evidence.scene import scene_id_for, scene_member_digest
+from orimera.ingest.operations import (
+    reconstruction_scene_job,
+    reconstruction_scene_metrics,
+    retry_reconstruction_scene_job,
+)
 from orimera.ingest.scene_selection import enqueue_scene_reconstructions
 from orimera.ingest.scenes import SceneGroup
+from orimera.store.local import LocalContentAddressedStore
+
+from conftest import write_point_map
 
 
 def _captures(repository, count: int = 3) -> list[uuid.UUID]:
@@ -64,12 +72,24 @@ def test_enqueue_is_deterministic_and_a_restart_claims_the_exact_order(ingest_sp
     assert claimed.reclaimed is False
 
 
-def test_the_initial_policy_selects_three_member_groups_and_records_its_source(repository):
+def test_the_initial_policy_waits_for_every_point_map_and_binds_exact_inputs(repository, tmp_path):
     captures = _captures(repository, 5)
     groups = [
         SceneGroup(ordinal=0, capture_ids=captures[:2]),
         SceneGroup(ordinal=1, capture_ids=captures[2:]),
     ]
+
+    assert enqueue_scene_reconstructions(repository, groups) == []
+    store = LocalContentAddressedStore(tmp_path / "store")
+    for index, capture_id in enumerate(captures[2:]):
+        capture = repository.capture(capture_id)
+        assert capture is not None
+        write_point_map(
+            repository,
+            store,
+            capture.blob_id,
+            payload=f"point map {index}".encode(),
+        )
 
     selections = enqueue_scene_reconstructions(repository, groups)
 
@@ -78,7 +98,7 @@ def test_the_initial_policy_selects_three_member_groups_and_records_its_source(r
     ]
     assert selected_groups == [(1, 3)]
     row = repository.connection.execute(
-        "select selection_policy from reconstruction_scene_job where workspace_id=%s",
+        "select selection_policy,build_inputs from reconstruction_scene_job where workspace_id=%s",
         (repository.workspace_id,),
     ).fetchone()
     assert row is not None
@@ -90,6 +110,10 @@ def test_the_initial_policy_selects_three_member_groups_and_records_its_source(r
         "stage_params_sha256": row["selection_policy"]["source"]["stage_params_sha256"],
     }
     assert "not been validated" in row["selection_policy"]["limitations"][0]
+    assert row["build_inputs"]["profile"] == "orimera.reconstruction-scene-build-input/v1"
+    assert [item["capture_ref"] for item in row["build_inputs"]["point_maps"]] == [
+        str(capture_id) for capture_id in captures[2:]
+    ]
 
 
 def test_two_claimants_do_not_receive_the_same_scene(ingest_spine):
@@ -103,6 +127,62 @@ def test_two_claimants_do_not_receive_the_same_scene(ingest_spine):
 
     assert first is not None
     assert second is None
+
+
+def test_scene_operations_report_exact_inputs_and_only_accelerate_retryable_failures(repository):
+    job_id, _inserted = repository.enqueue_reconstruction_scene(
+        capture_ids=_captures(repository),
+        selection_policy=_policy(),
+    )
+    claimed = repository.claim_reconstruction_scene(worker="operator-test", lease_seconds=60)
+    assert claimed is not None
+    repository.fail_reconstruction_scene_job(
+        job_id=job_id,
+        claim_token=claimed.claim_token,
+        failure_class="measured_failure",
+        failure_message="retry later",
+        retry_delay_seconds=3600,
+    )
+
+    metrics = reconstruction_scene_metrics(repository.connection, repository.workspace_id)
+    assert metrics["depth"] == {
+        "queued": 0,
+        "running": 0,
+        "retryable": 1,
+        "waiting_for_point_maps": 0,
+    }
+    assert metrics["coordination"]["state"] == "building"
+    assert metrics["states"] == {"succeeded": 0, "failed": 1, "cancelled": 0}
+    detail = reconstruction_scene_job(
+        repository.connection,
+        repository.workspace_id,
+        job_id,
+    )
+    assert detail is not None
+    assert detail["job_id"] == str(job_id)
+    assert detail["status"] == "failed"
+    assert detail["failure_class"] == "measured_failure"
+    assert detail["current"] is False
+    assert len(detail["members"]) == 3
+
+    with repository.transaction():
+        assert (
+            retry_reconstruction_scene_job(
+                repository.connection,
+                repository.workspace_id,
+                job_id,
+            )
+            == "retryable"
+        )
+    assert repository.claim_reconstruction_scene(worker="retry", lease_seconds=60) is not None
+    assert (
+        retry_reconstruction_scene_job(
+            repository.connection,
+            repository.workspace_id,
+            uuid.uuid4(),
+        )
+        is None
+    )
 
 
 def test_expired_claim_rotates_the_token_and_stale_completion_is_refused(ingest_spine):
@@ -125,15 +205,19 @@ def test_expired_claim_rotates_the_token_and_stale_completion_is_refused(ingest_
     assert second.reclaimed is True
     assert second.attempts == 2
     assert second.claim_token != first.claim_token
-    assert first_repository.complete_reconstruction_scene_job(
-        job_id=job_id,
-        claim_token=first.claim_token,
-        scratch_key="old",
-        pose_manifest_digest=b"\x01" * 32,
-        pose_receipt_artifact_id=uuid.uuid4(),
-        placement_artifact_id=uuid.uuid4(),
-        gate_artifact_id=uuid.uuid4(),
-    ) is False
+    assert (
+        first_repository.complete_reconstruction_scene_job(
+            job_id=job_id,
+            claim_token=first.claim_token,
+            scratch_key="old",
+            pose_manifest_digest=b"\x01" * 32,
+            pose_receipt_artifact_id=uuid.uuid4(),
+            placement_artifact_id=uuid.uuid4(),
+            gate_artifact_id=uuid.uuid4(),
+            rung_assertion_id=uuid.uuid4(),
+        )
+        is False
+    )
 
 
 def test_completion_records_partial_registration_once(ingest_spine):
@@ -209,4 +293,13 @@ def test_job_membership_cannot_be_changed_after_enqueue(repository):
             "update reconstruction_scene_job_member set ordinal=7 "
             "where workspace_id=%s and job_id=%s and capture_id=%s",
             (repository.workspace_id, job_id, captures[0]),
+        )
+    with (
+        pytest.raises(psycopg.errors.IntegrityConstraintViolation),
+        repository.connection.transaction(),
+    ):
+        repository.connection.execute(
+            "update reconstruction_scene_job set build_inputs='{}'::jsonb "
+            "where workspace_id=%s and job_id=%s",
+            (repository.workspace_id, job_id),
         )

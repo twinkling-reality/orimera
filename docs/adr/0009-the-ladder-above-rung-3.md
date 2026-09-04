@@ -180,6 +180,15 @@ atomically publishes the rung assertion and successful job state. Graph and pack
 the retryable prepared state. The policy records its unvalidated limits rather than presenting
 scene grouping as a geometric fact.*
 
+*CORRECTED 2026-09-04. Automatic selection now waits until every member has a current point map.
+Migration 0027 binds each job to those exact artifact ids and content digests plus all scene-stage
+versions. A changed point map or stage binding creates a new immutable build under the same stable
+scene identity. Per-build registration rows retain both outcomes, while `current_job_id` advances
+only with successful publication. The graph and package no longer select a successful job by
+timestamp. They follow the explicit pointer. The production derivative-worker image now contains
+MoGe and Compose configures it, closing the deployment path that previously queued pose before the
+depth artifacts it was meant to place existed.*
+
 **D10. Nothing above rung 3 reaches a viewer until something serves geometry at all. BUILT
 2026-09-03.** The paragraph is left in the tense it was written in, and what was built follows
 it. There is no

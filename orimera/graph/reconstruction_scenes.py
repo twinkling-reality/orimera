@@ -53,23 +53,25 @@ select distinct on (s.scene_id)
        s.scene_id,
        s.member_digest,
        a.object_value,
+       j.job_id,
        j.completed_at,
        pose.content_sha256 as pose_sha256,
        placement.content_sha256 as placement_sha256,
        gate.content_sha256 as gate_sha256
   from reconstruction_scene s
+  left join reconstruction_scene_job j
+    on j.workspace_id = s.workspace_id
+   and j.job_id = s.current_job_id
+   and j.status = 'succeeded'
   join assertion a
     on a.workspace_id = s.workspace_id
    and a.subject_ref ->> 'type' = 'scene'
    and a.subject_ref ->> 'id' = s.scene_id::text
    and a.status = 'active'
+   and (s.current_job_id is null or a.assertion_id = j.rung_assertion_id)
   join predicate p
     on p.predicate_id = a.predicate_id
    and p.key = %s
-  left join reconstruction_scene_job j
-    on j.workspace_id = s.workspace_id
-   and j.scene_id = s.scene_id
-   and j.status = 'succeeded'
   left join artifact pose
     on pose.workspace_id = s.workspace_id
    and pose.scene_id = s.scene_id
@@ -101,9 +103,7 @@ def reconstruction_scene_rows(
     store: ContentAddressedStore | None,
 ) -> list[ReconstructionSceneRow]:
     """Return live scene claims, exposing placements only when their receipt chain verifies."""
-    rows = connection.execute(
-        _SCENES, (RECONSTRUCTION_SCENE_RUNG_PREDICATE, workspace)
-    ).fetchall()
+    rows = connection.execute(_SCENES, (RECONSTRUCTION_SCENE_RUNG_PREDICATE, workspace)).fetchall()
     return [_scene_row(connection, workspace, row, store) for row in rows]
 
 
@@ -114,7 +114,7 @@ def _scene_row(
     store: ContentAddressedStore | None,
 ) -> ReconstructionSceneRow:
     scene_id = row["scene_id"]
-    members = _members(connection, workspace, scene_id)
+    members = _members(connection, workspace, scene_id, row["job_id"])
     claim = _claim(row["object_value"], members)
     pose_digest = _hex(row["pose_sha256"])
     placement_digest = _hex(row["placement_sha256"])
@@ -287,16 +287,25 @@ def _scene_row(
 
 
 def _members(
-    connection: psycopg.Connection, workspace: uuid.UUID, scene_id: uuid.UUID
+    connection: psycopg.Connection,
+    workspace: uuid.UUID,
+    scene_id: uuid.UUID,
+    job_id: uuid.UUID | None,
 ) -> list[_Member]:
-    rows = connection.execute(
-        "select capture_id,ordinal,registered from reconstruction_scene_member "
-        "where workspace_id=%s and scene_id=%s order by ordinal,capture_id",
-        (workspace, scene_id),
-    ).fetchall()
+    if job_id is None:
+        rows = connection.execute(
+            "select capture_id,ordinal,registered from reconstruction_scene_member "
+            "where workspace_id=%s and scene_id=%s order by ordinal,capture_id",
+            (workspace, scene_id),
+        ).fetchall()
+    else:
+        rows = connection.execute(
+            "select capture_id,ordinal,registered from reconstruction_scene_build_member "
+            "where workspace_id=%s and job_id=%s order by ordinal,capture_id",
+            (workspace, job_id),
+        ).fetchall()
     return [
-        _Member(row["capture_id"], int(row["ordinal"]), row["registered"] is True)
-        for row in rows
+        _Member(row["capture_id"], int(row["ordinal"]), row["registered"] is True) for row in rows
     ]
 
 

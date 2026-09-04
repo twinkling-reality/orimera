@@ -223,10 +223,10 @@ class IngestRepository:
         return spans.upsert(self._scope, address)
 
     def reconstruction_scene_members(
-        self, scene_id: uuid.UUID
+        self, scene_id: uuid.UUID, *, job_id: uuid.UUID | None = None
     ) -> list[reconstruction_scenes.ReconstructionSceneMemberRow]:
         """The photographs a reconstruction scene was run over, in its recorded order."""
-        return reconstruction_scenes.members(self._scope, scene_id)
+        return reconstruction_scenes.members(self._scope, scene_id, job_id=job_id)
 
     def insert_completed_reconstruction_scene(
         self,
@@ -234,6 +234,7 @@ class IngestRepository:
         scene_id: uuid.UUID,
         member_digest: bytes,
         scene_members: list[tuple[uuid.UUID, bool]],
+        job_id: uuid.UUID | None = None,
     ) -> bool:
         """Record a completed scene and every registration outcome in one transaction."""
         return reconstruction_scenes.insert_completed(
@@ -241,14 +242,22 @@ class IngestRepository:
             scene_id=scene_id,
             member_digest=member_digest,
             scene_members=scene_members,
+            job_id=job_id,
         )
 
     def enqueue_reconstruction_scene(
-        self, *, capture_ids: list[uuid.UUID], selection_policy: dict[str, Any]
+        self,
+        *,
+        capture_ids: list[uuid.UUID],
+        selection_policy: dict[str, Any],
+        build_inputs: dict[str, Any] | None = None,
     ) -> tuple[uuid.UUID, bool]:
         """Queue one exact, policy-described capture set for pose recovery."""
         return reconstruction_jobs.enqueue(
-            self._scope, capture_ids=capture_ids, selection_policy=selection_policy
+            self._scope,
+            capture_ids=capture_ids,
+            selection_policy=selection_policy,
+            build_inputs=build_inputs,
         )
 
     def claim_reconstruction_scene(
@@ -296,6 +305,7 @@ class IngestRepository:
         pose_receipt_artifact_id: uuid.UUID,
         placement_artifact_id: uuid.UUID,
         gate_artifact_id: uuid.UUID,
+        rung_assertion_id: uuid.UUID,
     ) -> bool:
         """Close a scene job after its scene, receipts and assertion are durable."""
         return reconstruction_jobs.complete(
@@ -307,6 +317,7 @@ class IngestRepository:
             pose_receipt_artifact_id=pose_receipt_artifact_id,
             placement_artifact_id=placement_artifact_id,
             gate_artifact_id=gate_artifact_id,
+            rung_assertion_id=rung_assertion_id,
         )
 
     def fail_reconstruction_scene_job(
@@ -392,6 +403,19 @@ class IngestRepository:
         """Resolve current complete per-capture artifacts for a scene producer."""
         return artifacts.current_for_captures(
             self._scope, capture_ids=capture_ids, kind=kind
+        )
+
+    def exact_capture_artifacts(
+        self,
+        *,
+        artifact_ids_by_capture: dict[uuid.UUID, uuid.UUID],
+        kind: str,
+    ) -> dict[uuid.UUID, artifacts.CaptureArtifactRow]:
+        """Resolve the exact immutable per-capture artifacts bound into a scene job."""
+        return artifacts.exact_for_captures(
+            self._scope,
+            artifact_ids_by_capture=artifact_ids_by_capture,
+            kind=kind,
         )
 
     def insert_artifact(

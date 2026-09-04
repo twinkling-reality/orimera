@@ -29,26 +29,31 @@ class SceneRungRow:
     member_count: int
 
 
-def scene_rung_rows(
-    connection: psycopg.Connection, workspace: uuid.UUID
-) -> list[SceneRungRow]:
+def scene_rung_rows(connection: psycopg.Connection, workspace: uuid.UUID) -> list[SceneRungRow]:
     """Current scene rung claims whose complete member set remains live."""
     rows = connection.execute(
-        "select s.scene_id, a.object_value, "
+        "select distinct on (s.scene_id) s.scene_id,a.object_value, "
         "array(select m.capture_id from reconstruction_scene_member m "
         "      where m.workspace_id=s.workspace_id and m.scene_id=s.scene_id "
         "      order by m.ordinal,m.capture_id) as member_capture_ids, "
+        "case when s.current_job_id is null then "
         "array(select m.capture_id from reconstruction_scene_member m "
         "      where m.workspace_id=s.workspace_id and m.scene_id=s.scene_id "
-        "        and m.registered is true "
-        "      order by m.ordinal,m.capture_id) as registered_capture_ids "
+        "        and m.registered is true order by m.ordinal,m.capture_id) "
+        "else array(select m.capture_id from reconstruction_scene_build_member m "
+        "      where m.workspace_id=s.workspace_id and m.job_id=s.current_job_id "
+        "        and m.registered is true order by m.ordinal,m.capture_id) "
+        "end as registered_capture_ids "
         "from reconstruction_scene s "
+        "left join reconstruction_scene_job j on j.workspace_id=s.workspace_id "
+        "and j.job_id=s.current_job_id and j.status='succeeded' "
         "join assertion a on a.workspace_id=s.workspace_id "
         " and a.subject_ref->>'type'='scene' and a.subject_ref->>'id'=s.scene_id::text "
+        " and (s.current_job_id is null or a.assertion_id=j.rung_assertion_id) "
         "join predicate p on p.predicate_id=a.predicate_id "
         "where s.workspace_id=%s and p.key=%s and a.status='active' "
         "and not tombstone_blocks_scene(s.workspace_id,s.scene_id) "
-        "order by s.scene_id",
+        "order by s.scene_id,a.asserted_at desc,a.assertion_id desc",
         (workspace, RECONSTRUCTION_SCENE_RUNG_PREDICATE),
     ).fetchall()
     return [

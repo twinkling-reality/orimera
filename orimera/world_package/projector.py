@@ -63,9 +63,7 @@ class ProjectionResult:
     def as_dict(self) -> dict[str, Any]:
         return {
             "export_id": str(self.export_id),
-            "interaction_policy_version_id": _optional_uuid(
-                self.interaction_policy_version_id
-            ),
+            "interaction_policy_version_id": _optional_uuid(self.interaction_policy_version_id),
             "manifest_sha256": self.manifest_sha256,
             "merkle_root_sha256": self.merkle_root_sha256,
             "output": str(self.output),
@@ -273,7 +271,7 @@ def _project_components(
             "and (not exists (select 1 from reconstruction_scene_job j "
             "where j.workspace_id=s.workspace_id and j.scene_id=s.scene_id) "
             "or exists (select 1 from reconstruction_scene_job j "
-            "where j.workspace_id=s.workspace_id and j.scene_id=s.scene_id "
+            "where j.workspace_id=s.workspace_id and j.job_id=s.current_job_id "
             "and j.status='succeeded')) order by s.scene_id",
             (workspace_id,),
         ).fetchall()
@@ -281,12 +279,18 @@ def _project_components(
     assertions = cursor.execute(
         "select a.assertion_id,a.kind,p.key as predicate,a.subject_ref,a.object_ref,a.object_value,"
         "a.valid_time,a.asserted_at,a.support_span_ids,a.external_source,a.status,a.supersedes "
-        "from assertion a join predicate p using(predicate_id) where a.status='active' "
+        "from assertion a join predicate p using(predicate_id) "
+        "where a.workspace_id=%s and a.status='active' "
         "and not exists (select 1 from tombstone t where t.scope='assertion' "
         "and t.assertion_id=a.assertion_id and t.effective_at<=now()) "
-        "and (a.subject_ref->>'type' <> 'scene' "
-        "or a.subject_ref->>'id' = any(%s::text[])) order by a.assertion_id",
-        ([str(scene_id) for scene_id in live_scenes],),
+        "and (a.subject_ref->>'type' <> 'scene' or exists ("
+        "select 1 from reconstruction_scene s left join reconstruction_scene_job j "
+        "on j.workspace_id=s.workspace_id and j.job_id=s.current_job_id "
+        "where s.workspace_id=a.workspace_id and s.scene_id=any(%s) "
+        "and a.subject_ref->>'id'=s.scene_id::text "
+        "and (s.current_job_id is null or j.rung_assertion_id=a.assertion_id))) "
+        "order by a.assertion_id",
+        (workspace_id, live_scenes),
     ).fetchall()
     scenes = cursor.execute(
         "select s.scene_id from reconstruction_scene s "
@@ -294,8 +298,12 @@ def _project_components(
         (workspace_id, live_scenes),
     ).fetchall()
     scene_members = cursor.execute(
-        "select m.scene_id,m.capture_id,m.ordinal,m.registered "
-        "from reconstruction_scene_member m where m.workspace_id=%s and m.scene_id = any(%s) "
+        "select m.scene_id,m.capture_id,m.ordinal,coalesce(b.registered,m.registered) "
+        "as registered from reconstruction_scene_member m join reconstruction_scene s "
+        "on s.workspace_id=m.workspace_id and s.scene_id=m.scene_id "
+        "left join reconstruction_scene_build_member b on b.workspace_id=s.workspace_id "
+        "and b.job_id=s.current_job_id and b.capture_id=m.capture_id "
+        "where m.workspace_id=%s and m.scene_id = any(%s) "
         "order by m.scene_id,m.ordinal,m.capture_id",
         (workspace_id, live_scenes),
     ).fetchall()
@@ -315,12 +323,18 @@ def _project_components(
     artifacts = cursor.execute(
         "select a.artifact_id,a.kind,a.stage_key,a.stage_version,a.params_digest,a.input_digest,"
         "a.content_sha256,a.byte_size,a.superseded_by,a.purged_at,a.needs_repair,a.scene_id "
-        "from artifact a where "
+        "from artifact a where a.workspace_id=%s and ("
         "(a.scene_id is null and exists (select 1 from capture c "
         " where c.blob_sha256=a.source_blob_sha256 and c.deleted_at is null)) "
-        "or a.scene_id = any(%s) "
+        "or exists (select 1 from reconstruction_scene s "
+        "left join reconstruction_scene_job j on j.workspace_id=s.workspace_id "
+        "and j.job_id=s.current_job_id where s.workspace_id=a.workspace_id "
+        "and s.scene_id=a.scene_id and s.scene_id=any(%s) "
+        "and (s.current_job_id is null or a.artifact_id in "
+        "(j.pose_receipt_artifact_id,j.placement_artifact_id,j.gate_artifact_id))) "
+        ") "
         "order by a.artifact_id",
-        (live_scenes,),
+        (workspace_id, live_scenes),
     ).fetchall()
 
     span_ids = {row["span_id"]: _urn("span", row["span_id"]) for row in spans}
@@ -329,9 +343,7 @@ def _project_components(
         row["occurrence_id"]: _urn("occurrence", row["occurrence_id"]) for row in occurrences
     }
     entity_ids = {row["entity_id"]: _urn("entity", row["entity_id"]) for row in entities}
-    artifact_ids = {
-        row["artifact_id"]: _urn("artifact", row["artifact_id"]) for row in artifacts
-    }
+    artifact_ids = {row["artifact_id"]: _urn("artifact", row["artifact_id"]) for row in artifacts}
     scene_ids = {row["scene_id"]: _urn("scene", row["scene_id"]) for row in scenes}
     members_by_scene: dict[Any, list[Mapping[str, Any]]] = {}
     for row in scene_members:
@@ -351,8 +363,7 @@ def _project_components(
                 "status": str(row["status"]),
                 "subject_ref": _reference(row["subject_ref"]),
                 "support_span_ids": [
-                    span_ids.get(value, _urn("span", value))
-                    for value in row["support_span_ids"]
+                    span_ids.get(value, _urn("span", value)) for value in row["support_span_ids"]
                 ],
                 "supersedes": _optional_urn("assertion", row["supersedes"]),
                 "valid_time": row["valid_time"],
@@ -451,9 +462,7 @@ def _project_components(
                     if row["content_sha256"] is None
                     else "available-by-authorized-digest-resolver"
                 ),
-                "superseded_by": _mapped_or_urn(
-                    artifact_ids, "artifact", row["superseded_by"]
-                ),
+                "superseded_by": _mapped_or_urn(artifact_ids, "artifact", row["superseded_by"]),
             }
             for row in artifacts
         ],
@@ -680,9 +689,7 @@ def _style(cursor: psycopg.Cursor, world_id: str, version_id: uuid.UUID | None) 
         "lineage": {
             "parent_version_id": _optional_urn("style", row["parent_version_id"]),
             "revision": row["revision"],
-            "rollback_target_version_id": _optional_urn(
-                "style", row["rollback_target_version_id"]
-            ),
+            "rollback_target_version_id": _optional_urn("style", row["rollback_target_version_id"]),
             "version_id": _urn("style", row["version_id"]),
         },
         "origin": row["origin"],
@@ -914,9 +921,7 @@ def _crate_files(components: Mapping[str, Any]) -> dict[str, bytes]:
                 "@id": path,
                 "@type": "File",
                 "encodingFormat": (
-                    "application/ld+json"
-                    if path == "wmp/profile.json"
-                    else "application/json"
+                    "application/ld+json" if path == "wmp/profile.json" else "application/json"
                 ),
                 "name": path,
                 "sha256": hashlib.sha256(files[path]).hexdigest(),

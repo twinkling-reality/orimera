@@ -36,6 +36,10 @@ def _policy_bytes(policy: dict[str, Any]) -> bytes:
     return canonical_json(policy)
 
 
+def _build_input_bytes(build_inputs: dict[str, Any]) -> bytes:
+    return canonical_json(build_inputs)
+
+
 @dataclass(frozen=True, slots=True)
 class SceneJobMember:
     capture_id: uuid.UUID
@@ -51,6 +55,8 @@ class ClaimedSceneJob:
     member_digest: bytes
     selection_policy: dict[str, Any]
     selection_policy_digest: bytes
+    build_inputs: dict[str, Any]
+    build_input_digest: bytes
     members: tuple[SceneJobMember, ...]
     attempts: int
     claim_token: uuid.UUID
@@ -63,21 +69,32 @@ def enqueue(
     *,
     capture_ids: list[uuid.UUID],
     selection_policy: dict[str, Any],
+    build_inputs: dict[str, Any] | None = None,
 ) -> tuple[uuid.UUID, bool]:
     """Queue one exact ordered set, or verify and reuse the identical queued question."""
     if not capture_ids or len(set(capture_ids)) != len(capture_ids):
         raise ValueError("a scene job needs a non-empty, duplicate-free capture list")
     policy_bytes = _policy_bytes(selection_policy)
     policy_digest = hashlib.sha256(policy_bytes).digest()
+    inputs = build_inputs or {
+        "profile": "orimera.reconstruction-scene-build-input/manual-v0",
+        "point_maps": [],
+    }
+    build_input_digest = hashlib.sha256(_build_input_bytes(inputs)).digest()
     scene_id = scene_id_for(capture_ids)
     member_digest = scene_member_digest(capture_ids)
-    job_id = uuid.uuid5(_JOB_NAMESPACE, f"{scene_id}:{policy_digest.hex()}")
+    job_id = uuid.uuid5(
+        _JOB_NAMESPACE,
+        f"{scene_id}:{policy_digest.hex()}:{build_input_digest.hex()}",
+    )
     with scope.connection.transaction():
         cursor = scope.connection.execute(
             "insert into reconstruction_scene_job "
             "(job_id, workspace_id, scene_id, member_digest, selection_policy, "
-            "selection_policy_digest,scratch_key) values (%s, %s, %s, %s, %s, %s, %s) "
-            "on conflict (workspace_id, scene_id, selection_policy_digest) do nothing",
+            "selection_policy_digest,build_inputs,build_input_digest,scratch_key) "
+            "values (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "on conflict (workspace_id,scene_id,selection_policy_digest,build_input_digest) "
+            "do nothing",
             (
                 job_id,
                 scope.workspace_id,
@@ -85,6 +102,8 @@ def enqueue(
                 member_digest,
                 Jsonb(selection_policy),
                 policy_digest,
+                Jsonb(inputs),
+                build_input_digest,
                 f"{scope.workspace_id}/{job_id}",
             ),
         )
@@ -101,9 +120,10 @@ def enqueue(
                 )
 
         row = scope.connection.execute(
-            "select job_id, member_digest, selection_policy from reconstruction_scene_job "
-            "where workspace_id = %s and scene_id = %s and selection_policy_digest = %s",
-            (scope.workspace_id, scene_id, policy_digest),
+            "select job_id,member_digest,selection_policy,build_inputs "
+            "from reconstruction_scene_job where workspace_id=%s and scene_id=%s "
+            "and selection_policy_digest=%s and build_input_digest=%s",
+            (scope.workspace_id, scene_id, policy_digest, build_input_digest),
         ).fetchone()
         members = scope.connection.execute(
             "select capture_id from reconstruction_scene_job_member "
@@ -115,6 +135,7 @@ def enqueue(
             or row["job_id"] != job_id
             or bytes(row["member_digest"]) != member_digest
             or dict(row["selection_policy"]) != selection_policy
+            or dict(row["build_inputs"]) != inputs
             or [member["capture_id"] for member in members] != capture_ids
         ):
             raise ValueError(
@@ -163,6 +184,8 @@ def _claimed(scope: WorkspaceScope, row: dict[str, Any], *, reclaimed: bool) -> 
         member_digest=bytes(row["member_digest"]),
         selection_policy=dict(row["selection_policy"]),
         selection_policy_digest=bytes(row["selection_policy_digest"]),
+        build_inputs=dict(row["build_inputs"]),
+        build_input_digest=bytes(row["build_input_digest"]),
         members=tuple(
             SceneJobMember(
                 capture_id=member["capture_id"],
@@ -179,9 +202,7 @@ def _claimed(scope: WorkspaceScope, row: dict[str, Any], *, reclaimed: bool) -> 
     )
 
 
-def claim(
-    scope: WorkspaceScope, *, worker: str, lease_seconds: float
-) -> ClaimedSceneJob | None:
+def claim(scope: WorkspaceScope, *, worker: str, lease_seconds: float) -> ClaimedSceneJob | None:
     """Claim expired work first, then queued or retryable work, with a rotated token."""
     reclaimed = True
     row = scope.connection.execute(
@@ -194,7 +215,7 @@ def claim(
         "and attempts < %s order by available_at,created_at,job_id "
         "for update skip locked limit 1) "
         "returning job_id,scene_id,member_digest,selection_policy,selection_policy_digest,"
-        "attempts,claim_token,scratch_key",
+        "build_inputs,build_input_digest,attempts,claim_token,scratch_key",
         (worker, lease_seconds, scope.workspace_id, MAX_SCENE_CLAIMS),
     ).fetchone()
     if row is None:
@@ -209,7 +230,7 @@ def claim(
             "and attempts < %s and not tombstone_blocks_reconstruction_job(workspace_id,job_id) "
             "order by available_at,created_at,job_id for update skip locked limit 1) "
             "returning job_id,scene_id,member_digest,selection_policy,selection_policy_digest,"
-            "attempts,claim_token,scratch_key",
+            "build_inputs,build_input_digest,attempts,claim_token,scratch_key",
             (worker, lease_seconds, scope.workspace_id, MAX_SCENE_CLAIMS),
         ).fetchone()
     return None if row is None else _claimed(scope, row, reclaimed=reclaimed)
@@ -231,9 +252,7 @@ def heartbeat(
     return cursor.rowcount > 0
 
 
-def cancelled_or_lost(
-    scope: WorkspaceScope, *, job_id: uuid.UUID, claim_token: uuid.UUID
-) -> bool:
+def cancelled_or_lost(scope: WorkspaceScope, *, job_id: uuid.UUID, claim_token: uuid.UUID) -> bool:
     row = scope.connection.execute(
         "select status,claim_token,tombstone_blocks_reconstruction_job(workspace_id,job_id) "
         "as blocked from reconstruction_scene_job where workspace_id=%s and job_id=%s",
@@ -257,12 +276,14 @@ def complete(
     pose_receipt_artifact_id: uuid.UUID,
     placement_artifact_id: uuid.UUID,
     gate_artifact_id: uuid.UUID,
+    rung_assertion_id: uuid.UUID,
 ) -> bool:
     """Close a held job only after every durable output was accepted in this transaction."""
     cursor = scope.connection.execute(
         "update reconstruction_scene_job set status='succeeded',scratch_key=%s,"
         "pose_manifest_digest=%s,pose_receipt_artifact_id=%s,placement_artifact_id=%s,"
-        "gate_artifact_id=%s,claim_token=null,claimed_by=null,lease_expires_at=null,"
+        "gate_artifact_id=%s,rung_assertion_id=%s,"
+        "claim_token=null,claimed_by=null,lease_expires_at=null,"
         "completed_at=now(),updated_at=now(),failure_class=null,failure_message=null "
         "where workspace_id=%s and job_id=%s and status='running' and claim_token=%s "
         "and not tombstone_blocks_reconstruction_job(workspace_id,job_id)",
@@ -272,11 +293,19 @@ def complete(
             pose_receipt_artifact_id,
             placement_artifact_id,
             gate_artifact_id,
+            rung_assertion_id,
             scope.workspace_id,
             job_id,
             claim_token,
         ),
     )
+    if cursor.rowcount > 0:
+        scope.connection.execute(
+            "update reconstruction_scene set current_job_id=%s "
+            "where workspace_id=%s and scene_id=(select scene_id "
+            "from reconstruction_scene_job where workspace_id=%s and job_id=%s)",
+            (job_id, scope.workspace_id, scope.workspace_id, job_id),
+        )
     return cursor.rowcount > 0
 
 

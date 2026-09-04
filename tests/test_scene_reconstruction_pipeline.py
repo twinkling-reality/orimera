@@ -9,11 +9,13 @@ import time
 import uuid
 from pathlib import Path
 
+import psycopg
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from orimera.evidence.blob import BlobId
 from orimera.graph import read_snapshot
 from orimera.graph.geometry import point_map_descriptors, read_point_map
+from orimera.ingest.operations import reconstruction_scene_metrics
 from orimera.ingest.pipeline import PhotoIngestPipeline
 from orimera.ingest.reconstruction_scratch import (
     ScratchSource,
@@ -24,6 +26,7 @@ from orimera.ingest.reconstruction_scratch import (
 from orimera.ingest.scene_reconstruction import SceneReconstructionProcessor
 from orimera.ingest.scenes import run_scene_grouping
 from orimera.ingest.spine.reconstruction_jobs import MAX_SCENE_CLAIMS
+from orimera.ingest.stages import artifact_id_for, idempotency_key, input_digest_of, stage
 from orimera.reconstruction.pose import CommandResult
 from orimera.store.local import LocalContentAddressedStore
 from orimera.world_package import project_world_package
@@ -108,8 +111,13 @@ def _queued_scene(repository, tmp_path: Path, *, point_maps: int = 3):
             )
             point_artifacts.append(point_artifact)
     report = run_scene_grouping(repository)
-    assert len(report.reconstruction_jobs) == 1
-    return store, captures, point_artifacts, report.reconstruction_jobs[0]
+    if point_maps == len(captures):
+        assert len(report.reconstruction_jobs) == 1
+        job_id = report.reconstruction_jobs[0]
+    else:
+        assert report.reconstruction_jobs == []
+        job_id = None
+    return store, captures, point_artifacts, job_id
 
 
 def _processor(repository, store, tmp_path: Path, executor: FakeColmap):
@@ -190,10 +198,131 @@ def test_scene_group_pose_placement_gate_and_assertion_commit_together(repositor
     second_report = run_scene_grouping(repository)
     assert second_report.reconstruction_jobs == [job_id]
     assert repository.claim_reconstruction_scene(worker="test", lease_seconds=60) is None
-    assert repository.connection.execute(
-        "select count(*) as count from artifact where workspace_id=%s and scene_id=%s",
-        (repository.workspace_id, outcome.scene_id),
-    ).fetchone()["count"] == 3
+    assert (
+        repository.connection.execute(
+            "select count(*) as count from artifact where workspace_id=%s and scene_id=%s",
+            (repository.workspace_id, outcome.scene_id),
+        ).fetchone()["count"]
+        == 3
+    )
+
+
+def test_a_new_point_map_build_supersedes_the_displayed_build_without_rewriting_history(
+    repository, tmp_path
+):
+    store, captures, point_artifacts, first_job_id = _queued_scene(repository, tmp_path)
+    first_claim = repository.claim_reconstruction_scene(worker="first", lease_seconds=60)
+    assert first_claim is not None
+    first = _processor(repository, store, tmp_path, FakeColmap(registered=2)).process(first_claim)
+    assert first.status == "succeeded"
+
+    capture = repository.capture(captures[0])
+    assert capture is not None
+    spec = stage("depth")
+    input_digest = input_digest_of([])
+    key = idempotency_key(
+        capture.blob_id,
+        spec,
+        input_digest,
+        binding={"model_id": "test/depth-model-v2"},
+    )
+    replacement_id = artifact_id_for(key)
+    replacement = store.put_bytes(b"replacement point map")
+    repository.insert_artifact(
+        artifact_id=replacement_id,
+        kind=spec.output_kind,
+        source_blob=capture.blob_id,
+        stage_key=spec.key,
+        stage_version=spec.version,
+        params_digest=spec.params_digest,
+        input_digest=input_digest,
+        idempotency_key=key,
+        content_sha256=replacement.blob_id.digest,
+        storage_key=store.key_for(replacement.blob_id),
+        byte_size=replacement.byte_size,
+        produced_by_event=None,
+    )
+    repository.connection.execute(
+        "update artifact set superseded_by=%s where workspace_id=%s and artifact_id=%s",
+        (replacement_id, repository.workspace_id, point_artifacts[0]),
+    )
+
+    report = run_scene_grouping(repository)
+    assert len(report.reconstruction_jobs) == 1
+    second_job_id = report.reconstruction_jobs[0]
+    assert second_job_id != first_job_id
+    second_claim = repository.claim_reconstruction_scene(worker="second", lease_seconds=60)
+    assert second_claim is not None and second_claim.job_id == second_job_id
+    second = _processor(repository, store, tmp_path, FakeColmap(registered=2)).process(second_claim)
+    assert second.status == "succeeded"
+
+    scene = repository.connection.execute(
+        "select current_job_id from reconstruction_scene where workspace_id=%s and scene_id=%s",
+        (repository.workspace_id, first.scene_id),
+    ).fetchone()
+    assert scene == {"current_job_id": second_job_id}
+    jobs = repository.connection.execute(
+        "select job_id,status from reconstruction_scene_job where workspace_id=%s "
+        "and scene_id=%s order by created_at,job_id",
+        (repository.workspace_id, first.scene_id),
+    ).fetchall()
+    assert {row["job_id"] for row in jobs} == {first_job_id, second_job_id}
+    assert {row["status"] for row in jobs} == {"succeeded"}
+    first_members = repository.reconstruction_scene_members(
+        first.scene_id,
+        job_id=first_job_id,
+    )
+    second_members = repository.reconstruction_scene_members(
+        first.scene_id,
+        job_id=second_job_id,
+    )
+    assert [member.registered for member in first_members] == [True, True, False]
+    assert [member.registered for member in second_members] == [True, True, False]
+    graph_scene = read_snapshot(
+        repository.connection,
+        repository.workspace_id,
+        store,
+    ).reconstruction_scenes[0]
+    assert [member.registered for member in graph_scene.members] == [True, True, False]
+    assert graph_scene.members[0].placement is not None
+    assert graph_scene.members[0].placement.artifact_id == replacement_id
+    metrics = reconstruction_scene_metrics(
+        repository.connection,
+        repository.workspace_id,
+    )
+    assert metrics["coordination"]["state"] == "ready"
+    assert metrics["scenes"] == {
+        "live": 1,
+        "published": 1,
+        "superseded_builds": 1,
+    }
+    assertion_counts = repository.connection.execute(
+        "select count(*) as count,count(*) filter (where status='active') as active "
+        "from assertion where workspace_id=%s and subject_ref->>'id'=%s",
+        (repository.workspace_id, str(first.scene_id)),
+    ).fetchone()
+    assert assertion_counts == {"count": 2, "active": 1}
+    package = project_world_package(
+        repository.connection,
+        workspace_id=repository.workspace_id,
+        actor=uuid.uuid4(),
+        output=tmp_path / "rebuilt-package",
+        private_key=Ed25519PrivateKey.generate(),
+    )
+    reconstruction = json.loads(
+        (package.output / "reconstruction/artifacts.json").read_text(encoding="utf-8")
+    )
+    assert len(reconstruction["rung_claims"]) == 1
+    assert len([item for item in reconstruction["items"] if item["scene"] is not None]) == 3
+    with (
+        pytest.raises(psycopg.errors.IntegrityConstraintViolation, match="append-only"),
+        repository.connection.transaction(),
+    ):
+        repository.connection.execute(
+            "update reconstruction_scene set current_job_id=%s "
+            "where workspace_id=%s and scene_id=%s",
+            (first_job_id, repository.workspace_id, first.scene_id),
+        )
 
 
 def test_object_store_failure_keeps_a_prepared_scene_private_and_retryable(
@@ -217,9 +346,10 @@ def test_object_store_failure_keeps_a_prepared_scene_private_and_retryable(
         (repository.workspace_id, job_id),
     ).fetchone()
     assert job == {"status": "failed", "completed_at": None}
-    assert read_snapshot(
-        repository.connection, repository.workspace_id, store
-    ).reconstruction_scenes == []
+    assert (
+        read_snapshot(repository.connection, repository.workspace_id, store).reconstruction_scenes
+        == []
+    )
     package = project_world_package(
         repository.connection,
         workspace_id=repository.workspace_id,
@@ -236,14 +366,19 @@ def test_object_store_failure_keeps_a_prepared_scene_private_and_retryable(
     monkeypatch.setattr(store, "put_bytes", put_bytes)
     retried_claim = repository.claim_reconstruction_scene(worker="second", lease_seconds=60)
     assert retried_claim is not None
-    retried = _processor(
-        repository, store, tmp_path, FakeColmap(registered=2)
-    ).process(retried_claim)
+    retried = _processor(repository, store, tmp_path, FakeColmap(registered=2)).process(
+        retried_claim
+    )
 
     assert retried.status == "succeeded"
-    assert len(
-        read_snapshot(repository.connection, repository.workspace_id, store).reconstruction_scenes
-    ) == 1
+    assert (
+        len(
+            read_snapshot(
+                repository.connection, repository.workspace_id, store
+            ).reconstruction_scenes
+        )
+        == 1
+    )
 
 
 def test_graph_delivers_the_validated_scene_and_exact_placed_maps(repository, tmp_path):
@@ -267,9 +402,7 @@ def test_graph_delivers_the_validated_scene_and_exact_placed_maps(repository, tm
     assert scene.rendering_substrate == "posed_point_maps"
     assert [member.capture_id for member in scene.members] == captures
     assert [
-        member.placement.artifact_id
-        for member in scene.members
-        if member.placement is not None
+        member.placement.artifact_id for member in scene.members if member.placement is not None
     ] == point_artifacts[:2]
     assert all(
         member.placement.reference.content_sha256 == member.placement.content_sha256
@@ -335,12 +468,15 @@ def test_deleting_one_scene_member_withdraws_it_from_the_graph(repository, tmp_p
     # the scene placement is withdrawn. Exact artifact reads remain available for surviving
     # captures, which is what lets another valid scene refer to the same immutable point map.
     assert point_map_descriptors(repository.connection, repository.workspace_id, store) == ()
-    assert read_point_map(
-        repository.connection,
-        repository.workspace_id,
-        _point_artifacts[0],
-        store,
-    ) is not None
+    assert (
+        read_point_map(
+            repository.connection,
+            repository.workspace_id,
+            _point_artifacts[0],
+            store,
+        )
+        is not None
+    )
 
 
 def test_a_process_death_resumes_from_the_last_pose_checkpoint(ingest_spine, tmp_path):
@@ -371,9 +507,7 @@ def test_a_process_death_resumes_from_the_last_pose_checkpoint(ingest_spine, tmp
     assert not (tmp_path / "scratch" / second.scratch_key).exists()
 
 
-def test_an_expired_final_claim_becomes_terminal_and_releases_its_scratch(
-    repository, tmp_path
-):
+def test_an_expired_final_claim_becomes_terminal_and_releases_its_scratch(repository, tmp_path):
     store, _captures, _point_artifacts, job_id = _queued_scene(repository, tmp_path)
     claimed = repository.claim_reconstruction_scene(worker="last", lease_seconds=60)
     assert claimed is not None and claimed.scratch_key is not None
@@ -458,14 +592,20 @@ def test_deletion_during_pose_cancels_without_scene_outputs(repository, tmp_path
         (repository.workspace_id, job_id),
     ).fetchone()
     assert row == {"status": "cancelled"}
-    assert repository.connection.execute(
-        "select count(*) as count from reconstruction_scene where workspace_id=%s",
-        (repository.workspace_id,),
-    ).fetchone()["count"] == 0
-    assert repository.connection.execute(
-        "select count(*) as count from artifact where workspace_id=%s and scene_id is not null",
-        (repository.workspace_id,),
-    ).fetchone()["count"] == 0
+    assert (
+        repository.connection.execute(
+            "select count(*) as count from reconstruction_scene where workspace_id=%s",
+            (repository.workspace_id,),
+        ).fetchone()["count"]
+        == 0
+    )
+    assert (
+        repository.connection.execute(
+            "select count(*) as count from artifact where workspace_id=%s and scene_id is not null",
+            (repository.workspace_id,),
+        ).fetchone()["count"]
+        == 0
+    )
     assert not (tmp_path / "scratch" / claimed.scratch_key).exists()
 
 
@@ -491,10 +631,27 @@ def test_failed_pose_is_retryable_and_its_sensitive_scratch_is_removed(repositor
     assert not (tmp_path / "scratch" / claimed.scratch_key).exists()
 
 
-def test_registered_member_without_a_point_map_is_explicitly_excluded(repository, tmp_path):
-    store, captures, _point_artifacts, _job_id = _queued_scene(
-        repository, tmp_path, point_maps=2
+def test_incomplete_point_maps_defer_pose_until_the_last_exact_input_arrives(repository, tmp_path):
+    store, captures, point_artifacts, job_id = _queued_scene(repository, tmp_path, point_maps=2)
+    assert job_id is None
+    assert repository.claim_reconstruction_scene(worker="test", lease_seconds=60) is None
+    waiting = reconstruction_scene_metrics(
+        repository.connection,
+        repository.workspace_id,
     )
+    assert waiting["coordination"]["state"] == "blocked"
+    assert waiting["depth"]["waiting_for_point_maps"] == 1
+    capture = repository.capture(captures[2])
+    assert capture is not None
+    final_artifact, _content = write_point_map(
+        repository,
+        store,
+        capture.blob_id,
+        payload=b"point map 2",
+    )
+    point_artifacts.append(final_artifact)
+    report = run_scene_grouping(repository)
+    assert len(report.reconstruction_jobs) == 1
     claimed = repository.claim_reconstruction_scene(worker="test", lease_seconds=60)
     assert claimed is not None
 
@@ -507,10 +664,7 @@ def test_registered_member_without_a_point_map_is_explicitly_excluded(repository
         (repository.workspace_id, outcome.scene_id),
     ).fetchone()
     placement = json.loads(store.get(BlobId(bytes(row["content_sha256"]))))["placement"]
-    assert placement["excluded"] == [
-        {
-            "capture_ref": str(captures[2]),
-            "reason": "point-map-unavailable",
-            "registered": True,
-        }
+    assert placement["excluded"] == []
+    assert [item["point_map_artifact_ref"] for item in placement["placed"]] == [
+        str(artifact_id) for artifact_id in point_artifacts
     ]

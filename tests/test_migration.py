@@ -132,6 +132,9 @@ def test_every_migration_is_a_single_transaction_with_no_down_path(migration):
         "world_interaction_policy_preview",
         "world_interaction_policy_audit_event",
         "reconstruction_scene",
+        "reconstruction_scene_build_member",
+        "reconstruction_scene_job",
+        "reconstruction_scene_job_member",
         "reconstruction_scene_member",
     ],
 )

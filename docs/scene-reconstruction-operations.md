@@ -11,7 +11,8 @@ for that measurement.
 ## 1. Production flow
 
 The normal ingest flow runs scene grouping after capture processing. `run_scene_grouping` records
-the groups, applies `SceneGroupPosePolicy`, and enqueues each selected exact member set. The
+the groups, applies `SceneGroupPosePolicy`, and enqueues a selected exact member set only after
+every member has a current point-map artifact. The
 initial policy is deliberately narrow and versioned as
 `orimera.scene-group-pose-selection/v1`:
 
@@ -27,10 +28,17 @@ new deterministic grouping result. A future reviewed selection policy can replac
 `SceneGroupPosePolicy` without changing scene identity, job leasing, placement, or delivery.
 
 The queue row is durable before compute starts. It owns an immutable ordered membership table, the
-complete member-set digest, the selection-policy digest, a deterministic job id, and the
-deterministic `reconstruction_scene` id. Registration is not part of either identity. The completed
-scene and all registration outcomes are inserted only after pose recovery, and all membership rows
-are inserted in the same database transaction.
+complete member-set digest, the selection-policy digest, an exact build-input record and digest, a
+deterministic job id, and the deterministic `reconstruction_scene` id. The build-input record binds
+every member to one point-map artifact id and content digest plus the pose, placement and gate stage
+versions and parameter digests. Registration is not part of scene or job identity. The completed
+scene and the per-build registration outcomes are inserted only after pose recovery.
+
+`reconstruction_scene` remains the stable identity of the exact capture set. A replacement point
+map or scene-stage version creates a new immutable job under that scene. Each successful job keeps
+its own registration rows and output artifacts. Only the scene's `current_job_id` advances, in the
+same transaction that publishes the new rung assertion and successful job state. Graph and package
+readers follow that pointer. Older successful builds remain inspectable and reproducible.
 
 The separate `orimera-scene-worker` process then performs this sequence:
 
@@ -38,13 +46,13 @@ The separate `orimera-scene-worker` process then performs this sequence:
 2. Stage only the declared source blobs under the job's canonical workspace/job scratch key,
    verifying every byte digest and refusing undeclared files.
 3. Run checkpointed pycolmap feature extraction, matching, sparse mapping, and model conversion.
-4. Compute a pose receipt, point-map placement record, and scene-gate decision without writing
-   object bytes early.
+4. Resolve and verify the exact point-map artifacts declared by the job, then compute a pose
+   receipt, point-map placement record, and scene-gate decision without writing object bytes early.
 5. Hold purge-compatible session locks for all three content digests, then commit the completed
-   scene, registration outcomes, and artifact rows through the tombstone guards.
+   scene, per-build registration outcomes, and artifact rows through the tombstone guards.
 6. Flush the exact receipt bytes to the content-addressed store after that row transaction commits.
-7. In one final transaction, record the scene-rung assertion and mark the job succeeded. These two
-   writes are the publication point.
+7. In one final transaction, record the scene-rung assertion, mark the job succeeded, and advance
+   the current-build pointer. These writes are the publication point.
 8. Remove the sensitive scratch directory after success, handled failure, or cancellation.
 
 The graph and World Memory Package omit a prepared job until that publication transaction succeeds.
@@ -166,8 +174,23 @@ handled cleanup safely restages the exact source set.
 
 ## 7. Running the worker
 
-The production image includes the pinned `pycolmap==4.2.0` pose extra. For a local source checkout,
-install or invoke that extra explicitly.
+Compose builds two dependency-specific images from one reviewed Dockerfile. The derivative worker
+selects the reconstruction extra and starts MoGe, while the API and scene worker use the default
+server and pinned `pycolmap==4.2.0` pose extras. Torch and pycolmap never need to load in one
+process. The derivative worker's model cache shares the durable media volume.
+
+The derivative worker requires no depth flag in Compose. For a local source checkout, configure it
+explicitly:
+
+```bash
+export ORIMERA_DEPTH_MODEL=moge
+export ORIMERA_DEPTH_MODEL_ID=Ruicheng/moge-2-vitl
+export ORIMERA_DEPTH_MODEL_REVISION=39c4d5e957afe587e04eec59dc2bcc3be5ecd968
+export ORIMERA_DEPTH_DEVICE=cpu
+uv run --extra reconstruction orimera-derivative-worker
+```
+
+For the scene worker, install or invoke the pose extra explicitly.
 
 ```bash
 export ORIMERA_DATABASE_URL=postgresql://orimera_app:<password>@localhost:5433/orimera
@@ -182,6 +205,14 @@ Both provenance variables are required. A mutable image tag or guessed checkout 
 The worker also refuses an owner, superuser, or BYPASSRLS database role and an empty workspace set.
 Use `--once` to drain the work currently eligible and exit. Defaults are a 900-second lease,
 30-second heartbeat, 2-second polling interval, and 3600-second abandoned-scratch age.
+
+Authenticated operators can read top-level state from `GET /operations/reconstruction-scenes`.
+It distinguishes derivative work, ready or running scene work, groups blocked on missing point
+maps, published scenes, and superseded builds. `GET /operations/reconstruction-scenes/{job_id}`
+returns one job's exact inputs, member outcomes, outputs, failure and current-build state. A
+retryable failure can be made immediately eligible with
+`POST /operations/reconstruction-scenes/{job_id}/retry`; succeeded, cancelled and exhausted jobs
+are immutable and return a conflict instead of being rewritten.
 
 ## 8. Known blockers
 

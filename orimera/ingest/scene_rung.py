@@ -28,20 +28,22 @@ def record_scene_rung(
     repository: IngestRepository,
     *,
     scene_id: uuid.UUID,
+    job_id: uuid.UUID | None = None,
     run_id: uuid.UUID,
     decision: SceneGateDecision,
+    return_existing: bool = False,
 ) -> uuid.UUID | None:
     """Publish the exact durable gate decision, after checking it against scene membership."""
-    members = repository.reconstruction_scene_members(scene_id)
+    members = repository.reconstruction_scene_members(scene_id, job_id=job_id)
     registered = [member for member in members if member.registered is True]
     if decision.member_count != len(members) or decision.registered_member_count != len(registered):
         raise ValueError("the scene gate member counts disagree with durable scene membership")
     supporting = registered or members
     support_span_ids = [
-        repository.upsert_span(EvidenceAddress.photograph(member.blob_id))
-        for member in supporting
+        repository.upsert_span(EvidenceAddress.photograph(member.blob_id)) for member in supporting
     ]
-    return repository.insert_assertion(
+    emit_key = f"scene-rung:{scene_id}:{decision.digest}"
+    assertion_id = repository.insert_assertion(
         kind="inference",
         predicate_key=RECONSTRUCTION_SCENE_RUNG_PREDICATE,
         subject_ref={"type": "scene", "id": str(scene_id)},
@@ -52,7 +54,16 @@ def record_scene_rung(
             "registered_member_count": decision.registered_member_count,
             "gate_digest": decision.digest,
         },
-        emit_key=f"scene-rung:{scene_id}:{decision.digest}",
+        emit_key=emit_key,
         support_span_ids=support_span_ids,
         produced_by_run=run_id,
     )
+    if assertion_id is not None or not return_existing:
+        return assertion_id
+    row = repository.connection.execute(
+        "select assertion_id from assertion where workspace_id=%s and emit_key=%s",
+        (repository.workspace_id, emit_key),
+    ).fetchone()
+    if row is None:
+        raise ValueError("the existing scene rung assertion could not be resolved")
+    return row["assertion_id"]

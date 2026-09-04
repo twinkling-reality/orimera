@@ -88,9 +88,7 @@ def upload(tmp_path, repository, spine_schema, monkeypatch):
     workspace_id = repository.workspace_id
     monkeypatch.setenv(
         "ORIMERA_API_TOKENS",
-        json.dumps(
-            {_TOKEN: {"workspace_id": str(workspace_id), "actor": str(uuid.uuid4())}}
-        ),
+        json.dumps({_TOKEN: {"workspace_id": str(workspace_id), "actor": str(uuid.uuid4())}}),
     )
     from tests_support_api import scratch_database
 
@@ -104,9 +102,7 @@ def upload(tmp_path, repository, spine_schema, monkeypatch):
         model_client=None,
     )
     with TestClient(create_app(services, verify=False)) as client:
-        yield Upload(
-            client, store, repository, database, workspace_id, CountingVisionModel()
-        )
+        yield Upload(client, store, repository, database, workspace_id, CountingVisionModel())
 
 
 # -- the happy path ------------------------------------------------------------------------
@@ -155,9 +151,7 @@ def test_two_parts_carrying_one_photograph_queue_that_photograph_once(upload):
     for the vision stage twice on a duplicate, which is the normal case in a personal library.
     """
     data = photo_bytes()
-    body = upload.post(
-        [("files", ("a.jpg", data)), ("files", ("a-copy.jpg", data))]
-    ).json()
+    body = upload.post([("files", ("a.jpg", data)), ("files", ("a-copy.jpg", data))]).json()
     assert len(body["accepted"]) == 2
     assert body["accepted"][0]["capture_id"] == body["accepted"][1]["capture_id"]
     payload = upload.rows(
@@ -383,9 +377,7 @@ def test_the_pipeline_calls_a_plugin_failure_what_it_is(upload):
     not an image or told "Token too long in file header".
     """
     pipeline = PhotoIngestPipeline(upload.repository, upload.store)
-    outcome = pipeline.ingest_intake(
-        b"P6\n99999999999999999999 1\n255\n", filename="a.jpg"
-    )
+    outcome = pipeline.ingest_intake(b"P6\n99999999999999999999 1\n255\n", filename="a.jpg")
     assert outcome.error is not None
     assert outcome.error.startswith("ValueError: not a readable image:"), outcome.error
     assert upload.rows("select blob_sha256 from blob") == []
@@ -538,9 +530,7 @@ def test_a_part_whose_magic_names_another_plugin_cannot_abandon_the_ones_before_
     assert upload.drain()[0].succeeded == 2
 
 
-def test_an_unanticipated_failure_in_one_part_is_refused_rather_than_thrown(
-    upload, monkeypatch
-):
+def test_an_unanticipated_failure_in_one_part_is_refused_rather_than_thrown(upload, monkeypatch):
     """The catch-all, tested with something no check could have named.
 
     `_read_and_check` names every refusal it recognises. What reaches the broad handler is by
@@ -659,10 +649,7 @@ def test_the_worker_finishes_the_upload_and_closes_the_batch(upload):
     assert outcomes[0].failed == 0
 
     assert upload.vision.calls == 1
-    stages = {
-        row["stage_key"]
-        for row in upload.rows("select distinct stage_key from artifact")
-    }
+    stages = {row["stage_key"] for row in upload.rows("select distinct stage_key from artifact")}
     assert {"intake", "rendition", "vision"} <= stages
     batch = upload.rows(
         "select status, ended_at from intake_batch where batch_id = %s",
@@ -679,6 +666,10 @@ def test_operational_api_reports_measured_queue_metrics_and_complete_delivery_re
     assert queued.status_code == 200
     assert queued.json()["depth"] == {"queued": 1, "running": 0}
     assert queued.json()["oldest_queued_age_ms"] is not None
+    scene_queue = upload.get("/operations/reconstruction-scenes")
+    assert scene_queue.status_code == 200
+    assert scene_queue.json()["coordination"]["state"] == "building"
+    assert scene_queue.json()["dependency_queue"] == {"queued": 1, "running": 0}
 
     upload.drain()
     job = upload.rows("select job_id from job")[0]["job_id"]
@@ -697,9 +688,18 @@ def test_operational_api_reports_measured_queue_metrics_and_complete_delivery_re
     assert "lease_renewed" in event_types
     assert "capture_started" in event_types
     assert "capture_succeeded" in event_types
-    assert upload.get(
-        f"/operations/derivative-jobs/{uuid.uuid4()}/events"
-    ).json() == [], "an unknown job must not disclose any operational row"
+    assert upload.get(f"/operations/derivative-jobs/{uuid.uuid4()}/events").json() == [], (
+        "an unknown job must not disclose any operational row"
+    )
+    unknown_scene_job = uuid.uuid4()
+    assert upload.get(f"/operations/reconstruction-scenes/{unknown_scene_job}").status_code == 404
+    assert (
+        upload.client.post(
+            f"/operations/reconstruction-scenes/{unknown_scene_job}/retry",
+            headers={"Authorization": f"Bearer {_TOKEN}"},
+        ).status_code
+        == 404
+    )
 
 
 def test_no_run_is_left_saying_it_is_still_running(upload):
@@ -778,9 +778,7 @@ def test_a_deletion_committed_during_a_paid_stage_cancels_the_job_without_an_eff
                 requested_by=uuid.uuid4(),
                 reason="deleted while the vision stage was running",
             )
-            return CountingVisionModel().observe(
-                image_bytes=image_bytes, media_type=media_type
-            )
+            return CountingVisionModel().observe(image_bytes=image_bytes, media_type=media_type)
 
     deleting = DeletesBeforeReturning()
     upload.vision = deleting

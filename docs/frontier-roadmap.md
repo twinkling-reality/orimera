@@ -227,6 +227,52 @@ grant capabilities absent from the receiving registry.
 The phases are dependency ordered. Work inside a phase may run in parallel when it does not share a
 migration or public contract.
 
+### Parallel frontend track: Exulanica public identity and landing system
+
+Status: **FIRST LANDING PASS BUILT 2026-09-04; broader public-surface rollout pending**.
+
+Deliverables:
+
+- adopt **Exulanica** as the public product name across the landing page and other user-facing
+  surfaces while preserving Atlas, Companion, and Aeroheart as named product concepts;
+- translate the approved soft geometric, mesh-gradient, editorial direction into an original
+  product-specific visual system rather than reproducing the reference artwork or using arbitrary
+  decorative blobs;
+- define interchangeable accent palettes through shared tokens while retaining one stable
+  luminance, contrast, texture, and reduced-motion contract;
+- make the landing composition express the product's evidence-before-geometry rule and preserve a
+  clear route into Atlas;
+- identify **Twinkling Reality** as the publisher on the signed-out surface, following the compact
+  `© 2026 Twinkling Reality` convention used by the rest of the product family;
+- replace the title menu's line selector with one non-interactive miniature Companion that responds
+  equally to pointer hover and keyboard focus, yields to focus when they conflict, remains static
+  under reduced motion, and leaves Method's current-page underline intact;
+- move the Companion's renderer-neutral silhouette, eye-pose, palette, and state blueprint into the
+  shared presentation contract before the landing uses it, so the miniature and Atlas presence are
+  two presentations of one identity rather than drifting copies;
+- design an original Exulanica Companion form instead of shipping the Grok-derived silhouette as a
+  product identity; keep V3's shape, colour, and expression choices truthful until separately
+  versioned motion and material-depth axes have implementations and migrations;
+- treat genuine 3D Companion depth as a new renderer, asset-provenance, performance, and
+  accessibility decision rather than relabeling SVG shading as 3D; prototype 2D, bounded relief,
+  and world-rendered forms before approving that contract;
+- define cross-surface preference authority before claiming that a customized Atlas Companion also
+  appears on the public landing; until then the landing uses the shared default without reading or
+  inventing account state;
+- keep the internal `orimera` Python namespace, `@orimera/*` packages, environment variables,
+  database roles, storage keys, headers, and signed protocol/profile identifiers unchanged during
+  active backend work; and
+- treat any later technical namespace change as a separate compatibility migration with explicit
+  storage-key migration, protocol versioning, and repository/deployment coordination.
+
+Exit gate: the supported landing-page viewports consistently present Exulanica and its Twinkling
+Reality publisher signature, contain no stale public Orimera branding, and pass contrast and visual
+regression review. The menu retains native link/button semantics, visible focus, a single
+pointer-transparent Companion marker, focus-over-hover precedence, and a motionless reduced-motion
+state. The landing and Atlas renderers consume one tested visual blueprint. Internal compatibility
+identifiers either remain unchanged or have an explicit, tested migration; a broad search-and-replace
+is not an acceptable rename strategy.
+
 ### Phase 0: evidence and adaptive-style foundation
 
 Status: **BUILT**.

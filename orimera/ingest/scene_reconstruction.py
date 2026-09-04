@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from orimera.errors import BlobNotFoundError, IntegrityError, TombstonedError
+from orimera.canonical import canonical_json
+from orimera.errors import TombstonedError
 from orimera.evidence.blob import BlobId
 from orimera.ingest.committed_store import committed_writes
 from orimera.ingest.ledger import Ledger, StageRecorder
@@ -365,14 +366,62 @@ class SceneReconstructionProcessor:
         return manifest, tuple(sources)
 
     def _point_maps(self, claimed: ClaimedSceneJob) -> dict[str, PointMapInput]:
-        captures = [member.capture_id for member in claimed.members]
-        rows = self._repository.current_capture_artifacts(capture_ids=captures, kind="point_map")
+        if hashlib.sha256(canonical_json(claimed.build_inputs)).digest() != (
+            claimed.build_input_digest
+        ):
+            raise ValueError("the scene job build-input digest does not reproduce")
+        if claimed.build_inputs.get("profile") != "orimera.reconstruction-scene-build-input/v1":
+            raise ValueError("the scene job does not declare supported exact build inputs")
+        raw_point_maps = claimed.build_inputs.get("point_maps")
+        raw_stages = claimed.build_inputs.get("stages")
+        if not isinstance(raw_point_maps, list) or not isinstance(raw_stages, list):
+            raise ValueError("the scene build input record is malformed")
+        expected_stages = [
+            {
+                "key": key,
+                "version": stage(key).version,
+                "params_sha256": stage(key).params_digest.hex(),
+            }
+            for key in ("scene_pose", "scene_placement", "scene_gate")
+        ]
+        if raw_stages != expected_stages:
+            raise ValueError("the scene job stage bindings are no longer current")
+        expected_capture_refs = [str(member.capture_id) for member in claimed.members]
+        if [item.get("capture_ref") for item in raw_point_maps if isinstance(item, dict)] != (
+            expected_capture_refs
+        ):
+            raise ValueError("the scene job must bind one point map for every ordered member")
+        declared: dict[uuid.UUID, tuple[uuid.UUID, str]] = {}
+        try:
+            for item in raw_point_maps:
+                if not isinstance(item, dict):
+                    raise ValueError
+                capture_id = uuid.UUID(item["capture_ref"])
+                artifact_id = uuid.UUID(item["artifact_ref"])
+                digest = item["content_sha256"]
+                if not isinstance(digest, str) or len(bytes.fromhex(digest)) != 32:
+                    raise ValueError
+                declared[capture_id] = (artifact_id, digest)
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError("the scene job point-map bindings are malformed") from error
+        rows = self._repository.exact_capture_artifacts(
+            artifact_ids_by_capture={
+                capture_id: artifact_id for capture_id, (artifact_id, _digest) in declared.items()
+            },
+            kind="point_map",
+        )
+        if len(rows) != len(claimed.members):
+            raise ValueError("an exact point-map build input is no longer available")
         usable: dict[str, PointMapInput] = {}
-        for capture_id, row in rows.items():
-            try:
-                self._store.get(BlobId(row.content_sha256))
-            except (BlobNotFoundError, IntegrityError):
-                continue
+        for member in claimed.members:
+            capture_id = member.capture_id
+            row = rows[capture_id]
+            artifact_id, digest = declared[capture_id]
+            if row.artifact_id != artifact_id or row.content_sha256.hex() != digest:
+                raise ValueError("an exact point-map build input disagrees with its artifact row")
+            if row.storage_key != self._store.key_for(BlobId(row.content_sha256)):
+                raise ValueError("an exact point-map build input has a non-canonical storage key")
+            self._store.get(BlobId(row.content_sha256))
             usable[str(capture_id)] = PointMapInput(
                 capture_ref=str(capture_id),
                 artifact_ref=str(row.artifact_id),
@@ -426,6 +475,7 @@ class SceneReconstructionProcessor:
                     scene_id=claimed.scene_id,
                     member_digest=claimed.member_digest,
                     scene_members=registrations,
+                    job_id=claimed.job_id,
                 )
                 for pending, recorder in artifacts:
                     spec = stage(recorder.spec.key)
@@ -464,12 +514,15 @@ class SceneReconstructionProcessor:
             if self._cancelled(claimed):
                 raise TombstonedError("a member was deleted before scene publication")
             with self._repository.transaction():
-                record_scene_rung(
+                rung_assertion_id = record_scene_rung(
                     self._repository,
                     scene_id=claimed.scene_id,
+                    job_id=claimed.job_id,
                     run_id=ledger.run_id,
                     decision=decision,
+                    return_existing=True,
                 )
+                assert rung_assertion_id is not None
                 if not self._repository.complete_reconstruction_scene_job(
                     job_id=claimed.job_id,
                     claim_token=claimed.claim_token,
@@ -478,16 +531,15 @@ class SceneReconstructionProcessor:
                     pose_receipt_artifact_id=artifacts[0][0].artifact_id,
                     placement_artifact_id=artifacts[1][0].artifact_id,
                     gate_artifact_id=artifacts[2][0].artifact_id,
+                    rung_assertion_id=rung_assertion_id,
                 ):
-                    raise _ClaimLost(
-                        "the scene claim was cancelled or reclaimed before commit"
-                    )
+                    raise _ClaimLost("the scene claim was cancelled or reclaimed before commit")
 
     def _cancelled(self, claimed: ClaimedSceneJob) -> bool:
         return bool(
             (self._external_cancellation is not None and self._external_cancellation())
             or self._repository.reconstruction_scene_cancelled_or_lost(
-            job_id=claimed.job_id,
-            claim_token=claimed.claim_token,
+                job_id=claimed.job_id,
+                claim_token=claimed.claim_token,
             )
         )

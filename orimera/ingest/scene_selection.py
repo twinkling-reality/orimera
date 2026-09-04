@@ -76,16 +76,47 @@ def enqueue_scene_reconstructions(
     *,
     policy: SceneReconstructionPolicy | None = None,
 ) -> list[SceneJobSelection]:
-    """Apply one recorded policy and durably queue every selected exact capture set."""
+    """Queue selected sets only after every member has an exact point-map input.
+
+    Grouping runs after each derivative completion. Deferring an incomplete group means the
+    final point map causes the same continuity pass to queue the build. A pose-only result can
+    therefore never become the terminal answer before depth arrives.
+    """
     selected_by = policy or SceneGroupPosePolicy()
     selections: list[SceneJobSelection] = []
     for group in groups:
         record = selected_by.selection_record(group)
         if record is None:
             continue
+        point_maps = repository.current_capture_artifacts(
+            capture_ids=group.capture_ids,
+            kind="point_map",
+        )
+        if len(point_maps) != len(group.capture_ids):
+            continue
+        build_inputs = {
+            "profile": "orimera.reconstruction-scene-build-input/v1",
+            "point_maps": [
+                {
+                    "capture_ref": str(capture_id),
+                    "artifact_ref": str(point_maps[capture_id].artifact_id),
+                    "content_sha256": point_maps[capture_id].content_sha256.hex(),
+                }
+                for capture_id in group.capture_ids
+            ],
+            "stages": [
+                {
+                    "key": key,
+                    "version": stage(key).version,
+                    "params_sha256": stage(key).params_digest.hex(),
+                }
+                for key in ("scene_pose", "scene_placement", "scene_gate")
+            ],
+        }
         job_id, inserted = repository.enqueue_reconstruction_scene(
             capture_ids=group.capture_ids,
             selection_policy=record,
+            build_inputs=build_inputs,
         )
         selections.append(
             SceneJobSelection(
