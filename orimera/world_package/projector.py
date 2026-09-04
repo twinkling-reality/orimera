@@ -261,11 +261,20 @@ def _project_components(
     # older queries in this function rely on. Both are correct in production; only this one is
     # falsifiable by a test, because the harness connects as the schema owner and a superuser
     # bypasses row-level security entirely, so no test here can see a missing predicate.
+    # A production worker prepares scene and artifact rows before flushing object bytes, then
+    # publishes its assertion and succeeded job in a second transaction. A package must not
+    # expose that retryable middle state. Scenes created before the job system have no job row
+    # and remain exportable; a job-backed scene enters the package only after one job succeeds.
     live_scenes = [
         row["scene_id"]
         for row in cursor.execute(
             "select s.scene_id from reconstruction_scene s where s.workspace_id=%s "
-            "and not tombstone_blocks_scene(s.workspace_id,s.scene_id) order by s.scene_id",
+            "and not tombstone_blocks_scene(s.workspace_id,s.scene_id) "
+            "and (not exists (select 1 from reconstruction_scene_job j "
+            "where j.workspace_id=s.workspace_id and j.scene_id=s.scene_id) "
+            "or exists (select 1 from reconstruction_scene_job j "
+            "where j.workspace_id=s.workspace_id and j.scene_id=s.scene_id "
+            "and j.status='succeeded')) order by s.scene_id",
             (workspace_id,),
         ).fetchall()
     ]

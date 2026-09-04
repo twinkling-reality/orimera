@@ -18,10 +18,11 @@ is reused only after the current sparse artifacts reproduce its quality digest.
 `run_scene_grouping` now queues exact sets selected by the recorded
 `orimera.scene-group-pose-selection/v1` policy, and `orimera-scene-worker` runs this controller in a
 separate process with a renewable database lease. The accepted receipt is stored as a scene
-artifact, not left in the job directory. The worker atomically commits the completed scene,
-registration outcomes, pose, placement and gate artifacts, the rung assertion, and terminal job
-state. See [scene-reconstruction-operations.md](scene-reconstruction-operations.md) for the full
-production and deletion contract.
+artifact, not left in the job directory. The worker first commits tombstone-guarded scene and
+artifact rows, flushes bytes while holding purge-compatible session locks, then atomically
+publishes the rung assertion and successful job state. A prepared retry is invisible to graph and
+package readers. See [scene-reconstruction-operations.md](scene-reconstruction-operations.md) for
+the full production and deletion contract.
 
 The parser reads registered image names and camera centres from COLMAP `images.txt`, and actual
 reprojection errors from `points3D.txt`. It reports registration fraction, mean reprojection error,

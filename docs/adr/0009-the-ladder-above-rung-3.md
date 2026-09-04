@@ -174,9 +174,11 @@ and its `rung_claims` subject resolves to the same pseudonym as the exported sce
 ordered job-member set, deterministic scene and job identities, a recorded selection-policy
 digest, and renewable leases. Normal `run_scene_grouping` applies the explicit
 `orimera.scene-group-pose-selection/v1` policy and queues every group of at least three members.
-The scene worker records registration as an outcome and atomically commits the completed scene,
-pose, placement and gate artifacts, rung assertion, and successful job state. The policy records
-its unvalidated limits rather than presenting scene grouping as a geometric fact.*
+The scene worker records registration as an outcome, prepares the completed scene and artifacts
+behind tombstone guards, flushes receipt bytes under purge-compatible session locks, then
+atomically publishes the rung assertion and successful job state. Graph and package readers hide
+the retryable prepared state. The policy records its unvalidated limits rather than presenting
+scene grouping as a geometric fact.*
 
 **D10. Nothing above rung 3 reaches a viewer until something serves geometry at all. BUILT
 2026-09-03.** The paragraph is left in the tense it was written in, and what was built follows

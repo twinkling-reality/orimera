@@ -857,7 +857,7 @@ def test_the_swept_packages_write_to_the_object_store_in_exactly_one_place():
     identifiers out of Python source, and for the same reason, which is that a rule enforced by
     review is a rule that survives until the reviewer is busy.
     """
-    assert _store_write_call_sites() == ["ingest/pipeline.py:committed_writes"], (
+    assert _store_write_call_sites() == ["ingest/committed_store.py:committed_writes"], (
         "a swept package writes to the object store outside the post-commit flush: "
         f"{_store_write_call_sites()}. A write that happens before the tombstone guard cannot "
         "be rolled back by the transaction that refuses it."

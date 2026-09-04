@@ -51,6 +51,7 @@ from orimera.errors import BlobNotFoundError, TombstonedError
 from orimera.evidence import EvidenceAddress
 from orimera.evidence.blob import BlobId
 from orimera.ingest.batch import IntakeBatch
+from orimera.ingest.committed_store import committed_writes as flush_committed_writes
 from orimera.ingest.decode import UNREADABLE, open_upright
 from orimera.ingest.exif import ExifFacts
 from orimera.ingest.ledger import Ledger, StageRecorder
@@ -173,13 +174,10 @@ class PhotoIngestPipeline:
         ordering.
 
         ``tests/test_ingest_persistence.py`` walks the whole ingest package, recursively, and
-        asserts this is the only function in it that writes to the store.
+        asserts the shared helper this delegates to is the only function that writes to the store.
         """
-        pending: list[bytes] = []
-        with self._repository.transaction():
+        with flush_committed_writes(self._repository, self._store) as pending:
             yield pending
-        for payload in pending:
-            self._store.put_bytes(payload)
 
     def persist_artifact(
         self,

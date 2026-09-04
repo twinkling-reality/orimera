@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from typing import Any
 
 import psycopg
@@ -139,6 +139,12 @@ class IngestRepository:
         measured interleaving that made it necessary.
         """
         blobs.lock_stored_object(self._scope, blob_id)
+
+    def locked_stored_objects(
+        self, blob_ids: list[BlobId]
+    ) -> AbstractContextManager[None]:
+        """Hold purge-compatible locks across a post-commit object-store flush."""
+        return blobs.locked_stored_objects(self._scope, blob_ids)
 
     def upsert_blob(
         self, blob_id: BlobId, *, byte_size: int, media_type: str, storage_key: str

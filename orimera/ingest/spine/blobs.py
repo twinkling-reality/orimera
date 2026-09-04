@@ -8,10 +8,13 @@ is using.
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+
 from orimera.evidence.blob import BlobId
 from orimera.ingest.spine.scope import WorkspaceScope
 
-__all__ = ["lock_stored_object", "upsert"]
+__all__ = ["lock_stored_object", "locked_stored_objects", "upsert"]
 
 
 def lock_stored_object(scope: WorkspaceScope, blob_id: BlobId) -> None:
@@ -29,6 +32,34 @@ def lock_stored_object(scope: WorkspaceScope, blob_id: BlobId) -> None:
     function would be a migration for a word.
     """
     scope.connection.execute("select purge_lock_object(%s)", (blob_id.hex,))
+
+
+@contextmanager
+def locked_stored_objects(
+    scope: WorkspaceScope, blob_ids: Sequence[BlobId]
+) -> Iterator[None]:
+    """Hold session locks across row commit, byte flush, and final publication.
+
+    The purger takes the transaction-scoped version of the same advisory keys. Session locks are
+    required here because committed object writes intentionally happen after the row transaction.
+    Sorting prevents two scene workers from deadlocking when they share receipt bytes.
+    """
+    refs = sorted({blob_id.hex for blob_id in blob_ids})
+    held: list[str] = []
+    try:
+        for ref in refs:
+            scope.connection.execute(
+                "select pg_advisory_lock(hashtextextended(%s, 0))", (ref,)
+            )
+            held.append(ref)
+        yield
+    finally:
+        for ref in reversed(held):
+            row = scope.connection.execute(
+                "select pg_advisory_unlock(hashtextextended(%s, 0)) as unlocked", (ref,)
+            ).fetchone()
+            if row is None or row["unlocked"] is not True:
+                raise RuntimeError("a stored-object advisory lock was not held")
 
 
 def upsert(

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import uuid
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from orimera.evidence.blob import BlobId
 from orimera.graph import read_snapshot
 from orimera.graph.geometry import point_map_descriptors, read_point_map
@@ -24,6 +26,7 @@ from orimera.ingest.scenes import run_scene_grouping
 from orimera.ingest.spine.reconstruction_jobs import MAX_SCENE_CLAIMS
 from orimera.reconstruction.pose import CommandResult
 from orimera.store.local import LocalContentAddressedStore
+from orimera.world_package import project_world_package
 
 from conftest import CountingVisionModel, write_photo, write_point_map
 
@@ -193,6 +196,56 @@ def test_scene_group_pose_placement_gate_and_assertion_commit_together(repositor
     ).fetchone()["count"] == 3
 
 
+def test_object_store_failure_keeps_a_prepared_scene_private_and_retryable(
+    repository, tmp_path, monkeypatch
+):
+    store, _captures, _point_artifacts, job_id = _queued_scene(repository, tmp_path)
+    claimed = repository.claim_reconstruction_scene(worker="first", lease_seconds=60)
+    assert claimed is not None
+    put_bytes = store.put_bytes
+
+    def refuse_write(_payload: bytes) -> None:
+        raise OSError("simulated object-store outage")
+
+    monkeypatch.setattr(store, "put_bytes", refuse_write)
+    failed = _processor(repository, store, tmp_path, FakeColmap(registered=2)).process(claimed)
+
+    assert failed.status == "failed"
+    job = repository.connection.execute(
+        "select status,completed_at from reconstruction_scene_job "
+        "where workspace_id=%s and job_id=%s",
+        (repository.workspace_id, job_id),
+    ).fetchone()
+    assert job == {"status": "failed", "completed_at": None}
+    assert read_snapshot(
+        repository.connection, repository.workspace_id, store
+    ).reconstruction_scenes == []
+    package = project_world_package(
+        repository.connection,
+        workspace_id=repository.workspace_id,
+        actor=uuid.uuid4(),
+        output=tmp_path / "prepared-package",
+        private_key=Ed25519PrivateKey.generate(),
+    )
+    reconstruction = json.loads(
+        (package.output / "reconstruction/artifacts.json").read_text(encoding="utf-8")
+    )
+    assert reconstruction["scenes"] == []
+    assert not any(item["scene"] is not None for item in reconstruction["items"])
+
+    monkeypatch.setattr(store, "put_bytes", put_bytes)
+    retried_claim = repository.claim_reconstruction_scene(worker="second", lease_seconds=60)
+    assert retried_claim is not None
+    retried = _processor(
+        repository, store, tmp_path, FakeColmap(registered=2)
+    ).process(retried_claim)
+
+    assert retried.status == "succeeded"
+    assert len(
+        read_snapshot(repository.connection, repository.workspace_id, store).reconstruction_scenes
+    ) == 1
+
+
 def test_graph_delivers_the_validated_scene_and_exact_placed_maps(repository, tmp_path):
     store, captures, point_artifacts, _job_id = _queued_scene(repository, tmp_path)
     before_version = read_snapshot(
@@ -355,6 +408,32 @@ def test_an_expired_final_claim_becomes_terminal_and_releases_its_scratch(
         active_keys=repository.active_reconstruction_scratch_keys(),
         older_than_seconds=3600,
     ) == (claimed.scratch_key,)
+
+
+def test_scene_object_lock_survives_row_commit_until_publication(ingest_spine):
+    repository, reopen = ingest_spine
+    content_id = BlobId.of_bytes(b"scene receipt")
+    attempted = threading.Event()
+    acquired = threading.Event()
+
+    def purger_lock() -> None:
+        contender = reopen()
+        with contender.connection.transaction():
+            attempted.set()
+            contender.connection.execute("select purge_lock_object(%s)", (content_id.hex,))
+            acquired.set()
+
+    contender_thread = threading.Thread(target=purger_lock)
+    with repository.locked_stored_objects([content_id]):
+        with repository.transaction():
+            repository.connection.execute("select 1")
+        contender_thread.start()
+        assert attempted.wait(5)
+        assert not acquired.wait(0.2)
+
+    assert acquired.wait(5)
+    contender_thread.join(timeout=5)
+    assert not contender_thread.is_alive()
 
 
 def test_deletion_during_pose_cancels_without_scene_outputs(repository, tmp_path):

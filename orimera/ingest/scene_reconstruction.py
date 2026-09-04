@@ -11,6 +11,7 @@ from typing import Literal
 
 from orimera.errors import BlobNotFoundError, IntegrityError, TombstonedError
 from orimera.evidence.blob import BlobId
+from orimera.ingest.committed_store import committed_writes
 from orimera.ingest.ledger import Ledger, StageRecorder
 from orimera.ingest.reconstruction_scratch import (
     ScratchBusy,
@@ -111,7 +112,7 @@ def _filename(member_index: int, media_type: str) -> str:
 
 
 class SceneReconstructionProcessor:
-    """The ingest-owned production boundary around the geometry-only reconstruction package."""
+    """The ingest-owned publication boundary around geometry-only reconstruction."""
 
     def __init__(
         self,
@@ -137,7 +138,7 @@ class SceneReconstructionProcessor:
         self._external_cancellation = external_cancellation
 
     def process(self, claimed: ClaimedSceneJob) -> SceneBuildOutcome:
-        """Run or resume one claim, then atomically accept all durable scene facts."""
+        """Run or resume one claim, flush guarded bytes, then publish the scene."""
         if claimed.scratch_key is None:
             raise ValueError("a reconstruction job has no deterministic scratch key")
         ledger = Ledger.start_run(self._repository, trigger="reprocess")
@@ -388,16 +389,16 @@ class SceneReconstructionProcessor:
     ) -> _PendingArtifact:
         spec = stage(stage_key)
         key = _scene_key(scene_id, spec.key, input_digest)
-        stored = self._store.put_bytes(payload)
+        content_id = BlobId.of_bytes(payload)
         return _PendingArtifact(
             kind=spec.output_kind,
             key=key,
             artifact_id=artifact_id_for(key),
             input_digest=input_digest,
             payload=payload,
-            content_id=stored.blob_id,
-            storage_key=self._store.key_for(stored.blob_id),
-            byte_size=stored.byte_size,
+            content_id=content_id,
+            storage_key=self._store.key_for(content_id),
+            byte_size=len(payload),
         )
 
     def _accept(
@@ -411,58 +412,76 @@ class SceneReconstructionProcessor:
     ) -> None:
         if self._cancelled(claimed):
             raise TombstonedError("a member was deleted before scene acceptance")
-        with self._repository.transaction():
-            self._repository.insert_completed_reconstruction_scene(
-                scene_id=claimed.scene_id,
-                member_digest=claimed.member_digest,
-                scene_members=registrations,
-            )
-            for pending, recorder in artifacts:
-                spec = stage(recorder.spec.key)
-                inserted = self._repository.insert_scene_artifact(
-                    artifact_id=pending.artifact_id,
-                    kind=pending.kind,
+        pending_artifacts = [pending for pending, _recorder in artifacts]
+        with self._repository.locked_stored_objects(
+            [pending.content_id for pending in pending_artifacts]
+        ):
+            # First commit the tombstone-guarded rows, then flush their bytes. The session locks
+            # remain held across both operations, so a purger cannot mark an absent object gone
+            # and then have this worker recreate it after deletion.
+            with committed_writes(self._repository, self._store) as pending_payloads:
+                if self._cancelled(claimed):
+                    raise TombstonedError("a member was deleted before scene preparation")
+                self._repository.insert_completed_reconstruction_scene(
                     scene_id=claimed.scene_id,
-                    stage_key=spec.key,
-                    stage_version=spec.version,
-                    params_digest=spec.params_digest,
-                    input_digest=pending.input_digest,
-                    idempotency_key=pending.key,
-                    content_sha256=pending.content_id.digest,
-                    storage_key=pending.storage_key,
-                    byte_size=pending.byte_size,
-                    produced_by_event=recorder.stage_started_event,
+                    member_digest=claimed.member_digest,
+                    scene_members=registrations,
                 )
-                if inserted:
-                    recorder.record_output(pending.artifact_id)
-                else:
-                    existing = self._repository.find_artifact(pending.key)
-                    if (
-                        existing is None
-                        or existing.artifact_id != pending.artifact_id
-                        or existing.content_sha256 != pending.content_id.digest
-                        or existing.byte_size != pending.byte_size
-                    ):
-                        raise ValueError(
-                            "an existing scene artifact disagrees with recomputed bytes"
-                        )
-                    recorder.output_artifact_ids.append(pending.artifact_id)
-            record_scene_rung(
-                self._repository,
-                scene_id=claimed.scene_id,
-                run_id=ledger.run_id,
-                decision=decision,
-            )
-            if not self._repository.complete_reconstruction_scene_job(
-                job_id=claimed.job_id,
-                claim_token=claimed.claim_token,
-                scratch_key=claimed.scratch_key or "",
-                pose_manifest_digest=bytes.fromhex(manifest.digest),
-                pose_receipt_artifact_id=artifacts[0][0].artifact_id,
-                placement_artifact_id=artifacts[1][0].artifact_id,
-                gate_artifact_id=artifacts[2][0].artifact_id,
-            ):
-                raise _ClaimLost("the scene claim was cancelled or reclaimed before commit")
+                for pending, recorder in artifacts:
+                    spec = stage(recorder.spec.key)
+                    inserted = self._repository.insert_scene_artifact(
+                        artifact_id=pending.artifact_id,
+                        kind=pending.kind,
+                        scene_id=claimed.scene_id,
+                        stage_key=spec.key,
+                        stage_version=spec.version,
+                        params_digest=spec.params_digest,
+                        input_digest=pending.input_digest,
+                        idempotency_key=pending.key,
+                        content_sha256=pending.content_id.digest,
+                        storage_key=pending.storage_key,
+                        byte_size=pending.byte_size,
+                        produced_by_event=recorder.stage_started_event,
+                    )
+                    if inserted:
+                        recorder.record_output(pending.artifact_id)
+                    else:
+                        existing = self._repository.find_artifact(pending.key)
+                        if (
+                            existing is None
+                            or existing.artifact_id != pending.artifact_id
+                            or existing.content_sha256 != pending.content_id.digest
+                            or existing.byte_size != pending.byte_size
+                        ):
+                            raise ValueError(
+                                "an existing scene artifact disagrees with recomputed bytes"
+                            )
+                        recorder.output_artifact_ids.append(pending.artifact_id)
+                    pending_payloads.append(pending.payload)
+
+            # The public assertion and succeeded transition are the publication point. A crash
+            # after the prepare commit is safely retryable because neither becomes visible here.
+            if self._cancelled(claimed):
+                raise TombstonedError("a member was deleted before scene publication")
+            with self._repository.transaction():
+                record_scene_rung(
+                    self._repository,
+                    scene_id=claimed.scene_id,
+                    run_id=ledger.run_id,
+                    decision=decision,
+                )
+                if not self._repository.complete_reconstruction_scene_job(
+                    job_id=claimed.job_id,
+                    claim_token=claimed.claim_token,
+                    scratch_key=claimed.scratch_key or "",
+                    pose_manifest_digest=bytes.fromhex(manifest.digest),
+                    pose_receipt_artifact_id=artifacts[0][0].artifact_id,
+                    placement_artifact_id=artifacts[1][0].artifact_id,
+                    gate_artifact_id=artifacts[2][0].artifact_id,
+                ):
+                    raise _ClaimLost(
+                        "the scene claim was cancelled or reclaimed before commit"
+                    )
 
     def _cancelled(self, claimed: ClaimedSceneJob) -> bool:
         return bool(

@@ -38,14 +38,21 @@ The separate `orimera-scene-worker` process then performs this sequence:
 2. Stage only the declared source blobs under the job's canonical workspace/job scratch key,
    verifying every byte digest and refusing undeclared files.
 3. Run checkpointed pycolmap feature extraction, matching, sparse mapping, and model conversion.
-4. Persist a pose receipt, point-map placement record, and scene-gate decision in the
-   content-addressed store.
-5. In one transaction, insert the completed scene and registration outcomes, insert or verify all
-   three artifact rows, record the scene-rung assertion, and mark the job succeeded.
-6. Remove the sensitive scratch directory after success, handled failure, or cancellation.
+4. Compute a pose receipt, point-map placement record, and scene-gate decision without writing
+   object bytes early.
+5. Hold purge-compatible session locks for all three content digests, then commit the completed
+   scene, registration outcomes, and artifact rows through the tombstone guards.
+6. Flush the exact receipt bytes to the content-addressed store after that row transaction commits.
+7. In one final transaction, record the scene-rung assertion and mark the job succeeded. These two
+   writes are the publication point.
+8. Remove the sensitive scratch directory after success, handled failure, or cancellation.
 
-If that acceptance transaction loses its lease, observes deletion, or disagrees with existing
-bytes, none of the scene rows, artifact rows, assertion, or successful job transition commits.
+The graph and World Memory Package omit a prepared job until that publication transaction succeeds.
+If storage fails after the prepared rows commit, the job remains retryable and a deterministic
+retry verifies those rows and heals the missing bytes. If deletion lands between row commit and
+publication, the session locks make the purger wait until the writer stops; publication is refused,
+then the normal purge removes the receipt bytes. This prevents a late writer from recreating an
+object after the purger marked it gone.
 
 ## 2. Durable artifact chain
 
@@ -142,9 +149,11 @@ following:
 
 COLMAP databases, feature descriptors, staged sources, and sparse working files live only under
 `ORIMERA_DATA_DIR/reconstruction-scratch/<workspace>/<job>`. Durable receipts live in the
-content-addressed store, outside scratch. The worker holds a non-blocking filesystem lock for the
-whole sensitive lifetime. Cleanup accepts only canonical UUID path pairs, refuses symbolic links,
-skips a locked directory, and never deletes scratch protected by queued, running, or retryable work.
+content-addressed store, outside scratch. Receipt writes use the shared post-commit store boundary
+and keep purge-compatible session locks through final publication. The worker also holds a
+non-blocking filesystem lock for the whole sensitive scratch lifetime. Cleanup accepts only
+canonical UUID path pairs, refuses symbolic links, skips a locked directory, and never deletes
+scratch protected by queued, running, or retryable work.
 
 A process crash leaves its checkpointed scratch in place. After lease expiry, another worker
 reclaims the same job and the pose controller skips only checkpoints whose required outputs still
