@@ -46,6 +46,8 @@ from orimera.db.roles import (
 )
 from orimera.deletion import queue
 from orimera.deletion.worker import PurgeWorker
+from orimera.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
+from orimera.evidence import EvidenceAddress
 from orimera.evidence.blob import BlobId
 from orimera.evidence.scene import scene_id_for, scene_member_digest
 from orimera.ingest.pipeline import PhotoIngestPipeline
@@ -159,7 +161,9 @@ class SceneWorkspace:
         )
 
 
-def _insert_scene(workspace, capture_ids) -> uuid.UUID:
+def _insert_scene(
+    workspace, capture_ids, *, registered: list[bool | None] | None = None
+) -> uuid.UUID:
     """Write a scene and its members with raw SQL, because nothing in ``orimera/`` writes one.
 
     That is deliberate rather than missing. D9 says no scene-level artifact ships before this
@@ -174,12 +178,17 @@ def _insert_scene(workspace, capture_ids) -> uuid.UUID:
         "values (%s, %s, %s)",
         (scene_id, workspace.workspace_id, scene_member_digest(capture_ids)),
     )
-    for ordinal, capture_id in enumerate(capture_ids):
+    registration = registered if registered is not None else [True] * len(capture_ids)
+    if len(registration) != len(capture_ids):
+        raise ValueError("one registration value is required for each scene member")
+    for ordinal, (capture_id, did_register) in enumerate(
+        zip(capture_ids, registration, strict=True)
+    ):
         workspace.repository.connection.execute(
             "insert into reconstruction_scene_member "
             "(workspace_id, scene_id, capture_id, ordinal, registered) "
-            "values (%s, %s, %s, %s, true)",
-            (workspace.workspace_id, scene_id, capture_id, ordinal),
+            "values (%s, %s, %s, %s, %s)",
+            (workspace.workspace_id, scene_id, capture_id, ordinal, did_register),
         )
     return scene_id
 
@@ -261,7 +270,9 @@ def scene(tmp_path, photo_dir, repository, spine_schema):
         provision_purge_role(connection, role=_PURGE_ROLE, password=_PURGE_PASSWORD)
 
     workspace = SceneWorkspace(repository, store, scratch, captures, None, None)
-    workspace.scene_id = _insert_scene(workspace, captures)
+    workspace.scene_id = _insert_scene(
+        workspace, captures, registered=[True, False, True]
+    )
     workspace.receipt_id = _insert_scene_artifact(workspace, workspace.scene_id)
     return workspace
 
@@ -628,6 +639,116 @@ def test_a_workspace_deletion_reaches_every_scene_in_it(scene):
     assert scene.one(
         "select tombstone_purge_is_complete(%s) as done", tombstone
     )["done"] is True
+
+
+# -- the rung ----------------------------------------------------------------------------------
+
+
+def _registered_scene_span_ids(scene, scene_id: uuid.UUID | None = None) -> list[uuid.UUID]:
+    rows = scene.rows(
+        "select c.blob_sha256 from reconstruction_scene_member m "
+        "join capture c on c.workspace_id = m.workspace_id and c.capture_id = m.capture_id "
+        "where m.workspace_id = %s and m.scene_id = %s and m.registered is true "
+        "order by m.ordinal",
+        scene.workspace_id,
+        scene_id or scene.scene_id,
+    )
+    return [
+        scene.repository.upsert_span(
+            EvidenceAddress.photograph(BlobId(bytes(row["blob_sha256"])))
+        )
+        for row in rows
+    ]
+
+
+def _insert_raw_scene_rung(
+    scene,
+    *,
+    kind: str = "inference",
+    scene_id: uuid.UUID | None = None,
+    support_span_ids: list[uuid.UUID] | None = None,
+    object_value: dict | None = None,
+) -> uuid.UUID:
+    run = scene.one(
+        "select run_id from pipeline_run where workspace_id = %s order by started_at limit 1",
+        scene.workspace_id,
+    )
+    assert run is not None
+    row = scene.one(
+        "insert into assertion (workspace_id, kind, predicate_id, subject_ref, object_value, "
+        "support_span_ids, produced_by_run, emit_key) values "
+        "(%s, %s, %s, %s, %s, %s::uuid[], %s, %s) returning assertion_id",
+        scene.workspace_id,
+        kind,
+        scene.repository.predicate_id(RECONSTRUCTION_SCENE_RUNG_PREDICATE),
+        psycopg.types.json.Jsonb({"type": "scene", "id": str(scene_id or scene.scene_id)}),
+        psycopg.types.json.Jsonb(
+            object_value
+            or {
+                "rung": 3,
+                "reasons": ["rungs 1 and 2 require measurements that do not exist"],
+                "member_count": len(scene.captures),
+            }
+        ),
+        support_span_ids if support_span_ids is not None else _registered_scene_span_ids(scene),
+        run["run_id"] if kind == "inference" else None,
+        f"test:scene-rung:{uuid.uuid4()}",
+    )
+    assert row is not None
+    return row["assertion_id"]
+
+
+def test_a_scene_rung_is_an_inference_and_cannot_be_filed_as_capture(scene):
+    with (
+        pytest.raises(psycopg.errors.IntegrityError, match="does not accept a capture assertion"),
+        scene.repository.connection.transaction(),
+    ):
+        _insert_raw_scene_rung(scene, kind="capture")
+
+
+def test_a_scene_rung_requires_the_whole_sets_member_count(scene):
+    with (
+        pytest.raises(
+            psycopg.errors.IntegrityError,
+            match="missing required key 'member_count'",
+        ),
+        scene.repository.connection.transaction(),
+    ):
+        _insert_raw_scene_rung(
+            scene,
+            object_value={
+                "rung": 3,
+                "reasons": ["rungs 1 and 2 require measurements that do not exist"],
+            },
+        )
+
+
+def test_a_scene_rung_over_a_deleted_unregistered_member_is_refused(scene):
+    member = scene.one(
+        "select registered from reconstruction_scene_member "
+        "where workspace_id = %s and scene_id = %s and capture_id = %s",
+        scene.workspace_id,
+        scene.scene_id,
+        scene.captures[1],
+    )
+    assert member == {"registered": False}
+    scene.delete(scene.captures[1])
+
+    with (
+        pytest.raises(psycopg.errors.IntegrityError, match="tombstoned: write refused"),
+        scene.repository.connection.transaction(),
+    ):
+        _insert_raw_scene_rung(scene)
+
+
+def test_a_scene_rung_over_a_deleted_registered_member_is_refused(scene):
+    support_span_ids = _registered_scene_span_ids(scene)
+    scene.delete(scene.captures[0])
+    with (
+        pytest.raises(psycopg.errors.IntegrityError, match="tombstoned: write refused"),
+        scene.repository.connection.transaction(),
+    ):
+        _insert_raw_scene_rung(scene, support_span_ids=support_span_ids)
 
 
 # -- the bytes ---------------------------------------------------------------------------------

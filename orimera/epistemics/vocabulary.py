@@ -31,7 +31,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-__all__ = ["DECISIONS", "VocabularyDecision"]
+__all__ = [
+    "DECISIONS",
+    "RECONSTRUCTION_SCENE_RUNG_PREDICATE",
+    "VocabularyDecision",
+]
+
+
+RECONSTRUCTION_SCENE_RUNG_PREDICATE: Final = "reconstruction_scene_rung_is"
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,6 +185,17 @@ DECISIONS: Final[tuple[VocabularyDecision, ...]] = (
         object_is=(
             "A rung between 1 and 4, the fraction of the frame that was placed, and the reason "
             "for both. A number and an explanation of a number."
+        ),
+    ),
+    VocabularyDecision(
+        key=RECONSTRUCTION_SCENE_RUNG_PREDICATE,
+        seeded_by="0025",
+        allows_kind=("inference",),
+        writes_a_name=False,
+        functional=True,
+        object_is=(
+            "A rung from 1 through 4 over a complete photograph set, the reasons higher "
+            "rungs were withheld, and the number of photographs in that set."
         ),
     ),
 )
