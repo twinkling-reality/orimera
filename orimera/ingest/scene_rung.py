@@ -6,56 +6,53 @@ produced by time-and-space clustering. A group's worst member rung is useful for
 reconstruction scene's rung is supported by the members that registered and is never a reduction
 over the individual photographs' rungs.
 
-Rung 3 is the only honest scene-level claim available before ADR-0009 D1's receipt gate exists.
-The registered member set is the measurement: each support span says one whole photograph was
-placed relative to the others. Rungs 1 and 2 require receipt thresholds that are not measured
-yet, while a set with no registered members carries no rung at all and is refused by the shared
-inference support rule.
+The producer passes the durable gate decision that it stored beside the pose and placement
+receipts. This writer does not recalculate or improve that result. Registered members support a
+placed scene claim. When no member registered, every input photograph supports the rung-4 claim
+that the set remains source photographs rather than an inference with no cited evidence.
 """
 
 from __future__ import annotations
 
 import uuid
-from typing import Final
 
 from orimera.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
 from orimera.evidence import EvidenceAddress
 from orimera.ingest.repository import IngestRepository
+from orimera.reconstruction.scene_gate import SceneGateDecision
 
 __all__ = ["record_scene_rung"]
 
 
-_REASONS: Final = [
-    "Rungs 1 and 2 are awarded only by ADR-0009 D1's receipt gate, and that gate is not built.",
-    (
-        "Every pose, scale, coverage, corridor and splat threshold that gate would read is "
-        "unmeasured."
-    ),
-]
-
-
 def record_scene_rung(
-    repository: IngestRepository, *, scene_id: uuid.UUID, run_id: uuid.UUID
+    repository: IngestRepository,
+    *,
+    scene_id: uuid.UUID,
+    run_id: uuid.UUID,
+    decision: SceneGateDecision,
 ) -> uuid.UUID | None:
-    """Publish rung 3 over the registered members, or refuse when none registered."""
+    """Publish the exact durable gate decision, after checking it against scene membership."""
     members = repository.reconstruction_scene_members(scene_id)
+    registered = [member for member in members if member.registered is True]
+    if decision.member_count != len(members) or decision.registered_member_count != len(registered):
+        raise ValueError("the scene gate member counts disagree with durable scene membership")
+    supporting = registered or members
     support_span_ids = [
         repository.upsert_span(EvidenceAddress.photograph(member.blob_id))
-        for member in members
-        if member.registered is True
+        for member in supporting
     ]
     return repository.insert_assertion(
         kind="inference",
         predicate_key=RECONSTRUCTION_SCENE_RUNG_PREDICATE,
         subject_ref={"type": "scene", "id": str(scene_id)},
         object_value={
-            "rung": 3,
-            "reasons": list(_REASONS),
-            "member_count": len(members),
+            "rung": decision.rung,
+            "reasons": list(decision.reasons),
+            "member_count": decision.member_count,
+            "registered_member_count": decision.registered_member_count,
+            "gate_digest": decision.digest,
         },
-        # D1 will include its gate decision digest when that decision exists. Until then the
-        # registered set is deterministic, so retrying this write is the same emission.
-        emit_key=f"scene-rung:{scene_id}",
+        emit_key=f"scene-rung:{scene_id}:{decision.digest}",
         support_span_ids=support_span_ids,
         produced_by_run=run_id,
     )

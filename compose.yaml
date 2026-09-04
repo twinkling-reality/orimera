@@ -79,6 +79,24 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  scene-worker:
+    build: .
+    command: ["orimera-scene-worker"]
+    restart: unless-stopped
+    environment:
+      ORIMERA_DATABASE_URL: postgresql://orimera_app:${ORIMERA_APP_ROLE_PASSWORD}@postgres:5432/orimera
+      ORIMERA_WORKSPACE_IDS: ${ORIMERA_WORKSPACE_IDS:?set ORIMERA_WORKSPACE_IDS to the comma-separated workspaces this worker may drain}
+      ORIMERA_DATA_DIR: /var/lib/orimera
+      # Both values enter the signed-by-content pose manifest. No mutable image tag or guessed
+      # checkout is accepted as provenance for geometry that reaches the renderer.
+      ORIMERA_CODE_REVISION: ${ORIMERA_CODE_REVISION:?set the exact 40-character Git revision}
+      ORIMERA_POSE_RUNTIME_IMAGE: ${ORIMERA_POSE_RUNTIME_IMAGE:?set an image reference pinned by sha256 digest}
+    volumes:
+      - media:/var/lib/orimera
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
 volumes:
   pgdata:
   # The content-addressed store. Append-only by policy: nothing in the runtime deletes from it,

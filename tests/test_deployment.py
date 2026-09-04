@@ -177,7 +177,7 @@ def test_runtime_containers_use_the_rls_role_and_only_migrations_use_the_owner()
     runtime_urls = [
         line for line in directives.splitlines() if "ORIMERA_DATABASE_URL:" in line
     ]
-    assert len(runtime_urls) == 3, runtime_urls
+    assert len(runtime_urls) == 4, runtime_urls
     assert "postgresql://orimera:" in runtime_urls[0], runtime_urls
     assert all("postgresql://orimera_app:" in line for line in runtime_urls[1:]), runtime_urls
     assert "ORIMERA_APP_ROLE_PASSWORD:?" in COMPOSE
@@ -189,6 +189,15 @@ def test_the_derivative_worker_is_a_separate_restartable_command():
     assert "restart: unless-stopped" in COMPOSE
     assert "ORIMERA_DERIVATIVE_WORKER: \"off\"" in COMPOSE
     assert 'orimera-derivative-worker = "orimera.ingest.worker_command:main"' in PYPROJECT
+
+
+def test_the_pose_worker_is_separate_restartable_and_provenance_configured():
+    assert "scene-worker:" in COMPOSE
+    assert "orimera-scene-worker" in COMPOSE
+    assert "ORIMERA_CODE_REVISION: ${ORIMERA_CODE_REVISION:?" in COMPOSE
+    assert "ORIMERA_POSE_RUNTIME_IMAGE: ${ORIMERA_POSE_RUNTIME_IMAGE:?" in COMPOSE
+    assert '--extra server --extra pose' in DOCKERFILE
+    assert 'orimera-scene-worker = "orimera.ingest.scene_worker_command:main"' in PYPROJECT
 
 
 def test_no_deployment_artefact_names_a_target():

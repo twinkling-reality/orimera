@@ -18,6 +18,7 @@ __all__ = [
     "MAX_SCENE_CLAIMS",
     "ClaimedSceneJob",
     "SceneJobMember",
+    "active_scratch_keys",
     "cancelled_or_lost",
     "claim",
     "complete",
@@ -74,7 +75,7 @@ def enqueue(
         cursor = scope.connection.execute(
             "insert into reconstruction_scene_job "
             "(job_id, workspace_id, scene_id, member_digest, selection_policy, "
-            "selection_policy_digest) values (%s, %s, %s, %s, %s, %s) "
+            "selection_policy_digest,scratch_key) values (%s, %s, %s, %s, %s, %s, %s) "
             "on conflict (workspace_id, scene_id, selection_policy_digest) do nothing",
             (
                 job_id,
@@ -83,6 +84,7 @@ def enqueue(
                 member_digest,
                 Jsonb(selection_policy),
                 policy_digest,
+                f"{scope.workspace_id}/{job_id}",
             ),
         )
         inserted = cursor.rowcount > 0
@@ -118,6 +120,17 @@ def enqueue(
                 "an existing reconstruction job disagrees with the requested input set"
             )
     return job_id, inserted
+
+
+def active_scratch_keys(scope: WorkspaceScope) -> frozenset[str]:
+    """Scratch protected by queued, held or still-retryable jobs in this workspace."""
+    rows = scope.connection.execute(
+        "select scratch_key from reconstruction_scene_job where workspace_id=%s "
+        "and scratch_key is not null and (status in ('queued','running') "
+        "or (status='failed' and attempts < %s))",
+        (scope.workspace_id, MAX_SCENE_CLAIMS),
+    ).fetchall()
+    return frozenset(row["scratch_key"] for row in rows)
 
 
 def _claimed(scope: WorkspaceScope, row: dict[str, Any], *, reclaimed: bool) -> ClaimedSceneJob:

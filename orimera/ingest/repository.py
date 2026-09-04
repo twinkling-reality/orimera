@@ -253,6 +253,10 @@ class IngestRepository:
             self._scope, worker=worker, lease_seconds=lease_seconds
         )
 
+    def active_reconstruction_scratch_keys(self) -> frozenset[str]:
+        """Scratch that a queued, held or retryable scene job may still resume."""
+        return reconstruction_jobs.active_scratch_keys(self._scope)
+
     def heartbeat_reconstruction_scene(
         self, *, job_id: uuid.UUID, claim_token: uuid.UUID, lease_seconds: float
     ) -> bool:
@@ -371,6 +375,14 @@ class IngestRepository:
     def find_artifact(self, idempotency_key: str) -> ArtifactRow | None:
         """The live artifact under this identity key, or None."""
         return artifacts.find(self._scope, idempotency_key)
+
+    def current_capture_artifacts(
+        self, *, capture_ids: list[uuid.UUID], kind: str
+    ) -> dict[uuid.UUID, artifacts.CaptureArtifactRow]:
+        """Resolve current complete per-capture artifacts for a scene producer."""
+        return artifacts.current_for_captures(
+            self._scope, capture_ids=capture_ids, kind=kind
+        )
 
     def insert_artifact(
         self,

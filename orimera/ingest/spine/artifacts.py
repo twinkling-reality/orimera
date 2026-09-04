@@ -14,7 +14,15 @@ from orimera.db.guards import terminal_if_tombstoned
 from orimera.evidence.blob import BlobId
 from orimera.ingest.spine.scope import WorkspaceScope
 
-__all__ = ["ArtifactRow", "find", "insert", "insert_scene", "mark_needs_repair"]
+__all__ = [
+    "ArtifactRow",
+    "CaptureArtifactRow",
+    "current_for_captures",
+    "find",
+    "insert",
+    "insert_scene",
+    "mark_needs_repair",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +35,45 @@ class ArtifactRow:
     content_sha256: bytes | None
     storage_key: str | None
     byte_size: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureArtifactRow:
+    capture_id: uuid.UUID
+    artifact_id: uuid.UUID
+    content_sha256: bytes
+    storage_key: str
+    byte_size: int
+
+
+def current_for_captures(
+    scope: WorkspaceScope, *, capture_ids: list[uuid.UUID], kind: str
+) -> dict[uuid.UUID, CaptureArtifactRow]:
+    """The current complete artifact of ``kind`` for each requested live capture that has one."""
+    if not capture_ids:
+        return {}
+    rows = scope.connection.execute(
+        "select distinct on (c.capture_id) c.capture_id,a.artifact_id,a.content_sha256,"
+        "a.storage_key,a.byte_size from capture c join artifact a "
+        "on a.workspace_id=c.workspace_id and a.source_blob_sha256=c.blob_sha256 "
+        "where c.workspace_id=%s and c.capture_id=any(%s::uuid[]) and c.deleted_at is null "
+        "and a.kind=%s and a.superseded_by is null and a.purged_at is null "
+        "and a.content_sha256 is not null and a.storage_key is not null "
+        "and a.byte_size is not null "
+        "and not tombstone_blocks_capture(c.workspace_id,c.capture_id) "
+        "order by c.capture_id,a.stage_version desc,a.created_at desc,a.artifact_id",
+        (scope.workspace_id, capture_ids, kind),
+    ).fetchall()
+    return {
+        row["capture_id"]: CaptureArtifactRow(
+            capture_id=row["capture_id"],
+            artifact_id=row["artifact_id"],
+            content_sha256=bytes(row["content_sha256"]),
+            storage_key=row["storage_key"],
+            byte_size=int(row["byte_size"]),
+        )
+        for row in rows
+    }
 
 
 def find(scope: WorkspaceScope, idempotency_key: str) -> ArtifactRow | None:

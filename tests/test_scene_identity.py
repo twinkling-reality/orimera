@@ -47,7 +47,6 @@ from orimera.db.roles import (
 from orimera.deletion import queue
 from orimera.deletion.worker import PurgeWorker
 from orimera.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
-from orimera.errors import EpistemicViolation
 from orimera.evidence import EvidenceAddress
 from orimera.evidence.blob import BlobId
 from orimera.evidence.scene import scene_id_for, scene_member_digest
@@ -55,6 +54,7 @@ from orimera.graph import SceneRungRow, scene_rung_rows
 from orimera.graph.scene_groups import rung_by_capture
 from orimera.ingest.pipeline import PhotoIngestPipeline
 from orimera.ingest.scene_rung import record_scene_rung
+from orimera.reconstruction.scene_gate import SceneGateDecision
 from orimera.store.local import LocalContentAddressedStore
 from orimera.world_package import diff_packages, project_world_package
 
@@ -235,6 +235,24 @@ def _insert_scene_artifact(
         ),
     )
     return artifact_id
+
+
+def _record_gate_rung(workspace, scene_id: uuid.UUID, run_id: uuid.UUID):
+    members = workspace.repository.reconstruction_scene_members(scene_id)
+    registered = sum(member.registered is True for member in members)
+    decision = SceneGateDecision(
+        rung=3 if registered else 4,
+        member_count=len(members),
+        registered_member_count=registered,
+        reasons=("the durable gate recorded this test decision",),
+        receipts=(),
+    )
+    return record_scene_rung(
+        workspace.repository,
+        scene_id=scene_id,
+        run_id=run_id,
+        decision=decision,
+    ), decision
 
 
 @pytest.fixture
@@ -763,9 +781,7 @@ def test_the_scene_rung_cites_exactly_the_registered_members_in_ordinal_order(sc
     )
     assert run is not None
 
-    assertion_id = record_scene_rung(
-        scene.repository, scene_id=scene.scene_id, run_id=run["run_id"]
-    )
+    assertion_id, decision = _record_gate_rung(scene, scene.scene_id, run["run_id"])
     assert assertion_id is not None
     row = scene.one(
         "select kind, subject_ref, object_value, support_span_ids from assertion "
@@ -777,26 +793,17 @@ def test_the_scene_rung_cites_exactly_the_registered_members_in_ordinal_order(sc
         "subject_ref": {"type": "scene", "id": str(scene.scene_id)},
         "object_value": {
             "rung": 3,
-            "reasons": [
-                (
-                    "Rungs 1 and 2 are awarded only by ADR-0009 D1's receipt gate, and that "
-                    "gate is not built."
-                ),
-                (
-                    "Every pose, scale, coverage, corridor and splat threshold that gate would "
-                    "read is unmeasured."
-                ),
-            ],
+            "reasons": ["the durable gate recorded this test decision"],
             "member_count": 3,
+            "registered_member_count": 2,
+            "gate_digest": decision.digest,
         },
         "support_span_ids": expected_support,
     }
-    assert record_scene_rung(
-        scene.repository, scene_id=scene.scene_id, run_id=run["run_id"]
-    ) is None
+    assert _record_gate_rung(scene, scene.scene_id, run["run_id"])[0] is None
 
 
-def test_a_scene_nobody_registered_gets_no_rung_from_the_shared_support_rule(scene):
+def test_a_scene_nobody_registered_records_rung_4_over_the_complete_input_set(scene):
     unregistered = _insert_scene(
         scene,
         scene.captures[:2],
@@ -808,14 +815,14 @@ def test_a_scene_nobody_registered_gets_no_rung_from_the_shared_support_rule(sce
     )
     assert run is not None
 
-    with pytest.raises(
-        EpistemicViolation,
-        match=(
-            "a inference assertion must cite at least one evidence span; "
-            "'reconstruction_scene_rung_is' arrived with none"
-        ),
-    ):
-        record_scene_rung(scene.repository, scene_id=unregistered, run_id=run["run_id"])
+    assertion_id, decision = _record_gate_rung(scene, unregistered, run["run_id"])
+    row = scene.one(
+        "select object_value,support_span_ids from assertion where assertion_id=%s",
+        assertion_id,
+    )
+    assert row["object_value"]["rung"] == 4
+    assert row["object_value"]["gate_digest"] == decision.digest
+    assert len(row["support_span_ids"]) == 2
 
 
 def test_a_scene_rung_is_not_a_capture_rung(scene):
@@ -824,7 +831,7 @@ def test_a_scene_rung_is_not_a_capture_rung(scene):
         scene.workspace_id,
     )
     assert run is not None
-    record_scene_rung(scene.repository, scene_id=scene.scene_id, run_id=run["run_id"])
+    _record_gate_rung(scene, scene.scene_id, run["run_id"])
 
     assert scene.scene_id not in rung_by_capture(
         scene.repository.connection, scene.workspace_id
@@ -837,7 +844,7 @@ def test_the_scene_rung_read_withdraws_the_claim_after_any_member_is_deleted(sce
         scene.workspace_id,
     )
     assert run is not None
-    record_scene_rung(scene.repository, scene_id=scene.scene_id, run_id=run["run_id"])
+    _record_gate_rung(scene, scene.scene_id, run["run_id"])
 
     assert scene_rung_rows(scene.repository.connection, scene.workspace_id) == [
         SceneRungRow(
@@ -845,16 +852,7 @@ def test_the_scene_rung_read_withdraws_the_claim_after_any_member_is_deleted(sce
             member_capture_ids=scene.captures,
             registered_capture_ids=[scene.captures[0], scene.captures[2]],
             rung=3,
-            reasons=[
-                (
-                    "Rungs 1 and 2 are awarded only by ADR-0009 D1's receipt gate, and that "
-                    "gate is not built."
-                ),
-                (
-                    "Every pose, scale, coverage, corridor and splat threshold that gate would "
-                    "read is unmeasured."
-                ),
-            ],
+            reasons=["the durable gate recorded this test decision"],
             member_count=3,
         )
     ]
@@ -955,7 +953,7 @@ def test_a_deleted_scene_rung_leaves_both_export_copies(scene, tmp_path):
         scene.workspace_id,
     )
     assert run is not None
-    record_scene_rung(scene.repository, scene_id=scene.scene_id, run_id=run["run_id"])
+    _record_gate_rung(scene, scene.scene_id, run["run_id"])
 
     before = scene.export(tmp_path / "before-rung.wmp")
     reconstruction = scene.reconstruction(before)

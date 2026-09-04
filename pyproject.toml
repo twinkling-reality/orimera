@@ -125,6 +125,9 @@ orimera-purge = "orimera.deletion.cli:main"
 # `uv run orimera-derivative-worker`. The production queue consumer: a separate process with
 # renewable leases, signal-aware shutdown and a durable delivery ledger.
 orimera-derivative-worker = "orimera.ingest.worker_command:main"
+# `uv run --extra pose orimera-scene-worker`. Kept separate from the depth worker because the
+# pycolmap and torch wheels load incompatible OpenMP runtimes on macOS.
+orimera-scene-worker = "orimera.ingest.scene_worker_command:main"
 # `uv run orimera-wmp project ...` creates a signed, independently verifiable World Memory
 # Package; verify, inspect, and diff never open PostgreSQL.
 orimera-wmp = "orimera.world_package.cli:main"
