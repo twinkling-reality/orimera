@@ -1,6 +1,6 @@
 # World Memory Package v1
 
-Status: **BUILT AND EXIT-GATED**. The implementation profile is `orimera-wmp-1.0`.
+Status: **BUILT AND EXIT-GATED**. The implementation profile is `exulanica-wmp-1.0`.
 
 The World Memory Package (WMP) is a signed projection of one PostgreSQL snapshot. It is not the
 live store, a backup, a consent grant, or an executable world. An exported copy cannot be recalled.
@@ -9,13 +9,16 @@ was removed or recomputed.
 
 ## Standards and compatibility boundary
 
-`wmp/profile.json` is the versioned Orimera profile. `ro-crate-metadata.json` uses the RO-Crate 1.2
-context by reference, describes `./` as the root Dataset, and declares the Orimera profile on that
-root. The same graph contains a Croissant 1.0 and Croissant RAI 1.0 compatibility node with the
+`wmp/profile.json` is the versioned Exulanica profile. The identifier is `exulanica-wmp-1.0`.
+The pre-release `orimera-wmp-1.0` profile was withdrawn before release; ADR-0011 records that
+no externally retained signed package used it. WMP remains version 1 under the corrected name.
+`ro-crate-metadata.json`
+uses the RO-Crate 1.2 context by reference, describes `./` as the root Dataset, and declares that
+profile on the root. The same graph contains a Croissant 1.0 and Croissant RAI 1.0 compatibility node with the
 package limitations and sensitive-information declaration. WMP does not claim that its component
 JSON documents are generic Croissant record sets.
 
-Canonical component files use Orimera's strict no-float JSON subset. That subset has the sorted
+Canonical component files use Exulanica's strict no-float JSON subset. That subset has the sorted
 keys, UTF-8, and insignificant-whitespace properties needed by RFC 8785, but goes further: an IEEE
 754 value is never emitted as a JSON number. Historical database floats are represented as tagged
 exact hexadecimal values. Protected topology, placement, appearance, and interaction values remain
@@ -66,8 +69,9 @@ is not presented as a public download URL.
 ## Integrity format
 
 `wmp/manifest.json` lists every payload path, byte length, and SHA-256 digest in sorted path order.
-Leaves bind a domain separator, the UTF-8 path, and the file digest. Internal nodes bind a separate
-domain separator and the two child hashes; an odd final child is duplicated. `wmp/signature.json`
+Leaves bind the domain separator `exulanica-wmp-leaf-v1`, the UTF-8 path, and the file digest.
+Internal nodes bind `exulanica-wmp-node-v1` and the two child hashes; an odd final child is
+duplicated. Those separators are the current v1 domain-separation strings. `wmp/signature.json`
 contains the Ed25519 public key and a signature over the canonical profile version, manifest digest,
 and Merkle root. The manifest and signature do not include themselves in the Merkle inventory.
 
@@ -79,11 +83,11 @@ explicitly.
 ## Commands
 
 ```text
-orimera-wmp project --workspace UUID --actor UUID --private-key KEY --output DIRECTORY
-orimera-wmp verify DIRECTORY
-orimera-wmp inspect DIRECTORY
-orimera-wmp diff BEFORE_DIRECTORY AFTER_DIRECTORY
-orimera-wmp import-check DIRECTORY [receiver capability declarations]
+exulanica-wmp project --workspace UUID --actor UUID --private-key KEY --output DIRECTORY
+exulanica-wmp verify DIRECTORY
+exulanica-wmp inspect DIRECTORY
+exulanica-wmp diff BEFORE_DIRECTORY AFTER_DIRECTORY
+exulanica-wmp import-check DIRECTORY [receiver capability declarations]
 ```
 
 `verify`, `inspect`, `diff`, and `import-check` do not open PostgreSQL. Diff output reports semantic

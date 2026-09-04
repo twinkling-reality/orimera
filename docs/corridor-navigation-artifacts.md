@@ -2,7 +2,7 @@
 
 Status: **artifact, gate, and conservative runtime adapter implemented; real gate blocked**.
 
-`orimera.reconstruction.navigation` builds rung-2 artifacts only from ordered metric camera poses
+`exulanica.reconstruction.navigation` builds rung-2 artifacts only from ordered metric camera poses
 and independently measured navigation samples. Each sample records position, unit forward vector,
 clearance radius, slope, and whether it is a source vantage or recovery pose. The build manifest
 also pins the exact reconstruction and topology digests, agent radius, maximum pose gap, reviewed

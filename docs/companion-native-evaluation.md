@@ -32,7 +32,7 @@ two dark slit eyes. The closest reusable open-source reference found is Jérémy
 - catalog: eight shapes, twelve colours, sixteen rest expressions, and fourteen animated states;
 - renderer: SVG with no animation library.
 
-Bloub's README explicitly says its MIT license covers the code, not xAI's imitated design. Orimera
+Bloub's README explicitly says its MIT license covers the code, not xAI's imitated design. Exulanica
 therefore does not copy the project's source or claim xAI affiliation. The local renderer is an
 original, smaller implementation of the verified abstract grammar: a configurable silhouette and
 two slit eyes. Source comments retain the research attribution.
@@ -45,7 +45,7 @@ request, or render loop. The app has no Vue, Mediabunny, Spline, or Bloub depend
 
 Bloub is a capable reference application, not a drop-in package: its package is marked private and
 the application depends on Vue and Mediabunny. Its reusable `src/bot/` engine is deliberately
-framework- and clock-free, so it is a plausible upstream source if Orimera later needs its measured
+framework- and clock-free, so it is a plausible upstream source if Exulanica later needs its measured
 14-state morph system. At that point the correct path is a separately reviewed engine adapter with
 MIT attribution and a design/licensing review—not embedding the editor application now. The current
 requirements are shape, colour, expression, gaze, blink, working feedback, and reduced motion; the
@@ -85,7 +85,7 @@ also removed; consequence remains in behavior and copy, not an unexplained decor
 
 ## 6. Separate future humanoid research
 
-VRM remains a credible format if Orimera later needs a licensed humanoid or anime character:
+VRM remains a credible format if Exulanica later needs a licensed humanoid or anime character:
 
 - VRM specification: <https://vrm-consortium.org/en/>
 - MIT authoring candidate: <https://github.com/M3-org/CharacterStudio>

@@ -14,7 +14,7 @@ documentation. Where it contradicts an earlier document, this one wins.
 
 **VERIFIED.** A real call to `nvidia/Nemotron-3_5-Lightning` returned HTTP 200 in 0.52 s, and the
 response body echoes `"model": "nvidia/Nemotron-3_5-Lightning"`. The full body and all response
-headers are archived at `.orimera/experiments/platform/x0a_nvidia_provenance.json`.
+headers are archived at `.exulanica/experiments/platform/x0a_nvidia_provenance.json`.
 
 Per the project's own stop rule ("do not claim Nano Omni/Ultra use until the real model ID and
 runtime call are verified"), the project may now truthfully state that it runs NVIDIA Nemotron on
@@ -123,7 +123,7 @@ unbounded bill.
 
 **VERIFIED by execution on 2026-08-27.** `POST https://api.tavily.com/search` returned HTTP 200 in
 2.26 s with three sourced results and a synthesised answer. Archived at
-`.orimera/experiments/web-lookup/tavily_runtime_call.json`, request payload included.
+`.exulanica/experiments/web-lookup/tavily_runtime_call.json`, request payload included.
 
 Account state: **pay as you go is Disabled, and the credential draws on a fixed monthly credit
 allowance.** There is no uncapped spend path on this credential: when the allowance is spent, calls

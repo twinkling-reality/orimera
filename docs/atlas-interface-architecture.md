@@ -20,10 +20,10 @@ detail, Map, Options, Controls, and the summoned Companion.
 
 ## Ownership boundary
 
-Orimera owns the shell reducer, section hierarchy, component markup, circular command geometry,
+Exulanica owns the shell reducer, section hierarchy, component markup, circular command geometry,
 keyboard shortcuts, focus order, source actions, semantic labels, protected-value copy, transaction
 verbs, and context restoration. World profiles may supply only the validated, versioned visual
-roles already accepted by `@orimera/presentation`: derived palette roles, registered type families,
+roles already accepted by `@exulanica/presentation`: derived palette roles, registered type families,
 bounded blur/saturation/texture, and bounded motion timing. Reduced motion, reduced transparency,
 high contrast, focus visibility, and minimum contrast override that expression.
 

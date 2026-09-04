@@ -2,13 +2,13 @@
 
 Status: **REPLAY MECHANICS IMPLEMENTED; REAL METRIC BASELINE AND PHASE 2 GATE BLOCKED**.
 
-`orimera-eval replay-bundle` admits only an already validated `CORPUS.json` bundle. It does not
+`exulanica-eval replay-bundle` admits only an already validated `CORPUS.json` bundle. It does not
 create photographs, labels, consent evidence, partitions, or scores. It uses two explicit database
 identities:
 
-- `ORIMERA_EVALUATION_OWNER_DATABASE_URL` points to a newly created empty database and is used only
+- `EXULANICA_EVALUATION_OWNER_DATABASE_URL` points to a newly created empty database and is used only
   to check emptiness, apply forward migrations, and provision one workspace partition; and
-- `ORIMERA_DATABASE_URL` points to the same database as a non-owner runtime role without
+- `EXULANICA_DATABASE_URL` points to the same database as a non-owner runtime role without
   `BYPASSRLS`.
 
 The command does not create or drop a database. It refuses `postgres`, `template0`, `template1`, a
@@ -19,10 +19,10 @@ later input or runtime check fails; retry with another new database rather than 
 Example blind replay:
 
 ```bash
-export ORIMERA_EVALUATION_OWNER_DATABASE_URL='postgresql://owner:...@host/orimera_eval_001'
-export ORIMERA_DATABASE_URL='postgresql://orimera_app:...@host/orimera_eval_001'
+export EXULANICA_EVALUATION_OWNER_DATABASE_URL='postgresql://owner:...@host/exulanica_eval_001'
+export EXULANICA_DATABASE_URL='postgresql://exulanica_app:...@host/exulanica_eval_001'
 
-uv run orimera-eval replay-bundle \
+uv run exulanica-eval replay-bundle \
   --corpus /private/OGC-1 \
   --purpose blind_evaluation \
   --blind-key-file /private/keys/ogc-1-blind.key \

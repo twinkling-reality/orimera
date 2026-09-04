@@ -2,7 +2,7 @@
 
 Status: **IMPLEMENTED AND DEVELOPMENT-EXIT-GATED; AUTHORIZED PERSONAL-CORPUS RUN PENDING**.
 
-`orimera-frontier demonstrate` is the Phase 8 source-to-package acceptance path. It starts from
+`exulanica-frontier demonstrate` is the Phase 8 source-to-package acceptance path. It starts from
 one operator-authorized ordinary photo directory and a versioned manifest, then composes the real
 ingest, evidence, Selection, graph, spatial-authority, style-authority, deletion, and World Memory
 Package boundaries. It does not contain a second implementation of any of them.
@@ -16,16 +16,16 @@ remains an external run rather than a result recorded in this repository.
 ## 1. Invocation and destructive boundary
 
 ```text
-uv run orimera-frontier demonstrate \
+uv run exulanica-frontier demonstrate \
   --manifest /outside-git/frontier-build.json \
   --photo-dir /authorized/photos \
-  --data-dir /outside-git/orimera-data \
+  --data-dir /outside-git/exulanica-data \
   --output /outside-git/frontier-run \
   --private-key /secure/location/wmp-ed25519.pem \
   --confirm-source-deletion
 ```
 
-The command requires `ORIMERA_DATABASE_URL`. It applies pending migrations, provisions the
+The command requires `EXULANICA_DATABASE_URL`. It applies pending migrations, provisions the
 manifest workspace, and then runs the gate. The signing key must already exist and must be Ed25519;
 the command never generates or persists a production secret.
 
@@ -40,11 +40,11 @@ mixing receipts from different source sets.
 
 ## 2. Build manifest v1
 
-The manifest profile is `orimera-frontier-build/v1`. Its exact top-level fields are:
+The manifest profile is `exulanica-frontier-build/v1`. Its exact top-level fields are:
 
 ```json
 {
-  "profile": "orimera-frontier-build/v1",
+  "profile": "exulanica-frontier-build/v1",
   "workspace_id": "00000000-0000-0000-0000-000000000000",
   "actor_id": "00000000-0000-0000-0000-000000000000",
   "world_id": "atlas:default",
@@ -55,7 +55,7 @@ The manifest profile is `orimera-frontier-build/v1`. Its exact top-level fields 
   "pipeline": {
     "vision": "unavailable",
     "depth": "unavailable",
-    "model_manifest_sha256": "<sha256 of orimera/models/models.manifest.json>"
+    "model_manifest_sha256": "<sha256 of exulanica/models/models.manifest.json>"
   },
   "precomputed_artifacts": [],
   "adaptation": {
@@ -165,7 +165,7 @@ keys, and real run receipts belong outside Git.
   conversational recipe provenance/refinement/discard/apply, style stale rejection, rollback,
   three independently verified packages, one durable tombstone,
   surviving source preservation, and a semantic diff that names a removed capture.
-- `uv run lint-imports` places `orimera.orchestration` above every reusable boundary, so no product
+- `uv run lint-imports` places `exulanica.orchestration` above every reusable boundary, so no product
   package can depend on the acceptance workflow.
 
 The missing final evidence is one user-authorized run with an explicit real photo directory,

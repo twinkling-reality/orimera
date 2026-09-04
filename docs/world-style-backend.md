@@ -6,7 +6,7 @@ authority is implemented separately in [spatial-world-authority.md](spatial-worl
 This document is the persistence and HTTP half of
 [ADR-0007](adr/0007-world-composition-and-customization.md) and the
 [Atlas world customization contract](atlas-world-customization-contract.md). The implementation is
-`orimera/world/`, migrations `0017_adaptive_world_styles.sql` and
+`exulanica/world/`, migrations `0017_adaptive_world_styles.sql` and
 `0023_frontend_world_recipe_contract.sql`, and the `/world` API routes.
 
 ## Boundary
@@ -41,7 +41,7 @@ bindings, reconstruction requirements, or destinations.
 
 ## Registry and fallback
 
-`orimera/world/style-registry.v1.json` is pinned to the renderer-neutral portion of frontend commit
+`exulanica/world/style-registry.v1.json` is pinned to the renderer-neutral portion of frontend commit
 `55b123627314d328fba3850eb607d8a7682a8cad`. The referenced frontend history is on a divergent
 branch, so this backend does not copy its visual profiles or executable TypeScript modules. The
 loader instead validates their exact reviewed module IDs, one-to-one capability ownership,

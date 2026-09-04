@@ -1,12 +1,12 @@
 # Third party notices
 
-Orimera is distributed under the Apache License, Version 2.0. The unmodified license text is in
+Exulanica is distributed under the Apache License, Version 2.0. The unmodified license text is in
 [LICENSE](LICENSE) at the repository root.
 
-This file records the third party work Orimera depends on, together with the attribution each
+This file records the third party work Exulanica depends on, together with the attribution each
 license requires. It is built from three sources: the dependency manifests in this repository
 (`pyproject.toml`, `uv.lock`, `web/package.json` and the `web/packages/*/package.json` files), the
-model manifest at `orimera/models/models.manifest.json`, and the component analysis in
+model manifest at `exulanica/models/models.manifest.json`, and the component analysis in
 [docs/license-matrix.md](docs/license-matrix.md).
 
 Dependency license identifiers and copyright lines below were read on **2026-08-28** from the
@@ -52,7 +52,7 @@ section 3 and section 7 exist.
 
 ---
 
-## 2. Orimera's own license
+## 2. Exulanica's own license
 
 | Item | Value |
 | --- | --- |
@@ -66,11 +66,11 @@ Project specific terms are never appended to `LICENSE`. They belong here or in a
 
 ## 3. Hosted models called over an API
 
-These are the models Orimera calls on Nebius Token Factory. Every identifier below comes from
-`orimera/models/models.manifest.json`, which is the only place in the codebase where a model
+These are the models Exulanica calls on Nebius Token Factory. Every identifier below comes from
+`exulanica/models/models.manifest.json`, which is the only place in the codebase where a model
 identifier is allowed to exist.
 
-**No weights are downloaded, stored or redistributed by Orimera for any row in this section.** The
+**No weights are downloaded, stored or redistributed by Exulanica for any row in this section.** The
 call is an HTTPS request to `https://api.tokenfactory.nebius.com/v1`.
 
 ### 3.1 The reading problem, stated before the table
@@ -84,7 +84,7 @@ decision is to record the license read from the raw HuggingFace frontmatter at a
 SHA instead.
 
 **OPEN, and it is the largest gap in this file.** That decision has not been carried out. The
-`catalog_license` values in `orimera/models/models.manifest.json` are Nebius catalog strings, and
+`catalog_license` values in `exulanica/models/models.manifest.json` are Nebius catalog strings, and
 no model in this project has a pinned HuggingFace revision SHA. The "License recorded here" column
 below therefore states what was actually read, and by whom, rather than presenting a catalog string
 as a verified license. Closing this is item **T-1** in section 9.
@@ -100,7 +100,7 @@ as a verified license. Closing this is item **T-1** in section 9.
 
 **Warning, and it is a change from what license-matrix section 5 records.** The matrix states that
 `nvidia/Nemotron-3-Ultra-550b-a55b` is the one row where the catalog is *more permissive* than any
-verified reading, and that "the exposure is currently zero because Ultra has no role in Orimera".
+verified reading, and that "the exposure is currently zero because Ultra has no role in Exulanica".
 **That is no longer true.** The model manifest names it as the primary for the `reasoning_hard`
 role. Nothing routes to it by default and it is reachable only by asking for the hard role
 explicitly, so the exposure is small, but it is not zero. The HuggingFace card must be read before
@@ -114,7 +114,7 @@ present in the distribution, which this file is:
 applies to `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` and `nvidia/nemotron-3-super-120b-a12b`.
 
 **OpenMDW-1.1 condition.** On redistribution of the materials, retain a copy of the agreement and
-all notices of origin. Orimera redistributes no weights, so the condition is recorded rather than
+all notices of origin. Exulanica redistributes no weights, so the condition is recorded rather than
 triggered. It applies to `nvidia/Nemotron-3_5-Lightning`, and to
 `nvidia/Nemotron-3-Ultra-550b-a55b` if its catalog reading is confirmed.
 
@@ -125,7 +125,7 @@ License instrument texts:
   <https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license>
 - NVIDIA Open Model Agreement:
   <https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-agreement/>
-- NVIDIA Open Model License (the restrictive instrument, listed for contrast; no model Orimera calls
+- NVIDIA Open Model License (the restrictive instrument, listed for contrast; no model Exulanica calls
   is recorded under it by its own model card):
   <https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/>
 
@@ -208,7 +208,7 @@ Resolved by `uv.lock` and installed alongside the four above.
 
 **Note on certifi.** MPL-2.0 is a file-level copyleft and is compatible with distribution alongside
 Apache-2.0 work, but it is not MIT or BSD and it carries a source availability obligation for the
-covered files if they are distributed in modified form. Orimera does not modify or redistribute
+covered files if they are distributed in modified form. Exulanica does not modify or redistribute
 certifi. The row is called out here because MPL-2.0 is the only copyleft license in the runtime
 dependency set.
 
@@ -253,9 +253,9 @@ Read on **2026-08-28** from `web/package.json`, the `web/packages/*/package.json
 
 | Package | Version | License | Required attribution | Where |
 | --- | --- | --- | --- | --- |
-| `playcanvas` | 2.21.4 | MIT | Copyright (c) 2011-2026 PlayCanvas Ltd. | `@orimera/atlas-react`, the selected renderer per [docs/adr/0003-renderer-selection.md](docs/adr/0003-renderer-selection.md) |
-| `three` | 0.185.1 | MIT | Copyright © 2010-2026 three.js authors | `@orimera/atlas-three` and `@orimera/bakeoff` |
-| `@sparkjsdev/spark` | 2.1.0 | MIT | Copyright © 2025 World Labs Technologies, Inc. | `@orimera/atlas-three` |
+| `playcanvas` | 2.21.4 | MIT | Copyright (c) 2011-2026 PlayCanvas Ltd. | `@exulanica/atlas-react`, the selected renderer per [docs/adr/0003-renderer-selection.md](docs/adr/0003-renderer-selection.md) |
+| `three` | 0.185.1 | MIT | Copyright © 2010-2026 three.js authors | `@exulanica/atlas-three` and `@exulanica/bakeoff` |
+| `@sparkjsdev/spark` | 2.1.0 | MIT | Copyright © 2025 World Labs Technologies, Inc. | `@exulanica/atlas-three` |
 
 **Honest note on the three.js rows.** The renderer decision is PlayCanvas. The three.js plus Spark
 binding is **retained in the repository as the measured alternative and as insurance, and is not
@@ -292,9 +292,9 @@ judgement call. Item **T-7** in section 9.
 
 ### 5.4 Workspace packages
 
-`@orimera/atlas-core`, `@orimera/atlas-react`, `@orimera/atlas-three`, `@orimera/bakeoff`,
-`@orimera/companion-runtime`, `@orimera/graph-client`, `@orimera/landing`, `@orimera/scene-synth`
-and `@orimera/world-index` are private packages in this repository. They are covered by Orimera's
+`@exulanica/atlas-core`, `@exulanica/atlas-react`, `@exulanica/atlas-three`, `@exulanica/bakeoff`,
+`@exulanica/companion-runtime`, `@exulanica/graph-client`, `@exulanica/landing`, `@exulanica/scene-synth`
+and `@exulanica/world-index` are private packages in this repository. They are covered by Exulanica's
 own Apache-2.0 license and require no separate notice.
 
 ---
@@ -365,7 +365,7 @@ credits surface obligation activates with it.
   `ThirdPartyNoticeText.txt`, and that `three` and `playcanvas` (both MIT) ship none. No Python
   package in `uv.lock` was found to ship a `NOTICE` file. The scan was partial and covered direct
   dependencies only.
-- **Outbound.** Orimera's top-level `LICENSE` must remain the unmodified Apache-2.0 text so that the
+- **Outbound.** Exulanica's top-level `LICENSE` must remain the unmodified Apache-2.0 text so that the
   repository host detects the license and renders the license indicator on the repository page. That
   file was confirmed unmodified on 2026-08-28.
 
@@ -404,7 +404,7 @@ the ones that would matter to a reviewer.
 | **T-1** | No model in `models.manifest.json` has a pinned HuggingFace revision SHA, and the recorded `catalog_license` values are Nebius catalog strings, which are derived labels known to be wrong in three of three checked cases | The standing decision (license-matrix section 5) is to record the license from raw card frontmatter at a pinned SHA. It has not been carried out for any model | For each identifier, `curl https://huggingface.co/api/models/<id>` and record `cardData.license`, `gated` and `sha`. Add the SHA and the frontmatter license to the manifest | 30 min |
 | **T-2** | `nvidia/Nemotron-3-Ultra-550b-a55b` carries a catalog-only `openmdw-1.1` reading, which is the one known case where the catalog is more permissive than any verified reading, **and it is now the declared primary for the `reasoning_hard` role** | This is the error direction that invalidates a compliance claim. license-matrix section 5 records the exposure as zero, which is out of date | Read the HuggingFace card before the hard role is used, and correct license-matrix section 5 either way | 5 min |
 | **T-3** | `MiniMaxAI/MiniMax-M3` custom license text has never been read | It is the **primary** vision sensor. Every photograph passes through it | Read <https://huggingface.co/MiniMaxAI/MiniMax-M3/blob/main/LICENSE> | 10 min |
-| **T-4** | Nebius Token Factory terms of service and acceptable use policy never retrieved | This is the instrument that actually binds API-only use, which is most of what Orimera does | Retrieve and read both. Do the same for Tavily's terms of service | 30 min |
+| **T-4** | Nebius Token Factory terms of service and acceptable use policy never retrieved | This is the instrument that actually binds API-only use, which is most of what Exulanica does | Retrieve and read both. Do the same for Tavily's terms of service | 30 min |
 | **T-5** | Pillow's bundled native imaging library licenses not enumerated | The wheels bundle native libraries with their own notices, at least one of which (Alliance for Open Media) appears in the shipped license file | Read the complete license file shipped in the wheel and reproduce the bundled notices here | 15 min |
 | **T-6** | `psycopg` and `psycopg-binary` are **LGPL-3.0-only** and are not analysed anywhere in the documentation set | The existing enforcement plan scans for GPL and AGPL only. LGPL is neither, and the relinking obligation has not been assessed against a deployed container | Decide whether the deployed image redistributes the library, and record the conclusion. Add LGPL to the dependency scan | 30 min |
 | **T-7** | 246 resolved npm package versions, of which only the direct dependencies are license checked | None is shipped to the browser, which bounds the exposure but does not close it | Run a license enumeration over `pnpm-lock.yaml` and append or attach the result | 30 min |
@@ -423,7 +423,7 @@ Building this file from the manifests rather than from the analysis surfaced two
 than silently reconciled.
 
 1. **License matrix section 3.1 and section 5 state that `nvidia/Nemotron-3-Ultra-550b-a55b` has
-   "no role in Orimera" and that its exposure is "currently zero".** The model manifest declares it
+   "no role in Exulanica" and that its exposure is "currently zero".** The model manifest declares it
    as the `reasoning_hard` primary. Nothing routes there by default, so the exposure is small, but it
    is not zero. See item T-2.
 2. **The license matrix does not cover `psycopg`**, an LGPL-3.0-only dependency reachable through the

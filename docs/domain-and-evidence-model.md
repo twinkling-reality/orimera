@@ -4,7 +4,7 @@ Status: mixed. Every claim below carries exactly one status label, and a claim t
 against what was actually built also carries **CORRECTED**.
 Retrieval date for every VERIFIED external source: **2026-08-27**.
 
-This is the core contract of the product. Everything else in Orimera (the Atlas, the Companion, the
+This is the core contract of the product. Everything else in Exulanica (the Atlas, the Companion, the
 reconstruction ladder, the query layer) is a view over what is defined here. The spine described in
 section 1 is intended to be frozen at v1 and extended additively only.
 
@@ -18,14 +18,14 @@ Label convention is the one in [README.md](README.md):
   rewritten against what was actually built. Each one names the artefact and the test.
 
 **Corrections against the implementation, 2026-08-27.** Migration
-`orimera/migrations/0001_spine.sql` and the `orimera/evidence/` modules were built from this
+`exulanica/migrations/0001_spine.sql` and the `exulanica/evidence/` modules were built from this
 document, and building them found errors in it. Where this document disagreed with what runs, the
 built artefact wins and the paragraph is marked **CORRECTED**; where it disagreed with
 [runtime-verification.md](runtime-verification.md), that document wins, as its own header says. None of these
 corrections is a redesign. One caveat applies to every SQL claim below: no PostgreSQL server has
 executed this migration in this environment, so the SQL checks are text-level.
 `tests/test_migration.py::test_the_migration_actually_applies` skips unless
-`ORIMERA_TEST_DATABASE_URL` points at a PostgreSQL 18 instance.
+`EXULANICA_TEST_DATABASE_URL` points at a PostgreSQL 18 instance.
 
 Corpus context that shapes this document, already settled in
 [product-specification.md](product-specification.md) section 2: **the capture corpus is still
@@ -135,11 +135,11 @@ from the preceding keyframe. This is a pure function of the bytes and needs no s
 #### What `round_half_down` means
 
 **DECISION (spine-3a), CORRECTED.** Earlier versions of this document named `round_half_down` in the
-frozen formula and never defined it anywhere. The implemented meaning, in `orimera/canonical.py`:
+frozen formula and never defined it anywhere. The implemented meaning, in `exulanica/canonical.py`:
 round the exact rational `numerator / denominator` to the nearest integer, and resolve an exact tie
 **toward zero**. That is the standard reading of the name, the one `decimal.ROUND_HALF_DOWN` and
 Java's `RoundingMode.HALF_DOWN` take. It is computed in exact integer arithmetic, and
-`orimera.canonical` refuses a float outright, so no float can reach a digest input by accident. The
+`exulanica.canonical` refuses a float outright, so no float can reach a digest input by accident. The
 same rule is used for the region quantisation in section 1.5, so the project has exactly one
 rounding rule rather than one per call site.
 
@@ -195,9 +195,9 @@ against is inside `span_digest` and a URI that dropped it would parse back to a 
 The implemented forms are:
 
 ```
-orimera://blob/ni:///sha-256;<base64url>/v:0#v=1&m=video_time&t=12.5,18.25
+exulanica://blob/ni:///sha-256;<base64url>/v:0#v=1&m=video_time&t=12.5,18.25
 
-orimera://blob/ni:///sha-256;<base64url>/img#v=1&m=frame_region&t=0,0.000000001
+exulanica://blob/ni:///sha-256;<base64url>/img#v=1&m=frame_region&t=0,0.000000001
   &xywh=percent:31.2000,22.0000,18.4000,40.1000&disp=4032x3024,0,1:1
 ```
 
@@ -248,7 +248,7 @@ Concretely:
 
 **DECISION (spine-9a), CORRECTED.** "Normalized to `[0,1]`" did not say how the number is
 encoded, and that gap is load bearing: `region` is inside `span_digest`, and no two JSON writers
-agree on how to render a float. Implemented in `orimera/evidence/region.py`: coordinates are
+agree on how to render a float. Implemented in `exulanica/evidence/region.py`: coordinates are
 integers in parts per million of the unit square, `0 .. 1_000_000`, quantised from an exact
 `Fraction` through the one project rounding rule defined in section 1.4. One ppm of a 6000 pixel
 wide photograph is 0.006 px, far below any detector's own precision. The region digest tuple is
@@ -889,7 +889,7 @@ is excluded because the digest must be a function of the address, not of the row
 
 **CORRECTED, on the encodings the tuple did not specify.** A digest is only reproducible if every
 value has one rendering, and three were left open here. As implemented in
-`orimera/evidence/address.py`: `blob_sha256` is lowercase hex, chosen over base64url so the value is
+`exulanica/evidence/address.py`: `blob_sha256` is lowercase hex, chosen over base64url so the value is
 identical to what the database prints; `region` is the all-integer tuple of section 1.5; a key is
 present only when its value is present, so an absent `region` is an absent key and not a null. The
 canonical JSON is a strict subset of RFC 8785, sorted keys and no insignificant whitespace, and
@@ -1056,14 +1056,14 @@ guarded by triggers.
 ROW LEVEL SECURITY` is set**, and "Superusers and roles with the `BYPASSRLS` attribute always bypass the
 row security system." Source: <https://www.postgresql.org/docs/18/ddl-rowsecurity.html> (2026-08-27).
 
-**DECISION.** The query executor connects as a dedicated `orimera_ro` role that **owns nothing** and
+**DECISION.** The query executor connects as a dedicated `exulanica_ro` role that **owns nothing** and
 does **not** hold `BYPASSRLS`. This is load-bearing, not hygiene: an executor connecting as the table
 owner makes every isolation policy silently inert.
 
 **DECISION (rls-2), CORRECTED.** Row-level security on its own leaves the tombstone guard **failing
 open**, and this document did not say so. The guards in section 6.3 read `tombstone`,
 `evidence_span` and `occurrence`, all of which carry `FORCE ROW LEVEL SECURITY`. A session that
-never set `orimera.workspace_id` sees those tables as **empty**, so a guard looking for a covering
+never set `exulanica.workspace_id` sees those tables as **empty**, so a guard looking for a covering
 tombstone finds none and permits the write. A `BYPASSRLS` role arrives at the same place from the
 other side: the policy is skipped, and then nothing checks that the row belongs to the session's
 workspace at all. For a deletion guard, permitting on absence of context is the worst available
@@ -1075,7 +1075,7 @@ Implemented: every guarded insert asserts the session context before it trusts a
 ```sql
 create or replace function current_workspace() returns uuid
 language sql stable as $fn$
-  select nullif(current_setting('orimera.workspace_id', true), '')::uuid;
+  select nullif(current_setting('exulanica.workspace_id', true), '')::uuid;
 $fn$;
 
 create or replace function assert_workspace_context(p_workspace uuid) returns void
@@ -1083,7 +1083,7 @@ language plpgsql as $fn$
 begin
   if current_workspace() is distinct from p_workspace then
     raise exception
-      'workspace context missing or mismatched: set orimera.workspace_id to % before writing',
+      'workspace context missing or mismatched: set exulanica.workspace_id to % before writing',
       p_workspace
       using errcode = 'insufficient_privilege';
   end if;
@@ -1124,7 +1124,7 @@ constraint an_artifact_names_one_subject check (
 So an artifact still names exactly one subject; it is no longer always the same kind of subject.
 The identity key above is unchanged for a per-blob derivative and is not what identifies a scene
 artifact: that is `reconstruction_scene.scene_id`, a uuid5 over the sorted member capture ids,
-computed by `orimera.evidence.scene`. The reduction over a scene INVERTS, and section 6.4 is
+computed by `exulanica.evidence.scene`. The reduction over a scene INVERTS, and section 6.4 is
 where that is written down.
 
 ```sql
@@ -1160,7 +1160,7 @@ create table stage_registry (
 ```
 
 ```
-idempotency_key = hex(sha256(frame("orimera/idempotency-key") || frame(key_format_version)
+idempotency_key = hex(sha256(frame("exulanica/idempotency-key") || frame(key_format_version)
                              || frame(source_blob_sha256) || frame(stage_key)
                              || frame(stage_version) || frame(params_digest)
                              || frame(input_digest) || frame(binding_digest)))
@@ -1490,7 +1490,7 @@ is "complete" having destroyed nothing; only the worker writes `purge_completed_
 job to claim it never runs, so the column stays null and nothing reports the discrepancy.
 
 *The reconstructed geometry a person appears in is correctly untouched by that*, which is the
-first consequence below working as designed rather than a second gap. `orimera/graph/geometry.py`
+first consequence below working as designed rather than a second gap. `exulanica/graph/geometry.py`
 asks `tombstone_blocks_capture`, which covers workspace, capture and interval scope and
 deliberately not entity scope.
 
@@ -1519,7 +1519,7 @@ The refusal half is deliberately narrower than this row and is not a gap.
 removes a moment and not a photograph", so a new derivative is written and then repaired rather
 than refused. What closes the loop for a **still image** is that section 1.5 gives it the single
 interval `[0, 1)`: there is no surviving moment to repair from, so the delivery route in
-`orimera/graph/geometry.py` asks `tombstone_blocks_capture`, which does cover interval scope, and
+`exulanica/graph/geometry.py` asks `tombstone_blocks_capture`, which does cover interval scope, and
 serves nothing derived from a redacted frame. That module says the same thing from its own side,
 including the case that would make it the wrong predicate.
 `tests/test_geometry_delivery.py` pins this paragraph.
@@ -1574,7 +1574,7 @@ here.
 | **Vector index residency** | A row deleted from a table may persist inside an ANN index until compaction | Settled by experiment **X-11**: delete an embedding, force compaction or partition rebuild, open the raw index and assert the vector id is **physically absent**, not merely filtered from results (about 3 hours). Until that passes, no maximum-residency number may be published |
 
 **DECISION.** The words "unlearning", "forgetting" and "the model has forgotten" are banned from all
-Orimera material. The truthful phrasing is: *removed from retrieval and from future training, with every
+Exulanica material. The truthful phrasing is: *removed from retrieval and from future training, with every
 derived artifact recomputed from the remaining data.* Because there are no trained weights at MVP, that
 recomputation is exact by construction, which is a **stronger** claim than the approximate-unlearning
 literature can support: an audit of ten unlearning methods found that Fisher Forgetting, Hessian
@@ -1706,7 +1706,7 @@ property for personal biometric-adjacent data.
 
 ### 8.3 The format
 
-**DECISION (wmp-2).** RO-Crate 1.2 as the package format, published under an Orimera profile crate, with
+**DECISION (wmp-2).** RO-Crate 1.2 as the package format, published under an Exulanica profile crate, with
 a Croissant 1.0 plus RAI descriptor for the learning dataset **embedded in the same JSON-LD graph**,
 BagIt-style fetch semantics for excluded raw media, and a signed Merkle-root manifest supplying the
 versioning that RO-Crate does not provide.
@@ -1782,7 +1782,7 @@ timebase item specifically at first video ingest.
 | Whether the corpus contains motion photographs or bursts carrying a real embedded video track | **OPEN** | Inspection of the corpus. If it does, those files carry a genuine `v:0` track and the general video path applies unchanged |
 | The tie direction of `round_half_down` | **OPEN** | A decision, recorded in 9.1. Ties toward zero is implemented and unratified |
 | Tick to ns to tick is not the identity under the frozen formulas | **KNOWN DEFECT, PINNED** | A decision before first video ingest, recorded in 9.1. The behaviour is pinned by a test that fails if it changes |
-| Whether migration `0001_spine.sql` applies at all | **ASSUMPTION** | `tests/test_migration.py::test_the_migration_actually_applies` against a real PostgreSQL 18 instance. It skips unless `ORIMERA_TEST_DATABASE_URL` is set, so every SQL claim here is currently a text-level claim |
+| Whether migration `0001_spine.sql` applies at all | **ASSUMPTION** | `tests/test_migration.py::test_the_migration_actually_applies` against a real PostgreSQL 18 instance. It skips unless `EXULANICA_TEST_DATABASE_URL` is set, so every SQL claim here is currently a text-level claim |
 | Whether exact search over `halfvec(4096)` stays fast enough as the library grows | **ASSUMPTION** | Measurement at corpus scale. The additive fallback is a truncated 1024-dimension recall column, section 4.4 |
 | Browser seek accuracy against ffmpeg PTS | ASSUMPTION A-31 | Experiment X-3. Not live for a photograph corpus; becomes live when video arrives |
 | Re-anchor rate across model versions | ASSUMPTION | Experiment X-19 |

@@ -2,8 +2,8 @@
 
 Status: **controller and gate implemented; resumable trainer image and real scene blocked**.
 
-`orimera.reconstruction.splat` is the content-addressed controller for one scene-specific Gaussian
-splat optimization. The manifest pins the exact source set, accepted pose-manifest digest, Orimera
+`exulanica.reconstruction.splat` is the content-addressed controller for one scene-specific Gaussian
+splat optimization. The manifest pins the exact source set, accepted pose-manifest digest, Exulanica
 revision, gsplat revision, digest-pinned execution image, requested GPU, dependency inventory,
 MCMC parameters, checkpoint interval, iteration and Gaussian caps, held-out policy, price rate, and
 reviewed quality thresholds.
@@ -17,7 +17,7 @@ The dependency inventory must contain `gsplat` and rejects the common INRIA
 again after execution and must say backend `gsplat`, the exact pinned revision, and every loaded
 package. This is a hard refusal, not a license warning.
 
-The controller invokes a reviewed `orimera-gsplat-scene-v1` container entrypoint with `--resume
+The controller invokes a reviewed `exulanica-gsplat-scene-v1` container entrypoint with `--resume
 auto`. Exit 75 is a preemption only when a durable checkpoint exists; it is distinct from failure.
 Actual iteration count, duration, GPU, CUDA, driver, peak VRAM, and loaded packages come back from
 the runtime, not from requested values. Cost is the actual duration multiplied by the manifest's

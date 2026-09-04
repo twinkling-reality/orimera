@@ -6,8 +6,8 @@ observations, and cross-device Settings persistence. Human comprehensibility and
 stability have **not** been validated with real participants.
 
 The implementation is migration `0021_interaction_policy_versions.sql`, the reviewed
-`interaction-policy-registry.v1.json`, `orimera/world/interaction.py`,
-`orimera/world/interaction_repository.py`, the `/world/interactions` API, and the browser client in
+`interaction-policy-registry.v1.json`, `exulanica/world/interaction.py`,
+`exulanica/world/interaction_repository.py`, the `/world/interactions` API, and the browser client in
 `web/packages/app/src/interaction-policy.ts`.
 
 ## Authority and capability boundary

@@ -1,6 +1,6 @@
-# Orimera documentation
+# Exulanica documentation
 
-Orimera is a Personal World Memory Model. It turns a personal photograph library into separate
+Exulanica is a Personal World Memory Model. It turns a personal photograph library into separate
 navigable 3D memory regions inside one continuous first-person browser space called the Atlas,
 connects recurring people, places, objects and events across those regions, and lets a person
 explore and query their own lived history under one rule: every historical factual claim resolves to
@@ -41,7 +41,7 @@ questions in both.
 | Document | Contents | Status |
 | --- | --- | --- |
 | **Product** | | |
-| [product-specification.md](product-specification.md) | What Orimera is, the defining loop, the scoped MVP, the reconstruction fallback ladder, what is excluded, and the known limitations | Mixed, labelled per claim |
+| [product-specification.md](product-specification.md) | What Exulanica is, the defining loop, the scoped MVP, the reconstruction fallback ladder, what is excluded, and the known limitations | Mixed, labelled per claim |
 | [interaction-model.md](interaction-model.md) | Atlas and coordinate model, navigation and the two platform limits that force it, the two verbs, the Companion, update proposals and confirmation tiers, World Index and Atlas Map, recomposition, formation, accessibility | Mixed, labelled per claim |
 | [frontier-roadmap.md](frontier-roadmap.md) | Exit-gated plan from source media through memory, reconstruction, protected adaptation, runtime publication, independent evaluation, and the signed World Memory Package | DECISION and IMPLEMENTATION PLAN |
 | **Architecture** | | |
@@ -98,7 +98,7 @@ recorded in [runtime-verification.md](runtime-verification.md), which overrides 
 on conflict.
 
 The evidence spine is implemented rather than only specified: migration
-`orimera/migrations/0001_spine.sql` and the `orimera/evidence/` modules, with tests. Building it
+`exulanica/migrations/0001_spine.sql` and the `exulanica/evidence/` modules, with tests. Building it
 found errors in the committed design, and those are corrected in place and marked **CORRECTED**
 rather than left for the next reader to trip over. The suite is 588 tests, 227 of which require a
 live PostgreSQL instance and skip without one. All 588 pass against the documented target,

@@ -1,14 +1,15 @@
 # Frontier roadmap: adaptive personal world memory
 
-Status: **DECISION and IMPLEMENTATION PLAN**. This document orders existing Orimera decisions into
-one exit-gated delivery plan. It does not turn an assumption into a shipping claim. Where the
-research is unresolved, the roadmap names the experiment that must settle it.
+Status: **DECISION and IMPLEMENTATION PLAN**. This document orders existing Exulanica decisions
+(the product was formerly Orimera) into one exit-gated delivery plan. It does not turn an
+assumption into a shipping claim. Where the research is unresolved, the roadmap names the
+experiment that must settle it.
 
 Last reconciled: 2026-08-31.
 
 ## 1. North-star output
 
-Orimera is not one neural world model. It is a versioned personal world system composed of several
+Exulanica is not one neural world model. It is a versioned personal world system composed of several
 different authorities:
 
 1. original media as evidence;
@@ -72,7 +73,7 @@ The status terms in this table describe repository state, not aspiration.
 | Spatial world core | **BUILT/PARTIAL** | Deterministic composition, stable identities, protected values, neighborhoods, residency planning, navigation, and renderer binding | Backend topology, layout, placement, and neighborhood authority plus physical streaming |
 | Adaptive appearance | **BUILT** | Reviewed profile registry, exact frontend handshake, validated parameters, immutable global/regional versions, global preview/apply/discard/refine/rollback UI, stale recovery, authenticated source states, and audit provenance | Upstream conversational proposal service, regional renderer preview, and structural proposal path |
 | Adaptive interaction | **BUILT/PARTIAL** | Reviewed capability registry, immutable versions, Settings and Companion preview paths, direct-choice apply, explicit Companion review, rollback, inspection, recommendations, and cross-device hydration | Real-participant comprehensibility and longitudinal stability evaluation |
-| World Memory Package | **BUILT AND EXIT-GATED** | RO-Crate 1.2 Orimera profile, Croissant/RAI node, honest external references, canonical manifest, signed Merkle root, append-only receipt, offline verify/inspect/diff/import-check, privacy scan, and deletion re-export | Receiver-side transactional import remains intentionally deferred |
+| World Memory Package | **BUILT AND EXIT-GATED** | RO-Crate 1.2 Exulanica profile, Croissant/RAI node, honest external references, canonical manifest, signed Merkle root, append-only receipt, offline verify/inspect/diff/import-check, privacy scan, and deletion re-export | Receiver-side transactional import remains intentionally deferred |
 | Evaluation | **BUILT/PARTIAL** | Deterministic corpus tooling, methodology, metrics, authorization checks, model preflight, and a generated-fixture end-to-end acceptance run | Gold labels, real reconstruction results, and an authorized personal-corpus frontier run |
 | Frontier demonstration | **IMPLEMENTED/REAL RUN BLOCKED** | Strict versioned manifest, one source-to-package command, real formation/evidence/Selection/world/adaptation/export paths, clean verifier, reuse receipt, and deletion diff | User-authorized ordinary photo directory, selected real credentials/hardware modes, and user-supplied signing key |
 | Hosted operation | **PARTIAL** | Container, health/readiness routes, non-owner runtime role, separate derivative worker, deployment design, and failure policy | Clean deploy, backup restore, external monitor, and production rehearsal |
@@ -182,7 +183,7 @@ scripted demo path.
 ### 6.3 World Memory Package
 
 The package format remains the decision already made in
-`domain-and-evidence-model.md`: RO-Crate 1.2 under an Orimera profile, a Croissant 1.0 plus RAI node
+`domain-and-evidence-model.md`: RO-Crate 1.2 under an Exulanica profile, a Croissant 1.0 plus RAI node
 in the same JSON-LD graph, BagIt-style fetch records for deliberately excluded payloads, and a signed
 Merkle-root manifest.
 
@@ -211,7 +212,7 @@ The required tools are:
 
 - `project`: materialize a package from one committed live-store snapshot;
 - `verify`: validate the profile, file digests, Merkle root, signature, provenance closure, and
-  prohibited-content rules without trusting Orimera;
+  prohibited-content rules without trusting Exulanica;
 - `inspect`: produce a human-readable inventory and warnings without importing private content;
 - `diff`: compare two roots by semantic, topology, style, interaction, evidence, and artifact change;
 - `import-check`: establish compatibility and missing capabilities without mutating a live world;
@@ -244,9 +245,10 @@ Deliverables:
   clear route into Atlas;
 - identify **Twinkling Reality** as the publisher on the signed-out surface, following the compact
   `© 2026 Twinkling Reality` convention used by the rest of the product family;
-- replace the title menu's line selector with one non-interactive miniature Companion that responds
-  equally to pointer hover and keyboard focus, yields to focus when they conflict, remains static
-  under reduced motion, and leaves Method's current-page underline intact;
+- replace the title menu's line selector with one non-interactive miniature Companion moving among
+  four quiet registration stations; use one restrained distance-aware glide and optical colour wake,
+  respond equally to pointer hover and keyboard focus, yield to focus when they conflict, remain
+  static under reduced motion, and leave Method's current-page underline intact;
 - move the Companion's renderer-neutral silhouette, eye-pose, palette, and state blueprint into the
   shared presentation contract before the landing uses it, so the miniature and Atlas presence are
   two presentations of one identity rather than drifting copies;
@@ -259,19 +261,17 @@ Deliverables:
 - define cross-surface preference authority before claiming that a customized Atlas Companion also
   appears on the public landing; until then the landing uses the shared default without reading or
   inventing account state;
-- keep the internal `orimera` Python namespace, `@orimera/*` packages, environment variables,
-  database roles, storage keys, headers, and signed protocol/profile identifiers unchanged during
-  active backend work; and
-- treat any later technical namespace change as a separate compatibility migration with explicit
-  storage-key migration, protocol versioning, and repository/deployment coordination.
+- complete the Mode A namespace cutover recorded in ADR-0011: Exulanica is the canonical
+  technical namespace for new writes, disposable fixtures, WMP v1, permalinks, headers,
+  environment variables, and CLI names. Orimera survives only in historical SQL 0001 through
+  0027, git history, and the ADR evidence table.
 
 Exit gate: the supported landing-page viewports consistently present Exulanica and its Twinkling
 Reality publisher signature, contain no stale public Orimera branding, and pass contrast and visual
 regression review. The menu retains native link/button semantics, visible focus, a single
 pointer-transparent Companion marker, focus-over-hover precedence, and a motionless reduced-motion
-state. The landing and Atlas renderers consume one tested visual blueprint. Internal compatibility
-identifiers either remain unchanged or have an explicit, tested migration; a broad search-and-replace
-is not an acceptable rename strategy.
+state. The landing and Atlas renderers consume one tested visual blueprint. New identifiers say
+Exulanica. Historical compatibility remains only where ADR-0011 proved it is required.
 
 ### Phase 0: evidence and adaptive-style foundation
 
@@ -384,7 +384,7 @@ no region is promoted because a semantic place label merely resembles geometric 
 
 Gate: a scene earns rung 1 only when its declared registration, view-quality, coverage, and artifact
 integrity checks pass. Failure publishes rung 3 or rung 4 with the reason. This is scene-specific
-optimization, not fine-tuning a general Orimera model.
+optimization, not fine-tuning a general Exulanica model.
 
 #### Phase 3D: corridor and navigation artifacts
 
@@ -495,7 +495,7 @@ privacy boundary, commands, transaction semantics, and executable evidence.
 
 Deliverables:
 
-- publish the Orimera RO-Crate profile and its versioning rules;
+- publish the Exulanica RO-Crate profile and its versioning rules;
 - implement a transactionally consistent projector;
 - canonicalize manifests, build the Merkle tree, sign the root, and retain export audit provenance;
 - implement independent verify, inspect, and diff commands;
@@ -539,7 +539,7 @@ Exit gate: one command or one top-level task orchestrates the stages from a vers
 produces the runtime world, receipt, evaluation report, and signed package, and stops only when every
 mandatory gate passes or a named honest fallback is terminal.
 
-`orimera-frontier demonstrate` now satisfies that mechanical gate, including exact evidence
+`exulanica-frontier demonstrate` now satisfies that mechanical gate, including exact evidence
 opening, validated deterministic answer, actual-rung world composition, conversational recipe
 proposal/refinement/discard/apply provenance, style and structural stale rejection, immutable style
 rollback, clean-process verification, zero-call artifact reuse, and one-source deletion/re-export.
@@ -604,7 +604,7 @@ The default technical strategy is therefore: use reviewed pretrained models as r
 keep durable memory in explicit versioned state, and train only the scene representation whose
 purpose and source closure are known.
 
-## 10. The Yolodex lesson and the Orimera proof pattern
+## 10. The Yolodex lesson and the Exulanica proof pattern
 
 The primary Yolodex repository describes a compact autonomous loop:
 collect, label, augment, train, evaluate, repeat until a declared metric passes. It uses isolated
@@ -612,9 +612,9 @@ skills, parallel worktrees for labeling, deterministic configuration, visible pr
 and concrete outputs including a dataset, evaluation JSON, and trained weights. Source:
 <https://github.com/qtzx06/yolodex>, inspected 2026-08-31.
 
-Orimera should copy the proof pattern, not the specific detector architecture:
+Exulanica should copy the proof pattern, not the specific detector architecture:
 
-| Yolodex proof | Orimera equivalent |
+| Yolodex proof | Exulanica equivalent |
 | --- | --- |
 | Video URL plus classes | Authorized source set plus versioned world-build manifest |
 | Collect and label | Admit evidence and produce schema-validated observations |
@@ -625,7 +625,7 @@ Orimera should copy the proof pattern, not the specific detector architecture:
 | Retry labels when quality misses | Retry/reconfigure only the failed reviewed stage; otherwise publish the honest lower rung |
 | Parallel worktrees | Independent stage/experiment tasks with one owner for shared migrations and contracts |
 
-The stronger Orimera demonstration is not “AI generated a pretty scene.” It is:
+The stronger Exulanica demonstration is not “AI generated a pretty scene.” It is:
 
 > These private source memories became a navigable, adaptive world; every claim and visual artifact
 > retains its origin; every adaptation is versioned and reversible; every missing capability falls

@@ -503,7 +503,7 @@ which overrides this document on conflict.
 
 ### 7.1 What the project may say today
 
-- That Orimera runs `nvidia/Nemotron-3_5-Lightning` on Nebius Token Factory, in the present tense,
+- That Exulanica runs `nvidia/Nemotron-3_5-Lightning` on Nebius Token Factory, in the present tense,
   on the evidence of the archived response body and its echoed `model` field.
 - That `nvidia/Nemotron-3_5-Lightning` is listed in the Nebius Token Factory catalog at the stated
   price, context window and licence, citing the catalog endpoint and the retrieval date.

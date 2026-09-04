@@ -2,7 +2,7 @@
 
 Status: **implemented measurement contract; real gate blocked**.
 
-`orimera.reconstruction.validate_opm` now validates every production point map before it is
+`exulanica.reconstruction.validate_opm` now validates every production point map before it is
 persisted. The PlayCanvas reader independently validates its untrusted byte boundary before it
 constructs typed-array views. Both sides check the format, version, rung, explicit metric flag,
 camera axes, source dimensions and aspect, field of view, bounds, section types, exact lengths,
@@ -24,7 +24,7 @@ The renderer exposes a source-panel envelope derived from the artifact's measure
 source-camera frustum. That envelope is an observed presentation extent only. It is not navigation,
 collision, an Atlas-space scale, or permission to move away from the source viewpoint.
 
-`orimera.reconstruction.quality` is the versioned report contract for the remaining real checks:
+`exulanica.reconstruction.quality` is the versioned report contract for the remaining real checks:
 
 - structural OPM integrity;
 - PlayCanvas consumption and actual load duration;

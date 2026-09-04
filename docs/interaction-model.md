@@ -5,7 +5,7 @@ Status: mixed. Every claim carries exactly one label, per the convention in
 alternative rejected), **ASSUMPTION** (with the experiment that settles it), **OPEN**.
 
 Retrieval date for every VERIFIED claim on this page: **2026-08-27**.
-Promoted from the reconciled research in `.orimera/`. Scope, corpus and product claims live in
+Promoted from the reconciled research in `.exulanica/`. Scope, corpus and product claims live in
 [product-specification.md](product-specification.md) and are not restated here.
 
 **Read section 2.1 first.** Two verified platform facts remove design freedom that a reader would
@@ -254,7 +254,7 @@ implied by responsive CSS in this prototype.
 where the underlying function "requires input that depends on the path of the user's movement and not
 just the endpoints". https://www.w3.org/WAI/WCAG22/Understanding/keyboard.html
 
-Free camera movement is path-dependent, but **none of Orimera's actual functionality is**. Finding an
+Free camera movement is path-dependent, but **none of Exulanica's actual functionality is**. Finding an
 entity, inspecting its occurrences, opening the exact source image, confirming continuity, naming a
 person, merging and reviewing are all reachable without moving the camera at all, through the World
 Index. That is the compliance route, and it is also a better interface for a user in a hurry.
@@ -288,7 +288,7 @@ provenance tints, and anchor motes coherent.
 
 Three material roles exist: archive sheets for evidence and summoned reading, system sheets for
 Options and Controls, and instrument strips for compact persistent chrome. Only instrument strips may
-use a pill silhouette. The implementation lives in `@orimera/presentation`, so landing, DOM chrome and
+use a pill silhouette. The implementation lives in `@exulanica/presentation`, so landing, DOM chrome and
 the renderer consume one versioned visual contract rather than copying theme values.
 
 **Canvas content is invisible to screen readers**, so the DOM overlay is the accessibility surface

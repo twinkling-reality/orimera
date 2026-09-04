@@ -2,7 +2,7 @@
 
 Status: **production worker integrated and contract-tested; no authorized real dense capture run**.
 
-`orimera.reconstruction.pose` runs COLMAP feature extraction, exhaustive matching, and sparse
+`exulanica.reconstruction.pose` runs COLMAP feature extraction, exhaustive matching, and sparse
 mapping from an exact authorized source manifest. The manifest pins every staged filename and byte
 digest, an exact Git revision, exact COLMAP version, digest-pinned execution image, explicit reviewed
 quality thresholds, capture-set membership, and an optional measured scale with its method. Original
@@ -16,7 +16,7 @@ Restart skips only completed stages whose required durable outputs still exist. 
 is reused only after the current sparse artifacts reproduce its quality digest.
 
 `run_scene_grouping` now queues exact sets selected by the recorded
-`orimera.scene-group-pose-selection/v1` policy, and `orimera-scene-worker` runs this controller in a
+`exulanica.scene-group-pose-selection/v1` policy, and `exulanica-scene-worker` runs this controller in a
 separate process with a renewable database lease. The accepted receipt is stored as a scene
 artifact, not left in the job directory. The worker first commits tombstone-guarded scene and
 artifact rows, flushes bytes while holding purge-compatible session locks, then atomically

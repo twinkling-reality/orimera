@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-27
-- Deciders: Orimera build
+- Deciders: Exulanica build
 
 ## Context
 
@@ -36,7 +36,7 @@ space. Every region is normalised against it.
 
 **Option B.** Ingest applies the transform, and every downstream stage works from upright pixels.
 
-Concretely, as implemented in `orimera/ingest/exif.py`:
+Concretely, as implemented in `exulanica/ingest/exif.py`:
 
 - `normalise_orientation` applies `PIL.ImageOps.exif_transpose`, the reference implementation of the
   eight-value table, and returns a record of what it applied.
@@ -44,7 +44,7 @@ Concretely, as implemented in `orimera/ingest/exif.py`:
   space and there is no second transform for a consumer to apply.
 - The EXIF value, the clockwise rotation component, whether a mirror was applied, and the flag
   `normalised_at_ingest` are recorded on `media_track.probe_json`, which is outside `span_digest`.
-- `orimera/ingest/derivatives.py` writes the model rendition with **no EXIF at all**, so no surviving
+- `exulanica/ingest/derivatives.py` writes the model rendition with **no EXIF at all**, so no surviving
   orientation tag can cause a second rotation.
 
 ## Rationale
@@ -60,13 +60,13 @@ means the same thing to every reader forever, in every language, with no transfo
 
 The cost is honest and small: a stored rendition is not a byte-for-byte copy of the original sensor
 readout. It does not touch the evidence, because the **original bytes are unchanged and remain the
-only thing a citation resolves to**. `orimera/ingest/resolve.py` re-applies the same normalisation
+only thing a citation resolves to**. `exulanica/ingest/resolve.py` re-applies the same normalisation
 when cropping a region out of the original, so the crop and the address agree.
 
 ## Consequences
 
 - `media_track.rotation` stays constrained to four values and needs no migration.
-- The mirrored case is exercised rather than refused. `orimera/evidence/region.py`
+- The mirrored case is exercised rather than refused. `exulanica/evidence/region.py`
   `rotation_for_exif_orientation` still refuses mirrored values, correctly: it assumes pixels were
   *not* normalised. `tests/test_exif_orientation.py` asserts the two agree wherever both have an
   opinion, so the ingest table and the evidence layer cannot silently drift.

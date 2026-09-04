@@ -12,14 +12,14 @@ ordinary filesystem. Verification detects replacement only when the root printed
 retained separately and supplied to the verifier:
 
 ```bash
-uv run orimera-eval verify-archive \
+uv run exulanica-eval verify-archive \
   --archive /evaluation/runs/00000000-0000-0000-0000-000000000000 \
   --root-sha256 <root printed when the archive was created>
 ```
 
 The archive includes:
 
-- the human report and `orimera.evaluation-run/v1` machine record;
+- the human report and `exulanica.evaluation-run/v1` machine record;
 - the exact corpus manifest bytes used by the legacy evaluator;
 - the full clean Git commit and tree ids; a dirty checkout is refused;
 - the exact model-manifest bytes and SHA-256, every primary and fallback model id, and explicit null

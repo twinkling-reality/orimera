@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-27
-- Deciders: Orimera build
+- Deciders: Exulanica build
 - Supersedes: nothing
 - Related: `docs/model-and-service-selection.md`
 

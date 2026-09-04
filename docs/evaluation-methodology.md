@@ -12,7 +12,7 @@ Promoted from the reconciled research report (Part B9) and the `eval-deploy-demo
 adapted to the corpus the project actually has. Where the research and the real corpus disagree, the
 adaptation is stated explicitly rather than smoothed over.
 
-This document specifies how Orimera is measured. It contains no results. Results go in a separate
+This document specifies how Exulanica is measured. It contains no results. Results go in a separate
 document once the corpus is frozen and the harness runs.
 
 ---
@@ -46,7 +46,7 @@ is dropped, not simulated. Section 1.3 lists them by name.
 
 ### 1.1 What OGC-1 is
 
-**DECISION.** OGC-1 (Orimera Gold Corpus v1) is a frozen, content-addressed subset of a personal
+**DECISION.** OGC-1 (Exulanica Gold Corpus v1) is a frozen, content-addressed subset of a personal
 photograph library from a single multi-day trip, plus one separately captured dense indoor scene
 used only for reconstruction.
 
@@ -152,7 +152,7 @@ hedge rather than be confidently wrong against a drifting device clock.
 | **L11** injection corpus | Adversarial strings placed in photographed text, in filenames and EXIF fields, in user context notes, and in mocked external-lookup results, each with an expected-violation predicate | JSON |
 
 **DECISION.** Interval-presence and region labels only, not dense per-pixel masks. Every metric that
-matters to the Orimera thesis (continuity, citation, participants, filters) is computable from
+matters to the Exulanica thesis (continuity, citation, participants, filters) is computable from
 "entity X is present in photograph Y, optionally at region R". Segmentation masks would multiply
 annotation cost and enable only detection-localization metrics, which are not load-bearing for this
 product. Rejected alternative: full segmentation, deferred until a detection metric becomes
@@ -591,7 +591,7 @@ input", and specifically flags multimodal injection (instructions hidden in imag
 attack surface beyond what current defences reliably detect.
 Source: https://genai.owasp.org/llmrisk/llm01-prompt-injection/
 
-Orimera is unusually exposed on exactly this channel: the untrusted content is the product, and in a
+Exulanica is unusually exposed on exactly this channel: the untrusted content is the product, and in a
 photograph corpus the attacker's entire cost is holding up a piece of paper.
 
 ### M12. Upload-to-ready latency
@@ -793,7 +793,7 @@ column is not hypothetical; each is a phrasing that a small corpus invites.
 
 | Overclaiming wording | What it would actually require | Allowed wording |
 | --- | --- | --- |
-| "Orimera recognizes people across your photo library" | An evaluation on an unseen library, unseen people, unseen conditions | "On OGC-1, four people across N photographs, person Recall@5 was k/n" |
+| "Exulanica recognizes people across your photo library" | An evaluation on an unseen library, unseen people, unseen conditions | "On OGC-1, four people across N photographs, person Recall@5 was k/n" |
 | "96% citation accuracy" | A rate claim, which needs a sample large enough for the interval to be informative | "CIT-ID on OGC-1 (n=52): 52/52, 95% CI [93.1%, 100%]" |
 | "The model learns from your corrections" | A significant before/after difference on a held-out fixture | "Three of thirty previously incorrect fixture items are now correct, zero regressions, n=30" |
 | "No hallucinations" | An unbounded claim from a bounded test | "Zero unsupported claims on the N answerable questions in OGC-1, which bounds the true rate at <= X% (95% Wilson upper bound)" |
@@ -1016,7 +1016,7 @@ rather than omitted. A suite that reports only the probes it passes is not an ad
 
 | Metric | Target | Licenses the claim | Does **not** license |
 | --- | --- | --- | --- |
-| M2 hallucination rate | 0 on the answerable set | "Zero unsupported claims across the N answerable questions in OGC-1, bounding the true rate at <= X% (95% Wilson upper)" | "Orimera does not hallucinate." The bound is the claim |
+| M2 hallucination rate | 0 on the answerable set | "Zero unsupported claims across the N answerable questions in OGC-1, bounding the true rate at <= X% (95% Wilson upper)" | "Exulanica does not hallucinate." The bound is the claim |
 | M3 false-answer rate | 0 | "The system abstained on every unanswerable question in OGC-1" | Abstention behaviour on question types not represented, particularly since the modality-gap unanswerables are easy cases |
 | M3 false-abstention rate | <= 2 in 35 (rescaled to final n) | "The system answered all but K answerable questions" | A general willingness-to-answer rate |
 | M4 person Recall@5 | 1.00 | "Every gold-SAME person pair in OGC-1 appeared within the top 5 candidates" | Any recall claim on a larger gallery, other people, or other conditions. Gallery size is the whole difficulty and this gallery is tiny |

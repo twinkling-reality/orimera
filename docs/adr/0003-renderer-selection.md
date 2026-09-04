@@ -4,7 +4,7 @@
   measurement. See "Resolution" at the end of this document. The body below is preserved as the
   reasoning that existed before the numbers, including a lean that the measurement overturned.
 - Date: 2026-08-27, resolved 2026-08-28
-- Deciders: Orimera build
+- Deciders: Exulanica build
 - Settled at: the bake-off, ahead of the week 3 renderer deadline
 - Supersedes: nothing
 - Related: [architecture-overview.md](../architecture-overview.md) section 1.1
@@ -22,7 +22,7 @@ deleted. The Spline runtime, hosted scene, development query route, and fallback
 The Companion therefore creates no canvas, no network request, and no second 3D renderer. The
 historical corrections below remain only as an audit of superseded decisions.
 
-Bloub's MIT license covers its code, not xAI's imitated design. Orimera does not copy Bloub source or
+Bloub's MIT license covers its code, not xAI's imitated design. Exulanica does not copy Bloub source or
 claim xAI affiliation; it implements the abstract, user-supplied geometric grammar locally and
 retains attribution in the evaluation document. VRM remains separate research for a future
 rights-cleared humanoid request, not a justification for adding a body to this reference.
@@ -75,7 +75,7 @@ with the configurable modular character and made native the default.
 
 **2026-08-29 closure preserved as rejected reasoning.** The earlier decision chose a 2D mote field
 because a speculative face could make social claims unsupported by the graph. That caution remains
-valid for expressions Orimera invents. It does not authorize replacing an account-holder-supplied
+valid for expressions Exulanica invents. It does not authorize replacing an account-holder-supplied
 character with generated geometry. Epistemic states therefore remain unmapped until approved named
 states exist in the authored scene.
 
@@ -126,7 +126,7 @@ subject to retaining their notices.
   show a flat **2.0x on an iPhone 13 Pro Max at every splat count** (1M: 38.1 versus 77.6; 4M: 20.4
   versus 42.4), and up to 5.7x on an M4 Max at 35M splats. Source:
   https://blog.playcanvas.com/new-in-supersplat-webgpu-and-streaming-bring-huge-performance-wins/
-- No collision-from-splats toolchain at all, so containment becomes Orimera's own problem.
+- No collision-from-splats toolchain at all, so containment becomes Exulanica's own problem.
 - `.RAD` is a single-vendor format with no published spec, which is a lock-in that SOG is not.
 - No shipped first-person controller or annotation system.
 
@@ -205,7 +205,7 @@ Three further facts narrow the gap even if splats do survive as the substrate:
 2. **The collision-from-splats advantage is partly moot.** The interaction stream's containment design
    is spline-constrained camera rigs plus authored soft boundary volumes, which is exactly the
    browser-rendering stream's own "layer 2", and layer 2 is needed regardless of engine. The stream
-   that recommends PlayCanvas rates the `-K` flood-fill as high risk on the kind of capture Orimera
+   that recommends PlayCanvas rates the `-K` flood-fill as high risk on the kind of capture Exulanica
    actually has.
 3. **The WebGPU loss lands mostly on a mode that is not the default.** The 2.0x gap is measured on
    mobile, and **VERIFIED:** Pointer Lock is not supported on iOS Safari 3.2 through 26.6, Android
@@ -214,7 +214,7 @@ Three further facts narrow the gap even if splats do survive as the substrate:
    to the flat World Index rather than the first-person Atlas.
 
 **What would flip this to Option B.** One thing only: if the bake-off shows that gsplat output on
-Orimera's own footage is good enough to be the *primary* substrate rather than a hero-scene garnish.
+Exulanica's own footage is good enough to be the *primary* substrate rather than a hero-scene garnish.
 In that world the workload becomes the one PlayCanvas was built for, and the cross-asset budget plus
 WebGPU plus shipped collision are worth a rewrite.
 
@@ -223,7 +223,7 @@ WebGPU plus shipped collision are worth a rewrite.
 **A bake-off, not an argument.** It runs after X-1 produces one real baked scene, and takes about half
 a day.
 
-1. Bake one real Orimera capture to a Gaussian splat on a Nebius preemptible L40S (experiment X-1).
+1. Bake one real Exulanica capture to a Gaussian splat on a Nebius preemptible L40S (experiment X-1).
 2. Load the identical output in **three.js r185 + Spark 2.1.0** and in **PlayCanvas 2.21.4**.
 3. Run both on **the actual M3 Pro demo machine, in visible Chrome with the window in the foreground**,
    because a hidden render pane throttles `requestAnimationFrame` and invalidates the numbers.
@@ -293,7 +293,7 @@ rests entirely on authored boundary volumes, which the design needs anyway.
 **If Option B wins.** Budget two weeks to rewrite `atlas-core` and `atlas-react`, pin the engine
 version and do not upgrade it during the build, and isolate all custom shader code behind one module
 because the gsplat shader API has broken twice in the last six months. The collision toolchain becomes
-available but is not assumed to work until tested against a real Orimera capture.
+available but is not assumed to work until tested against a real Exulanica capture.
 
 **Either way.** Both engines are MIT and both work. This ADR is about opportunity cost and schedule,
 not about capability. Whichever loses, the other ships.
@@ -313,7 +313,7 @@ come from probes executed against the real engines, not from reading documentati
 
 ### The three research claims that favoured PlayCanvas are all NOT APPLICABLE to this workload
 
-Every advantage attributed to PlayCanvas turns out to be specific to Gaussian splats. Orimera does
+Every advantage attributed to PlayCanvas turns out to be specific to Gaussian splats. Exulanica does
 not render Gaussian splats. The corpus is photographs, which produce MoGe point maps, which are
 rung 3 of the reconstruction ladder and are drawn with `PRIMITIVE_POINTS`.
 

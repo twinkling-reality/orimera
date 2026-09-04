@@ -53,7 +53,7 @@ What exists in the repository, and is checked by `tests/test_deployment.py`:
 *   `compose.yaml`, a local composition against `pgvector/pgvector:0.8.6-pg18`, which is the
     documented target matched exactly.
 *   `.github/workflows/check.yml`, running ruff, the import contracts, pytest with
-    `ORIMERA_REQUIRE_POSTGRES=1`, the web workspace's `pnpm check`, and an image build.
+    `EXULANICA_REQUIRE_POSTGRES=1`, the web workspace's `pnpm check`, and an image build.
 
 **What is still open, and it is the part that needs a person.** No cloud account, no project, no
 region, no domain, no registry and no host. Every one of those is a decision rather than a task,
@@ -64,8 +64,8 @@ carries a hostname or an account identifier, so a value typed in by accident fai
 image was exercised rather than only weighed:
 
 *   `uvicorn` serves. The container's own `HEALTHCHECK` reaches `/healthz` and gets 200.
-*   `orimera-ingest --help` and `orimera-db --help` both ran in that image. The current image also
-    carries `orimera-derivative-worker`; its import and command contract are checked in the suite.
+*   `exulanica-ingest --help` and `exulanica-db --help` both ran in that image. The current image also
+    carries `exulanica-derivative-worker`; its import and command contract are checked in the suite.
 *   `POST /intake` accepted a photograph through the container and returned 202, and the
     derivative worker inside it drained the queue: intake and rendition ran, and vision did not,
     because no model credential was passed. That is the correct behaviour and the honest half of
@@ -76,7 +76,7 @@ image was exercised rather than only weighed:
     5.3's "fail closed at startup", observed rather than asserted.
 
 **CORRECTED and VERIFIED 2026-09-04.** The current default `linux/amd64` image is 428,102,510
-bytes, retains the non-root `orimera` user, excludes torch, and imports pycolmap 4.2.0 plus the
+bytes, retains the non-root `exulanica` user, excludes torch, and imports pycolmap 4.2.0 plus the
 scene worker. The 222 MB measurement above describes the earlier pre-pose image. Compose now
 builds the derivative worker from the same recipe with the reconstruction extra, configures MoGe,
 and keeps its checkpoint cache on the media volume. A clean `linux/amd64` build of that locked
@@ -125,7 +125,7 @@ Five places where code or data lives, and one boundary that matters more than th
 | API and PostgreSQL 18 with pgvector | One host, database as a local process, restart policy, nightly dump to Object Storage | Section 3 |
 | Asynchronous ingest and perception | Nebius Serverless Jobs, self terminating, per second billing | Failure is retryable and idempotent, which is what makes a self terminating job the right shape |
 | Reconstruction (structure from motion plus splat or point map training) | Nebius Serverless Job on a GPU flavour, preemptible, checkpointed | Minutes to hours. **Never in the live path.** Scenes are reconstructed once, ahead of deployment, and the results are static assets |
-| Reasoning, vision and embedding models | Nebius Token Factory, global base URL only | The identifiers and their fallbacks are in `orimera/models/models.manifest.json` |
+| Reasoning, vision and embedding models | Nebius Token Factory, global base URL only | The identifiers and their fallbacks are in `exulanica/models/models.manifest.json` |
 | Public entity lookup | Tavily, opt in, server constructed query only | Queries are built on the server and never carry corpus content |
 
 **The boundary that matters** is between work that must answer inside a request and work that must
@@ -136,7 +136,7 @@ database.
 
 **What one API process demands of the database, measured rather than reasoned about.** A
 connection is opened per request by a yield dependency (`scoped_connection` and
-`readonly_connection` in `orimera/api/dependencies.py`) and held for that request's whole
+`readonly_connection` in `exulanica/api/dependencies.py`) and held for that request's whole
 duration. There is no pool. So the number of backends one process wants is the number of
 requests currently in flight past that dependency, plus one for each of the two worker threads.
 
@@ -352,33 +352,33 @@ is done, no claim is made here about range requests being on the browser path.
 
 | Variable | Purpose | Consumed by |
 | --- | --- | --- |
-| `ORIMERA_DATABASE_URL` | **The connection string the API, ingest command and derivative worker open.** The API and worker must use a non-owner role such as `orimera_app`; startup refuses a superuser, BYPASSRLS role, or owner of an RLS table. No default: `Database.from_env` raises rather than connecting somewhere nobody chose | `orimera/db/session.py` and `orimera/db/roles.py`. The one-shot migration service deliberately uses the bootstrap owner URL instead |
+| `EXULANICA_DATABASE_URL` | **The connection string the API, ingest command and derivative worker open.** The API and worker must use a non-owner role such as `exulanica_app`; startup refuses a superuser, BYPASSRLS role, or owner of an RLS table. No default: `Database.from_env` raises rather than connecting somewhere nobody chose. | `exulanica/db/session.py` and `exulanica/db/roles.py`. The one-shot migration service deliberately uses the bootstrap owner URL instead |
 | `NEBIUS_API_KEY` | Bearer credential for Token Factory | The model client. Named in `models.manifest.json` as `api_key_env`, so even the environment variable name is manifest data rather than a literal in code |
 | `TAVILY_API_KEY` | Credential for the public entity lookup | The lookup path only. The feature is opt in and is on the cut list if its egress gate does not hold |
-| `ORIMERA_TEST_DATABASE_URL` | Points the database backed tests at a live PostgreSQL 18 server | Tests only. Unset means those tests skip, which is why the suite runs without a database |
-| `ORIMERA_DATA_DIR` | Where the content addressed store lives | The API and the ingest command must agree on it, or a citation resolves against a store the bytes are not in |
-| `ORIMERA_API_TOKENS` | Bearer token to workspace grant | No default, because a default would be a credential in a repository |
-| `ORIMERA_READONLY_DATABASE_URL` | The Selection executor's role | Optional, and `/readyz` says so when it is absent |
-| `ORIMERA_DERIVATIVE_WORKER` | Whether this process drains what `POST /intake` queues | Defaults to **on**. Off is for an instance that leaves the queue to somebody else, and `/readyz` reports which it is: a queue nobody drains and a queue drained elsewhere look identical from outside |
-| `ORIMERA_WORKSPACE_IDS` | Comma-separated UUIDs the dedicated derivative worker is authorised to drain | Required by the worker command unless one or more `--workspace` flags are supplied. An empty set is a startup failure, not a healthy idle process |
-| `ORIMERA_DEPTH_MODEL` | Selects the production depth implementation | Compose sets `moge` on the derivative worker. Other processes leave it unavailable |
-| `ORIMERA_DEPTH_MODEL_ID` | Reviewed MoGe repository identifier | Defaults to `Ruicheng/moge-2-vitl`; changing it changes the point-map artifact binding |
-| `ORIMERA_DEPTH_MODEL_REVISION` | Full Git commit for the MoGe checkpoint | Defaults to the measured `39c4d5e957afe587e04eec59dc2bcc3be5ecd968`; mutable branches and tags are refused |
-| `ORIMERA_DEPTH_DEVICE` | Optional torch device such as `cuda`, `mps`, or `cpu` | The derivative worker; when absent it selects MPS, then CUDA, then CPU |
-| `ORIMERA_CODE_REVISION` | Exact 40-character source revision recorded in every production pose manifest | Required by `orimera-scene-worker`; no inferred checkout or mutable default is accepted |
-| `ORIMERA_POSE_RUNTIME_IMAGE` | Digest-pinned image reference recorded in every production pose manifest | Required by `orimera-scene-worker`; a mutable tag does not provide complete provenance |
-| `ORIMERA_APP_ROLE_PASSWORD`, `ORIMERA_EXECUTOR_ROLE_PASSWORD`, `ORIMERA_PURGE_ROLE_PASSWORD` | Passwords for the three roles `orimera-db` provisions | Optional. Set only when supplied, because a deployment authenticating by certificate or by peer has none, and inventing one would create a credential nobody asked for |
-| `ORIMERA_PURGE_DATABASE_URL` | The connection `orimera-purge` uses | No default and **no fallback to the writer**. The purge role holds a cross-workspace read the runtime role must never have, and the runtime role holds writes the purger must never need. Running as the wrong one either destroys another tenant's photograph or cannot tell that it would |
+| `EXULANICA_TEST_DATABASE_URL` | Points the database backed tests at a live PostgreSQL 18 server | Tests only. Unset means those tests skip, which is why the suite runs without a database. |
+| `EXULANICA_DATA_DIR` | Where the content addressed store lives | The API and the ingest command must agree on it, or a citation resolves against a store the bytes are not in. Defaults to `.exulanica/local`. It does not look at `.orimera/`. |
+| `EXULANICA_API_TOKENS` | Bearer token to workspace grant | No default, because a default would be a credential in a repository |
+| `EXULANICA_READONLY_DATABASE_URL` | The Selection executor's role | Optional, and `/readyz` says so when it is absent |
+| `EXULANICA_DERIVATIVE_WORKER` | Whether this process drains what `POST /intake` queues | Defaults to **on**. Off is for an instance that leaves the queue to somebody else, and `/readyz` reports which it is: a queue nobody drains and a queue drained elsewhere look identical from outside |
+| `EXULANICA_WORKSPACE_IDS` | Comma-separated UUIDs the dedicated derivative worker is authorised to drain | Required by the worker command unless one or more `--workspace` flags are supplied. An empty set is a startup failure, not a healthy idle process |
+| `EXULANICA_DEPTH_MODEL` | Selects the production depth implementation | Compose sets `moge` on the derivative worker. Other processes leave it unavailable |
+| `EXULANICA_DEPTH_MODEL_ID` | Reviewed MoGe repository identifier | Defaults to `Ruicheng/moge-2-vitl`; changing it changes the point-map artifact binding |
+| `EXULANICA_DEPTH_MODEL_REVISION` | Full Git commit for the MoGe checkpoint | Defaults to the measured `39c4d5e957afe587e04eec59dc2bcc3be5ecd968`; mutable branches and tags are refused |
+| `EXULANICA_DEPTH_DEVICE` | Optional torch device such as `cuda`, `mps`, or `cpu` | The derivative worker; when absent it selects MPS, then CUDA, then CPU |
+| `EXULANICA_CODE_REVISION` | Exact 40-character source revision recorded in every production pose manifest | Required by `exulanica-scene-worker`; no inferred checkout or mutable default is accepted |
+| `EXULANICA_POSE_RUNTIME_IMAGE` | Digest-pinned image reference recorded in every production pose manifest | Required by `exulanica-scene-worker`; a mutable tag does not provide complete provenance |
+| `EXULANICA_APP_ROLE_PASSWORD`, `EXULANICA_EXECUTOR_ROLE_PASSWORD`, `EXULANICA_PURGE_ROLE_PASSWORD` | Passwords for the three roles `exulanica-db` provisions | Optional. Set only when supplied, because a deployment authenticating by certificate or by peer has none, and inventing one would create a credential nobody asked for |
+| `EXULANICA_PURGE_DATABASE_URL` | The connection `exulanica-purge` uses | No default and **no fallback to the writer**. The purge role holds a cross-workspace read the runtime role must never have, and the runtime role holds writes the purger must never need. Running as the wrong one either destroys another tenant's photograph or cannot tell that it would |
 
 ### 5.1.1 The three roles, and why the purger has its own
 
-`orimera-db` provisions all three in the one correct order, after the migrations.
+`exulanica-db` provisions all three in the one correct order, after the migrations.
 
 | Role | Holds | Why it is separate |
 | --- | --- | --- |
-| `orimera_app` | select, insert, update. No delete anywhere. Select only on `predicate` and `schema_migrations` | Row-level security is inert for an owner, and a runtime that could update the vocabulary could disarm the rule that stops a model writing a person's name |
-| `orimera_ro` | select, and nothing else | The Selection executor runs a plan derived from model output. It must not be able to write whatever happened upstream of it |
-| `orimera_purge` | A **cross-workspace read** of identifiers, content hashes and deletion markers on `capture` and `artifact`; update of `purged_at` and `storage_key` on `blob` and `artifact`; update of `state`, `attempts`, `attempted_at`, `last_error` and `completed_at` on `purge_job`; update of `purge_completed_at` on `tombstone`; **no delete on any table** | `blob` is not workspace-scoped, so two workspaces that ingest the same photograph share one object. A purger that could only see its own workspace answers "destroy these bytes" while another tenant still holds a live capture of them. Measured, and it is why this role exists |
+| `exulanica_app` | select, insert, update. No delete anywhere. Select only on `predicate` and `schema_migrations` | Row-level security is inert for an owner, and a runtime that could update the vocabulary could disarm the rule that stops a model writing a person's name |
+| `exulanica_ro` | select, and nothing else | The Selection executor runs a plan derived from model output. It must not be able to write whatever happened upstream of it |
+| `exulanica_purge` | A **cross-workspace read** of identifiers, content hashes and deletion markers on `capture` and `artifact`; update of `purged_at` and `storage_key` on `blob` and `artifact`; update of `state`, `attempts`, `attempted_at`, `last_error` and `completed_at` on `purge_job`; update of `purge_completed_at` on `tombstone`; **no delete on any table** | `blob` is not workspace-scoped, so two workspaces that ingest the same photograph share one object. A purger that could only see its own workspace answers "destroy these bytes" while another tenant still holds a live capture of them. Measured, and it is why this role exists |
 
 Every UPDATE in that row is column by column, and a review measured what the full-table version
 bought: this role could push a tombstone's `effective_at` a year out, which makes it stop blocking
@@ -386,8 +386,8 @@ derivatives and reopens the leak migration 0011 closed, and could set `purge_com
 photograph still on disk. Neither table carries an UPDATE trigger, so the grant was the only thing
 standing there.
 
-**`ORIMERA_PURGE_DATABASE_URL` is checked, not trusted.** It is a connection string and says
-nothing about which role is behind it. `orimera-purge` asks the database for `current_user` and
+**`EXULANICA_PURGE_DATABASE_URL` is checked, not trusted.** It is a connection string and says
+nothing about which role is behind it. `exulanica-purge` asks the database for `current_user` and
 whether the cross-workspace policy applies to it, and **refuses to destroy anything** when it does
 not, naming the role. Pointed at the writer, it used to purge silently and narrowly: one object
 destroyed, the tombstone recorded complete, and another workspace's live photograph gone.
@@ -404,7 +404,7 @@ Starlette's `max_part_size` bounds non-file parts only; file parts are unbounded
 checks inside the route bound what reaches the object store and the database, which is what they
 exist for, and they cannot bound what reaches the disk.
 
-`orimera/api/body_limit.py` is pure ASGI middleware, so it is upstream of all of that, and it
+`exulanica/api/body_limit.py` is pure ASGI middleware, so it is upstream of all of that, and it
 applies two bounds:
 
 - a declared `Content-Length` over 512 MiB is refused before a byte is read;
@@ -435,15 +435,15 @@ application and wraps `receive` otherwise; `_counted` raises `BodyTooLarge` the 
 running total crosses the limit and reads nothing further. Starlette 1.6.0's `MultiPartParser`
 applies `max_part_size` inside `on_part_data` only when `self._current_part.file is None`, so
 file parts really are unbounded there, and the route's own `MAX_PART_BYTES` check at
-`orimera/api/routes/intake.py` runs on `upload.file.read(...)`, which is a part already spooled.
-Authentication really is a dependency: `current_session` in `orimera/api/dependencies.py` is
+`exulanica/api/routes/intake.py` runs on `upload.file.read(...)`, which is a part already spooled.
+Authentication really is a dependency: `current_session` in `exulanica/api/dependencies.py` is
 resolved by `Depends`, and FastAPI resolves dependencies after it has read and parsed the body.
 
 ### 5.1.3 Runtime row-level security is active and checked
 
 `compose.yaml` now keeps the bootstrap owner URL in the one-shot `migrate` service. The API,
-dedicated derivative worker and reconstruction-scene worker receive `orimera_app`; the Selection
-executor receives `orimera_ro`.
+dedicated derivative worker and reconstruction-scene worker receive `exulanica_app`; the Selection
+executor receives `exulanica_ro`.
 This order matters: migrate as the owner, provision the roles, then start runtime containers with
 credentials that own no table and hold neither SUPERUSER nor BYPASSRLS.
 
@@ -463,21 +463,21 @@ most recent, and are append-only for a different reason, given in that file.
 ### 5.2 What a deployment additionally needs
 
 **PROPOSED.** None of these is read by code in this repository, because the paths that would read
-them are not written: object storage is still a local directory under `ORIMERA_DATA_DIR`, and
+them are not written: object storage is still a local directory under `EXULANICA_DATA_DIR`, and
 there is no reverse proxy or static host to configure origins on. They are listed so that the
 shape is settled before the code is written.
 
 This section used to open by saying the *service* that would read them did not exist, and to list
 a `DATABASE_URL` as its first row. Both were stale. The service exists, and the variable it reads
-is `ORIMERA_DATABASE_URL`, which is now section 5.1's first row and was documented nowhere at all
+is `EXULANICA_DATABASE_URL`, which is now section 5.1's first row and was documented nowhere at all
 while a name nothing reads sat here.
 
 | Variable | Purpose | Notes |
 | --- | --- | --- |
-| `ORIMERA_OBJECT_STORE_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY`, `_SECRET_KEY` | Object storage write path | The runtime credential is the delete denied service account, never an administrative one |
-| `ORIMERA_PUBLIC_ASSET_BASE_URL` | The base the client is told to fetch assets from | Points at the edge cache when one exists and at the origin otherwise. Changing it must not require a rebuild of anything but the client |
-| `ORIMERA_ALLOWED_ORIGINS` | Cross origin allowlist for the API | Explicit list, never a wildcard |
-| `ORIMERA_ENV` | `development`, `staging` or `production` | Selects log verbosity and whether developer surfaces are reachable |
+| `EXULANICA_OBJECT_STORE_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY`, `_SECRET_KEY` | Object storage write path | The runtime credential is the delete denied service account, never an administrative one |
+| `EXULANICA_PUBLIC_ASSET_BASE_URL` | The base the client is told to fetch assets from | Points at the edge cache when one exists and at the origin otherwise. Changing it must not require a rebuild of anything but the client |
+| `EXULANICA_ALLOWED_ORIGINS` | Cross origin allowlist for the API | Explicit list, never a wildcard |
+| `EXULANICA_ENV` | `development`, `staging` or `production` | Selects log verbosity and whether developer surfaces are reachable |
 
 ### 5.3 Rules
 
@@ -505,7 +505,7 @@ measured on this machine against this repository rather than read out of a libra
 #### 5.4.1 The ASGI threadpool is 40, and nothing here chose it
 
 `anyio.to_thread.current_default_thread_limiter().total_tokens` is 40 (anyio 4.14.2, a
-hard-coded default). **Not one of the 23 route handlers in `orimera/api/routes/` is `async def`**,
+hard-coded default). **Not one of the 23 route handlers in `exulanica/api/routes/` is `async def`**,
 so every request occupies one of those 40 worker threads for as long as it runs.
 
 Measured against uvicorn rather than read: 120 concurrent requests to a synchronous handler ran
@@ -516,9 +516,9 @@ inside the application's own lifespan. Nothing sets it today.
 
 #### 5.4.2 A formation stream costs one thread and one backend, and the cliff is at 40
 
-`orimera/api/routes/formation.py` says a subscriber costs a thread. It is now measured, against
+`exulanica/api/routes/formation.py` says a subscriber costs a thread. It is now measured, against
 the real application on a real database, with the deployment's own command
-(`uvicorn --factory orimera.api.app:create_app`, one process, no flags):
+(`uvicorn --factory exulanica.api.app:create_app`, one process, no flags):
 
 | Concurrent streams | Backends held | Probe pairs completed | `GET /healthz` median | worst |
 | --- | --- | --- | --- | --- |
@@ -574,7 +574,7 @@ a quiet cluster. Section 12.1 is why there is no pool.
 #### 5.4.4 Decode memory: the term that sizes the box
 
 One photograph at `MAX_PIXELS` costs about **512 MB at peak**, not the 384 MB
-`orimera/ingest/decode.py` used to claim. Pillow stores mode `RGB` at four bytes per pixel with
+`exulanica/ingest/decode.py` used to claim. Pillow stores mode `RGB` at four bytes per pixel with
 the fourth unused, and `ImageOps.exif_transpose` allocates a second buffer of the same size even
 at orientation 1. Measured on CPython 3.11.6, Pillow 12.3.0, one fresh process per figure:
 4.015 bytes per pixel for the decode (257.0 MB) and 4.003 for the transpose copy (256.2 MB), peak
@@ -606,7 +606,7 @@ shape should be read against the arithmetic above rather than against a peak nob
 
 **IMPLEMENTED.** This section was written before the service existed and opened by saying so;
 that sentence outlived its subject. `fastapi` and `uvicorn` are runtime dependencies, both
-endpoints are in `orimera/api/routes/health.py`, section 1's own table already said "DECIDED and
+endpoints are in `exulanica/api/routes/health.py`, section 1's own table already said "DECIDED and
 implemented", and `tests/test_api.py` and `tests/test_deployment.py` exercise them. What follows
 is documentation of behaviour, and where a sentence is still a requirement rather than a
 description it says which.
@@ -625,7 +625,7 @@ Conflating them is the common mistake, and here it would be an expensive one.
 
 | Check | What it proves | What it cannot prove |
 | --- | --- | --- |
-| `SELECT 1` on a **newly opened** connection | The server accepted a new connection and answered, so it is up and had a free connection slot at that moment | Nothing about schema correctness, and nothing about the *next* request, which needs its own slot. **There is no connection pool**: `orimera/db/session.py` opens a fresh `psycopg.connect` per session and `psycopg_pool` is in neither `pyproject.toml` nor `uv.lock`. This row used to say the pool was not exhausted, which named a component that does not exist |
+| `SELECT 1` on a **newly opened** connection | The server accepted a new connection and answered, so it is up and had a free connection slot at that moment | Nothing about schema correctness, and nothing about the *next* request, which needs its own slot. **There is no connection pool**: `exulanica/db/session.py` opens a fresh `psycopg.connect` per session and `psycopg_pool` is in neither `pyproject.toml` nor `uv.lock`. This row used to say the pool was not exhausted, which named a component that does not exist |
 | Applied migration version equals the version the code expects | The running code and the running schema agree | Nothing about data integrity |
 | A `HEAD` on one known asset key | Object storage is reachable, credentials are valid, and the bucket is where configuration says it is | Nothing about whether any particular scene's assets are complete |
 | The model manifest parses and every role resolves to an identifier | The application can name a model | **Nothing about whether that model still exists.** That is section 6.1's third signal |
@@ -649,8 +649,8 @@ Conflating them is the common mistake, and here it would be an expensive one.
 
 ## 7. Model catalog preflight
 
-**This one is implemented.** `orimera/models/preflight.py`, exposed as the console script
-`orimera-preflight` and runnable as `python -m orimera.models.preflight`. Exit status 0 when clean
+**This one is implemented.** `exulanica/models/preflight.py`, exposed as the console script
+`exulanica-preflight` and runnable as `python -m exulanica.models.preflight`. Exit status 0 when clean
 and 1 on any failure, so a build step and a scheduled check can both call it without parsing output.
 
 ### 7.1 The risk it addresses
@@ -691,9 +691,9 @@ all deleted, and citing vision model identifiers that do not exist in the catalo
 
 | Stage | Invocation | On failure |
 | --- | --- | --- |
-| Build and deploy | `orimera-preflight` | Non zero exit fails the build. A deployment that cannot reach its models is not deployed |
-| Continuous integration, offline | `orimera-preflight --catalog-file <snapshot>` | Runs against a committed catalog snapshot, so the test suite does not depend on the network |
-| Scheduled through the unattended window | `orimera-preflight --json` | Feeds the weekly catalog diff described in section 9 |
+| Build and deploy | `exulanica-preflight` | Non zero exit fails the build. A deployment that cannot reach its models is not deployed |
+| Continuous integration, offline | `exulanica-preflight --catalog-file <snapshot>` | Runs against a committed catalog snapshot, so the test suite does not depend on the network |
+| Scheduled through the unattended window | `exulanica-preflight --json` | Feeds the weekly catalog diff described in section 9 |
 
 **VERIFIED by execution 2026-08-27:** every model identifier in the manifest resolved against the
 live catalog, 30 entries total. No role is pointing at a removed model.
@@ -802,7 +802,7 @@ behind it and nobody is present to notice.
 | --- | --- | --- | --- |
 | Process liveness | External check against `/healthz` from outside the deployment | Every 5 minutes | Alert to a phone after two consecutive failures. Two, not one, so a single dropped packet does not page |
 | Dependency readiness | External check against `/readyz` | Every 15 minutes | Alert. Distinguishes "the API is up but the database is gone" from "everything is gone", which are different playbooks |
-| Model catalog integrity | Scheduled `orimera-preflight`, diffing the live catalog against the manifest | Daily, and included in the weekly human check | Alert naming the identifier and the role. This is the only signal that catches a withdrawal, and a health ping succeeds right up until the first query hits a removed model |
+| Model catalog integrity | Scheduled `exulanica-preflight`, diffing the live catalog against the manifest | Daily, and included in the weekly human check | Alert naming the identifier and the role. This is the only signal that catches a withdrawal, and a health ping succeeds right up until the first query hits a removed model |
 | Database backup freshness | Age of the newest dump object in storage | Daily | Alert. A backup job that silently stopped is indistinguishable from one that is working, until it is needed |
 | Spend | Billing alert at $300 | Continuous | Alert, and investigate for a forgotten GPU machine first, per section 8.2 |
 | Everything the automation misses | A named person loading the application, walking one scene and asking one question | Weekly through the unattended window | Judgement |
@@ -936,7 +936,7 @@ comes from an assessment rather than from a run reproduced here, it says so.
 
 ### 12.1 No connection pool, and the reason is correctness before it is cost
 
-`orimera/db/session.py` opens a fresh `psycopg.connect` per session. `psycopg_pool` appears in
+`exulanica/db/session.py` opens a fresh `psycopg.connect` per session. `psycopg_pool` appears in
 neither `pyproject.toml` nor `uv.lock`. **Keep it that way**, and the decisive reason is not the
 saving foregone.
 
@@ -1013,14 +1013,14 @@ deployment setting instead.
 ### 12.3 No reference counting on `blob`
 
 `blob` is not workspace-scoped (migration 0001), and the purge path works around that with a
-cross-workspace SELECT policy on `capture` and `artifact` granted to `orimera_purge`. Replacing
+cross-workspace SELECT policy on `capture` and `artifact` granted to `exulanica_purge`. Replacing
 that with a maintained holder count on `blob` is **not the right change now**.
 
 **CORRECTED 2026-09-03.** The policy now covers a third relation,
 `reconstruction_scene_member`, because migration 0024 gave `purge_releases_bytes` a clause that
 reads it: a scene artifact is a fact about N photographs and holds its bytes only while every
 member is live. `artifact` also gained `scene_id`, so it is three tables and one more column, and
-`orimera.db.roles.PURGE_CROSS_WORKSPACE_TABLES` is the list rather than a sentence. The direction
+`exulanica.db.roles.PURGE_CROSS_WORKSPACE_TABLES` is the list rather than a sentence. The direction
 of a blindness over the new table is the opposite of the one this paragraph is about: it
 over-refuses rather than destroying, so the cost of getting it wrong is a deletion that never
 completes rather than another tenant's photograph.
@@ -1050,7 +1050,7 @@ not pay.
 - **A-30 falls.** A workspace stops being one user, or workspaces become shared. The partition
   strategy and the row-level security predicate need rework anyway at that point, and this rides
   along with it.
-- **The cross-workspace read itself becomes unacceptable.** `orimera_purge` can answer "which
+- **The cross-workspace read itself becomes unacceptable.** `exulanica_purge` can answer "which
   workspace holds these exact bytes" across the whole deployment. That is the one argument a
   larger retry budget cannot answer, and if the threat model rules it out, a count replaces the
   read.
@@ -1064,7 +1064,7 @@ Declined. Section 5.4.4 has the arithmetic and the reason: the bound is real, bu
 `threading.BoundedSemaphore` acquired inside a synchronous route handler blocks a thread that is
 already holding one of the 40 anyio tokens, which converts an out-of-memory into section 5.4.2's
 starvation of `/healthz` and the container restart that follows. The aggregate is documented as a
-sizing input instead. `orimera/ingest/decode.py`'s own arithmetic was wrong by a third, in the
+sizing input instead. `exulanica/ingest/decode.py`'s own arithmetic was wrong by a third, in the
 direction that made the aggregate look smaller, and that has been corrected.
 
 ### 12.5 Poll intervals stay as they are, and one index does not
@@ -1073,7 +1073,7 @@ The derivative worker polls every 2 s and the purge worker every 30 s. Both are 
 workspace counts this deployment has, and neither interval is worth touching.
 
 **The claim index had the wrong columns, and that defect is closed.**
-`orimera/ingest/derivative_queue.py` selects `where workspace_id = ? and kind = ? and state =
+`exulanica/ingest/derivative_queue.py` selects `where workspace_id = ? and kind = ? and state =
 'queued' and run_after <= now() order by priority, job_id ... limit 1`, and `job_queue_idx` is
 `(state, run_after, priority, job_id) where state = 'queued'`, which carries neither
 `workspace_id` nor `kind`. Measured on a scratch database with 5,000 queued jobs in the polled

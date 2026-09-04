@@ -6,7 +6,7 @@ alternative rejected), **ASSUMPTION** (with the experiment that settles it), **O
 
 Retrieval date for every VERIFIED claim on this page: **2026-08-27**, except the two deprecation
 notices cited in section 8, which were re-read on **2026-08-28** and carry that date inline.
-Promoted from the reconciled research in `.orimera/` (reconciliation date 2026-08-27). Where the
+Promoted from the reconciled research in `.exulanica/` (reconciliation date 2026-08-27). Where the
 research recorded a disagreement as unresolved, it is preserved here as unresolved.
 
 Companion document: [interaction-model.md](interaction-model.md) covers the spatial and interaction
@@ -14,9 +14,9 @@ design. This page covers what the product is, what it does, and what it delibera
 
 ---
 
-## 1. What Orimera is
+## 1. What Exulanica is
 
-Orimera is a Personal World Memory Model. A user's captures become separate navigable 3D memory
+Exulanica is a Personal World Memory Model. A user's captures become separate navigable 3D memory
 regions inside one continuous first-person browser Atlas. Recurring people, places, objects and
 events connect across those regions. Every historical factual claim the system makes resolves to the
 exact original source it came from.
@@ -228,7 +228,7 @@ is governed by [adr/0008-generated-geometry.md](adr/0008-generated-geometry.md).
 
 **CORRECTED 2026-09-03, the rung 2 row.** The Producer column above says "the same splat" with thin
 coverage. That was written before the corridor artifact existed, and the code it describes already
-disagrees: `orimera/reconstruction/navigation.py` publishes rung 2 from the corridor's own measured
+disagrees: `exulanica/reconstruction/navigation.py` publishes rung 2 from the corridor's own measured
 clearance, slope and destinations, and a splat appears nowhere in its inputs. What defines rung 2 is
 its fourth column, what the user gets. Two substrates deliver it: an accepted splat with thin
 coverage, or camera poses with the monocular point maps of rung 3 placed at them. The artifact
@@ -274,7 +274,7 @@ answered.
 
 ---
 
-## 6. What Orimera claims, and what it refuses to claim
+## 6. What Exulanica claims, and what it refuses to claim
 
 ### 6.1 Retention: "append-only by policy", never "immutable"
 
@@ -349,7 +349,7 @@ party search index providers, so everything sent outbound must be treated as per
 
 Excluded from the product, not merely from the MVP:
 
-- **Always-on or background capture.** Orimera ingests a library the user chose to give it.
+- **Always-on or background capture.** Exulanica ingests a library the user chose to give it.
 - **Any claim of on-device or local-only processing.** Media goes to third party cloud APIs. The
   README and the documentation say so plainly, and no surface of the project implies otherwise.
 - **Identifying strangers.** See the four guards in 6.3.
@@ -427,7 +427,7 @@ structurally as above.
 
 ## 11. Known limitations
 
-**This section is part of the product, not a disclaimer bolted onto it.** Orimera's argument is that
+**This section is part of the product, not a disclaimer bolted onto it.** Exulanica's argument is that
 a memory system is only worth trusting when it is explicit about what it does not know. A
 specification that held the user's memories to that standard and exempted itself would not be
 credible.
@@ -441,7 +441,7 @@ it points to.
 | # | Limitation | Status | Specified in |
 | --- | --- | --- | --- |
 | L-1 | **Cross-capture identity is proposed, never asserted.** The measured accuracy of open-set face identification and of cloth-changing re-identification does not support autonomous linking, so a proposed link may drive layout, filtering and highlighting but may not support a historical factual claim until the account holder confirms it | DECISION, on VERIFIED measurements | 1.1, 2.4, 6.3 |
-| L-2 | **No accuracy figure for cross-capture identity is published.** Orimera's own recall has not been measured, and no recall or precision number appears in the README, the documentation, the demo or any marketing surface until it is | ASSUMPTION A-18, unmeasured | 9 |
+| L-2 | **No accuracy figure for cross-capture identity is published.** Exulanica's own recall has not been measured, and no recall or precision number appears in the README, the documentation, the demo or any marketing surface until it is | ASSUMPTION A-18, unmeasured | 9 |
 | L-3 | **Reconstruction quality is uneven and is not guaranteed.** Each region renders at whichever rung of the fallback ladder it earned, and the earned rung is displayed rather than smoothed over. A photograph library shot as travel photography does not naturally contain the dense overlapping coverage rung 1 requires, so a region reaching rung 1 is the exception rather than the expectation | DECISION | 5, 5.1 |
 | L-4 | **Reconstruction is precomputed and never runs in the live demo path.** The demo's pre-ingested state is disclosed on the page itself. A progress bar not driven by real job state, a spinner in front of a cached response, and any query path that special-cases the scripted questions are all out of bounds, and a test asserts the demo questions return identical results with the demo flag off | DECISION | 4.1, 5, 5.3 |
 | L-5 | **Retention is append-only by policy, not immutable.** Nebius Object Storage does not support Object Lock or Legal Hold, so the property rests on bucket versioning, content-addressed keys and a bucket policy denying delete to the runtime service account. The words immutable, WORM and tamper-proof do not appear in product copy | VERIFIED | 6.1 |

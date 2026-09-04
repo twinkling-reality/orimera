@@ -7,8 +7,8 @@ reconstruction input is present.
 
 This is the structural half of
 [ADR-0007](adr/0007-world-composition-and-customization.md). The implementation is migration
-`0020_durable_spatial_authority.sql`, `orimera/world/structure.py`,
-`orimera/world/structure_repository.py`, and the draft adapter in
+`0020_durable_spatial_authority.sql`, `exulanica/world/structure.py`,
+`exulanica/world/structure_repository.py`, and the draft adapter in
 `web/packages/atlas-core/src/world/persistence.ts`.
 
 ## Authority boundary

@@ -92,7 +92,7 @@ today.
 | # | Failure | Fallback | Status |
 | --- | --- | --- | --- |
 | 1 | A model identifier is withdrawn mid-window | The manifest declares a fallback identifier per role; the client selects it on a 404-class error only; a preflight fails the build if any identifier has disappeared | **Built and covered by tests.** Five tests drive the selection rule through a scripted transport, including the cases that must NOT trigger it. It has never run against the live platform, and there is no continuous integration to run it in, which is why `deployment.md` D-7 still lists it as unexecuted |
-| 2 | Token Factory returns 429 or 5xx during a live query | Retry with backoff on the same model. Do **not** switch models: a rate limit is the platform having a moment, and swapping would hide an incident behind a quality regression nobody would attribute correctly. If retries are exhausted, the surface says the answer is unavailable rather than answering without evidence | **Built.** Client policy, `orimera/models/client.py` |
+| 2 | Token Factory returns 429 or 5xx during a live query | Retry with backoff on the same model. Do **not** switch models: a rate limit is the platform having a moment, and swapping would hide an incident behind a quality regression nobody would attribute correctly. If retries are exhausted, the surface says the answer is unavailable rather than answering without evidence | **Built.** Client policy, `exulanica/models/client.py` |
 | 3 | Prepaid balance runs out | Spend cannot exceed the balance, so this degrades rather than escalates. Mitigation is to precompute and freeze embeddings so the demonstration never calls the embedding endpoint, plus a balance check in the weekly pass | Partly. The budget guard and usage ledger are built; the frozen-embedding decision is **OPEN** |
 | 4 | The backend host dies | Restart policy, external `/healthz` check every five minutes to a phone, one-command redeploy tested from a clean shell, nightly `pg_dump` to object storage | **OPEN**, none built |
 | 5 | Total backend loss | The static front-end build serves a clearly labelled recorded tour. Labelling it as recorded is the whole point; presenting it as the live application would not be honest | **OPEN** |
@@ -113,9 +113,9 @@ of whoever is watching.
 
 **Platform state**
 
-- [ ] `uv run orimera-preflight` exits 0. Record the date of the catalog snapshot it checked against.
+- [ ] `uv run exulanica-preflight` exits 0. Record the date of the catalog snapshot it checked against.
 - [ ] Prepaid balance is sufficient for the session, checked in the billing console.
-- [ ] The exact model identifiers about to be named match `orimera/models/models.manifest.json`
+- [ ] The exact model identifiers about to be named match `exulanica/models/models.manifest.json`
       character for character. The catalog's display names differ from the callable identifiers, and
       repeating a display name puts a wrong identifier in front of whoever is watching.
 

@@ -203,7 +203,7 @@ Design references belong to proposal provenance. The intended flow is:
 The model may explain which reference traits mapped to which capability. Reference images and
 conversation text are not renderer instructions and never bypass manifest validation.
 
-The production boundary is `orimera/world/`, migrations `0017_adaptive_world_styles.sql` and
+The production boundary is `exulanica/world/`, migrations `0017_adaptive_world_styles.sql` and
 `0023_frontend_world_recipe_contract.sql`, and the `/world/styles` routes. Durable versions and
 current pointers live there; live conversation and isolated preview sessions remain separate. See
 [world-style-backend.md](world-style-backend.md).

@@ -322,7 +322,7 @@ silent repair.
 LEVEL SECURITY` is set, and "Superusers and roles with the `BYPASSRLS` attribute always bypass the row
 security system". Source: https://www.postgresql.org/docs/18/ddl-rowsecurity.html
 
-**DECISION.** Execution connects as a non-owner `orimera_ro` role that owns nothing and lacks
+**DECISION.** Execution connects as a non-owner `exulanica_ro` role that owns nothing and lacks
 `BYPASSRLS`, with `FORCE ROW LEVEL SECURITY` on every table. An executor connecting as the table owner
 makes every isolation policy silently inert, which is a failure with no symptom.
 
@@ -388,7 +388,7 @@ complete fix, "because injection is inherent to how generative models process in
 https://genai.owasp.org/llmrisk/llm01-prompt-injection/
 
 That verified statement sets the goal. The goal is not to make injection impossible. **The goal is to
-make the model's authority not worth stealing.** Orimera is unusually exposed for a photograph corpus:
+make the model's authority not worth stealing.** Exulanica is unusually exposed for a photograph corpus:
 any sign, screen, poster or handwritten note visible in a photograph is OCR-able text that enters the
 pipeline, and the attacker does not need access to the system to place one.
 
@@ -452,7 +452,7 @@ The controls follow from that single premise:
 - **External content cannot be cited as evidence for any historical claim**, enforced by the evidence
   resolver accepting only capture pointers. This is a structural bar, not a policy.
 - An append-only log records the **verbatim** outbound string, including denials, surfaced to the user
-  in a "What left Orimera" panel.
+  in a "What left Exulanica" panel.
 
 **ASSUMPTION:** that the minimizer holds under attack. Settled by experiment X-13: attempt to get a
 private detail into an outbound query via an injected instruction, a crafted entity label, and a

@@ -1,6 +1,6 @@
-# Orimera
+# Exulanica
 
-**A Personal World Memory Model.** Orimera turns a personal photograph library into separate
+**A Personal World Memory Model.** Exulanica turns a personal photograph library into separate
 navigable 3D memory regions inside one continuous first-person browser space called the Atlas,
 connects recurring people, places, objects and events across those regions, and lets a person
 explore and query their own lived history under a single rule: every historical factual claim
@@ -30,10 +30,10 @@ earlier lean (PlayCanvas Engine 2.21.4,
 Nemotron and to Tavily were made and archived on 2026-08-27.
 
 **Assembled for development, but not deployed.** Query planning and answer composition are
-implemented in `orimera/selection/`, and `web/packages/app/src/main.ts` joins the Atlas scene,
+implemented in `exulanica/selection/`, and `web/packages/app/src/main.ts` joins the Atlas scene,
 Companion runtime and World Index to the API. It has been rendered against synthetic data. The API
 and Vite application still need separate commands, so there is no single command that starts
-Orimera end to end. MoGe is the chosen reconstruction method and is not integrated into upload.
+Exulanica end to end. MoGe is the chosen reconstruction method and is not integrated into upload.
 
 **Deliberately not claimed.** No personal photograph library has been ingested, so nothing about
 reconstruction quality, identity or retrieval has been measured on real material. No accuracy or
@@ -90,7 +90,7 @@ which overrides every other document in this repository on conflict.
 
 All inference runs on **Nebius Token Factory**, OpenAI-compatible, at
 `https://api.tokenfactory.nebius.com/v1`. Every identifier below is declared in exactly one place,
-[`orimera/models/models.manifest.json`](orimera/models/models.manifest.json), together with its
+[`exulanica/models/models.manifest.json`](exulanica/models/models.manifest.json), together with its
 price, context window and declared fallback.
 
 | Role | Model | Price in/out per Mtok | Why |
@@ -123,7 +123,7 @@ account-identifying response headers; every field that carries a finding is quot
   The thinking text arrives **inline in `message.content`** while `message.reasoning_content` is
   null, so a naive parser reads the model's scratch work. `max_tokens` must clear roughly 600 or
   responses truncate mid-reasoning with an empty answer. The manifest encodes this as
-  `min_max_tokens: 640` per model, and `orimera/models/reasoning.py` strips the scratch work.
+  `min_max_tokens: 640` per model, and `exulanica/models/reasoning.py` strips the scratch work.
 - **Structured output works by exactly one mechanism.** `response_format: {type: "json_schema",
   strict: true}` produces valid JSON. A top-level `guided_json` parameter is **silently ignored**
   and returns prose with HTTP 200. That silent failure is the dangerous one, so canonical memory
@@ -137,7 +137,7 @@ account-identifying response headers; every field that carries a finding is quot
 - **One OpenAI-compatible endpoint for every role**, so swapping a model is a manifest edit rather
   than a client rewrite. The manifest is the only file in the codebase where a model identifier
   appears.
-- **A public catalog endpoint**, which makes a preflight check possible: `uv run orimera-preflight`
+- **A public catalog endpoint**, which makes a preflight check possible: `uv run exulanica-preflight`
   resolves every manifest identifier against the live catalog and exits non-zero if any has been
   withdrawn or no longer declares the `use_cases` its role needs. Nebius removed 11 models from
   Token Factory Serverless on 2026-06-22 and removes 10 more on 2026-08-31, two rounds in roughly
@@ -145,9 +145,9 @@ account-identifying response headers; every field that carries a finding is quot
   at a model in either round. The same check runs automatically before the first model call of an
   ingest, so a run that is about to spend money finds out first.
 - **Prepaid billing** bounds total exposure to the account balance. There is no automatic top-up,
-  so a runaway loop cannot produce an unbounded bill. `orimera/models/budget.py` adds a local
+  so a runaway loop cannot produce an unbounded bill. `exulanica/models/budget.py` adds a local
   ceiling on top of that, described honestly as a development safety rail rather than a limit.
-- Combined with the response cache in `orimera/models/cache.py`, keyed by content hash plus
+- Combined with the response cache in `exulanica/models/cache.py`, keyed by content hash plus
   pipeline version plus role plus prompt version, a repeated ingest over the same photographs
   issues zero model calls and costs nothing.
 
@@ -191,11 +191,11 @@ generated rather than committed, so the content of every test image is known exa
 uv run pytest                       # 1182 tests; 572 skip without a database
 uv run ruff check .                 # lints backend, tests and scripts
 uv run lint-imports                 # the backend layering contract, four rules
-uv run orimera-preflight            # checks every manifest id against the live catalog
-uv run uvicorn --factory orimera.api.app:create_app   # the HTTP API, on port 8000
-uv run orimera-preflight --catalog-file <snapshot.json>   # same check, offline
-uv run orimera-ingest ingest ./photos   # safe to run repeatedly; a second run issues no model calls
-uv run orimera-ingest ingest ./photos --offline           # skip the vision stage entirely
+uv run exulanica-preflight            # checks every manifest id against the live catalog
+uv run uvicorn --factory exulanica.api.app:create_app   # the HTTP API, on port 8000
+uv run exulanica-preflight --catalog-file <snapshot.json>   # same check, offline
+uv run exulanica-ingest ingest ./photos   # safe to run repeatedly; a second run issues no model calls
+uv run exulanica-ingest ingest ./photos --offline           # skip the vision stage entirely
 uv run scripts/verify_platform.py      # the runtime verification harness, needs NEBIUS_API_KEY
 ```
 
@@ -212,8 +212,8 @@ The target is PostgreSQL 18 with pgvector, and nothing is substituted for it. On
 ```bash
 brew install postgresql@18 pgvector
 brew services start postgresql@18
-createdb orimera_spine_test
-ORIMERA_TEST_DATABASE_URL=postgresql://localhost:5433/orimera_spine_test uv run pytest
+createdb exulanica_spine_test
+EXULANICA_TEST_DATABASE_URL=postgresql://localhost:5433/exulanica_spine_test uv run pytest
 ```
 
 The port is 5433 only if an older PostgreSQL already holds 5432; use whatever the server is on.
@@ -227,7 +227,7 @@ Three things to know about that harness:
   version of the harness swapped `gen_random_uuid()` for `uuidv7()` and `bytea` for
   `halfvec(4096)` so the suite could run on PostgreSQL 14. Everything passed and the vector path
   had never executed once, which hid a test that wrote raw bytes into a vector column.
-- Set `ORIMERA_REQUIRE_POSTGRES=1` to turn the skip into a failure, which is how continuous
+- Set `EXULANICA_REQUIRE_POSTGRES=1` to turn the skip into a failure, which is how continuous
   integration should run it. The suite is safe to run in parallel against one database: verified
   with five concurrent runs.
 
@@ -237,20 +237,23 @@ Three environment variables, and the API refuses to start without the first two 
 defaulting to something:
 
 ```bash
-export ORIMERA_DATABASE_URL=postgresql://orimera_app:<password>@localhost:5433/orimera
-export ORIMERA_API_TOKENS='{"<a long random token>":{"workspace_id":"<uuid>","actor":"<uuid>"}}'
-export ORIMERA_DATA_DIR=.orimera/local          # where the content-addressed store lives
-uv run uvicorn --factory orimera.api.app:create_app --port 8000
+export EXULANICA_DATABASE_URL=postgresql://exulanica_app:<password>@localhost:5433/exulanica
+export EXULANICA_API_TOKENS='{"<a long random token>":{"workspace_id":"<uuid>","actor":"<uuid>"}}'
+export EXULANICA_DATA_DIR=.exulanica/local          # where the content-addressed store lives
+uv run uvicorn --factory exulanica.api.app:create_app --port 8000
 ```
+
+If `EXULANICA_DATA_DIR` is unset, the store defaults to `.exulanica/local`. It does not look at
+`.orimera/`. ADR-0011 records that the pre-release Orimera names were withdrawn before release.
 
 Three more are optional and all three are reported by `/readyz`, because a defence that is off and
 silent is worse than one that is absent:
 
-- `ORIMERA_READONLY_DATABASE_URL` points the Selection executor at `orimera_ro`, a role holding
+- `EXULANICA_READONLY_DATABASE_URL` points the Selection executor at `exulanica_ro`, a role holding
   SELECT and nothing else. Without it the executor runs as the write role.
 - `NEBIUS_API_KEY` enables the two endpoints that need a model. Without it they return 503 and
   every other endpoint works.
-- `ORIMERA_DERIVATIVE_WORKER=off` leaves `POST /intake` jobs to the dedicated production worker.
+- `EXULANICA_DERIVATIVE_WORKER=off` leaves `POST /intake` jobs to the dedicated production worker.
   The local composition sets it off and runs that worker as a separately restartable service.
 
 For the production process shape, give both commands the same non-owner database URL and data
@@ -258,11 +261,11 @@ directory. The derivative worker produces per-photograph work. The scene worker 
 multi-photograph sets with pycolmap and therefore runs in its own process:
 
 ```bash
-export ORIMERA_WORKSPACE_IDS=<workspace-uuid>[,<workspace-uuid>...]
-uv run orimera-derivative-worker
-export ORIMERA_CODE_REVISION=<exact-40-character-git-revision>
-export ORIMERA_POSE_RUNTIME_IMAGE=<registry/image@sha256:digest>
-uv run --extra pose orimera-scene-worker
+export EXULANICA_WORKSPACE_IDS=<workspace-uuid>[,<workspace-uuid>...]
+uv run exulanica-derivative-worker
+export EXULANICA_CODE_REVISION=<exact-40-character-git-revision>
+export EXULANICA_POSE_RUNTIME_IMAGE=<registry/image@sha256:digest>
+uv run --extra pose exulanica-scene-worker
 ```
 
 The command refuses an owner, superuser, or BYPASSRLS database role and refuses an empty workspace
@@ -299,10 +302,10 @@ A tombstone blocks every read and every derived write the moment it commits. Rem
 it named is a separate step, because the object store is not in the database transaction:
 
 ```bash
-uv run orimera-purge --workspace <uuid> --data-dir .orimera/local
+uv run exulanica-purge --workspace <uuid> --data-dir .exulanica/local
 ```
 
-It connects as `orimera_purge`, through `ORIMERA_PURGE_DATABASE_URL`, and refuses to run without
+It connects as `exulanica_purge`, through `EXULANICA_PURGE_DATABASE_URL`, and refuses to run without
 it rather than falling back to the writer. That is not ceremony. `blob` is not workspace-scoped,
 so two workspaces that ingest the same photograph share one object, and a purger that could only
 see its own workspace would destroy bytes the other one still cites. Measured, and it is what the
@@ -340,26 +343,26 @@ Fixtures are gitignored. Regenerate them rather than committing them.
 
 Every command above runs now. The HTTP API serves and the assembled Atlas application renders in
 development, but they still start with separate commands. There is currently no single command
-that starts Orimera end to end.
+that starts Exulanica end to end.
 [Project status](#project-status) has the rest of the picture.
 
 ## Repository layout
 
 | Path | Contains |
 | --- | --- |
-| `orimera/evidence/` | The evidence address, content-addressed blobs, memory regions, the time base |
-| `orimera/ingest/` | The photograph ingest pipeline: EXIF, orientation, derivatives, vision, scene grouping, the provenance ledger, the CLI, the derivative queue and the worker that drains it |
-| `orimera/models/` | The Token Factory client, the model manifest, preflight, the budget guard, the response cache, strict json_schema handling, reasoning-token stripping |
-| `orimera/store/` | Content-addressed storage |
-| `orimera/migrations/` | The forward-only PostgreSQL schema history, from `0001_spine.sql` through migration 0018 |
-| `orimera/db/` | Connections carrying the workspace context, the migration runner, the runtime roles |
-| `orimera/epistemics/` | Writing a claim under exactly one of the four provenance classes |
-| `orimera/identity/` | Occurrence keys, the identity tables, and the user decisions that promote an occurrence to a person |
-| `orimera/selection/` | The one Selection primitive: plan, validation, deterministic execution, evidence packet, answer validation |
-| `orimera/api/` | The HTTP surface, including `POST /intake`. Routes validate and delegate; the only unauthenticated ones are the health probes |
-| `orimera/deletion/` | The purge queue a tombstone fills and the worker that empties it. Destroys objects, marks rows, and holds DELETE on nothing |
+| `exulanica/evidence/` | The evidence address, content-addressed blobs, memory regions, the time base |
+| `exulanica/ingest/` | The photograph ingest pipeline: EXIF, orientation, derivatives, vision, scene grouping, the provenance ledger, the CLI, the derivative queue and the worker that drains it |
+| `exulanica/models/` | The Token Factory client, the model manifest, preflight, the budget guard, the response cache, strict json_schema handling, reasoning-token stripping |
+| `exulanica/store/` | Content-addressed storage |
+| `exulanica/migrations/` | The forward-only PostgreSQL schema history, from `0001_spine.sql` through migration 0018 |
+| `exulanica/db/` | Connections carrying the workspace context, the migration runner, the runtime roles |
+| `exulanica/epistemics/` | Writing a claim under exactly one of the four provenance classes |
+| `exulanica/identity/` | Occurrence keys, the identity tables, and the user decisions that promote an occurrence to a person |
+| `exulanica/selection/` | The one Selection primitive: plan, validation, deterministic execution, evidence packet, answer validation |
+| `exulanica/api/` | The HTTP surface, including `POST /intake`. Routes validate and delegate; the only unauthenticated ones are the health probes |
+| `exulanica/deletion/` | The purge queue a tombstone fills and the worker that empties it. Destroys objects, marks rows, and holds DELETE on nothing |
 | `pyproject.toml` | Also the backend layering contract, enforced by `uv run lint-imports` |
-| `orimera/canonical.py`, `orimera/errors.py` | Canonical JSON and the one rounding rule; the error taxonomy |
+| `exulanica/canonical.py`, `exulanica/errors.py` | Canonical JSON and the one rounding rule; the error taxonomy |
 | `tests/` | 1182 tests, 572 of which need a PostgreSQL 18 server. No network, no credentials, no committed binary fixtures |
 | `scripts/` | The standalone runtime verification harnesses, kept byte-identical so their evidence stays reproducible |
 | `web/packages/atlas-core/` | Scene graph, island frames, focus resolution, layout solver. No React, no DOM, no renderer |

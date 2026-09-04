@@ -2,7 +2,7 @@
 
 Status: **IMPLEMENTED and PostgreSQL-tested 2026-09-04; no authorized real capture run**.
 
-This document is the operating contract for Orimera's production rung-3 multi-photograph path.
+This document is the operating contract for Exulanica's production rung-3 multi-photograph path.
 It covers scene selection, durable work, pose recovery, placement, graph delivery, rendering,
 deletion, and recovery. It does not claim that the path has passed a representative real-corpus
 quality gate. No consented dense capture set or digest-pinned production pose image was available
@@ -14,7 +14,7 @@ The normal ingest flow runs scene grouping after capture processing. `run_scene_
 the groups, applies `SceneGroupPosePolicy`, and enqueues a selected exact member set only after
 every member has a current point-map artifact. The
 initial policy is deliberately narrow and versioned as
-`orimera.scene-group-pose-selection/v1`:
+`exulanica.scene-group-pose-selection/v1`:
 
 - it considers the deterministic presentation order already produced by `scene_group` version 1;
 - it selects groups with at least three members because the current sparse backend discards
@@ -40,7 +40,7 @@ its own registration rows and output artifacts. Only the scene's `current_job_id
 same transaction that publishes the new rung assertion and successful job state. Graph and package
 readers follow that pointer. Older successful builds remain inspectable and reproducible.
 
-The separate `orimera-scene-worker` process then performs this sequence:
+The separate `exulanica-scene-worker` process then performs this sequence:
 
 1. Claim the next eligible exact set with `FOR UPDATE SKIP LOCKED` and a renewable lease.
 2. Stage only the declared source blobs under the job's canonical workspace/job scratch key,
@@ -68,9 +68,9 @@ The accepted chain has three independently versioned records:
 
 | Record | Current profile | What it binds |
 | --- | --- | --- |
-| Pose receipt | `orimera.colmap-pose-receipt/v2` | exact source manifest, source digests, code revision, pycolmap version, runtime image digest, commands, sparse outputs, recovered cameras, registration and quality |
-| Placement | `orimera.posed-point-map-placement/v1` | scene id, complete ordered member set, pose receipt digest, pose manifest digest, each current point-map artifact id and content digest, transform, scale status, and every exclusion |
-| Gate | `orimera.reconstruction-scene-gate/v1` | every receipt digest it read, complete and registered counts, awarded rung, and all withholding reasons |
+| Pose receipt | `exulanica.colmap-pose-receipt/v2` | exact source manifest, source digests, code revision, pycolmap version, runtime image digest, commands, sparse outputs, recovered cameras, registration and quality |
+| Placement | `exulanica.posed-point-map-placement/v1` | scene id, complete ordered member set, pose receipt digest, pose manifest digest, each current point-map artifact id and content digest, transform, scale status, and every exclusion |
+| Gate | `exulanica.reconstruction-scene-gate/v1` | every receipt digest it read, complete and registered counts, awarded rung, and all withholding reasons |
 
 Artifact ids are deterministic functions of the scene, stage version and parameters, and exact
 input digests. A retry may reproduce and verify the same row. It cannot create a second conflicting
@@ -158,7 +158,7 @@ following:
 - makes scene artifact bytes eligible for the separately authorized purge flow.
 
 COLMAP databases, feature descriptors, staged sources, and sparse working files live only under
-`ORIMERA_DATA_DIR/reconstruction-scratch/<workspace>/<job>`. Durable receipts live in the
+`EXULANICA_DATA_DIR/reconstruction-scratch/<workspace>/<job>`. Durable receipts live in the
 content-addressed store, outside scratch. Receipt writes use the shared post-commit store boundary
 and keep purge-compatible session locks through final publication. The worker also holds a
 non-blocking filesystem lock for the whole sensitive scratch lifetime. Cleanup accepts only
@@ -183,22 +183,22 @@ The derivative worker requires no depth flag in Compose. For a local source chec
 explicitly:
 
 ```bash
-export ORIMERA_DEPTH_MODEL=moge
-export ORIMERA_DEPTH_MODEL_ID=Ruicheng/moge-2-vitl
-export ORIMERA_DEPTH_MODEL_REVISION=39c4d5e957afe587e04eec59dc2bcc3be5ecd968
-export ORIMERA_DEPTH_DEVICE=cpu
-uv run --extra reconstruction orimera-derivative-worker
+export EXULANICA_DEPTH_MODEL=moge
+export EXULANICA_DEPTH_MODEL_ID=Ruicheng/moge-2-vitl
+export EXULANICA_DEPTH_MODEL_REVISION=39c4d5e957afe587e04eec59dc2bcc3be5ecd968
+export EXULANICA_DEPTH_DEVICE=cpu
+uv run --extra reconstruction exulanica-derivative-worker
 ```
 
 For the scene worker, install or invoke the pose extra explicitly.
 
 ```bash
-export ORIMERA_DATABASE_URL=postgresql://orimera_app:<password>@localhost:5433/orimera
-export ORIMERA_DATA_DIR=.orimera/local
-export ORIMERA_WORKSPACE_IDS=<workspace-uuid>[,<workspace-uuid>...]
-export ORIMERA_CODE_REVISION=<exact-40-character-git-revision>
-export ORIMERA_POSE_RUNTIME_IMAGE=<registry/image@sha256:digest>
-uv run --extra pose orimera-scene-worker
+export EXULANICA_DATABASE_URL=postgresql://exulanica_app:<password>@localhost:5433/${POSTGRES_DB:-exulanica}
+export EXULANICA_DATA_DIR=.exulanica/local
+export EXULANICA_WORKSPACE_IDS=<workspace-uuid>[,<workspace-uuid>...]
+export EXULANICA_CODE_REVISION=<exact-40-character-git-revision>
+export EXULANICA_POSE_RUNTIME_IMAGE=<registry/image@sha256:digest>
+uv run --extra pose exulanica-scene-worker
 ```
 
 Both provenance variables are required. A mutable image tag or guessed checkout is not accepted.

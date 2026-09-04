@@ -146,7 +146,7 @@ two-image model and the initial pair is discarded for having no points. With unk
 the two-view focal drifts to 992 to 1,228 px against 823.5 true, and rotation error rises to
 0.8 to 12 degrees; with known intrinsics it stays below 1 degree.
 
-Two facts about the existing controller, verified by loading `orimera/reconstruction/pose.py`
+Two facts about the existing controller, verified by loading `exulanica/reconstruction/pose.py`
 unmodified against the export:
 
 - `Reconstruction.write_text` produces `cameras.txt`, `images.txt` and `points3D.txt` in exactly
@@ -155,7 +155,7 @@ unmodified against the export:
 - `run_colmap_pose_job` shells out to a `colmap` executable that this environment does not have,
   but it accepts an `executor` callable, so an in-process backend can drive it unchanged.
 
-That backend now exists as `orimera/reconstruction/pycolmap_executor.py`, and
+That backend now exists as `exulanica/reconstruction/pycolmap_executor.py`, and
 `tests/test_reconstruction_pycolmap_executor.py` runs six synthetic views through the unmodified
 controller: all six register, the receipt and checkpoint are written, a second call reuses the
 receipt without invoking COLMAP, and `shared_metric_frame` stays false because no measured scale

@@ -7,7 +7,7 @@ that settles it), or **OPEN**.
 Retrieval date for every legal source cited here: **2026-08-27**.
 
 **This is not legal advice.** No one on this project is a lawyer. Statutory and regulatory text is
-quoted or paraphrased from the linked primary sources; the application of that text to Orimera is
+quoted or paraphrased from the linked primary sources; the application of that text to Exulanica is
 this project's own analysis and is labelled as analysis wherever it appears. Nothing here establishes
 compliance with anything, and the project makes no compliance claim (see section 6).
 
@@ -44,7 +44,7 @@ re-identification. That loop is what every regime in section 2 is about.
 
 ## 2. The legal landscape
 
-### 2.1 What Orimera derives, in the terms the statutes use
+### 2.1 What Exulanica derives, in the terms the statutes use
 
 **VERIFIED.** Illinois BIPA s.10 defines "biometric identifier" as "a retina or iris scan,
 fingerprint, voiceprint, or scan of hand or face geometry", and **excludes photographs**. It
@@ -60,7 +60,7 @@ instant an embedding is computed, and the second definition ("biometric informat
 biometric identifier") then sweeps in the cluster centroid, the similarity graph, and the person node
 in the Atlas.
 
-| Orimera artifact | Statutory characterisation | Present today |
+| Exulanica artifact | Statutory characterisation | Present today |
 | --- | --- | --- |
 | Photograph as stored | Excluded from BIPA "biometric identifier"; still personal data under GDPR | Yes |
 | Face embedding from a photograph | "scan of face geometry" (BIPA), "record of face geometry" (CUBI), Art. 4(14) biometric data (GDPR) | Yes |
@@ -87,8 +87,8 @@ Source: https://www.ilga.gov/Legislation/ILCS/Articles?ActID=3004&ChapterID=57&P
 **ANALYSIS, in four points that drive the architecture:**
 
 1. BIPA has **no consumer-product, personal-use, or research exception**. There is no de minimis
-   threshold. If Orimera's servers compute the embedding, Orimera is a collecting private entity.
-2. It reaches Orimera through **Illinois residents**, not through Orimera's own location. There is no
+   threshold. If Exulanica's servers compute the embedding, Exulanica is a collecting private entity.
+2. It reaches Exulanica through **Illinois residents**, not through Exulanica's own location. There is no
    Illinois-presence requirement for the entity, only for the aggrieved person.
 3. The written release runs to **the person in the photograph, not the account holder**. The account
    holder cannot consent on behalf of the person they photographed. This single fact is why the
@@ -106,7 +106,7 @@ method is a **single** violation with at most one recovery, and to have expressl
 signature for the s.15(b) written release. The research could not load the ILGA public act endpoints
 (HTTP 500) and relied on a law-firm summary
 (https://www.kslaw.com/news-and-insights/illinois-bipa-reform-takes-effect). **Settled by**: reading
-the amended s.20 text directly on ILGA. Until then, no external Orimera material may state the
+the amended s.20 text directly on ILGA. Until then, no external Exulanica material may state the
 per-person rule as fact. Note that even under the amended reading, distinct faces are distinct
 violations, and the fee-shifting provision is the real driver of exposure.
 
@@ -124,7 +124,7 @@ Source: https://tcss.legis.texas.gov/resources/BC/htm/BC.503.htm (retrieved 2026
 AI system, **unless the system as deployed is used to uniquely identify a specific individual**.
 Source: https://tcss.legis.texas.gov/resources/BC/htm/BC.503.htm (retrieved 2026-08-27)
 
-**ANALYSIS.** Orimera's product thesis is that the deployed system identifies specific individuals
+**ANALYSIS.** Exulanica's product thesis is that the deployed system identifies specific individuals
 across captures. The AI carve-out is therefore **expressly unavailable**. This is written down here
 because "there is an AI training exception in Texas" is the exact half-read sentence that leads a team
 to the wrong conclusion.
@@ -162,7 +162,7 @@ Source: https://gdpr-info.eu/art-4-gdpr/ (retrieved 2026-08-27)
   accepted. A pre-ticked box or a bundled terms-of-service acceptance is not. This is why section 4
   has one tick per scope and no bundled grant.
 - 9(2)(e) is narrow and is **not** satisfied by "they were in a public place". It concerns the data
-  subject deliberately publishing. Orimera does not lean on it.
+  subject deliberately publishing. Exulanica does not lean on it.
 - Art. 17 (erasure) and Art. 35 (DPIA) both apply. A DPIA would be effectively mandatory for any real
   deployment: systematic processing of special-category data.
 
@@ -170,11 +170,11 @@ Source: https://gdpr-info.eu/art-4-gdpr/ (retrieved 2026-08-27)
 covers public space, following CJEU *Ryneš* (C-212/13, 11 December 2014). The research did not read
 the judgment text and relied on a secondary summary
 (https://www.gdprhub.eu/index.php?title=CJEU_-_C-212/13_-_Ryne%C5%A1). **Settled by**: reading the
-judgment. The point is recorded because it matters to the *user*, not to Orimera: **Orimera as service
+judgment. The point is recorded because it matters to the *user*, not to Exulanica: **Exulanica as service
 provider is a controller or processor in its own right and is never covered by the household
 exemption**, whatever *Ryneš* says.
 
-### 2.5 EU AI Act. Orimera is the enumerated Annex III(1)(a) case.
+### 2.5 EU AI Act. Exulanica is the enumerated Annex III(1)(a) case.
 
 **VERIFIED.** Art. 3 definitions: "biometric identification" is automated recognition of human
 features to establish identity by comparing biometric data to stored reference data. A "remote
@@ -192,11 +192,11 @@ Source: https://artificialintelligenceact.eu/annex/3/ (secondary rendering, retr
 conditions, **but a system that performs profiling of natural persons is always high-risk regardless**.
 Source: https://artificialintelligenceact.eu/article/6/ (retrieved 2026-08-27)
 
-**ANALYSIS.** People in a photograph are not actively participating in identification. Orimera compares
+**ANALYSIS.** People in a photograph are not actively participating in identification. Exulanica compares
 their derived embeddings against a stored reference set to establish which prior person they are. The
-verification carve-out does not apply, because Orimera is not confirming a claimed identity. The
+verification carve-out does not apply, because Exulanica is not confirming a claimed identity. The
 Art. 6(3) derogation is unavailable, because clustering a person's appearances, places and events over
-time is profiling. **If Orimera were placed on the EU market, it would be a high-risk AI system.**
+time is profiling. **If Exulanica were placed on the EU market, it would be a high-risk AI system.**
 
 **VERIFIED.** Art. 5(1)(f) prohibits emotion recognition in workplace and education contexts; 5(1)(g)
 prohibits biometric categorisation by protected attributes; 5(1)(h) prohibits real-time remote
@@ -240,7 +240,7 @@ Source: https://eur-lex.europa.eu/eli/reg/2026/1744/oj/eng (existence and dates,
 leaving Art. 50 transparency obligations applying from 2 August 2026 with Art. 50(2) machine-readable
 marking applying to legacy systems from 2 December 2026. These dates come from a law-firm analysis and
 a Council press release, not from the operative text: EUR-Lex full-text retrieval timed out three
-times during research. **Settled by**: reading amended Article 113 directly. **No Orimera material may
+times during research. **Settled by**: reading amended Article 113 directly. **No Exulanica material may
 state these dates until that has happened.** What is not in doubt is that the deferral changes the
 *deadline*, never the *classification*.
 
@@ -258,7 +258,7 @@ letter. **Settled by**: loading the PDF and citing the subsection. The definitio
 
 **ANALYSIS.** CPRA carries no general private right of action here, and the practical delta over BIPA
 is small once opt-in, purpose limitation and deletion exist. One axis where CPRA is **broader** than
-BIPA: if Orimera ever infers gait or movement signature to re-identify a person whose face is not
+BIPA: if Exulanica ever infers gait or movement signature to re-identify a person whose face is not
 visible, that is CPRA biometric information even though it sits outside BIPA's enumerated list.
 
 **VERIFIED.** Colorado HB24-1130, effective 1 July 2025, amends the Colorado Privacy Act to require a
@@ -275,7 +275,7 @@ Source:
 https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=PEN&sectionNum=632
 (retrieved 2026-08-27)
 
-**ANALYSIS.** This is a wiretapping statute, it is criminal, and it binds **the wearer**, not Orimera.
+**ANALYSIS.** This is a wiretapping statute, it is criminal, and it binds **the wearer**, not Exulanica.
 California, Florida, Illinois, Pennsylvania and Washington are all-party-consent states. It does not
 bite the current photograph corpus, because there is no audio. It bites on the first day audio capture
 exists, and at that point onboarding acquires a duty to warn that names the all-party-consent states,
@@ -318,7 +318,7 @@ the second kind is a control.
 | G1 | **No probe-image search endpoint exists.** No API, no UI, no internal function accepts an arbitrary image and returns "who is this". Identity linking happens only *within* media already ingested through a capture session. | "Upload a stranger's photo, find them" | Architectural. There is nothing to call. |
 | G2 | **Person clusters are tenant-scoped. There is no global face index.** Embeddings from different tenants are never compared. | Building a cross-account face database; law-enforcement-style search | Architectural. Vector isolation is by namespace, not by metadata filter. |
 | G3 | **Embeddings never appear in any API response or export.** Not in JSON, not in a debug endpoint, not in an export. | Extracting templates for reuse in another system | Architectural. |
-| G4 | **The system never proposes a real-world identity.** It asserts only "the same person as in these other captures". Names come solely from the account holder's own annotation. | Turning Orimera into an identification service | Architectural, and it also defuses defamation-by-mismatch. |
+| G4 | **The system never proposes a real-world identity.** It asserts only "the same person as in these other captures". Names come solely from the account holder's own annotation. | Turning Exulanica into an identification service | Architectural, and it also defuses defamation-by-mismatch. |
 | G5 | **Deny-by-default consent gating, per person and per scope.** Absence of a scope token means denied, never "not yet decided". | Processing non-consenting people at all | Strong. It is the same control that does the BIPA s.15(b) work. |
 | G6 | **The LLM has no tool authority.** It emits a proposed action into a structured field; a **server-side policy engine** decides execution. | Every prompt-injection path that ends in an action | Architectural. See section 7. |
 | G7 | **No demographic or affect inference on faces.** | AI Act Art. 5(1)(f) and (g) exposure | Architectural, by not building the field. |
@@ -326,7 +326,7 @@ the second kind is a control.
 | G9 | **No third-party ingestion API, no webhooks, no bulk export, no service accounts.** Browser upload by an authenticated human only. | Automated pipelines, integration into a surveillance stack | Architectural for the MVP, and it weakens the day an API ships. |
 
 **DECISION.** G1 through G4 plus G6 are the load-bearing controls, and the honest external framing is:
-"Orimera is architecturally incapable of identifying a person you have not captured yourself, and it
+"Exulanica is architecturally incapable of identifying a person you have not captured yourself, and it
 cannot compare people across accounts. It cannot prevent a determined user from misusing their own
 photographs, and it does not claim to." Rejected alternative: presenting the heuristic guards in 3.2
 as protections, rejected because they are evadable and describing them as protections would be an
@@ -646,7 +646,7 @@ These belong in the product copy, not only in this document.
 | Limit | The honest statement |
 | --- | --- |
 | Backups | Encrypted backups are retained up to 30 days. Deleted data is removed as backups expire, not instantly. Crypto-shredding makes media unreadable immediately; structured derivatives persist in backups until expiry. |
-| Inference provider | With zero-data-retention enabled, Nebius states inputs and outputs are not stored after each request. **Orimera relies on that assertion and cannot independently verify it.** Without ZDR, inputs and outputs are retained for speculative decoding. |
+| Inference provider | With zero-data-retention enabled, Nebius states inputs and outputs are not stored after each request. **Exulanica relies on that assertion and cannot independently verify it.** Without ZDR, inputs and outputs are retained for speculative decoding. |
 | Outbound lookup | The web-lookup provider's privacy policy permits reuse of query data to improve future responses and sharing with third-party search index providers. **Anything sent must be treated as permanently public.** This is why the outbound query is constructed server-side from a whitelist of public entity fields and never from model output. |
 | Already exported | Downloaded files, screen recordings of the demo, saved share links: beyond reach. The link can be revoked; the copy cannot. |
 | Logs and traces | Content is kept out of logs by design. Where a stack trace captures a fragment, log retention is 14 days and there is no selective purge within it. |
@@ -673,12 +673,12 @@ Several of these are FTC Section 5 deception exposure, not merely bad manners. E
 | --- | --- |
 | "Private" or "privacy-first", unqualified | Photographs of third parties are sent to a third-party cloud for inference. |
 | "On-device", "runs locally", "your data never leaves your device" | Inference runs on Nebius. |
-| "End-to-end encrypted" | Orimera decrypts in order to compute embeddings. E2EE means the operator cannot read the content. Orimera can, and must. |
+| "End-to-end encrypted" | Exulanica decrypts in order to compute embeddings. E2EE means the operator cannot read the content. Exulanica can, and must. |
 | "Zero-knowledge" | Same reason. |
 | "Anonymous", "de-identified", "we only store embeddings, not faces" | An embedding whose entire purpose is unique identification is the opposite of anonymous. Under GDPR Art. 4(14) it is the paradigm case of biometric data. |
 | "GDPR compliant", "BIPA compliant", "CCPA compliant" | Compliance is a legal conclusion about an operating organisation, not a product feature. There is no DPIA, no DPO, no Art. 30 records, and no established lawful basis for non-user subjects. |
 | "HIPAA compliant" | Not a covered entity or business associate; nothing here is designed for PHI. |
-| "SOC 2", "ISO 27001" | **Nebius holds those certifications for its infrastructure. Orimera does not inherit them.** This is the single most common dishonest transitive claim in AI products. |
+| "SOC 2", "ISO 27001" | **Nebius holds those certifications for its infrastructure. Exulanica does not inherit them.** This is the single most common dishonest transitive claim in AI products. |
 | "Fully deleted", "permanently erased", "gone forever" | Provider logs, backups, PITR windows, CDN caches and already-exported artifacts all survive for a period. |
 | "Immutable", "WORM", "tamper-proof" | See 6.3. |
 | "We never share your data" | Derived text and media go to Nebius; public-entity names go to the web-lookup provider. |
@@ -695,7 +695,7 @@ text hashed into `notice_text_sha256`. It is written to satisfy BIPA s.15(b)(1) 
 
 > **Before we use photographs of you**
 >
-> Orimera is an experimental research prototype. If you agree, we will keep photographs that include
+> Exulanica is an experimental research prototype. If you agree, we will keep photographs that include
 > you and use them in the ways ticked below.
 >
 > From those photographs we will create a **face template**: a mathematical signature of your face
@@ -731,9 +731,9 @@ text hashed into `notice_text_sha256`. It is written to satisfy BIPA s.15(b)(1) 
 
 **(b) Product privacy summary.** The short version, shown in-app and in the repository README.
 
-> **What Orimera actually does with your data, in plain terms.**
+> **What Exulanica actually does with your data, in plain terms.**
 >
-> Orimera is a research prototype. It is **not** private, **not** on-device, and **not** end-to-end
+> Exulanica is a research prototype. It is **not** private, **not** on-device, and **not** end-to-end
 > encrypted, and we will not tell you otherwise.
 >
 > - Your photographs are uploaded to our servers and sent to **Nebius**, a third-party AI cloud
@@ -762,7 +762,7 @@ text hashed into `notice_text_sha256`. It is written to satisfy BIPA s.15(b)(1) 
 > revocable consent covering biometric processing and public demonstration. No minors and no
 > non-consenting bystanders appear. No real credentials, addresses, vehicle plates, private screens, or
 > personal documents appear. No real capture media, embeddings, or consent records are included in this
-> repository. Orimera is a research prototype, is not a compliance-ready product, and makes no claim of
+> repository. Exulanica is a research prototype, is not a compliance-ready product, and makes no claim of
 > regulatory compliance.
 
 **(d) AI Act Art. 50 surfaces.** In the query panel: "You are asking an AI system. Answers are
@@ -785,12 +785,12 @@ back it and because immutability and the deletion requirement in section 5 are i
 
 ## 7. Prompt injection
 
-### 7.1 Why Orimera is unusually exposed
+### 7.1 Why Exulanica is unusually exposed
 
 **The untrusted content is the product.** A retrieval chatbot over company documents has a
-mostly-trusted corpus. Orimera's corpus is whatever was in front of a camera: signs, menus, posters,
+mostly-trusted corpus. Exulanica's corpus is whatever was in front of a camera: signs, menus, posters,
 whiteboards, laptop screens, book covers, printed text on clothing. An attacker who wants to compromise
-a specific Orimera user only has to be holding a piece of paper when that user takes a photograph.
+a specific Exulanica user only has to be holding a piece of paper when that user takes a photograph.
 
 **VERIFIED.** OWASP LLM01:2025 distinguishes direct injection (user input alters behaviour) from
 indirect injection (external content the model ingests alters behaviour), and specifically flags
@@ -969,9 +969,9 @@ it, using the identifiers from section 3:
 | **Public CCTV ingestion** | S1 (signed capture-session manifest from a registered client; arbitrary file upload rejected), S2 (fixed-viewpoint and duration gating) | Medium and weak respectively. A determined user can forge a manifest or add camera shake. Say so. |
 | **Consequential decisions about a person** | G4 (the system asserts only co-appearance, never identity or character), G7 (no demographic or affect inference exists to be misread as an assessment), S4 (refusal card on "should I hire / rent to / lend to X", "is X trustworthy") | G4 and G7 bind. S4 is a speed bump. |
 
-**The honest external framing**, which is the only framing permitted in any Orimera material:
+**The honest external framing**, which is the only framing permitted in any Exulanica material:
 
-> Orimera is architecturally incapable of identifying a person you have not captured yourself, and it
+> Exulanica is architecturally incapable of identifying a person you have not captured yourself, and it
 > cannot compare people across accounts. It cannot prevent a determined user from misusing their own
 > photographs, and we do not claim that it can.
 
@@ -1117,7 +1117,7 @@ Two consequences of leaving it open, so that nobody is surprised later:
   requires a TTL field, a discard job, and a corresponding line in the disclosure copy in 6.2(a)
   explaining that a template may briefly exist before confirmation. Choosing R-loose would require
   rewriting the disclosure copy and would forfeit the honest framing in section 8.
-- No external Orimera material may describe the embedding-existence rule until this is decided, because
+- No external Exulanica material may describe the embedding-existence rule until this is decided, because
   today there are three answers.
 
 ---

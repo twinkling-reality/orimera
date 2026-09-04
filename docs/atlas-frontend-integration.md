@@ -81,7 +81,7 @@ SHA-256 over what arrived, and compares it **to the descriptor** rather than to 
 all and says so, rather than decoding what it could not check.
 
 **The container the loader accepts is `opm/2`**, which is a constant in that file and moves with
-the decoder in `@orimera/atlas-react`. ADR-0010 D9 is refuse and regenerate with no upgrade on
+the decoder in `@exulanica/atlas-react`. ADR-0010 D9 is refuse and regenerate with no upgrade on
 read, so a descriptor naming `opm/1` is refused from the list rather than fetched and failed at
 the decoder: the region loses its geometry, the reason names the version, and several megabytes
 that could not have been read are never transferred. A descriptor whose container is null is
@@ -102,7 +102,7 @@ The authoritative disclosure names `recordedSceneRung`, `displayedRung` and
 Decoded OPM bytes cannot promote it. The disclosure also shows registered member count and every
 gate or fallback reason, including the missing scale, coverage, corridor and splat receipts that
 currently hold a production posed scene at rung 3. Its displayed-rung sentence comes from the one
-shared `RUNG_COPY` table in `@orimera/formation`; the app no longer carries a divergent copy.
+shared `RUNG_COPY` table in `@exulanica/formation`; the app no longer carries a divergent copy.
 
 The load runs on **every** mount, not once at start-up. The graph is re-read and unchanged decoded
 maps are carried forward by artifact id. That is what carries deletion to the renderer: deleting

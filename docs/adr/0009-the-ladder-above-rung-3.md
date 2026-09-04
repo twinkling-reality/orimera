@@ -5,7 +5,7 @@
   D7 and D8 remain decisions for future rung-2 and rung-1 producers. No authorized real dense
   capture set was available, so no representative registration or quality result is claimed.
 - Date: 2026-09-03
-- Deciders: Orimera build. Four independent proposals were scored by judges on honesty, on the
+- Deciders: Exulanica build. Four independent proposals were scored by judges on honesty, on the
   metric frame and query path, and on what could be implemented now on this machine.
 - Supersedes: nothing wholesale. It corrects two sentences in place, named in D2 and D3.
 - Related: [product-specification.md](../product-specification.md) section 5;
@@ -22,7 +22,7 @@ The ladder has four rungs and, until this work, one producer. `decide_rung` awar
 4 from one photograph. The controllers for the rungs above it exist and are contract tested, and
 until now none of them had a backend: `pose` shelled out to a `colmap` binary that is not
 installed anywhere in this project, and `splat` delegates to a container entrypoint nobody has
-built. Nothing in `orimera.ingest` calls any of them, so no rung above 3 has ever been published.
+built. Nothing in `exulanica.ingest` calls any of them, so no rung above 3 has ever been published.
 
 Three measurements from [reconstruction-findings.md](../reconstruction-findings.md) shape every
 decision below.
@@ -173,7 +173,7 @@ and its `rung_claims` subject resolves to the same pseudonym as the exported sce
 *BUILT 2026-09-04. The remaining producer clause is now closed. Migration 0026 adds an immutable
 ordered job-member set, deterministic scene and job identities, a recorded selection-policy
 digest, and renewable leases. Normal `run_scene_grouping` applies the explicit
-`orimera.scene-group-pose-selection/v1` policy and queues every group of at least three members.
+`exulanica.scene-group-pose-selection/v1` policy and queues every group of at least three members.
 The scene worker records registration as an outcome, prepares the completed scene and artifacts
 behind tombstone guards, flushes receipt bytes under purge-compatible session locks, then
 atomically publishes the rung assertion and successful job state. Graph and package readers hide
@@ -230,7 +230,7 @@ regeneration path for a record it did not anticipate. **Either OPM/2 goes first,
 carries a regeneration path.** What the delivery route contributes is that the by-id byte route
 deliberately does NOT filter `superseded_by`, so an old row stays fetchable; that is the only
 reason a stale record would degrade rather than break, and it is documented in
-`orimera/graph/geometry.py` as a decision rather than left as an omission.
+`exulanica/graph/geometry.py` as a decision rather than left as an omission.
 
 *DISCHARGED 2026-09-03. OPM/2 went first.* ADR-0010 is built, the depth stage's params now read
 `"container": "opm/2"`, and every point map an existing corpus held is refused by name and

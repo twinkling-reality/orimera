@@ -7,7 +7,7 @@ measures them. It does not create a corpus, a consent record, a label, a split, 
 command below validates metadata and hashes without opening source media:
 
 ```bash
-uv run orimera-eval inspect-corpus --corpus /private/path/to/OGC-1
+uv run exulanica-eval inspect-corpus --corpus /private/path/to/OGC-1
 ```
 
 The source directory is deliberately outside Git. The repository contains contract tests that
@@ -39,13 +39,13 @@ OGC-1/
   media/                         # private and never committed
 ```
 
-`CORPUS.json` has profile `orimera.evaluation-corpus/v1`. It declares an opaque corpus id, an
+`CORPUS.json` has profile `exulanica.evaluation-corpus/v1`. It declares an opaque corpus id, an
 explicit `synthetic` boolean, the split and consent index paths, exactly the label layers defined by
 `evaluation-methodology.md`, and a SHA-256 inventory of every contract and label file. It does not
 inventory itself because a file cannot contain its own digest. The corpus version is the canonical
 SHA-256 of `CORPUS.json` plus its sorted inventory.
 
-`SPLITS.json` has profile `orimera.evaluation-splits/v1`. Each item has:
+`SPLITS.json` has profile `exulanica.evaluation-splits/v1`. Each item has:
 
 - an opaque `item_id`;
 - component `travel` or `room`;
@@ -93,7 +93,7 @@ identity no permission on the blind prefix. No such cloud identity or account is
 
 ## Local discovery result and blocker
 
-The requested local discovery searched the Orimera checkouts and private `.orimera` state, the
+The requested local discovery searched the Exulanica checkouts and private `.orimera` state, the
 project tree, Desktop, Documents, Downloads, Pictures, Codex attachments, and mounted volumes by
 file and manifest name. It found:
 

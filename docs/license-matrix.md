@@ -134,7 +134,7 @@ the NVIDIA Open Model License must not be vendored, and per section 6 must not b
 | **NVIDIA Nemotron Open Model License** (permissive) | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-*`, `nvidia/nemotron-3-super-120b-a12b`. Both per HF card; the Nebius catalog disagrees, see section 5 |
 | **NVIDIA Open Model Agreement** (permissive) | `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-*`. Per HF card; the Nebius catalog disagrees. Removed from Token Factory Serverless 2026-08-31 (F4), so it has no role in the plan |
 | **NVIDIA Open Model License** (restrictive) | Cosmos family (`Cosmos3-Super-Reasoner`, `Cosmos-Reason1-7B`, `Cosmos-Reason2-*`, `Cosmos-Embed1-*`, `C-RADIOv4-H`), `nvidia/parakeet-unified-en-0.6b`, `nvidia/multitalker-parakeet-streaming-0.6b-v1`, `nvidia/diar_streaming_sortformer_4spk-v2.1`, `nvidia/NVIDIA-Nemotron-Parse-v1.2`, `nvidia/NV-DINOv2`, `nvidia/nv-grounding-dino`, `nvidia/Llama-3_1-Nemotron-Ultra-253B-v1` |
-| **NVIDIA Community Model License** (unusable) | No model Orimera needs is only available here |
+| **NVIDIA Community Model License** (unusable) | No model Exulanica needs is only available here |
 | **"NVIDIA License", per repo, non-commercial** | `nvidia/LocateAnything-3B` |
 
 **Consequence for the model plan.** All four surviving text Nemotrons in the reasoning plan
@@ -142,7 +142,7 @@ the NVIDIA Open Model License must not be vendored, and per section 6 must not b
 `NVIDIA-Nemotron-3-Nano-30B-A3B`) sit under permissive instruments, not the restrictive one. The
 NVIDIA-compliance requirement and the Apache-2.0 requirement do not conflict.
 
-**RISK, recorded as a standing constraint (R-29).** This analysis holds because Orimera calls hosted
+**RISK, recorded as a standing constraint (R-29).** This analysis holds because Exulanica calls hosted
 weights and publishes no derived checkpoint. If the project ever fine-tunes and publishes a
 checkpoint, the analysis flips: derive only from OpenMDW-1.1 or NVIDIA Nemotron Open Model License
 bases.
@@ -158,7 +158,7 @@ bases.
 | `nvidia/Nemotron-3_5-Lightning` (Token Factory) / `NVIDIA-Nemotron-3.5-Lightning-30B-A3B-*` | NeMo / Nemotron Apache-2.0 | OpenMDW-1.1 | **Yes** | <https://openmdw.ai/license/1-1/> | **SHIP.** Primary NVIDIA compliance vehicle |
 | `nvidia/nemotron-3-super-120b-a12b` (Token Factory) | Apache-2.0 | nvidia-nemotron-open-model-license per HF; nvidia-open-model-license per Nebius catalog | Yes per HF | <https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license> | **SHIP**, trust HF (section 5) |
 | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-*` | Apache-2.0 | nvidia-nemotron-open-model-license per HF; nvidia-open-model-license per Nebius catalog | Yes per HF | <https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B> | **SHIP**, trust HF (section 5) |
-| `nvidia/Nemotron-3-Ultra-550b-a55b` (Token Factory) | Apache-2.0 | `openmdw-1.1` **per Nebius catalog only** | Yes if catalog is right | <https://tokenfactory.nebius.com/api/public/models_info> | **UNVERIFIED direction of error.** No role in Orimera. See section 5 |
+| `nvidia/Nemotron-3-Ultra-550b-a55b` (Token Factory) | Apache-2.0 | `openmdw-1.1` **per Nebius catalog only** | Yes if catalog is right | <https://tokenfactory.nebius.com/api/public/models_info> | **UNVERIFIED direction of error.** No role in Exulanica. See section 5 |
 | `nvidia/Nemotron-3-Embed-1B-BF16` / `-8B-BF16` | Apache-2.0 | OpenMDW-1.1 (base Ministral is Apache-2.0, so nothing restrictive flows through) | **Yes** | <https://huggingface.co/nvidia/Nemotron-3-Embed-1B-BF16> | **SHIP** |
 | `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-*` | Apache-2.0 | NVIDIA Open Model Agreement | **Yes** | <https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-agreement/> | SHIP by license, but **removed from Token Factory Serverless 2026-08-31** (F4). Not in the plan |
 | `nvidia/omnivinci` | n/a | apache-2.0 | **Yes** | <https://huggingface.co/nvidia/omnivinci> | **SHIP.** Joint video-plus-audio, self-hosted only. No current role given the photo corpus |
@@ -174,7 +174,7 @@ bases.
 | `nvidia/parakeet-unified-en-0.6b` | Apache-2.0 | nvidia-open-model-license | **No** | <https://huggingface.co/nvidia/parakeet-unified-en-0.6b> | **Excluded** per section 6. Also does not claim timestamp support |
 | `nvidia/multitalker-parakeet-streaming-0.6b-v1` | Apache-2.0 | nvidia-open-model-license | **No** | <https://huggingface.co/nvidia/multitalker-parakeet-streaming-0.6b-v1> | **SEGREGATE.** Architecturally attractive, excluded per section 6 |
 | Cosmos family: `Cosmos3-Super-Reasoner`, `Cosmos-Reason1-7B`, `Cosmos-Reason2-*`, `Cosmos-Embed1-*`, `C-RADIOv4-H` | `nvidia-cosmos/cosmos-reason1` Apache-2.0; `NVIDIA/Cosmos` NOASSERTION | nvidia-open-model-license; Reason2 additionally **gated** | **No** | <https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/> | **BLOCKED.** Tuned for physical AI, gated, restrictive, and removed from Token Factory Serverless 2026-08-31 |
-| `nvidia/NVIDIA-Nemotron-Parse-v1.2` | Apache-2.0 | nvidia-open-model-license | **No** | <https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2> | SEGREGATE. No role in Orimera |
+| `nvidia/NVIDIA-Nemotron-Parse-v1.2` | Apache-2.0 | nvidia-open-model-license | **No** | <https://huggingface.co/nvidia/NVIDIA-Nemotron-Parse-v1.2> | SEGREGATE. No role in Exulanica |
 | `nvidia/LocateAnything-3B` | per repo | **NVIDIA License**, "academic and non-profit research purposes only", plus a stacked Qwen Research License | **No** | <https://huggingface.co/nvidia/LocateAnything-3B/raw/main/README.md> | **BLOCKED.** A use-time block, not only a shipping block: a publicly released project of this kind is arguably not academic non-profit research |
 | `nvidia/NV-DINOv2`, `nvidia/nv-grounding-dino` | n/a | gated / nvidia-open-model-license | **No** | NGC / HF | **BLOCKED** |
 | `nvidia/difix`, `nvidia/difix_ref` (Difix3D+) | nv-tlabs repo | "NVIDIA License", terms stated as aligned to sd-turbo | **Unverified** | <https://github.com/nv-tlabs/Difix3D> | **UNVERIFIED.** Read in full before any use |
@@ -394,7 +394,7 @@ being *stricter* than reality, which costs rights but is safe. The case that end
 opposite: the catalog being more permissive than the card. Exactly one row in this matrix has that
 shape. `nvidia/Nemotron-3-Ultra-550b-a55b` is recorded as `openmdw-1.1` **from the catalog only**; it
 does not appear in the four models whose OpenMDW-1.1 attribution was verified in raw HF frontmatter
-(F39). The exposure is currently zero because Ultra has no role in Orimera. **If that changes, run
+(F39). The exposure is currently zero because Ultra has no role in Exulanica. **If that changes, run
 the same `curl` used in section 4a against the Ultra card first.**
 
 ---
@@ -404,9 +404,9 @@ the same `curl` used in section 4a against the Ultra card first.**
 The convenient claim is: "we only call an API, so weights licenses do not bind us." **That is
 partially true, and the research located exactly where the gap lands.**
 
-**Where the claim holds.** Orimera calls hosted weights over an inference API and vendors zero
+**Where the claim holds.** Exulanica calls hosted weights over an inference API and vendors zero
 weights into the repository. Model weights accessed over an API are not a derivative work of
-Orimera's source and are not redistributed by Orimera. Redistribution clauses therefore do not bite.
+Exulanica's source and are not redistributed by Exulanica. Redistribution clauses therefore do not bite.
 Under this architecture even the restrictive NVIDIA Open Model License is satisfied by use, because
 its problem clauses concern redistribution, revocation and derivative distribution. That converts a
 licensing blocker into a licensing footnote for the Token Factory calls.
@@ -502,7 +502,7 @@ the mechanics below are recorded as the operating rule and are **not** VERIFIED 
 - **Inbound.** Where an Apache-2.0 dependency ships its own NOTICE file, its attribution notices
   propagate into ours. Nobody has enumerated which of the Apache-2.0 dependencies above ship a NOTICE
   file.
-- **Outbound.** Orimera's own top-level `LICENSE` must remain the **unmodified** Apache-2.0 text.
+- **Outbound.** Exulanica's own top-level `LICENSE` must remain the **unmodified** Apache-2.0 text.
   This is not merely hygiene: GitHub only detects the license and renders the Apache-2.0 chip in the
   repository About section from a recognized filename with unmodified text, and that chip is how most
   readers and automated scanners determine the project's licence. Do not append project-specific terms to
@@ -554,10 +554,10 @@ All cheap, and all of it should exist before the perception pipeline is written.
 
 ## 10. Provenance
 
-Promoted from `.orimera/research/00-RECONCILED-REPORT.md` Part E, sections B4, B5, C-D1, C-D4, C-D9
-and C-D13; `.orimera/research/nvidia-models.md` sections 1.1 and 1.2; `.orimera/research/perception.md`
-sections 0, 1.2, 6.1, 6.1.1 and 9; `.orimera/research/00-RISK-REGISTER.md` entries R-07, R-29, R-30,
-R-35, R-39 and R-67; and the primary catalog data in `.orimera/research/nebius-raw-catalog.md` and
+Promoted from `.exulanica/research/00-RECONCILED-REPORT.md` Part E, sections B4, B5, C-D1, C-D4, C-D9
+and C-D13; `.exulanica/research/nvidia-models.md` sections 1.1 and 1.2; `.exulanica/research/perception.md`
+sections 0, 1.2, 6.1, 6.1.1 and 9; `.exulanica/research/00-RISK-REGISTER.md` entries R-07, R-29, R-30,
+R-35, R-39 and R-67; and the primary catalog data in `.exulanica/research/nebius-raw-catalog.md` and
 `nebius-raw-models_info.json`.
 
 All primary sources retrieved **2026-08-27**. No claim in this document has been re-verified since.

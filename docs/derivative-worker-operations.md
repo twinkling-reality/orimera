@@ -8,16 +8,16 @@
 
 `POST /intake` validates and content-addresses source bytes, commits capture evidence, and enqueues a
 PostgreSQL job containing capture UUIDs. It never places source bytes in the queue. Production runs
-the API with `ORIMERA_DERIVATIVE_WORKER=off` and starts a separately restartable process:
+the API with `EXULANICA_DERIVATIVE_WORKER=off` and starts a separately restartable process:
 
 ```bash
-export ORIMERA_DATABASE_URL=postgresql://orimera_app:<password>@postgres:5432/orimera
-export ORIMERA_DATA_DIR=/var/lib/orimera
-export ORIMERA_WORKSPACE_IDS=<uuid>[,<uuid>...]
-export ORIMERA_DEPTH_MODEL=moge
-export ORIMERA_DEPTH_MODEL_ID=Ruicheng/moge-2-vitl
-export ORIMERA_DEPTH_MODEL_REVISION=39c4d5e957afe587e04eec59dc2bcc3be5ecd968
-uv run --extra reconstruction orimera-derivative-worker
+export EXULANICA_DATABASE_URL=postgresql://exulanica_app:<password>@postgres:5432/${POSTGRES_DB:-exulanica}
+export EXULANICA_DATA_DIR=/var/lib/exulanica
+export EXULANICA_WORKSPACE_IDS=<uuid>[,<uuid>...]
+export EXULANICA_DEPTH_MODEL=moge
+export EXULANICA_DEPTH_MODEL_ID=Ruicheng/moge-2-vitl
+export EXULANICA_DEPTH_MODEL_REVISION=39c4d5e957afe587e04eec59dc2bcc3be5ecd968
+uv run --extra reconstruction exulanica-derivative-worker
 ```
 
 Repeat `--workspace <uuid>` instead of the environment variable when that is easier to manage.
@@ -27,11 +27,11 @@ events and exits. An empty or malformed workspace set is a startup failure.
 
 The API and worker must connect as a role that owns no RLS table and has neither SUPERUSER nor
 BYPASSRLS. Both inspect the active database role at startup and refuse an unsafe one. The bootstrap
-owner URL belongs only to `orimera-db`; `compose.yaml` enforces that split.
+owner URL belongs only to `exulanica-db`; `compose.yaml` enforces that split.
 
-`ORIMERA_DEPTH_MODEL` accepts only `moge` or `unavailable` and defaults to the latter outside
-Compose. `ORIMERA_DEPTH_MODEL_REVISION` is a full Git commit, not a mutable branch or tag, and is
-included in the model identity stored with each point map. `ORIMERA_DEPTH_DEVICE` may pin `cuda`,
+`EXULANICA_DEPTH_MODEL` accepts only `moge` or `unavailable` and defaults to the latter outside
+Compose. `EXULANICA_DEPTH_MODEL_REVISION` is a full Git commit, not a mutable branch or tag, and is
+included in the model identity stored with each point map. `EXULANICA_DEPTH_DEVICE` may pin `cuda`,
 `mps`, or `cpu`; when absent, the model selects MPS, then CUDA, then CPU according to measured
 runtime availability. Compose persists `HF_HOME` under the media volume so a restart does not
 download the reviewed checkpoint again.
