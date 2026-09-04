@@ -66,18 +66,19 @@ shipped there was no production path by which any point map reached the renderer
 artifact bytes, and the only loader in the workspace was the development preview. A posed set, a
 corridor and the designed void would all have been built against nothing.
 
-The backend serves two routes and they are a pair. `GET /geometry` is a descriptor list keyed by
-capture, saying which container each reconstruction is in, how many bytes it is, and the SHA-256
-those bytes must hash to. `GET /geometry/{artifact_id}` is the bytes. Neither ships an island id,
-because ADR-0005 leaves what an island is to the client; neither ships a rung, because the
-recorded rung claim already arrives on the graph payload at the granularity a region is drawn at,
-and a second copy on the wire is the divergence ADR-0009 D11 objects to.
+The backend serves scene facts through `GET /graph` and artifact bytes through
+`GET /geometry/{artifact_id}`. A reconstruction-scene record carries the immutable ordered member
+set, registered and unregistered outcomes, placement and receipt digests, each placed point-map
+descriptor and transform, the recorded rung and reasons, the displayed rung and reasons, and the
+available substrate. The graph route reads that description inside the same repeatable-read
+snapshot as the rest of the world. `GET /geometry` remains the legacy descriptor list for
+per-capture maps that have never belonged to a posed scene.
 
-`web/packages/app/src/geometry-api.ts` reads the list, checks each reference declares
-`workspace-bearer` and a local `/geometry/` path, fetches the bytes with the bearer header,
-computes SHA-256 over what arrived, and compares it **to the descriptor** rather than to the
-response's own `ETag`. Bytes that fail never reach the decoder. A page with no `SubtleCrypto`
-loads no geometry at all and says so, rather than decoding what it could not check.
+`web/packages/app/src/geometry-api.ts` reads the scene records, checks every reference declares
+`workspace-bearer` and a local `/geometry/` path, fetches bytes with the bearer header, computes
+SHA-256 over what arrived, and compares it **to the descriptor** rather than to the response's own
+`ETag`. Bytes that fail never reach the decoder. A page with no `SubtleCrypto` loads no geometry at
+all and says so, rather than decoding what it could not check.
 
 **The container the loader accepts is `opm/2`**, which is a constant in that file and moves with
 the decoder in `@orimera/atlas-react`. ADR-0010 D9 is refuse and regenerate with no upgrade on
@@ -87,24 +88,27 @@ that could not have been read are never transferred. A descriptor whose containe
 attempted anyway, because null means no stage definition was recorded for that artifact's
 parameter digest rather than that the bytes are unreadable, and the decoder is then the check.
 
-A region attempts one reconstruction. `AtlasBinding` takes one point map per island and, until
-the placement record of ADR-0009 D6 exists, nothing records where a second camera stood; the first
-descriptor the server returned for a region is the one attempted and every other one becomes an
-`unplaced` notice. Attempted rather than drawn: a region whose candidate fails does not fall
-through to the next, so a load costs at most one point map per region whatever goes wrong. Every
-request carries its own deadline, because `fetch` has none and `mount()` waits for this. Missing
-bytes, an unreadable container, a failed digest, an unverifiable page, a timeout, a deletion, an
-unauthorised session, a decode failure and a state this build does not recognise stay distinct;
-they are shown on the status bar one line per kind with a count, because `unplaced` is the
-ordinary state of a photograph in a multi-photograph region and one line each would become the
-page. No region invents geometry it does not have: a region without one is rung 4 rendered as
-rung 4, and every citation in it still resolves.
+`GeometryClient.loadScenes` attempts every placed member declared by the validated scene record.
+`AtlasBinding` creates one island root and one transformed point-cloud child for each decoded map.
+It uses the receipt's `scene_from_opm` matrix and never reuses Atlas layout as reconstruction
+placement. Residency cost, footprint and arrival framing include all loaded maps. One missing,
+corrupt, timed-out or unsupported map degrades independently, and an unregistered photograph is
+shown through its source-first region rather than treated as a geometric hole. If no map survives,
+the scene displays rung 4 source photographs. Every request has its own deadline because `fetch`
+has none and `mount()` waits for the result.
 
-The load runs on **every** mount, not once at start-up. The descriptor list is re-read and the
-bytes are not: a map already decoded is carried forward by artifact id. That is what carries a
-deletion to the renderer, because a region whose descriptor has gone loses its geometry on the
-next mount rather than keeping it for the life of the tab. The bytes are served `no-store`, so a
-deleted region's reconstruction is not redrawable from the browser's own disk cache afterwards.
+The authoritative disclosure names `recordedSceneRung`, `displayedRung` and
+`renderingSubstrate` separately. The recorded value comes only from the scene-rung assertion.
+Decoded OPM bytes cannot promote it. The disclosure also shows registered member count and every
+gate or fallback reason, including the missing scale, coverage, corridor and splat receipts that
+currently hold a production posed scene at rung 3.
+
+The load runs on **every** mount, not once at start-up. The graph is re-read and unchanged decoded
+maps are carried forward by artifact id. That is what carries deletion to the renderer: deleting
+any registered or unregistered member removes the complete scene on the next mount. Legacy
+`GET /geometry` omits captures that have belonged to a scene, so a surviving member cannot reappear
+at an invented origin after the placement is withdrawn. Bytes are served `no-store`, so a deleted
+scene is not redrawable from the browser's own disk cache afterwards.
 
 ## Deliberate remaining boundary
 

@@ -89,7 +89,7 @@ range, multirange and partition-prune behaviour that section 3 depends on.
 | Splat, image and derived assets | Nebius Object Storage, eu-north1, Intelligent class, anonymous-read bucket policy, CORS, Range | See section 4 |
 | API and PostgreSQL 18 + pgvector | Nebius AI Cloud Compute VM, `cpu-d3 2vcpu-8gb`, Network SSD volume, restart policy, nightly `pg_dump` to Object Storage | See section 2.1 |
 | Asynchronous ingest and perception | Nebius Serverless AI Jobs, self-terminating, per-second billing | ASR and diarization jobs are deferred: no audio in the corpus |
-| Reconstruction (COLMAP plus gsplat) | Nebius Serverless AI Job, `gpu-l40s-a 1gpu-8vcpu-32gb`, eu-north1, `--preemptible` | Never in the live demo path |
+| Reconstruction | Separate restartable worker; CPU pycolmap pose path runs now, while future gsplat work retains the proposed Nebius `gpu-l40s-a 1gpu-8vcpu-32gb` shape | Prepared asynchronously before a live request; no rung-1 GPU result is claimed |
 | LLM, VLM and text embeddings | Nebius Token Factory, `https://api.tokenfactory.nebius.com/v1/` only | NVIDIA text Nemotron for reasoning plus a non-NVIDIA vision model as a sensor |
 | Public-entity lookup | Tavily, opt-in, server-constructed query only | Section 6.3 |
 

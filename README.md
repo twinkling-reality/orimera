@@ -254,17 +254,24 @@ silent is worse than one that is absent:
   The local composition sets it off and runs that worker as a separately restartable service.
 
 For the production process shape, give both commands the same non-owner database URL and data
-directory, then run:
+directory. The derivative worker produces per-photograph work. The scene worker consumes exact
+multi-photograph sets with pycolmap and therefore runs in its own process:
 
 ```bash
 export ORIMERA_WORKSPACE_IDS=<workspace-uuid>[,<workspace-uuid>...]
 uv run orimera-derivative-worker
+export ORIMERA_CODE_REVISION=<exact-40-character-git-revision>
+export ORIMERA_POSE_RUNTIME_IMAGE=<registry/image@sha256:digest>
+uv run --extra pose orimera-scene-worker
 ```
 
 The command refuses an owner, superuser, or BYPASSRLS database role and refuses an empty workspace
 set. SIGTERM and SIGINT stop new claims, allow the held claim to finish for the configured grace
 period, and record startup, shutdown, claims, lease renewal, retries, reclaim, progress, and the one
 terminal result durably. See [the derivative worker runbook](docs/derivative-worker-operations.md).
+The scene worker uses renewable leases and checkpointed scratch, but responds to deletion during
+pose recovery and removes sensitive work after every terminal outcome. See
+[the production reconstruction-scene runbook](docs/scene-reconstruction-operations.md).
 
 ### Uploading photographs
 

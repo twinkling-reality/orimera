@@ -2,6 +2,13 @@
 
 Status: mixed, labelled per item. Buildability audited against the repository on **2026-08-28**.
 
+**CORRECTED 2026-09-04.** Section 1 remains the dated audit it says it is, but its reconstruction
+and assembled-application rows are no longer current. The API, application shell, production
+point-map delivery, and rung-3 multi-photograph scene path now exist. The latter is documented in
+[scene-reconstruction-operations.md](scene-reconstruction-operations.md). No authorized real dense
+capture set has run through it, and there is still no hosted URL, so this correction is not a claim
+that the demonstration backlog is closed.
+
 Two things have to exist before this project can be shown to anyone who is not sitting beside the
 person running it, and they are different artifacts with different failure modes:
 

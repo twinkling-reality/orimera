@@ -352,6 +352,8 @@ is done, no claim is made here about range requests being on the browser path.
 | `ORIMERA_READONLY_DATABASE_URL` | The Selection executor's role | Optional, and `/readyz` says so when it is absent |
 | `ORIMERA_DERIVATIVE_WORKER` | Whether this process drains what `POST /intake` queues | Defaults to **on**. Off is for an instance that leaves the queue to somebody else, and `/readyz` reports which it is: a queue nobody drains and a queue drained elsewhere look identical from outside |
 | `ORIMERA_WORKSPACE_IDS` | Comma-separated UUIDs the dedicated derivative worker is authorised to drain | Required by the worker command unless one or more `--workspace` flags are supplied. An empty set is a startup failure, not a healthy idle process |
+| `ORIMERA_CODE_REVISION` | Exact 40-character source revision recorded in every production pose manifest | Required by `orimera-scene-worker`; no inferred checkout or mutable default is accepted |
+| `ORIMERA_POSE_RUNTIME_IMAGE` | Digest-pinned image reference recorded in every production pose manifest | Required by `orimera-scene-worker`; a mutable tag does not provide complete provenance |
 | `ORIMERA_APP_ROLE_PASSWORD`, `ORIMERA_EXECUTOR_ROLE_PASSWORD`, `ORIMERA_PURGE_ROLE_PASSWORD` | Passwords for the three roles `orimera-db` provisions | Optional. Set only when supplied, because a deployment authenticating by certificate or by peer has none, and inventing one would create a credential nobody asked for |
 | `ORIMERA_PURGE_DATABASE_URL` | The connection `orimera-purge` uses | No default and **no fallback to the writer**. The purge role holds a cross-workspace read the runtime role must never have, and the runtime role holds writes the purger must never need. Running as the wrong one either destroys another tenant's photograph or cannot tell that it would |
 
@@ -426,8 +428,9 @@ resolved by `Depends`, and FastAPI resolves dependencies after it has read and p
 
 ### 5.1.3 Runtime row-level security is active and checked
 
-`compose.yaml` now keeps the bootstrap owner URL in the one-shot `migrate` service. The API and
-dedicated derivative worker receive `orimera_app`; the Selection executor receives `orimera_ro`.
+`compose.yaml` now keeps the bootstrap owner URL in the one-shot `migrate` service. The API,
+dedicated derivative worker and reconstruction-scene worker receive `orimera_app`; the Selection
+executor receives `orimera_ro`.
 This order matters: migrate as the owner, provision the roles, then start runtime containers with
 credentials that own no table and hold neither SUPERUSER nor BYPASSRLS.
 

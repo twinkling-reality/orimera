@@ -65,10 +65,10 @@ The status terms in this table describe repository state, not aspiration.
 | Photograph intake | **BUILT** | Idempotent intake, upright normalization, rendition, dedicated derivative worker, leases, bounded retries, durable delivery replay, and measured queue metrics | Hosted load and backpressure rehearsal |
 | Vision observation | **BUILT** | Strict structured observation schema, evidence-linked inference rows, model manifest, cost and attempt provenance | Real-corpus accuracy and failure measurements |
 | Semantic memory and selection | **BUILT/PARTIAL** | Occurrences, entities, confirmation boundaries, identity proposals, graph snapshots, and validated selection plans | Complete answer path, real-corpus retrieval evaluation, and long-term memory maintenance |
-| Rung 4 source-first region | **BUILT/PARTIAL** | Honest source-first contract and renderer fixtures | Authorized production source delivery and measured envelopes |
-| Rung 3 point map | **BUILT/PARTIAL** | Optional MoGe prediction, `.opm` producer, quality gate, artifact provenance, and renderer decoder | Real-corpus quality study and deployed asset publication |
-| Rung 2 corridor | **PLANNED** | Product and traversal contract | Pose producer, coverage analysis, trajectory corridor, and nav artifact |
-| Rung 1 splat | **PLANNED** | COLMAP plus `gsplat` selection, deployment shape, license decision, quality-gate concept | Executable reconstruction job, checkpoints, compression, nav proxy, and real-capture result |
+| Rung 4 source-first region | **BUILT/PARTIAL** | Honest source-first contract, authenticated production source delivery, and renderer fixtures | Authorized real-corpus exercise and measured envelopes |
+| Rung 3 point map | **BUILT/PARTIAL** | Optional MoGe prediction, OPM/2 producer, quality gate, artifact provenance, authenticated delivery, posed multi-map scene rendering, and assertion-backed rung disclosure | Authorized real-corpus quality study and deployed operation |
+| Rung 2 corridor | **PLANNED** | Product and traversal contract plus production pose and placement receipts | Physically validated scale, coverage analysis, trajectory corridor, structural-world authority, and nav artifact |
+| Rung 1 splat | **PLANNED** | Production pose receipts, `gsplat` selection, deployment shape, license decision, and quality-gate concept | Reviewed resumable gsplat job, compatible GPU execution, measured scale and coverage, compression, nav proxy, and real-capture result |
 | Spatial world core | **BUILT/PARTIAL** | Deterministic composition, stable identities, protected values, neighborhoods, residency planning, navigation, and renderer binding | Backend topology, layout, placement, and neighborhood authority plus physical streaming |
 | Adaptive appearance | **BUILT** | Reviewed profile registry, exact frontend handshake, validated parameters, immutable global/regional versions, global preview/apply/discard/refine/rollback UI, stale recovery, authenticated source states, and audit provenance | Upstream conversational proposal service, regional renderer preview, and structural proposal path |
 | Adaptive interaction | **BUILT/PARTIAL** | Reviewed capability registry, immutable versions, Settings and Companion preview paths, direct-choice apply, explicit Companion review, rollback, inspection, recommendations, and cross-device hydration | Real-participant comprehensibility and longitudinal stability evaluation |
@@ -292,7 +292,7 @@ prove the blind split was not read by any training or tuning path.
 
 ### Phase 3: reconstruction ladder
 
-Status: **Rung 3 foundation built; rungs 1 and 2 experimental**.
+Status: **Production rung-3 path built 2026-09-04; representative real-corpus run blocked; rungs 1 and 2 experimental**.
 
 #### Phase 3A: production rung 4 and rung 3
 
@@ -307,6 +307,13 @@ the source camera pose with the correct evidence link and no spatial claim deriv
 placement.
 
 #### Phase 3B: camera poses and scene grouping
+
+Implementation status: **BUILT 2026-09-04 for the production rung-3 path.** Normal scene grouping
+applies a versioned selection policy, queues an immutable exact member set, and a separate leased
+worker produces digest-bound pose, placement and gate receipts. The graph validates that chain and
+the renderer draws every available placed OPM/2 map. Registered and unregistered outcomes remain
+attached to the complete original set. A representative authorized corpus is still required to
+measure registration and quality before changing any unmeasured gate.
 
 - select dense capture groups from the user's own media;
 - run COLMAP sparse reconstruction in an idempotent, checkpointed job;

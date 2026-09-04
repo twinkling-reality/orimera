@@ -1,15 +1,9 @@
 # ADR-0009: How the ladder earns rungs 1 and 2, and what a posed rung 3 is
 
-- Status: **ACCEPTED as a design; partially implemented.** Four pieces exist and run: the pose
-  backend (`orimera/reconstruction/pycolmap_executor.py`), **D10, the delivery route**
-  (`orimera/graph/geometry.py`, `orimera/api/routes/geometry.py`,
-  `web/packages/app/src/geometry-api.ts`), which D10 itself required to come first, and **D9's
-  scene identity and its deletion path** (migration 0024, `orimera/evidence/scene.py`, the scene
-  clauses in `orimera/world_package/projector.py`), whose no-ship test is the one thing D9 said
-  had to exist before anything above rung 3 ships, and **D9's scene-level rung assertion**
-  (migration 0025, `orimera/ingest/scene_rung.py`, `orimera/graph/scene_rungs.py`). No production
-  path writes a scene, so nothing ships one yet. Everything else here is decided and not built.
-  Each decision names what it would touch, so that building it is execution rather than reopening.
+- Status: **ACCEPTED; production rung 3 implemented 2026-09-04.** D1, D4, D6, D9, D10, D11 and
+  D12 now run end to end through the normal ingest and separate scene-worker path. D2, D3, D5,
+  D7 and D8 remain decisions for future rung-2 and rung-1 producers. No authorized real dense
+  capture set was available, so no representative registration or quality result is claimed.
 - Date: 2026-09-03
 - Deciders: Orimera build. Four independent proposals were scored by judges on honesty, on the
   metric frame and query path, and on what could be implemented now on this machine.
@@ -176,6 +170,14 @@ deleting an unregistered member withdraws the claim even though that member supp
 span. The world-package projector filters scene assertions from both copies at the same source,
 and its `rung_claims` subject resolves to the same pseudonym as the exported scene.*
 
+*BUILT 2026-09-04. The remaining producer clause is now closed. Migration 0026 adds an immutable
+ordered job-member set, deterministic scene and job identities, a recorded selection-policy
+digest, and renewable leases. Normal `run_scene_grouping` applies the explicit
+`orimera.scene-group-pose-selection/v1` policy and queues every group of at least three members.
+The scene worker records registration as an outcome and atomically commits the completed scene,
+pose, placement and gate artifacts, rung assertion, and successful job state. The policy records
+its unvalidated limits rather than presenting scene grouping as a geometric fact.*
+
 **D10. Nothing above rung 3 reaches a viewer until something serves geometry at all. BUILT
 2026-09-03.** The paragraph is left in the tense it was written in, and what was built follows
 it. There is no
@@ -227,6 +229,14 @@ constraint is retired rather than solved, which is the cheapest of the two outco
 and it is retired only for this bump. **A third container version would recreate it**, and at
 that point D6's records WILL exist and the regeneration path becomes the only option left.
 
+*BUILT 2026-09-04. D6 now has its production delivery contract. `GET /graph` includes one
+validated reconstruction-scene record with the exact member order, registration outcomes, receipt
+digests, per-map descriptors and transforms, recorded and displayed rung fields, substrate, and
+exclusions. It is read in the graph's repeatable-read snapshot. The server reproduces the gate and
+validates the placement against the live artifact rows before any transform crosses the boundary.
+The browser authenticates and verifies each point map separately and the PlayCanvas binding draws
+one transformed cloud per accepted map under one scene root.*
+
 **D11 is now larger than it was, not smaller.** `buildScene` already lets loaded geometry outrank
 the recorded rung, on the stated grounds that "a region holding a decoded point map is standing in
 rung 3 geometry right now". That was true of one preview fixture and is now true of every
@@ -252,6 +262,12 @@ nobody sees has added a claim without adding the honesty that justifies it. One 
 render site, the recorded assertion rather than the container constant, and the measurements shown
 beside the label.
 
+*BUILT 2026-09-04. The one render site is the Atlas reconstruction disclosure. Its authoritative
+copy names the scene's `recordedSceneRung`, the client's `displayedRung`, and the current
+`renderingSubstrate` separately. It obtains the recorded value and withholding reasons from the
+assertion-backed graph record. Geometry load success changes only substrate availability and the
+displayed fallback. It cannot promote the recorded rung.*
+
 **D12. A pose job directory holds photographic derivatives outside the deletion cascade, and this
 is a gap the pose backend just made real.** A COLMAP job writes a working database holding SIFT
 descriptors of every image it was given, alongside the sparse model, in a directory keyed by the
@@ -273,6 +289,14 @@ photographs, and the receipt, which is a statement about a computation;
 `tests/test_geometry_delivery.py` pins that they are still two different files and fails if
 either moves. The rest of D12 stands: nothing registers the directory as an artifact, so no
 tombstone reaches it.
+
+*BUILT 2026-09-04. Durable pose, placement and gate receipts now live in the content-addressed
+store, while staged images, descriptors, the COLMAP database and sparse working files live only in
+locked scratch. Handled success, failure and cancellation remove scratch. Process death retains
+checkpoints for lease reclaim; an age-gated startup sweep removes only inactive, unprotected,
+canonical workspace/job directories. Tombstoning any job member cancels the row and the running
+controller. A process death on the final allowed claim is terminalized as `claim_exhausted` before
+cleanup, closing the expired-running edge without deleting resumable work from an eligible retry.*
 
 ## Alternatives rejected
 

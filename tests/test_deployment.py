@@ -22,6 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 DOCKERFILE = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 DOCKERIGNORE = (ROOT / ".dockerignore").read_text(encoding="utf-8")
 COMPOSE = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+ENV_EXAMPLE = (ROOT / ".env.example").read_text(encoding="utf-8")
 CHECK_WORKFLOW = (ROOT / ".github" / "workflows" / "check.yml").read_text(encoding="utf-8")
 PYPROJECT = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
@@ -196,6 +197,8 @@ def test_the_pose_worker_is_separate_restartable_and_provenance_configured():
     assert "orimera-scene-worker" in COMPOSE
     assert "ORIMERA_CODE_REVISION: ${ORIMERA_CODE_REVISION:?" in COMPOSE
     assert "ORIMERA_POSE_RUNTIME_IMAGE: ${ORIMERA_POSE_RUNTIME_IMAGE:?" in COMPOSE
+    assert "ORIMERA_CODE_REVISION=" in ENV_EXAMPLE
+    assert "ORIMERA_POSE_RUNTIME_IMAGE=" in ENV_EXAMPLE
     assert '--extra server --extra pose' in DOCKERFILE
     assert 'orimera-scene-worker = "orimera.ingest.scene_worker_command:main"' in PYPROJECT
 
