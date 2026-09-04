@@ -22,7 +22,7 @@ import os
 import re
 import subprocess
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +33,7 @@ __all__ = [
     "PoseBuildManifest",
     "PoseJobResult",
     "PoseQuality",
+    "RecoveredCamera",
     "SourceFrame",
     "run_colmap_pose_job",
 ]
@@ -89,9 +90,9 @@ class PoseBuildManifest:
     colmap_version: str
     execution_image: str
     frames: tuple[SourceFrame, ...]
-    min_registered_fraction: float
-    max_mean_reprojection_error_px: float
-    min_camera_translation_units: float
+    min_registered_fraction: float | None
+    max_mean_reprojection_error_px: float | None
+    min_camera_translation_units: float | None
     metric_scale_metres_per_unit: float | None = None
     metric_scale_method: str | None = None
 
@@ -108,16 +109,25 @@ class PoseBuildManifest:
             raise ValueError("source filenames must be unique")
         if len({item.capture_ref for item in self.frames}) != len(self.frames):
             raise ValueError("capture references must be unique")
-        if not 0 < self.min_registered_fraction <= 1:
-            raise ValueError("min_registered_fraction must be in (0, 1]")
-        if self.max_mean_reprojection_error_px <= 0 or not math.isfinite(
-            self.max_mean_reprojection_error_px
+        if self.min_registered_fraction is not None and not (
+            0 < self.min_registered_fraction <= 1
+            and math.isfinite(self.min_registered_fraction)
         ):
-            raise ValueError("max_mean_reprojection_error_px must be finite and positive")
-        if self.min_camera_translation_units < 0 or not math.isfinite(
-            self.min_camera_translation_units
+            raise ValueError("min_registered_fraction must be in (0, 1] or unmeasured")
+        if self.max_mean_reprojection_error_px is not None and (
+            self.max_mean_reprojection_error_px <= 0
+            or not math.isfinite(self.max_mean_reprojection_error_px)
         ):
-            raise ValueError("min_camera_translation_units must be finite and non-negative")
+            raise ValueError(
+                "max_mean_reprojection_error_px must be finite and positive or unmeasured"
+            )
+        if self.min_camera_translation_units is not None and (
+            self.min_camera_translation_units < 0
+            or not math.isfinite(self.min_camera_translation_units)
+        ):
+            raise ValueError(
+                "min_camera_translation_units must be finite and non-negative or unmeasured"
+            )
         has_scale = self.metric_scale_metres_per_unit is not None
         if has_scale != (self.metric_scale_method is not None):
             raise ValueError("metric scale value and method must be present together")
@@ -170,9 +180,40 @@ class CommandExecutor(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class RecoveredCamera:
+    """One registered COLMAP image under the convention COLMAP actually writes.
+
+    ``camera_from_world`` means ``x_camera = R * x_world + t``. COLMAP camera coordinates are
+    +X right, +Y down and +Z forward. The placement record is responsible for the explicit
+    conversion from that frame to OPM's +X right, +Y up and -Z forward frame. Keeping the raw
+    measured pose in this receipt makes that conversion reviewable and prevents a renderer
+    convention from becoming part of the reconstruction result.
+    """
+
+    image_name: str
+    quaternion_wxyz: tuple[float, float, float, float]
+    translation_xyz: tuple[float, float, float]
+    camera_centre_xyz: tuple[float, float, float]
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "image_name": self.image_name,
+            "convention": {
+                "mapping": "camera_from_world",
+                "camera_axes": {"right": "+X", "down": "+Y", "forward": "+Z"},
+                "quaternion_order": "wxyz",
+            },
+            "quaternion_wxyz": list(self.quaternion_wxyz),
+            "translation_xyz": list(self.translation_xyz),
+            "camera_centre_xyz": list(self.camera_centre_xyz),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class PoseQuality:
     source_count: int
     registered_images: tuple[str, ...]
+    cameras: tuple[RecoveredCamera, ...]
     registered_fraction: float
     mean_reprojection_error_px: float | None
     camera_translation_extent_units: float
@@ -189,6 +230,7 @@ class PoseQuality:
         return {
             "source_count": self.source_count,
             "registered_images": list(self.registered_images),
+            "cameras": [camera.as_payload() for camera in self.cameras],
             "registered_fraction": self.registered_fraction,
             "mean_reprojection_error_px": self.mean_reprojection_error_px,
             "camera_translation_extent_units": self.camera_translation_extent_units,
@@ -208,7 +250,7 @@ class PoseQuality:
 
 @dataclass(frozen=True, slots=True)
 class PoseJobResult:
-    status: Literal["completed", "failed"]
+    status: Literal["completed", "failed", "cancelled"]
     manifest_digest: str
     job_directory: Path
     quality: PoseQuality | None
@@ -313,22 +355,24 @@ def _commands(
     )
 
 
-def _quaternion_camera_centre(values: list[float]) -> tuple[float, float, float]:
-    qw, qx, qy, qz, tx, ty, tz = values
+def _quaternion_camera_centre(
+    quaternion: tuple[float, float, float, float],
+    translation: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    qw, qx, qy, qz = quaternion
     rotation = (
         (1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy - qz * qw), 2 * (qx * qz + qy * qw)),
         (2 * (qx * qy + qz * qw), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz - qx * qw)),
         (2 * (qx * qz - qy * qw), 2 * (qy * qz + qx * qw), 1 - 2 * (qx * qx + qy * qy)),
     )
-    translation = (tx, ty, tz)
     return tuple(
         -sum(rotation[row][column] * translation[row] for row in range(3))
         for column in range(3)
     )  # type: ignore[return-value]
 
 
-def _images(path: Path) -> dict[str, tuple[float, float, float]]:
-    registered: dict[str, tuple[float, float, float]] = {}
+def _images(path: Path) -> dict[str, RecoveredCamera]:
+    registered: dict[str, RecoveredCamera] = {}
     records = path.read_text(encoding="utf-8").splitlines()
     index = 0
     while index < len(records):
@@ -339,8 +383,20 @@ def _images(path: Path) -> dict[str, tuple[float, float, float]]:
         parts = line.split()
         if len(parts) < 10:
             raise ValueError(f"malformed COLMAP images.txt record in {path}")
-        registered[" ".join(parts[9:])] = _quaternion_camera_centre(
-            [float(item) for item in parts[1:8]]
+        name = " ".join(parts[9:])
+        values = tuple(float(item) for item in parts[1:8])
+        if not all(math.isfinite(value) for value in values):
+            raise ValueError(f"non-finite COLMAP camera pose in {path}")
+        quaternion = values[:4]
+        translation = values[4:]
+        norm = math.sqrt(sum(value * value for value in quaternion))
+        if not math.isclose(norm, 1.0, rel_tol=1e-5, abs_tol=1e-7):
+            raise ValueError(f"non-unit COLMAP camera quaternion in {path}")
+        registered[name] = RecoveredCamera(
+            image_name=name,
+            quaternion_wxyz=quaternion,
+            translation_xyz=translation,
+            camera_centre_xyz=_quaternion_camera_centre(quaternion, translation),
         )
         # COLMAP's second line is the POINTS2D list and may be empty. It is still part of this
         # image record and never a second image.
@@ -360,8 +416,8 @@ def _mean_error(path: Path) -> float | None:
     return None if not errors else sum(errors) / len(errors)
 
 
-def _translation_extent(centres: Mapping[str, tuple[float, float, float]]) -> float:
-    values = list(centres.values())
+def _translation_extent(cameras: Mapping[str, RecoveredCamera]) -> float:
+    values = [camera.camera_centre_xyz for camera in cameras.values()]
     return max(
         (
             math.dist(values[left], values[right])
@@ -381,7 +437,7 @@ def _inventory(root: Path) -> tuple[tuple[str, str, int], ...]:
 
 
 def _quality(manifest: PoseBuildManifest, sparse: Path) -> PoseQuality:
-    candidates: list[tuple[Path, dict[str, tuple[float, float, float]], float | None]] = []
+    candidates: list[tuple[Path, dict[str, RecoveredCamera], float | None]] = []
     for model in sorted(path for path in sparse.iterdir() if path.is_dir()):
         images = model / "images.txt"
         points = model / "points3D.txt"
@@ -391,6 +447,7 @@ def _quality(manifest: PoseBuildManifest, sparse: Path) -> PoseQuality:
         return PoseQuality(
             source_count=len(manifest.frames),
             registered_images=(),
+            cameras=(),
             registered_fraction=0.0,
             mean_reprojection_error_px=None,
             camera_translation_extent_units=0.0,
@@ -408,20 +465,27 @@ def _quality(manifest: PoseBuildManifest, sparse: Path) -> PoseQuality:
     )[0]
     frames_by_name = {item.filename: item for item in manifest.frames}
     known = tuple(sorted(name for name in registered if name in frames_by_name))
+    cameras = tuple(registered[name] for name in known)
     fraction = len(known) / len(manifest.frames)
     declared_sets = {item.capture_set for item in manifest.frames}
     registered_sets = {frames_by_name[name].capture_set for name in known}
     jointly_coregistered = len(declared_sets) > 1 and registered_sets == declared_sets
     metric = manifest.metric_scale_metres_per_unit is not None
     reasons: list[str] = []
-    if fraction < manifest.min_registered_fraction:
+    if manifest.min_registered_fraction is None:
+        reasons.append("minimum registered-image fraction is unmeasured")
+    elif fraction < manifest.min_registered_fraction:
         reasons.append("registered-image fraction is below the manifest threshold")
-    if mean_error is None:
+    if manifest.max_mean_reprojection_error_px is None:
+        reasons.append("maximum mean reprojection error is unmeasured")
+    elif mean_error is None:
         reasons.append("the sparse model contains no measured reprojection error")
     elif mean_error > manifest.max_mean_reprojection_error_px:
         reasons.append("mean reprojection error is above the manifest threshold")
     extent = _translation_extent({name: registered[name] for name in known})
-    if extent < manifest.min_camera_translation_units:
+    if manifest.min_camera_translation_units is None:
+        reasons.append("minimum recovered camera translation is unmeasured")
+    elif extent < manifest.min_camera_translation_units:
         reasons.append("recovered camera translation is below the manifest threshold")
     if len(declared_sets) > 1 and not jointly_coregistered:
         reasons.append("declared capture sets do not occur in one connected geometric model")
@@ -430,6 +494,7 @@ def _quality(manifest: PoseBuildManifest, sparse: Path) -> PoseQuality:
     return PoseQuality(
         source_count=len(manifest.frames),
         registered_images=known,
+        cameras=cameras,
         registered_fraction=fraction,
         mean_reprojection_error_px=mean_error,
         camera_translation_extent_units=extent,
@@ -451,8 +516,16 @@ def run_colmap_pose_job(
     jobs_root: Path,
     executable: str = "colmap",
     executor: CommandExecutor = _default_executor,
+    cancellation_check: Callable[[], bool] | None = None,
 ) -> PoseJobResult:
-    """Run or resume one exact COLMAP manifest, returning rung 3 on every quality failure."""
+    """Run or resume one exact COLMAP manifest, returning rung 3 on every quality failure.
+
+    ``cancellation_check`` is the ingest-owned deletion boundary. It is asked before reuse and
+    on both sides of every opaque executor call, so a tombstone committed while COLMAP owns the
+    CPU prevents any later stage or durable acceptance. An in-process COLMAP call cannot be
+    interrupted safely halfway through; its caller removes the sensitive scratch directory as
+    soon as this returns ``cancelled``.
+    """
     _verify_sources(source_dir, manifest.frames)
     jobs_root.mkdir(parents=True, exist_ok=True)
     job_dir = jobs_root / manifest.digest
@@ -466,11 +539,24 @@ def run_colmap_pose_job(
         _write_atomic(manifest_path, manifest_bytes)
 
     with _locked(job_dir / "job.lock"):
+        if cancellation_check is not None and cancellation_check():
+            return PoseJobResult(
+                status="cancelled",
+                manifest_digest=manifest.digest,
+                job_directory=job_dir,
+                quality=None,
+                reused=False,
+                failure_reason="a source photograph was deleted before pose acceptance",
+            )
         receipt_path = job_dir / "receipt.json"
         if receipt_path.is_file():
             receipt = _load_json(receipt_path)
+            if receipt.get("profile") != "orimera.colmap-pose-receipt/v2":
+                raise ValueError("the completed pose receipt has an unsupported profile")
             if receipt.get("manifest_digest") != manifest.digest:
                 raise ValueError("the completed pose receipt names another manifest")
+            if receipt.get("manifest") != manifest.as_payload():
+                raise ValueError("the completed pose receipt does not carry its exact manifest")
             quality = _quality(manifest, job_dir / "sparse")
             if _sha256_bytes(_canonical(quality.as_payload())) != receipt.get("quality_digest"):
                 raise ValueError("the completed pose artifacts no longer match their receipt")
@@ -494,6 +580,16 @@ def run_colmap_pose_job(
                 path.exists() for path in required
             ):
                 continue
+            if cancellation_check is not None and cancellation_check():
+                return PoseJobResult(
+                    status="cancelled",
+                    manifest_digest=manifest.digest,
+                    job_directory=job_dir,
+                    quality=None,
+                    reused=False,
+                    failed_stage=stage,
+                    failure_reason="a source photograph was deleted during pose recovery",
+                )
             result = executor(command, job_dir)
             stages[stage] = {
                 "status": "completed" if result.returncode == 0 else "failed",
@@ -504,6 +600,16 @@ def run_colmap_pose_job(
                 "stderr_sha256": _sha256_bytes(result.stderr.encode()),
             }
             _write_atomic(checkpoint_path, _canonical(checkpoint) + b"\n")
+            if cancellation_check is not None and cancellation_check():
+                return PoseJobResult(
+                    status="cancelled",
+                    manifest_digest=manifest.digest,
+                    job_directory=job_dir,
+                    quality=None,
+                    reused=False,
+                    failed_stage=stage,
+                    failure_reason="a source photograph was deleted during pose recovery",
+                )
             if result.returncode != 0:
                 return PoseJobResult(
                     status="failed",
@@ -549,6 +655,16 @@ def run_colmap_pose_job(
                 "--output_type",
                 "TXT",
             )
+            if cancellation_check is not None and cancellation_check():
+                return PoseJobResult(
+                    status="cancelled",
+                    manifest_digest=manifest.digest,
+                    job_directory=job_dir,
+                    quality=None,
+                    reused=False,
+                    failed_stage=stage,
+                    failure_reason="a source photograph was deleted during pose recovery",
+                )
             result = executor(command, job_dir)
             stages[stage] = {
                 "status": "completed" if result.returncode == 0 else "failed",
@@ -559,6 +675,16 @@ def run_colmap_pose_job(
                 "stderr_sha256": _sha256_bytes(result.stderr.encode()),
             }
             _write_atomic(checkpoint_path, _canonical(checkpoint) + b"\n")
+            if cancellation_check is not None and cancellation_check():
+                return PoseJobResult(
+                    status="cancelled",
+                    manifest_digest=manifest.digest,
+                    job_directory=job_dir,
+                    quality=None,
+                    reused=False,
+                    failed_stage=stage,
+                    failure_reason="a source photograph was deleted during pose recovery",
+                )
             if result.returncode != 0 or not all(path.is_file() for path in required):
                 return PoseJobResult(
                     status="failed",
@@ -572,8 +698,13 @@ def run_colmap_pose_job(
 
         quality = _quality(manifest, sparse)
         receipt = {
-            "profile": "orimera.colmap-pose-receipt/v1",
+            "profile": "orimera.colmap-pose-receipt/v2",
             "manifest_digest": manifest.digest,
+            # The durable receipt has to remain explainable after sensitive job scratch is
+            # removed. A digest alone proves equality and does not say which photographs,
+            # runtime, thresholds or scale method produced it, so the exact manifest travels
+            # with the receipt and its digest is checked on every reuse.
+            "manifest": manifest.as_payload(),
             "quality_digest": _sha256_bytes(_canonical(quality.as_payload())),
             "quality": quality.as_payload(),
         }

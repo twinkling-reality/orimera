@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 from orimera.reconstruction.pose import (
@@ -97,6 +98,16 @@ def test_pose_job_checkpoints_and_reuses_the_exact_completed_manifest(tmp_path):
     assert first.quality is not None and first.quality.accepted is True
     assert first.quality.jointly_coregistered is True
     assert first.quality.shared_metric_frame is True
+    assert [camera.image_name for camera in first.quality.cameras] == [
+        "image-0.jpg",
+        "image-1.jpg",
+        "image-2.jpg",
+        "image-3.jpg",
+    ]
+    assert first.quality.cameras[3].camera_centre_xyz == (4.0, 0.0, 0.0)
+    receipt = json.loads((first.job_directory / "receipt.json").read_bytes())
+    assert receipt["profile"] == "orimera.colmap-pose-receipt/v2"
+    assert receipt["manifest"] == manifest.as_payload()
 
 
 def test_joint_geometry_without_measured_scale_never_becomes_a_shared_metric_frame(tmp_path):
@@ -161,3 +172,52 @@ def test_source_bytes_must_exactly_match_the_manifest(tmp_path):
         assert "does not match" in str(exc)
     else:
         raise AssertionError("changed private source bytes were accepted")
+
+
+def test_unmeasured_thresholds_remain_none_and_block_acceptance(tmp_path):
+    source = _sources(tmp_path / "sources")
+    measured = _manifest(source)
+    manifest = PoseBuildManifest(
+        scene_ref=measured.scene_ref,
+        code_revision=measured.code_revision,
+        colmap_version=measured.colmap_version,
+        execution_image=measured.execution_image,
+        frames=measured.frames,
+        min_registered_fraction=None,
+        max_mean_reprojection_error_px=None,
+        min_camera_translation_units=None,
+    )
+    result = run_colmap_pose_job(
+        manifest, source_dir=source, jobs_root=tmp_path / "jobs", executor=FakeColmap()
+    )
+    assert result.quality is not None
+    assert result.quality.accepted is False
+    assert result.quality.reasons == (
+        "minimum registered-image fraction is unmeasured",
+        "maximum mean reprojection error is unmeasured",
+        "minimum recovered camera translation is unmeasured",
+        "joint reconstruction has no measured metric scale",
+    )
+    assert manifest.as_payload()["quality_thresholds"] == {
+        "min_registered_fraction": None,
+        "max_mean_reprojection_error_px": None,
+        "min_camera_translation_units": None,
+    }
+
+
+def test_a_deletion_during_an_executor_call_cancels_before_the_next_stage(tmp_path):
+    source = _sources(tmp_path / "sources")
+    fake = FakeColmap()
+
+    result = run_colmap_pose_job(
+        _manifest(source),
+        source_dir=source,
+        jobs_root=tmp_path / "jobs",
+        executor=fake,
+        cancellation_check=lambda: fake.calls == ["feature_extractor"],
+    )
+
+    assert result.status == "cancelled"
+    assert result.failed_stage == "feature_extractor"
+    assert fake.calls == ["feature_extractor"]
+    assert not (result.job_directory / "receipt.json").exists()
