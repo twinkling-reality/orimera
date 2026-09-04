@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 import uuid
 from pathlib import Path
 
@@ -11,8 +13,15 @@ from orimera.evidence.blob import BlobId
 from orimera.graph import read_snapshot
 from orimera.graph.geometry import point_map_descriptors, read_point_map
 from orimera.ingest.pipeline import PhotoIngestPipeline
+from orimera.ingest.reconstruction_scratch import (
+    ScratchSource,
+    active_scene_scratch,
+    cleanup_abandoned_scene_scratch,
+    stage_scene_sources,
+)
 from orimera.ingest.scene_reconstruction import SceneReconstructionProcessor
 from orimera.ingest.scenes import run_scene_grouping
+from orimera.ingest.spine.reconstruction_jobs import MAX_SCENE_CLAIMS
 from orimera.reconstruction.pose import CommandResult
 from orimera.store.local import LocalContentAddressedStore
 
@@ -307,6 +316,45 @@ def test_a_process_death_resumes_from_the_last_pose_checkpoint(ingest_spine, tmp
     assert outcome.status == "succeeded"
     assert resumed.calls == ["exhaustive_matcher", "mapper"]
     assert not (tmp_path / "scratch" / second.scratch_key).exists()
+
+
+def test_an_expired_final_claim_becomes_terminal_and_releases_its_scratch(
+    repository, tmp_path
+):
+    store, _captures, _point_artifacts, job_id = _queued_scene(repository, tmp_path)
+    claimed = repository.claim_reconstruction_scene(worker="last", lease_seconds=60)
+    assert claimed is not None and claimed.scratch_key is not None
+    with active_scene_scratch(tmp_path / "scratch", claimed.scratch_key) as job_directory:
+        stage_scene_sources(
+            store,
+            job_directory,
+            [ScratchSource("000000.jpg", claimed.members[0].blob_id)],
+        )
+    old_time = time.time() - 7200
+    os.utime(tmp_path / "scratch" / claimed.scratch_key, (old_time, old_time))
+    repository.connection.execute(
+        "update reconstruction_scene_job set attempts=%s, "
+        "lease_expires_at=now()-interval '1 second' "
+        "where workspace_id=%s and job_id=%s",
+        (MAX_SCENE_CLAIMS, repository.workspace_id, job_id),
+    )
+
+    assert repository.expire_exhausted_reconstruction_scenes() == 1
+    row = repository.connection.execute(
+        "select status,completed_at,failure_class,claim_token from reconstruction_scene_job "
+        "where workspace_id=%s and job_id=%s",
+        (repository.workspace_id, job_id),
+    ).fetchone()
+    assert row["status"] == "failed"
+    assert row["completed_at"] is not None
+    assert row["failure_class"] == "claim_exhausted"
+    assert row["claim_token"] is None
+    assert claimed.scratch_key not in repository.active_reconstruction_scratch_keys()
+    assert cleanup_abandoned_scene_scratch(
+        tmp_path / "scratch",
+        active_keys=repository.active_reconstruction_scratch_keys(),
+        older_than_seconds=3600,
+    ) == (claimed.scratch_key,)
 
 
 def test_deletion_during_pose_cancels_without_scene_outputs(repository, tmp_path):

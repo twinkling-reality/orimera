@@ -257,6 +257,10 @@ class IngestRepository:
         """Scratch that a queued, held or retryable scene job may still resume."""
         return reconstruction_jobs.active_scratch_keys(self._scope)
 
+    def expire_exhausted_reconstruction_scenes(self) -> int:
+        """Terminalize final claims whose worker died after its lease expired."""
+        return reconstruction_jobs.expire_exhausted(self._scope)
+
     def heartbeat_reconstruction_scene(
         self, *, job_id: uuid.UUID, claim_token: uuid.UUID, lease_seconds: float
     ) -> bool:

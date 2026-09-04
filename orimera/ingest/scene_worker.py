@@ -109,9 +109,9 @@ class SceneReconstructionWorker:
         active: set[str] = set()
         for workspace_id in self._workspaces:
             with self._database.session(workspace_id) as connection:
-                active.update(
-                    IngestRepository(connection, workspace_id).active_reconstruction_scratch_keys()
-                )
+                repository = IngestRepository(connection, workspace_id)
+                repository.expire_exhausted_reconstruction_scenes()
+                active.update(repository.active_reconstruction_scratch_keys())
         return cleanup_abandoned_scene_scratch(
             self._scratch_root,
             active_keys=frozenset(active),

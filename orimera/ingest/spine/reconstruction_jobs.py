@@ -23,6 +23,7 @@ __all__ = [
     "claim",
     "complete",
     "enqueue",
+    "expire_exhausted",
     "fail",
     "heartbeat",
 ]
@@ -131,6 +132,20 @@ def active_scratch_keys(scope: WorkspaceScope) -> frozenset[str]:
         (scope.workspace_id, MAX_SCENE_CLAIMS),
     ).fetchall()
     return frozenset(row["scratch_key"] for row in rows)
+
+
+def expire_exhausted(scope: WorkspaceScope) -> int:
+    """Make a dead final claim terminal so its sensitive scratch can be swept."""
+    cursor = scope.connection.execute(
+        "update reconstruction_scene_job set status='failed',claim_token=null,"
+        "claimed_by=null,lease_expires_at=null,completed_at=coalesce(completed_at,now()),"
+        "updated_at=now(),failure_class='claim_exhausted',"
+        "failure_message='the final worker lease expired before completion' "
+        "where workspace_id=%s and status='running' and lease_expires_at < now() "
+        "and attempts >= %s",
+        (scope.workspace_id, MAX_SCENE_CLAIMS),
+    )
+    return cursor.rowcount
 
 
 def _claimed(scope: WorkspaceScope, row: dict[str, Any], *, reclaimed: bool) -> ClaimedSceneJob:
