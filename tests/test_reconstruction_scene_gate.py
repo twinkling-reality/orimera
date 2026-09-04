@@ -8,6 +8,7 @@ from orimera.reconstruction.scene_gate import (
     SceneGateInputs,
     SceneReceipt,
     decide_scene_rung,
+    validate_scene_gate_decision,
 )
 
 
@@ -67,6 +68,23 @@ def test_the_present_gate_awards_rung_three_and_names_every_missing_receipt():
         "pose",
         "placement",
     ]
+    assert validate_scene_gate_decision(decision.to_bytes()) == decision
+
+
+def test_a_gate_envelope_cannot_relabel_its_rung_even_with_a_recomputed_outer_digest():
+    decision = decide_scene_rung(_current_inputs())
+    payload = json.loads(decision.to_bytes())
+    payload["decision"]["rung"] = 2
+    import hashlib
+
+    encoded_decision = json.dumps(
+        payload["decision"], sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode()
+    payload["decision_sha256"] = hashlib.sha256(encoded_decision).hexdigest()
+    tampered = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+
+    with pytest.raises(ValueError, match="reproduce"):
+        validate_scene_gate_decision(tampered)
 
 
 def test_an_accepted_corridor_without_scale_or_coverage_cannot_award_rung_two():

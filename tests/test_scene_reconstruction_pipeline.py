@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from orimera.evidence.blob import BlobId
+from orimera.graph import read_snapshot
 from orimera.ingest.pipeline import PhotoIngestPipeline
 from orimera.ingest.scene_reconstruction import SceneReconstructionProcessor
 from orimera.ingest.scenes import run_scene_grouping
@@ -180,6 +181,92 @@ def test_scene_group_pose_placement_gate_and_assertion_commit_together(repositor
         "select count(*) as count from artifact where workspace_id=%s and scene_id=%s",
         (repository.workspace_id, outcome.scene_id),
     ).fetchone()["count"] == 3
+
+
+def test_graph_delivers_the_validated_scene_and_exact_placed_maps(repository, tmp_path):
+    store, captures, point_artifacts, _job_id = _queued_scene(repository, tmp_path)
+    before_version = read_snapshot(
+        repository.connection, repository.workspace_id, store
+    ).state_version
+    claimed = repository.claim_reconstruction_scene(worker="test", lease_seconds=60)
+    assert claimed is not None
+    outcome = _processor(repository, store, tmp_path, FakeColmap(registered=2)).process(claimed)
+
+    graph = read_snapshot(repository.connection, repository.workspace_id, store)
+
+    assert graph.state_version == before_version + 2
+    assert len(graph.reconstruction_scenes) == 1
+    scene = graph.reconstruction_scenes[0]
+    assert scene.scene_id == outcome.scene_id
+    assert scene.recorded_rung == scene.displayed_rung == 3
+    assert scene.receipt_state == "available"
+    assert scene.placement_state == "available"
+    assert scene.rendering_substrate == "posed_point_maps"
+    assert [member.capture_id for member in scene.members] == captures
+    assert [
+        member.placement.artifact_id
+        for member in scene.members
+        if member.placement is not None
+    ] == point_artifacts[:2]
+    assert all(
+        member.placement.reference.content_sha256 == member.placement.content_sha256
+        for member in scene.members
+        if member.placement is not None and member.placement.reference is not None
+    )
+    assert scene.members[2].exclusion_reason == "pose-not-registered"
+
+
+@pytest.mark.parametrize("damage", ["missing", "corrupt"])
+def test_graph_falls_back_to_photographs_when_a_scene_receipt_is_unusable(
+    repository, tmp_path, damage
+):
+    store, _captures, _point_artifacts, _job_id = _queued_scene(repository, tmp_path)
+    claimed = repository.claim_reconstruction_scene(worker="test", lease_seconds=60)
+    assert claimed is not None
+    outcome = _processor(repository, store, tmp_path, FakeColmap(registered=3)).process(claimed)
+    row = repository.connection.execute(
+        "select a.content_sha256 from reconstruction_scene_job j join artifact a "
+        "on a.workspace_id=j.workspace_id and a.artifact_id=j.placement_artifact_id "
+        "where j.workspace_id=%s and j.scene_id=%s",
+        (repository.workspace_id, outcome.scene_id),
+    ).fetchone()
+    digest = BlobId(bytes(row["content_sha256"]))
+    path = store.root / store.key_for(digest)
+    path.chmod(0o644)
+    if damage == "missing":
+        path.unlink()
+    else:
+        path.write_bytes(b"not the placement receipt")
+
+    scene = read_snapshot(
+        repository.connection, repository.workspace_id, store
+    ).reconstruction_scenes[0]
+
+    assert scene.recorded_rung == 3
+    assert scene.displayed_rung == 4
+    assert scene.rendering_substrate == "source_photographs"
+    assert scene.receipt_state == ("missing" if damage == "missing" else "invalid")
+    assert all(member.placement is None for member in scene.members)
+
+
+def test_deleting_one_scene_member_withdraws_it_from_the_graph(repository, tmp_path):
+    store, captures, _point_artifacts, _job_id = _queued_scene(repository, tmp_path)
+    claimed = repository.claim_reconstruction_scene(worker="test", lease_seconds=60)
+    assert claimed is not None
+    _processor(repository, store, tmp_path, FakeColmap(registered=3)).process(claimed)
+    before = read_snapshot(repository.connection, repository.workspace_id, store)
+    assert len(before.reconstruction_scenes) == 1
+
+    repository.insert_tombstone(
+        scope="capture",
+        capture_id=captures[1],
+        requested_by=uuid.uuid4(),
+        reason="withdraw the complete reconstruction scene",
+    )
+    after = read_snapshot(repository.connection, repository.workspace_id, store)
+
+    assert after.state_version == before.state_version + 1
+    assert after.reconstruction_scenes == []
 
 
 def test_a_process_death_resumes_from_the_last_pose_checkpoint(ingest_spine, tmp_path):

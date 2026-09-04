@@ -7,14 +7,23 @@ is the route: take the workspace off the session, return the snapshot.
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from typing import Annotated
 
-from orimera.api.dependencies import CurrentSession, ReadOnlyConnection
+from fastapi import APIRouter, Depends
+
+from orimera.api.dependencies import CurrentSession, ReadOnlyConnection, get_services
+from orimera.api.services import Services
 from orimera.graph import GraphPayload, read_snapshot
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
 
 @router.get("", summary="The entity graph, as one snapshot at one state version.")
-def snapshot(connection: ReadOnlyConnection, session: CurrentSession) -> GraphPayload:
-    return read_snapshot(connection, session.workspace_id)
+def snapshot(
+    connection: ReadOnlyConnection,
+    session: CurrentSession,
+    services: Annotated[Services, Depends(get_services)],
+) -> GraphPayload:
+    with connection.transaction():
+        connection.execute("set transaction isolation level repeatable read read only")
+        return read_snapshot(connection, session.workspace_id, services.store)

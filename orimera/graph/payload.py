@@ -1,16 +1,15 @@
-"""The wire schema of ``GET /graph``. Seven models that are one document.
+"""The wire schema of ``GET /graph``. One explicit, closed document.
 
 Not a route and barely a Python concern: these field names are a contract with
-``web/packages/graph-client/src/client.ts``, and the TypeScript side has its own copy. Kept in
-one file because the seven ARE one document, and because ``GraphPayload`` gives no field a
-default, so a section the assembler forgets is a ValidationError rather than a silent null. That
-property only reads clearly when the seven are on one screen.
+``web/packages/graph-client/src/client.ts``, and the TypeScript side has its own copy. Kept in one
+file because these rows are one document, and because ``GraphPayload`` gives no field a default,
+so a section the assembler forgets is a ValidationError rather than a silent null.
 """
 
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -21,7 +20,11 @@ __all__ = [
     "HistoryRow",
     "OccurrenceRow",
     "ProposalRow",
+    "ReconstructionSceneMemberRow",
+    "ReconstructionSceneRow",
+    "SceneGeometryReferenceRow",
     "SceneGroupRow",
+    "ScenePointMapPlacementRow",
 ]
 
 
@@ -146,6 +149,66 @@ class SceneGroupRow(BaseModel):
     rung_capture_count: int
 
 
+class SceneGeometryReferenceRow(BaseModel):
+    """Authenticated, digest-declared bytes for one exact point-map artifact."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    href: str
+    authorization: Literal["workspace-bearer"]
+    content_sha256: str
+    byte_size: int
+
+
+class ScenePointMapPlacementRow(BaseModel):
+    """A verified scene transform and the exact immutable point map it places."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    artifact_id: uuid.UUID
+    content_sha256: str
+    container: str | None
+    scene_from_opm_row_major: list[float]
+    local_units_to_scene_units: float
+    scale_status: Literal["unvalidated-identity"]
+    state: Literal["available", "bytes_missing"]
+    reference: SceneGeometryReferenceRow | None
+
+
+class ReconstructionSceneMemberRow(BaseModel):
+    """One immutable member and its exact placement or explicit exclusion."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    capture_id: uuid.UUID
+    ordinal: int
+    registered: bool
+    placement: ScenePointMapPlacementRow | None
+    exclusion_reason: str | None
+
+
+class ReconstructionSceneRow(BaseModel):
+    """A durable multi-photograph scene with recorded and deliverable state kept separate."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scene_id: uuid.UUID
+    member_digest: str
+    pose_receipt_sha256: str | None
+    placement_receipt_sha256: str | None
+    gate_digest: str | None
+    recorded_rung: Literal[1, 2, 3, 4] | None
+    recorded_reasons: list[str]
+    displayed_rung: Literal[1, 2, 3, 4]
+    display_reasons: list[str]
+    member_count: int
+    registered_member_count: int
+    receipt_state: Literal["available", "missing", "invalid"]
+    placement_state: Literal["available", "partial", "bytes_missing", "unavailable", "invalid"]
+    rendering_substrate: Literal["posed_point_maps", "source_photographs"]
+    members: list[ReconstructionSceneMemberRow]
+
+
 class GraphPayload(BaseModel):
     """One immutable read of the workspace, at one state version."""
 
@@ -156,5 +219,6 @@ class GraphPayload(BaseModel):
     occurrences: list[OccurrenceRow]
     proposals: list[ProposalRow]
     scene_groups: list[SceneGroupRow]
+    reconstruction_scenes: list[ReconstructionSceneRow]
     never_same: list[tuple[uuid.UUID, uuid.UUID]]
     deleted_entity_ids: list[uuid.UUID]

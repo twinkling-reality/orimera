@@ -18,12 +18,18 @@ import psycopg
 from orimera.graph.entities import entity_rows
 from orimera.graph.occurrences import occurrence_rows, proposal_rows
 from orimera.graph.payload import GraphPayload
+from orimera.graph.reconstruction_scenes import reconstruction_scene_rows
 from orimera.graph.scene_groups import scene_group_rows
+from orimera.store.base import ContentAddressedStore
 
 __all__ = ["read_snapshot"]
 
 
-def read_snapshot(connection: psycopg.Connection, workspace: uuid.UUID) -> GraphPayload:
+def read_snapshot(
+    connection: psycopg.Connection,
+    workspace: uuid.UUID,
+    store: ContentAddressedStore | None = None,
+) -> GraphPayload:
     """Every section of the graph, read together so they agree with each other."""
     return GraphPayload(
         state_version=_state_version(connection, workspace),
@@ -31,6 +37,7 @@ def read_snapshot(connection: psycopg.Connection, workspace: uuid.UUID) -> Graph
         occurrences=occurrence_rows(connection, workspace),
         proposals=proposal_rows(connection, workspace),
         scene_groups=scene_group_rows(connection, workspace),
+        reconstruction_scenes=reconstruction_scene_rows(connection, workspace, store),
         never_same=[
             (row["entity_a"], row["entity_b"])
             for row in connection.execute(
@@ -53,18 +60,19 @@ def read_snapshot(connection: psycopg.Connection, workspace: uuid.UUID) -> Graph
 def _state_version(connection: psycopg.Connection, workspace: uuid.UUID) -> int:
     """A number that increases whenever this graph changes, and never decreases.
 
-    The sum of two counts of append-only tables. Every identity decision writes an
-    ``identity_event`` and every ingested detection writes an ``occurrence``, and neither table
-    is ever deleted from, so the sum is monotonic by construction rather than by convention.
+    The sum of counts over append-only identity, occurrence, assertion, scene and tombstone
+    records. A reconstruction becoming drawable and a deletion withdrawing one must stale a
+    frame even when neither event changed an occurrence.
 
     It is not a timestamp and it is not a hash. The read model asks only that a mismatch make a
-    frame stale, and that an update proposal computed against an older graph be refused, and a
-    monotonic counter does both. What it does not do is detect a change that touches neither
-    table, which today means a retraction; that is recorded here rather than discovered later.
+    frame stale, and that an update proposal computed against an older graph be refused.
     """
     row = connection.execute(
         "select (select count(*) from identity_event where workspace_id = %s) "
-        "     + (select count(*) from occurrence where workspace_id = %s) as version",
-        (workspace, workspace),
+        "     + (select count(*) from occurrence where workspace_id = %s) "
+        "     + (select count(*) from assertion where workspace_id = %s) "
+        "     + (select count(*) from reconstruction_scene where workspace_id = %s) "
+        "     + (select count(*) from tombstone where workspace_id = %s) as version",
+        (workspace, workspace, workspace, workspace, workspace),
     ).fetchone()
     return int(row["version"])

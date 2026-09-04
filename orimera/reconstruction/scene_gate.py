@@ -22,6 +22,7 @@ __all__ = [
     "SceneGateInputs",
     "SceneReceipt",
     "decide_scene_rung",
+    "validate_scene_gate_decision",
 ]
 
 SCENE_GATE_PROFILE: Final = "orimera.reconstruction-scene-gate/v1"
@@ -155,6 +156,111 @@ class SceneGateDecision:
                 "decision": self.payload(),
             }
         ) + b"\n"
+
+
+def validate_scene_gate_decision(data: bytes) -> SceneGateDecision:
+    """Read a gate envelope and independently reproduce the decision it records."""
+    try:
+        envelope = json.loads(data)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("the scene gate receipt is not JSON") from error
+    if (
+        not isinstance(envelope, dict)
+        or envelope.get("profile") != "orimera.reconstruction-scene-gate-envelope/v1"
+    ):
+        raise ValueError("the scene gate envelope version is unsupported")
+    raw = envelope.get("decision")
+    decision_digest = envelope.get("decision_sha256")
+    if not isinstance(decision_digest, str) or _digest(_canonical(raw)) != decision_digest:
+        raise ValueError("the scene gate decision disagrees with its digest")
+    if not isinstance(raw, dict) or raw.get("profile") != SCENE_GATE_PROFILE:
+        raise ValueError("the scene gate decision version is unsupported")
+
+    rung = raw.get("rung")
+    member_count = raw.get("member_count")
+    registered_count = raw.get("registered_member_count")
+    reasons = raw.get("reasons")
+    raw_receipts = raw.get("receipts")
+    if isinstance(rung, bool) or rung not in (1, 2, 3, 4):
+        raise ValueError("the scene gate rung is outside the reconstruction ladder")
+    if isinstance(member_count, bool) or not isinstance(member_count, int):
+        raise ValueError("the scene gate member count is malformed")
+    if isinstance(registered_count, bool) or not isinstance(registered_count, int):
+        raise ValueError("the scene gate registered-member count is malformed")
+    if not isinstance(reasons, list) or any(
+        not isinstance(reason, str) or not reason for reason in reasons
+    ):
+        raise ValueError("the scene gate reasons are malformed")
+    if not isinstance(raw_receipts, list):
+        raise ValueError("the scene gate receipts are malformed")
+
+    receipts: list[SceneReceipt] = []
+    for raw_receipt in raw_receipts:
+        if not isinstance(raw_receipt, dict):
+            raise ValueError("a scene gate receipt is malformed")
+        kind = raw_receipt.get("kind")
+        if kind not in ("pose", "placement", "scale", "coverage", "corridor", "splat"):
+            raise ValueError("a scene gate receipt kind is unsupported")
+        accepted = raw_receipt.get("accepted")
+        receipt_reasons = raw_receipt.get("reasons")
+        raw_measurements = raw_receipt.get("measurements")
+        if not isinstance(accepted, bool):
+            raise ValueError("a scene gate receipt acceptance is malformed")
+        if not isinstance(receipt_reasons, list) or any(
+            not isinstance(reason, str) or not reason for reason in receipt_reasons
+        ):
+            raise ValueError("a scene gate receipt reason is malformed")
+        if not isinstance(raw_measurements, list):
+            raise ValueError("a scene gate receipt measurement list is malformed")
+        measurements: list[ReceiptMeasurement] = []
+        for raw_measurement in raw_measurements:
+            if not isinstance(raw_measurement, dict):
+                raise ValueError("a scene gate receipt measurement is malformed")
+            value = raw_measurement.get("value")
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                raise ValueError("a scene gate receipt measurement value is malformed")
+            measurements.append(
+                ReceiptMeasurement(
+                    name=str(raw_measurement.get("name", "")),
+                    value=float(value),
+                    unit=str(raw_measurement.get("unit", "")),
+                    convention=str(raw_measurement.get("convention", "")),
+                )
+            )
+        receipts.append(
+            SceneReceipt(
+                kind=kind,
+                sha256=str(raw_receipt.get("sha256", "")),
+                accepted=accepted,
+                reasons=tuple(receipt_reasons),
+                measurements=tuple(measurements),
+            )
+        )
+
+    by_kind = {receipt.kind: receipt for receipt in receipts}
+    if len(by_kind) != len(receipts) or "pose" not in by_kind or "placement" not in by_kind:
+        raise ValueError("scene gate receipts must contain one pose and one placement receipt")
+    inputs = SceneGateInputs(
+        pose=by_kind["pose"],
+        placement=by_kind["placement"],
+        member_count=member_count,
+        registered_member_count=registered_count,
+        scale=by_kind.get("scale"),
+        coverage=by_kind.get("coverage"),
+        corridor=by_kind.get("corridor"),
+        splat=by_kind.get("splat"),
+    )
+    reproduced = decide_scene_rung(inputs)
+    recorded = SceneGateDecision(
+        rung=rung,
+        member_count=member_count,
+        registered_member_count=registered_count,
+        reasons=tuple(reasons),
+        receipts=tuple(receipts),
+    )
+    if recorded != reproduced or recorded.digest != decision_digest:
+        raise ValueError("the scene gate receipt does not reproduce its recorded decision")
+    return recorded
 
 
 def _accepted(receipt: SceneReceipt | None) -> bool:

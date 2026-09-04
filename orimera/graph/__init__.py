@@ -39,8 +39,12 @@ from orimera.graph.payload import (
     HistoryRow,
     OccurrenceRow,
     ProposalRow,
+    ReconstructionSceneMemberRow,
+    ReconstructionSceneRow,
     SceneGroupRow,
+    ScenePointMapPlacementRow,
 )
+from orimera.graph.reconstruction_scenes import reconstruction_scene_rows
 from orimera.graph.scene_rungs import SceneRungRow, scene_rung_rows
 from orimera.graph.snapshot import read_snapshot
 
@@ -51,8 +55,12 @@ __all__ = [
     "HistoryRow",
     "OccurrenceRow",
     "ProposalRow",
+    "ReconstructionSceneMemberRow",
+    "ReconstructionSceneRow",
     "SceneGroupRow",
+    "ScenePointMapPlacementRow",
     "SceneRungRow",
     "read_snapshot",
+    "reconstruction_scene_rows",
     "scene_rung_rows",
 ]
