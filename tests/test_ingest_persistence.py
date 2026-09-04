@@ -766,6 +766,7 @@ _SPINE_MODULES = (
     "derived.py",
     "inferences.py",
     "occurrences.py",
+    "reconstruction_scenes.py",
     "scope.py",
     "spans.py",
     "stage_registry.py",

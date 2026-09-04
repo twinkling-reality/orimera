@@ -47,10 +47,13 @@ from orimera.db.roles import (
 from orimera.deletion import queue
 from orimera.deletion.worker import PurgeWorker
 from orimera.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
+from orimera.errors import EpistemicViolation
 from orimera.evidence import EvidenceAddress
 from orimera.evidence.blob import BlobId
 from orimera.evidence.scene import scene_id_for, scene_member_digest
+from orimera.graph.scene_groups import rung_by_capture
 from orimera.ingest.pipeline import PhotoIngestPipeline
+from orimera.ingest.scene_rung import record_scene_rung
 from orimera.store.local import LocalContentAddressedStore
 from orimera.world_package import diff_packages, project_world_package
 
@@ -749,6 +752,82 @@ def test_a_scene_rung_over_a_deleted_registered_member_is_refused(scene):
         scene.repository.connection.transaction(),
     ):
         _insert_raw_scene_rung(scene, support_span_ids=support_span_ids)
+
+
+def test_the_scene_rung_cites_exactly_the_registered_members_in_ordinal_order(scene):
+    expected_support = _registered_scene_span_ids(scene)
+    run = scene.one(
+        "select run_id from pipeline_run where workspace_id = %s order by started_at limit 1",
+        scene.workspace_id,
+    )
+    assert run is not None
+
+    assertion_id = record_scene_rung(
+        scene.repository, scene_id=scene.scene_id, run_id=run["run_id"]
+    )
+    assert assertion_id is not None
+    row = scene.one(
+        "select kind, subject_ref, object_value, support_span_ids from assertion "
+        "where assertion_id = %s",
+        assertion_id,
+    )
+    assert row == {
+        "kind": "inference",
+        "subject_ref": {"type": "scene", "id": str(scene.scene_id)},
+        "object_value": {
+            "rung": 3,
+            "reasons": [
+                (
+                    "Rungs 1 and 2 are awarded only by ADR-0009 D1's receipt gate, and that "
+                    "gate is not built."
+                ),
+                (
+                    "Every pose, scale, coverage, corridor and splat threshold that gate would "
+                    "read is unmeasured."
+                ),
+            ],
+            "member_count": 3,
+        },
+        "support_span_ids": expected_support,
+    }
+    assert record_scene_rung(
+        scene.repository, scene_id=scene.scene_id, run_id=run["run_id"]
+    ) is None
+
+
+def test_a_scene_nobody_registered_gets_no_rung_from_the_shared_support_rule(scene):
+    unregistered = _insert_scene(
+        scene,
+        scene.captures[:2],
+        registered=[False, None],
+    )
+    run = scene.one(
+        "select run_id from pipeline_run where workspace_id = %s order by started_at limit 1",
+        scene.workspace_id,
+    )
+    assert run is not None
+
+    with pytest.raises(
+        EpistemicViolation,
+        match=(
+            "a inference assertion must cite at least one evidence span; "
+            "'reconstruction_scene_rung_is' arrived with none"
+        ),
+    ):
+        record_scene_rung(scene.repository, scene_id=unregistered, run_id=run["run_id"])
+
+
+def test_a_scene_rung_is_not_a_capture_rung(scene):
+    run = scene.one(
+        "select run_id from pipeline_run where workspace_id = %s order by started_at limit 1",
+        scene.workspace_id,
+    )
+    assert run is not None
+    record_scene_rung(scene.repository, scene_id=scene.scene_id, run_id=run["run_id"])
+
+    assert scene.scene_id not in rung_by_capture(
+        scene.repository.connection, scene.workspace_id
+    )
 
 
 # -- the bytes ---------------------------------------------------------------------------------

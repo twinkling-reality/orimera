@@ -63,6 +63,7 @@ from orimera.ingest.spine import (
     derived,
     inferences,
     occurrences,
+    reconstruction_scenes,
     spans,
     stage_registry,
     tombstones,
@@ -213,6 +214,12 @@ class IngestRepository:
     def upsert_span(self, address: EvidenceAddress) -> uuid.UUID:
         """Persist an address, or return the id of the identical one already stored."""
         return spans.upsert(self._scope, address)
+
+    def reconstruction_scene_members(
+        self, scene_id: uuid.UUID
+    ) -> list[reconstruction_scenes.ReconstructionSceneMemberRow]:
+        """The photographs a reconstruction scene was run over, in its recorded order."""
+        return reconstruction_scenes.members(self._scope, scene_id)
 
     # -- tombstones ---------------------------------------------------------------------
 

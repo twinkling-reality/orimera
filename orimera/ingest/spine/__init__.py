@@ -31,6 +31,9 @@ The modules, and the question each one answers:
                       invalidates exactly the objects that named it?
 :mod:`inferences`     Which inference claims survived the write guards for these
                       captures, so a proposal is voted from what was persisted?
+:mod:`reconstruction_scenes`
+                      Which photographs were in the set a reconstruction ran over,
+                      and which of them registered?
 :mod:`counts`         How many rows are in one of the thirteen tables this corpus may
                       be counted by, and in which scope is that number true?
 ===================== ============================================================
