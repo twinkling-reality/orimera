@@ -63,6 +63,9 @@ ROUTE_PROBES: dict[tuple[str, str], dict] = {
     ("GET", "/identity/events"): {},
     ("GET", "/operations/derivative-jobs"): {},
     ("GET", "/operations/derivative-jobs/{job_id}/events"): {},
+    ("GET", "/operations/reconstruction-scenes"): {},
+    ("GET", "/operations/reconstruction-scenes/{job_id}"): {},
+    ("POST", "/operations/reconstruction-scenes/{job_id}/retry"): {},
     ("GET", "/world/styles/catalog"): {},
     ("GET", "/world/styles/current"): {},
     ("GET", "/world/styles/versions"): {},
@@ -138,12 +141,8 @@ ROUTE_PROBES: dict[tuple[str, str], dict] = {
     # name, because the sweep asks only who may reach the endpoint. What it does with a
     # photograph is `test_intake_upload.py`, which has a store and a schema to check against.
     ("POST", "/intake"): {"files": {"files": ("probe.txt", b"probe", "text/plain")}},
-    ("POST", "/identity/rename"): {
-        "json": {"entity_id": str(uuid.uuid4()), "display_name": "X"}
-    },
-    ("POST", "/identity/name"): {
-        "json": {"occurrence_id": str(uuid.uuid4()), "display_name": "X"}
-    },
+    ("POST", "/identity/rename"): {"json": {"entity_id": str(uuid.uuid4()), "display_name": "X"}},
+    ("POST", "/identity/name"): {"json": {"occurrence_id": str(uuid.uuid4()), "display_name": "X"}},
     ("POST", "/identity/confirm"): {
         "json": {"occurrence_id": str(uuid.uuid4()), "entity_id": str(uuid.uuid4())}
     },
@@ -168,7 +167,15 @@ class Deployment:
     """An application over the test schema, with two tokens: one owner and one stranger."""
 
     def __init__(
-        self, client, store, owner, stranger, span_id, occurrence_id, entity_id, batch_id,
+        self,
+        client,
+        store,
+        owner,
+        stranger,
+        span_id,
+        occurrence_id,
+        entity_id,
+        batch_id,
         artifact_id,
     ) -> None:
         self.client = client
@@ -192,13 +199,15 @@ class Deployment:
         return self._request(_STRANGER_TOKEN, method, path, **kwargs)
 
     def fill(self, path: str) -> str:
-        return path.replace("{span_id}", str(self.span_id)).replace(
-            "{batch_id}", str(self.batch_id)
-        ).replace("{proposal_id}", str(uuid.uuid4())).replace(
-            "{preview_id}", str(uuid.uuid4())
-        ).replace("{source_id}", str(uuid.uuid4())).replace(
-            "{job_id}", str(uuid.uuid4())
-        ).replace("{artifact_id}", str(self.artifact_id))
+        return (
+            path.replace("{span_id}", str(self.span_id))
+            .replace("{batch_id}", str(self.batch_id))
+            .replace("{proposal_id}", str(uuid.uuid4()))
+            .replace("{preview_id}", str(uuid.uuid4()))
+            .replace("{source_id}", str(uuid.uuid4()))
+            .replace("{job_id}", str(uuid.uuid4()))
+            .replace("{artifact_id}", str(self.artifact_id))
+        )
 
 
 @pytest.fixture
@@ -244,9 +253,7 @@ def deployment(tmp_path, photo_dir, repository, spine_schema, monkeypatch):
     # depth model. It exists so the sweep below asks the geometry route a question it can answer
     # with a 200 for the owner, rather than a 404 that would make every authorisation assertion
     # about it pass for the wrong reason.
-    blob = repository.connection.execute(
-        "select blob_sha256 from capture limit 1"
-    ).fetchone()
+    blob = repository.connection.execute("select blob_sha256 from capture limit 1").fetchone()
     artifact_id, _ = write_point_map(repository, store, BlobId(bytes(blob["blob_sha256"])))
 
     # A real batch, so the formation route has something to be asked about. Opened and closed
@@ -279,8 +286,15 @@ def deployment(tmp_path, photo_dir, repository, spine_schema, monkeypatch):
     app = create_app(services, verify=False)
     with TestClient(app) as client:
         yield Deployment(
-            client, store, owner, stranger, span["span_id"], occurrence["occurrence_id"],
-            named.entity_id, batch.batch_id, artifact_id,
+            client,
+            store,
+            owner,
+            stranger,
+            span["span_id"],
+            occurrence["occurrence_id"],
+            named.entity_id,
+            batch.batch_id,
+            artifact_id,
         )
 
 
@@ -346,17 +360,13 @@ def test_a_stranger_never_gets_a_403(deployment, method, path):
     A 403 on somebody else's id confirms that the id exists and belongs to someone. Every route
     that can be reached with another workspace's id must answer as though it were not there.
     """
-    response = deployment.as_stranger(
-        method, deployment.fill(path), **ROUTE_PROBES[(method, path)]
-    )
+    response = deployment.as_stranger(method, deployment.fill(path), **ROUTE_PROBES[(method, path)])
     assert response.status_code != 403, (
         f"{method} {path} returned 403 to a stranger, which confirms the resource exists"
     )
 
 
-@pytest.mark.parametrize(
-    "path", ["/evidence/{span_id}", "/evidence/{span_id}/region"]
-)
+@pytest.mark.parametrize("path", ["/evidence/{span_id}", "/evidence/{span_id}/region"])
 def test_a_stranger_gets_the_same_answer_for_a_real_id_and_an_invented_one(deployment, path):
     """The IDOR case, explicitly: U1's span id substituted into U2's session."""
     real = deployment.as_stranger("GET", deployment.fill(path))
@@ -386,10 +396,14 @@ def test_a_stranger_probing_a_real_artifact_id_learns_nothing_from_it(deployment
     real = deployment.as_stranger("GET", deployment.fill("/geometry/{artifact_id}"))
     invented = deployment.as_stranger("GET", f"/geometry/{uuid.uuid4()}")
     assert real.status_code == 404
-    assert real.json() == invented.json() == {
-        "code": "unknown_reference",
-        "detail": "no such geometry",
-    }
+    assert (
+        real.json()
+        == invented.json()
+        == {
+            "code": "unknown_reference",
+            "detail": "no such geometry",
+        }
+    )
 
 
 # -- health -------------------------------------------------------------------------------
