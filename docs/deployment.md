@@ -75,14 +75,16 @@ image was exercised rather than only weighed:
     and says which role, rather than starting and failing on the first request. That is section
     5.3's "fail closed at startup", observed rather than asserted.
 
-**CORRECTED and VERIFIED 2026-09-04.** The default image still excludes torch. Compose now builds
-the derivative worker from the same recipe with the reconstruction extra, configures MoGe, and
-keeps its checkpoint cache on the media volume. A clean `linux/amd64` build of that locked target
-completed at 5,483,041,226 bytes and retained the non-root `orimera` user. Under Docker x86
-emulation it imported torch 2.13.0+cu130, `utils3d_moge`, `MoGeModel`, and the production worker;
-CUDA correctly reported unavailable on the non-GPU host. This verifies the image and import
-closure, not model inference: no chosen production host or authorized dense capture was available,
-and the 1.3 GB checkpoint was neither fetched nor exercised in this verification.
+**CORRECTED and VERIFIED 2026-09-04.** The current default `linux/amd64` image is 428,102,510
+bytes, retains the non-root `orimera` user, excludes torch, and imports pycolmap 4.2.0 plus the
+scene worker. The 222 MB measurement above describes the earlier pre-pose image. Compose now
+builds the derivative worker from the same recipe with the reconstruction extra, configures MoGe,
+and keeps its checkpoint cache on the media volume. A clean `linux/amd64` build of that locked
+target completed at 5,483,041,226 bytes and retained the same user. Under Docker x86 emulation it
+imported torch 2.13.0+cu130, `utils3d_moge`, `MoGeModel`, and the production worker; both pycolmap
+and torch correctly reported CUDA unavailable on the non-GPU host. This verifies the images and
+import closures, not model inference: no chosen production host or authorized dense capture was
+available, and the 1.3 GB checkpoint was neither fetched nor exercised in this verification.
 
 ---
 
