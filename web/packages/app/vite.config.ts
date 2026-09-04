@@ -7,7 +7,7 @@ import { previewApiResponse } from './src/dev/preview-api.js';
 const APP_ROOT = fileURLToPath(new URL('.', import.meta.url));
 
 const previewApi: Plugin = {
-  name: 'orimera-atlas-preview-api',
+  name: 'exulanica-atlas-preview-api',
   configureServer(server) {
     server.middlewares.use('/preview-api', async (request, response) => {
       const decision = previewApiResponse(request.method ?? 'GET', request.url ?? '/');
@@ -29,7 +29,7 @@ const previewApi: Plugin = {
  *
  * The API is reached through a dev proxy rather than by naming its origin in the client, so the
  * browser makes same-origin requests and no CORS policy has to exist for development that would
- * not exist in production. `ORIMERA_API_URL` moves it; the default is the port the deployment
+ * not exist in production. `EXULANICA_API_URL` moves it; the default is the port the deployment
  * guide's uvicorn command uses.
  */
 export default defineConfig({
@@ -38,7 +38,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: process.env['ORIMERA_API_URL'] ?? 'http://127.0.0.1:8000',
+        target: process.env['EXULANICA_API_URL'] ?? 'http://127.0.0.1:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },

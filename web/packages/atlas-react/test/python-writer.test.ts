@@ -6,8 +6,8 @@ import { PACKED_STRIDE_BYTES, decodeOpm, footprintRadiusOf } from '../src/playca
 /**
  * The Python writer and this decoder, pinned against a committed file.
  *
- * `.opm` now has two producers in two languages: `@orimera/scene-synth` writes synthetic fixtures
- * and `orimera.reconstruction` writes what a photograph turned out to have been looking at. Both
+ * `.opm` now has two producers in two languages: `@exulanica/scene-synth` writes synthetic fixtures
+ * and `exulanica.reconstruction` writes what a photograph turned out to have been looking at. Both
  * are read by this decoder, and the whole point of the format is that the renderer cannot tell
  * them apart, so a measurement taken against a fixture is a measurement of the real path.
  *
@@ -35,7 +35,7 @@ function load(): ArrayBuffer {
 describe('a point map written by the Python reconstruction path', () => {
   it('decodes with this binding, with no special case for who wrote it', () => {
     const map = decodeOpm(load());
-    expect(map.header.format).toBe('orimera-point-map');
+    expect(map.header.format).toBe('exulanica-point-map');
     expect(map.header.version).toBe(2);
     expect(map.header.pointCount).toBe(77);
     // A point map is rung 3 by construction. A 1 here would describe a splat.

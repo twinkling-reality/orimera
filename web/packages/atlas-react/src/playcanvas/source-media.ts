@@ -1,4 +1,4 @@
-import type { Island } from '@orimera/atlas-core';
+import type { Island } from '@exulanica/atlas-core';
 
 /**
  * Presentation metadata for an evidence handle. The handle remains the authority: this catalog

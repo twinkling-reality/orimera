@@ -95,7 +95,7 @@ const out = `/**
  * GENERATED. Do not edit by hand.
  *
  * Written by \`packages/landing/scripts/bake-ladder.ts\` from the real output of
- * \`@orimera/scene-synth\`. The holes are the generator's own occlusion boundaries.
+ * \`@exulanica/scene-synth\`. The holes are the generator's own occlusion boundaries.
  *
  * Source capture: ${pm.count.toLocaleString('en-US')} points, valid-pixel fraction ${res.validFraction.toFixed(3)}.
  */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BLUE_HOUR_THEME, DAWN_THEME } from '@orimera/presentation';
+import { BLUE_HOUR_THEME, DAWN_THEME } from '@exulanica/presentation';
 import { anchorMoteRgba } from '../src/playcanvas/anchor-motes.js';
 import { mapCameraState } from '../src/playcanvas/atlas-binding.js';
 

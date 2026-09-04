@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildNavigationWorld, makeScene } from '@orimera/atlas-core';
+import { buildNavigationWorld, makeScene } from '@exulanica/atlas-core';
 import { FirstPersonControls } from '../src/playcanvas/controls.js';
 
 describe('first-person keyboard ownership', () => {

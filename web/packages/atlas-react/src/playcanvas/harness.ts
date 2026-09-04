@@ -1,6 +1,6 @@
 import * as pc from 'playcanvas';
-import type { AtlasScene, Island, IslandId } from '@orimera/atlas-core';
-import { makeIsland, makeScene } from '@orimera/atlas-core';
+import type { AtlasScene, Island, IslandId } from '@exulanica/atlas-core';
+import { makeIsland, makeScene } from '@exulanica/atlas-core';
 import { AtlasBinding } from './atlas-binding.js';
 import type { PointMap } from './opm.js';
 import { decodeOpm } from './opm.js';
@@ -47,7 +47,7 @@ import { probeAll } from './probes.js';
  * -------------------------------------------------------------------------------------------
  * CONSOLE OUTPUT
  * -------------------------------------------------------------------------------------------
- * Every record is one line, `ORIMERA-BAKEOFF ` followed by JSON, so a shell can grep and a script
+ * Every record is one line, `EXULANICA-BAKEOFF ` followed by JSON, so a shell can grep and a script
  * can `JSON.parse` the remainder. Record kinds, in emission order:
  *
  *   config  the resolved parameters plus the real device and driver
@@ -57,7 +57,7 @@ import { probeAll } from './probes.js';
  *   result  the measurement
  *   error   anything that stopped the run
  *
- * `window.__orimeraBakeoff` resolves to the `result` record, for driving from automation.
+ * `window.__exulanicaBakeoff` resolves to the `result` record, for driving from automation.
  *
  * -------------------------------------------------------------------------------------------
  * METRIC DEFINITIONS. Both bindings must use these, or the numbers are not comparable.
@@ -74,7 +74,7 @@ import { probeAll } from './probes.js';
  *                cloud is resident and has been drawn at full count.
  */
 
-const BAKEOFF_PREFIX = 'ORIMERA-BAKEOFF';
+const BAKEOFF_PREFIX = 'EXULANICA-BAKEOFF';
 
 export type PathMode = 'orbit' | 'static';
 

@@ -5,7 +5,7 @@ import {
   Sphere,
   Vector3,
 } from 'three';
-import type { Anchor, AnchorId, EmphasisBuffers, Island } from '@orimera/atlas-core';
+import type { Anchor, AnchorId, EmphasisBuffers, Island } from '@exulanica/atlas-core';
 import type { OccupancyGrid } from '../containment.js';
 import { buildOccupancyGrid } from '../containment.js';
 import type { PointMapData } from '../opm.js';

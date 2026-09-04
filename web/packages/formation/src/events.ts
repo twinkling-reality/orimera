@@ -17,7 +17,7 @@
  * interaction-model.md 8.2 with the video-era audio stage removed, not invented UI phases.
  *
  * Three of them already exist by these names in the backend stage registry
- * (`orimera/ingest/stages.py`): `intake` and `rendition` are the two halves of `media_extraction`,
+ * (`exulanica/ingest/stages.py`): `intake` and `rendition` are the two halves of `media_extraction`,
  * `vision` is `entity_indexing`, and `scene_group` is the first half of `continuity_search`.
  * `camera_recovery` and `reconstruction` are the offline reconstruction job, which
  * product-specification.md section 5 says never runs in the live demo path.

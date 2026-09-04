@@ -1,5 +1,5 @@
-import type { UpdateProposal } from '@orimera/graph-client';
-import { ProposalGate } from '@orimera/graph-client/mutations';
+import type { UpdateProposal } from '@exulanica/graph-client';
+import { ProposalGate } from '@exulanica/graph-client/mutations';
 import type { ConfirmationAcknowledgement, ConfirmationSurface } from '../src/index.js';
 
 /**

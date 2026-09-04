@@ -1,4 +1,4 @@
-# @orimera/scene-synth
+# @exulanica/scene-synth
 
 Synthetic single-photo point maps for the ADR-0003 renderer bake-off.
 
@@ -80,7 +80,7 @@ renderer draws a low-confidence point fainter with no shader work: "an
 unconfirmed candidate must look unconfirmed" holds by default rather than by
 remembering to implement it. `colorAlpha` is an enum since OPM/2: this generator
 writes `confidence`, a belief its own honesty model produces, and
-`orimera.reconstruction` writes `support`, which is counted coverage. Both used
+`exulanica.reconstruction` writes `support`, which is counted coverage. Both used
 to say `confidence` and the renderer told them apart by whether a statistics key
 was present, which is a format flag nobody had declared as one.
 

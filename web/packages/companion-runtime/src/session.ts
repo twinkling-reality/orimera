@@ -4,8 +4,8 @@ import type {
   EvidenceHandle,
   GraphSnapshot,
   UpdateProposal,
-} from '@orimera/graph-client';
-import type { CommitResult, ProposalGate } from '@orimera/graph-client/mutations';
+} from '@exulanica/graph-client';
+import type { CommitResult, ProposalGate } from '@exulanica/graph-client/mutations';
 import type { ConfirmationSummary } from './confirmation.js';
 import { buildConfirmation } from './confirmation.js';
 import type { DraftOperation, ProposalDraft } from './draft.js';

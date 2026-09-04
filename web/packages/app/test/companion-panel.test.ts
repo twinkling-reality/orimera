@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from 'vitest';
-import type { Turn, TurnOption } from '@orimera/companion-runtime';
+import { describe, expect, it } from 'vitest';
+import type { Turn, TurnOption } from '@exulanica/companion-runtime';
 import { buildCompanionPanel } from '../src/ui/companion-panel.js';
 
 /**
@@ -129,7 +129,7 @@ describe('dismissal belongs to the shell rather than a floating close button', (
 });
 
 describe('the exchange stays subordinate to the Companion presence', () => {
-  it('renders no redundant header and exposes evidence as an action', () => {
+  it('holds speech and nothing else, even when the turn cites evidence', () => {
     const panel = opened();
     panel.render(turn({ evidence: ['evidence-1'] }));
 
@@ -137,26 +137,21 @@ describe('the exchange stays subordinate to the Companion presence', () => {
     expect(panel.root.querySelector('.companion-utterance')?.textContent).toContain(
       'same person',
     );
-    expect(panel.root.querySelector('.companion-evidence')?.getAttribute('aria-label')).toBe(
-      'Memory evidence',
-    );
-    expect(panel.root.querySelector('.companion-evidence-action')?.textContent).toBe(
-      'Show supporting memory',
-    );
     expect(panel.root.querySelector('.companion-speaker')?.textContent).toBe('Unnamed Companion');
+    // No control inside the sentence. A cited turn used to grow a button in the middle of what
+    // the Companion had just said, which put an action in the one region reserved for speech
+    // while the rail beside it exists to hold actions. The source is reached by aiming at the
+    // memory and pressing Interact, or by the conversation's own choice to see both moments.
+    expect(panel.root.querySelector('.companion-evidence')).toBeNull();
+    expect(panel.root.querySelector('.companion-speech button')).toBeNull();
   });
 
-  it('offers app-owned design deep links without making them graph options', () => {
-    const onCustomizeCompanion = vi.fn();
-    const onCustomizeWorld = vi.fn();
-    const panel = opened({ ...NOOP, onCustomizeCompanion, onCustomizeWorld });
+  it('carries no design routes, because the encounter is not where you restyle a world', () => {
+    const panel = opened();
     panel.render(turn());
-    const links = panel.root.querySelectorAll<HTMLButtonElement>('.companion-utilities button');
-    expect([...links].map((button) => button.textContent)).toEqual(['Design Companion', 'Design World']);
-    links[0]?.click();
-    links[1]?.click();
-    expect(onCustomizeCompanion).toHaveBeenCalledOnce();
-    expect(onCustomizeWorld).toHaveBeenCalledOnce();
+    expect(panel.root.querySelector('.companion-utilities')).toBeNull();
+    expect([...panel.root.querySelectorAll('button')].map((button) => button.textContent))
+      .not.toContain('Customize world');
     expect(panel.root.querySelectorAll('.companion-choices > .choice-item')).not.toHaveLength(0);
   });
 

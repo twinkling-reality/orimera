@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GraphSnapshot, OccurrenceRecord } from '@orimera/graph-client';
+import type { GraphSnapshot, OccurrenceRecord } from '@exulanica/graph-client';
 import {
   asMetricLocal,
   atlasVec3,
@@ -8,7 +8,7 @@ import {
   makeAtlasLayoutSnapshot,
   placement,
   rendersAsPresenceMarker,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 
 import { buildScene, buildSceneFromLayout } from '../src/scene.js';
 

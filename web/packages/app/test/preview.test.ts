@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { describe, expect, it, vi } from 'vitest';
-import { adaptSnapshot, type OccurrenceRecord } from '@orimera/graph-client';
+import { adaptSnapshot, type OccurrenceRecord } from '@exulanica/graph-client';
 
 import {
   applicationTitle,
@@ -93,7 +93,7 @@ describe('Atlas development preview', () => {
     expect(applicationTitle(true)).toContain('development preview');
     expect(applicationTitle(true)).toContain('synthetic');
     expect(applicationTitle(true)).toContain('read-only');
-    expect(applicationTitle(false)).toBe('Orimera');
+    expect(applicationTitle(false)).toBe('Exulanica');
   });
 
   it('omits naming and disables evidence before either can make a request', () => {

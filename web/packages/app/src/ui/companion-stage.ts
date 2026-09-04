@@ -11,7 +11,7 @@ import {
   DEFAULT_COMPANION,
   type CompanionAppearanceConfiguration,
   type CompanionOperationalState,
-} from '@orimera/presentation';
+} from '@exulanica/presentation';
 import { createCompanionAvatar } from './companion-avatar.js';
 
 export type CompanionPresenceState = CompanionOperationalState;

@@ -1,5 +1,5 @@
 /**
- * @orimera/companion-runtime
+ * @exulanica/companion-runtime
  *
  * Turn generation, option pool construction, proposal drafting, escape handling and the
  * initiative gate. Forbidden: renderer, React, DOM (architecture-overview.md 1.1).

@@ -1,5 +1,5 @@
-import type { ConfidenceBand, LinkState, ProvenanceClass } from '@orimera/atlas-core';
-import { readsAsUnconfirmed } from '@orimera/atlas-core';
+import type { ConfidenceBand, LinkState, ProvenanceClass } from '@exulanica/atlas-core';
+import { readsAsUnconfirmed } from '@exulanica/atlas-core';
 import type { OpmHeader } from './opm.js';
 
 /**

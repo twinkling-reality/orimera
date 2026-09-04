@@ -7,8 +7,8 @@ import type {
   ProposalOperation,
   ProposalOrigin,
   UpdateProposal,
-} from '@orimera/graph-client';
-import { deriveTier, maxTierOf } from '@orimera/graph-client';
+} from '@exulanica/graph-client';
+import { deriveTier, maxTierOf } from '@exulanica/graph-client';
 
 /**
  * PROPOSAL DRAFTING (interaction-model.md 5.1).

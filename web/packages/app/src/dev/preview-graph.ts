@@ -7,7 +7,7 @@
  * them as preview data for as long as they are on screen.
  */
 
-import type { GraphPayload } from '@orimera/graph-client';
+import type { GraphPayload } from '@exulanica/graph-client';
 
 export const PREVIEW_IDS = Object.freeze({
   actor: '00000000-0000-4000-8000-000000000001',

@@ -1,7 +1,7 @@
 /**
  * Mounting the renderer. The one file in this package that knows a renderer exists.
  *
- * ADR-0003 resolved to PlayCanvas Engine 2.21.4, and `@orimera/atlas-react` is the binding.
+ * ADR-0003 resolved to PlayCanvas Engine 2.21.4, and `@exulanica/atlas-react` is the binding.
  * Everything engine-specific lives behind that package, which is what makes a renderer switch a
  * two-package change; nothing here names `playcanvas`, and `.dependency-cruiser.cjs` would fail
  * the build if it did.
@@ -25,20 +25,20 @@
  * running it.
  */
 
-import type { AtlasScene, IslandId } from '@orimera/atlas-core';
+import type { AtlasScene, IslandId } from '@exulanica/atlas-core';
 import type {
   PresentationTheme,
   WorldArtProfile,
   WorldStyleParameters,
-} from '@orimera/presentation';
+} from '@exulanica/presentation';
 import type {
   FrameReport,
   PlacementCheck,
   PointMap,
   PlacedScenePointMap,
   SourceMediaCatalog,
-} from '@orimera/atlas-react/playcanvas';
-import { AtlasBinding } from '@orimera/atlas-react/playcanvas';
+} from '@exulanica/atlas-react/playcanvas';
+import { AtlasBinding } from '@exulanica/atlas-react/playcanvas';
 
 export interface MountedAtlas {
   readonly binding: AtlasBinding;

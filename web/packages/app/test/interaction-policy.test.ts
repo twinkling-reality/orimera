@@ -38,7 +38,7 @@ describe('reviewed interaction policy client', () => {
       return json({ version_id: 'version-1' });
     });
     const client = new InteractionPolicyClient({
-      baseUrl: 'https://orimera.test/api',
+      baseUrl: 'https://exulanica.test/api',
       token: 'secret',
       fetch: fetch as typeof globalThis.fetch,
       ids: () => 'proposal-1',
@@ -75,7 +75,7 @@ describe('reviewed interaction policy client', () => {
   it('does not write when a device-only setting changes or the server already has the value', async () => {
     const fetch = vi.fn(async () => json(emptyState));
     const client = new InteractionPolicyClient({
-      baseUrl: 'https://orimera.test/api', token: 'secret',
+      baseUrl: 'https://exulanica.test/api', token: 'secret',
       fetch: fetch as typeof globalThis.fetch,
     });
     await client.syncSettings(
@@ -103,7 +103,7 @@ describe('reviewed interaction policy client', () => {
       return json({ version_id: 'version-c' });
     });
     const client = new InteractionPolicyClient({
-      baseUrl: 'https://orimera.test/api', token: 'secret',
+      baseUrl: 'https://exulanica.test/api', token: 'secret',
       fetch: fetch as typeof globalThis.fetch, ids: () => 'proposal-c',
     });
     const review = await client.proposeCompanion({

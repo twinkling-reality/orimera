@@ -1,13 +1,13 @@
-import type { Anchor, AtlasScene, AnchorTable, EntityId } from '@orimera/atlas-core';
-import { buildAnchorTable } from '@orimera/atlas-core';
-import type { RendererCapabilities } from '@orimera/atlas-three';
+import type { Anchor, AtlasScene, AnchorTable, EntityId } from '@exulanica/atlas-core';
+import { buildAnchorTable } from '@exulanica/atlas-core';
+import type { RendererCapabilities } from '@exulanica/atlas-three';
 import {
   AtlasRenderer,
   FrameMeter,
   bindSegmentsByName,
   fetchPointMap,
   readHeap,
-} from '@orimera/atlas-three';
+} from '@exulanica/atlas-three';
 import type { Pose } from './camera-path.js';
 import { pathContext, poseAt } from './camera-path.js';
 import { rehydrateScene } from './scene-json.js';
@@ -270,7 +270,7 @@ export async function runOne(
   // did not say which row was which would be worse than no result set.
   if (!config.quiet) {
     console.log(
-      `ORIMERA_BAKEOFF_ROW ${JSON.stringify({ ...result, graphicsPath: capabilities.path, webgpuAvailable: capabilities.webgpuAvailable })}`,
+      `EXULANICA_BAKEOFF_ROW ${JSON.stringify({ ...result, graphicsPath: capabilities.path, webgpuAvailable: capabilities.webgpuAvailable })}`,
     );
   }
 

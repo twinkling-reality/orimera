@@ -1,4 +1,4 @@
-import type { EntityIdRef, EvidenceHandle } from '@orimera/graph-client';
+import type { EntityIdRef, EvidenceHandle } from '@exulanica/graph-client';
 import type { ProposalDraft } from './draft.js';
 import { draftOperation, makeDraft } from './draft.js';
 import type { IdFactory } from './ids.js';

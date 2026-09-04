@@ -1,4 +1,4 @@
-import type { Anchor, AtlasScene, Island, LayoutInputIsland } from '@orimera/atlas-core';
+import type { Anchor, AtlasScene, Island, LayoutInputIsland } from '@exulanica/atlas-core';
 import {
   ATLAS_ORIGIN,
   SINGLE_PHOTO_RUNG,
@@ -13,7 +13,7 @@ import {
   occurrenceId,
   placement,
   solveLayout,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 import { ANCHORS, CAMERA_HEIGHT, FOOTPRINT_RADIUS_LOCAL } from './scene.js';
 
 /**

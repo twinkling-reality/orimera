@@ -11,7 +11,7 @@ import { parseConfig, runBakeoff } from './harness.js';
 
 declare global {
   // eslint-disable-next-line no-var
-  var __orimeraBakeoff: Promise<BakeoffResult> | undefined;
+  var __exulanicaBakeoff: Promise<BakeoffResult> | undefined;
 }
 
 async function main(): Promise<void> {
@@ -22,8 +22,8 @@ async function main(): Promise<void> {
 
   const config = parseConfig(location.search);
   if (!config.autorun) {
-    if (readout !== null) readout.textContent = 'autorun=0. Call window.__orimeraStart().';
-    (globalThis as unknown as { __orimeraStart: () => void }).__orimeraStart = () => {
+    if (readout !== null) readout.textContent = 'autorun=0. Call window.__exulanicaStart().';
+    (globalThis as unknown as { __exulanicaStart: () => void }).__exulanicaStart = () => {
       void start();
     };
     return;
@@ -35,9 +35,9 @@ async function main(): Promise<void> {
       readout.textContent = `loading ${config.points.toLocaleString()} points x ${config.islands}`;
     }
     const handle = await runBakeoff(canvas!, stage!, config);
-    globalThis.__orimeraBakeoff = handle.result;
+    globalThis.__exulanicaBakeoff = handle.result;
     // Live handle for inspection from a console or a driver. Not part of the measured path.
-    (globalThis as unknown as { __orimera: unknown }).__orimera = handle;
+    (globalThis as unknown as { __exulanica: unknown }).__exulanica = handle;
     const result = await handle.result;
     if (readout !== null) {
       readout.textContent =
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
 
 void main().catch((error: unknown) => {
   console.log(
-    `ORIMERA-BAKEOFF ${JSON.stringify({
+    `EXULANICA-BAKEOFF ${JSON.stringify({
       kind: 'error',
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,

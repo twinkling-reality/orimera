@@ -1,4 +1,4 @@
-import type { WorldStyleParameterDefinition } from '@orimera/atlas-core';
+import type { WorldStyleParameterDefinition } from '@exulanica/atlas-core';
 import type { WorldArtProfileSource } from './world-style-model.js';
 
 export type WorldStyleAvailability = 'product' | 'developer';

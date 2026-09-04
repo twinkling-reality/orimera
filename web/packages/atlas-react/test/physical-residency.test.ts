@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { islandId, type ResidencyAction } from '@orimera/atlas-core';
+import { islandId, type ResidencyAction } from '@exulanica/atlas-core';
 import {
   PhysicalResidencyRuntime,
   fetchAuthenticatedAsset,
@@ -134,10 +134,10 @@ describe('authenticated asset range observation', () => {
         headers: { 'accept-ranges': 'bytes', 'content-range': 'bytes 0-3/100' },
       }));
     const result = await fetchAuthenticatedAsset(descriptor(), new AbortController().signal, {
-      baseUrl: 'https://orimera.test/api/', token: 'private-token', range: [0, 3],
+      baseUrl: 'https://exulanica.test/api/', token: 'private-token', range: [0, 3],
       fetch: fetch as typeof globalThis.fetch,
     });
-    expect(fetch.mock.calls[0]![0]).toBe('https://orimera.test/api/world/assets/artifact-a');
+    expect(fetch.mock.calls[0]![0]).toBe('https://exulanica.test/api/world/assets/artifact-a');
     expect(String(fetch.mock.calls[0]![0])).not.toContain('private-token');
     expect(fetch.mock.calls[0]![1]?.headers).toMatchObject({
       authorization: 'Bearer private-token', range: 'bytes=0-3',
@@ -148,7 +148,7 @@ describe('authenticated asset range observation', () => {
   it('reports a server that ignored Range instead of claiming streaming', async () => {
     const fetch = vi.fn(async () => new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 }));
     const result = await fetchAuthenticatedAsset(descriptor(), new AbortController().signal, {
-      baseUrl: 'https://orimera.test/api', token: 'token', range: [0, 3],
+      baseUrl: 'https://exulanica.test/api', token: 'token', range: [0, 3],
       fetch: fetch as typeof globalThis.fetch,
     });
     expect(result.rangeOutcome).toBe('ignored');

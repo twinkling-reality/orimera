@@ -5,7 +5,7 @@
  * local preference bundle as permission to rewrite a new account or device silently.
  */
 
-import { Transport, type TransportOptions } from '@orimera/graph-client';
+import { Transport, type TransportOptions } from '@exulanica/graph-client';
 import type { AtlasPreferences } from './preferences.js';
 
 export type InteractionValue = boolean | number | string;

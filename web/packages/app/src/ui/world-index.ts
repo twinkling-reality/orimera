@@ -1,7 +1,7 @@
 /**
  * The keyboard-first World Index binding.
  *
- * `@orimera/world-index` owns filtering, row semantics, ranking, and URL encoding. This file only
+ * `@exulanica/world-index` owns filtering, row semantics, ranking, and URL encoding. This file only
  * turns that existing view model into the protected three-part evidence workspace described by
  * interaction-model.md 6.1. Bare occurrences remain a separate list because an anonymous
  * occurrence is not an entity and must not be given entity-shaped facet state.
@@ -13,9 +13,9 @@ import type {
   GraphSnapshot,
   IndexStatus,
   OccurrenceRecord,
-} from '@orimera/graph-client';
-import type { IndexFacets, IndexRow, IndexView } from '@orimera/world-index';
-import { ALL_FACETS, FACET_VALUES, buildIndexView } from '@orimera/world-index';
+} from '@exulanica/graph-client';
+import type { IndexFacets, IndexRow, IndexView } from '@exulanica/world-index';
+import { ALL_FACETS, FACET_VALUES, buildIndexView } from '@exulanica/world-index';
 import { say } from './copy.js';
 import { commandAction, el, replace } from './dom.js';
 import { buildRegionPlan, type RegionPoint } from './region-plan.js';

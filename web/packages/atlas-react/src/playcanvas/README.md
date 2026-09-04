@@ -1,10 +1,10 @@
 # The PlayCanvas renderer binding, and its bake-off harness
 
-One of the two competing implementations of the `@orimera/atlas-react` renderer binding, per
+One of the two competing implementations of the `@exulanica/atlas-react` renderer binding, per
 [ADR-0003](../../../../../docs/adr/0003-renderer-selection.md). Engine: PlayCanvas 2.21.4, pinned.
 
 ```
-pnpm --filter @orimera/atlas-react bakeoff:playcanvas
+pnpm --filter @exulanica/atlas-react bakeoff:playcanvas
 open http://localhost:5183/playcanvas-bakeoff.html?points=1000000&islands=3
 ```
 
@@ -27,7 +27,7 @@ Fixtures are served from `web/fixtures`. Regenerate them with `pnpm synth --out 
 | `harness.ts` | The bake-off harness |
 
 Nothing here decides what the world should look like. Tier selection, focus resolution, view
-manifest application, layout and the coordinate frames all live in `@orimera/atlas-core`. If a
+manifest application, layout and the coordinate frames all live in `@exulanica/atlas-core`. If a
 product rule is being decided in this directory, it is in the wrong package.
 
 ---
@@ -67,9 +67,9 @@ dpr and the resulting `canvasPixels`; compare those two before comparing anythin
 
 ### Console output
 
-One line per record: the literal `ORIMERA-BAKEOFF`, a space, then JSON. Grep the prefix, `JSON.parse`
+One line per record: the literal `EXULANICA-BAKEOFF`, a space, then JSON. Grep the prefix, `JSON.parse`
 the remainder. Records in emission order: `config`, `load`, `tfmr`, `claim` (one per ADR claim),
-`result`, and `error` if the run failed. `window.__orimeraBakeoff` resolves to the `result` record.
+`result`, and `error` if the run failed. `window.__exulanicaBakeoff` resolves to the `result` record.
 
 ### Metric definitions
 

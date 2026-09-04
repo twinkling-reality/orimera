@@ -1,7 +1,7 @@
 /**
  * Opening a citation, which is the promise the whole product reduces to.
  *
- * **Bytes, not a URL.** `OrimeraClient` answers a citation with bytes and offers no URL to point
+ * **Bytes, not a URL.** `ExulanicaClient` answers a citation with bytes and offers no URL to point
  * an element at. The client's own comment says why: the bearer token is in a header on every
  * call and an `<img src>` request would not carry it, so the only ways to make a plain URL work
  * are to put the token in the query string or to move authentication into a cookie. The first
@@ -20,8 +20,8 @@
  * looks like that.
  */
 
-import type { EvidenceHandle } from '@orimera/graph-client';
-import { ApiError } from '@orimera/graph-client';
+import type { EvidenceHandle } from '@exulanica/graph-client';
+import { ApiError } from '@exulanica/graph-client';
 
 /** How many originals are held at once. Each is a few megabytes of decoded photograph. */
 const MAX_HELD = 24;
@@ -29,7 +29,7 @@ const MAX_HELD = 24;
 /**
  * What this cache needs, which is one method rather than the whole client.
  *
- * `OrimeraClient` satisfies it structurally, so nothing at the call site changes. Narrowing it
+ * `ExulanicaClient` satisfies it structurally, so nothing at the call site changes. Narrowing it
  * means a test of the caching and eviction rules needs a function returning a blob rather than a
  * transport, and it means this module cannot quietly grow a second reason to hold a client.
  */

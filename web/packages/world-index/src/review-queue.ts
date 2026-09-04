@@ -1,6 +1,6 @@
-import type { GraphSnapshot } from '@orimera/graph-client';
-import type { CompanionMemory } from '@orimera/companion-runtime';
-import { EMPTY_MEMORY, rankByValue } from '@orimera/companion-runtime';
+import type { GraphSnapshot } from '@exulanica/graph-client';
+import type { CompanionMemory } from '@exulanica/companion-runtime';
+import { EMPTY_MEMORY, rankByValue } from '@exulanica/companion-runtime';
 import type { IndexFacets } from './facets.js';
 import { ALL_FACETS, applyFacets } from './facets.js';
 import type { IndexRow } from './rows.js';

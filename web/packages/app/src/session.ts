@@ -6,7 +6,7 @@
  * check, not a lint rule."
  *
  * A composition root has to construct that gate, which means one file here has to import
- * `@orimera/graph-client/mutations`. `.dependency-cruiser.cjs` names THIS FILE rather than this
+ * `@exulanica/graph-client/mutations`. `.dependency-cruiser.cjs` names THIS FILE rather than this
  * package, so the rule stays as strong as it was: every other module in the app receives a
  * `commit` function and cannot reach the gate to go around it. If a second file in this package
  * ever imports the mutation entry point, the boundary check fails.
@@ -22,10 +22,10 @@
  * in a proxy log.
  */
 
-import type { GraphSnapshot, UpdateProposal } from '@orimera/graph-client';
-import { OrimeraClient, Transport } from '@orimera/graph-client';
-import { ProposalGate, httpCommitTransport } from '@orimera/graph-client/mutations';
-import { CompanionSession } from '@orimera/companion-runtime';
+import type { GraphSnapshot, UpdateProposal } from '@exulanica/graph-client';
+import { ExulanicaClient, Transport } from '@exulanica/graph-client';
+import { ProposalGate, httpCommitTransport } from '@exulanica/graph-client/mutations';
+import { CompanionSession } from '@exulanica/companion-runtime';
 
 export interface SessionOptions {
   readonly baseUrl: string;
@@ -41,7 +41,7 @@ export interface SessionOptions {
  * proposal has to be rendered between the two calls for the user to press anything.
  */
 export interface Session {
-  readonly client: OrimeraClient;
+  readonly client: ExulanicaClient;
   snapshot(): Promise<GraphSnapshot>;
   /** Stage a proposal for rendering. Writes nothing. */
   stage(proposal: UpdateProposal): void;
@@ -68,7 +68,7 @@ export interface OpenedSession {
 }
 
 export async function openSession(options: SessionOptions): Promise<OpenedSession> {
-  const client = new OrimeraClient(options);
+  const client = new ExulanicaClient(options);
   // The gate needs a state version to expire proposals against, and there is exactly one honest
   // source for it: the graph the session is about to render. Starting at zero would make every
   // proposal look current until the first refresh.

@@ -7,7 +7,7 @@
  * surface where an upload is a real thing that happened, so this is where its stream belongs.
  *
  * **Nothing here decides what a stage means.** The contract, the reducer, the labels and the
- * visual mapping all live in `@orimera/formation`, which knows nothing about this application.
+ * visual mapping all live in `@exulanica/formation`, which knows nothing about this application.
  * This module chooses which batch to watch and hands the events on.
  *
  * **The batch is found, not assumed.** There is no upload endpoint yet, so an intake starts from
@@ -16,13 +16,13 @@
  * actually contains, and an empty list renders as "nothing is forming" rather than as a spinner.
  */
 
-import type { FormationState, StageEvent, StreamState } from '@orimera/formation';
+import type { FormationState, StageEvent, StreamState } from '@exulanica/formation';
 import {
   HttpFormationEventSource,
   initialFormationState,
   reduceFormation,
   withStreamState,
-} from '@orimera/formation';
+} from '@exulanica/formation';
 
 export interface BatchSummary {
   readonly batchId: string;

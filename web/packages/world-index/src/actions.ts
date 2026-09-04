@@ -1,6 +1,6 @@
-import type { ConsequenceTier, EntityRecord } from '@orimera/graph-client';
-import type { ConfirmationSurface, TierPolicy } from '@orimera/companion-runtime';
-import { assertBatchable, tierPolicy } from '@orimera/companion-runtime';
+import type { ConsequenceTier, EntityRecord } from '@exulanica/graph-client';
+import type { ConfirmationSurface, TierPolicy } from '@exulanica/companion-runtime';
+import { assertBatchable, tierPolicy } from '@exulanica/companion-runtime';
 
 /**
  * ENTITY ACTIONS AND THEIR TIERS (interaction-model.md 6.1).

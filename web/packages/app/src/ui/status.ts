@@ -4,8 +4,8 @@ import type {
   OccurrenceKind,
   ReconstructionRungRef,
   RenderingSubstrate,
-} from '@orimera/graph-client';
-import { rungSentence } from '@orimera/formation';
+} from '@exulanica/graph-client';
+import { rungSentence } from '@exulanica/formation';
 import { el } from './dom.js';
 
 /** Fixed by interaction-model.md 6.2 and shown with Atlas Map, where layout can be misread. */

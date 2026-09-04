@@ -1,5 +1,5 @@
 /**
- * @orimera/atlas-three
+ * @exulanica/atlas-three
  *
  * The three.js r185 + Spark 2.1.0 renderer binding: ADR-0003 option A, built so the bake-off can
  * measure it rather than argue about it.

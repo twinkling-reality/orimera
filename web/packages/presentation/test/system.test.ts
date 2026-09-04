@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BLUE_HOUR_THEME,
   DAWN_THEME,
-  ORIMERA_WORLD,
+  EXULANICA_WORLD,
   byteRgba,
   pointProvenancePalette,
   unitRgb,
@@ -24,16 +24,16 @@ const contrast = (foreground: string, background: string): number => {
   return (light! + 0.05) / (dark! + 0.05);
 };
 
-describe('Orimera presentation system', () => {
+describe('Exulanica presentation system', () => {
   it('defines one immutable directional field shared by both exposures', () => {
-    expect(ORIMERA_WORLD.field.map(({ role, angleDeg }) => [role, angleDeg])).toEqual([
+    expect(EXULANICA_WORLD.field.map(({ role, angleDeg }) => [role, angleDeg])).toEqual([
       ['key', 118],
       ['crosslight', 252],
       ['afterimage', 18],
       ['bounce', 4],
       ['rim', 154],
     ]);
-    for (const fieldPlane of ORIMERA_WORLD.field) {
+    for (const fieldPlane of EXULANICA_WORLD.field) {
       expect(Object.isFrozen(fieldPlane)).toBe(true);
       expect(Object.isFrozen(fieldPlane.stops)).toBe(true);
       expect(fieldPlane.stops.map((stop) => stop.offsetPct)).toEqual(
@@ -42,8 +42,8 @@ describe('Orimera presentation system', () => {
       for (const stop of fieldPlane.stops) expect(stop.alpha).toBeGreaterThanOrEqual(0);
       for (const stop of fieldPlane.stops) expect(stop.alpha).toBeLessThanOrEqual(1);
     }
-    expect(Object.isFrozen(ORIMERA_WORLD)).toBe(true);
-    expect(Object.isFrozen(ORIMERA_WORLD.field)).toBe(true);
+    expect(Object.isFrozen(EXULANICA_WORLD)).toBe(true);
+    expect(Object.isFrozen(EXULANICA_WORLD.field)).toBe(true);
   });
 
   it('keeps every provenance class distinct in both exposures', () => {
@@ -88,7 +88,7 @@ describe('Orimera presentation system', () => {
       for (const value of values) expect(css).toContain(value);
     }
     expect(css).not.toContain(":root[data-theme='blue-hour']");
-    for (const fieldPlane of ORIMERA_WORLD.field) {
+    for (const fieldPlane of EXULANICA_WORLD.field) {
       expect(css).toContain(`${fieldPlane.angleDeg}deg`);
       for (const stop of fieldPlane.stops) {
         expect(css).toContain(`${stop.offsetPct}%`);

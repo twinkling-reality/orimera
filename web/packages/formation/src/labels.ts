@@ -12,7 +12,7 @@
  * which is the cheapest possible way to guarantee that no information lives only in an animation.
  */
 
-import type { ReconstructionRung } from '@orimera/atlas-core';
+import type { ReconstructionRung } from '@exulanica/atlas-core';
 import { isOutcome, type FormationPhase } from './events.js';
 import { elapsedMs, progressFraction, type FormationState } from './state.js';
 

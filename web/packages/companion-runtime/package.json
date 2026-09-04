@@ -1,12 +1,12 @@
 {
-  "name": "@orimera/companion-runtime",
+  "name": "@exulanica/companion-runtime",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "dependencies": {
-    "@orimera/atlas-core": "workspace:*",
-    "@orimera/graph-client": "workspace:*"
+    "@exulanica/atlas-core": "workspace:*",
+    "@exulanica/graph-client": "workspace:*"
   },
   "scripts": { "typecheck": "tsc --build" }
 }

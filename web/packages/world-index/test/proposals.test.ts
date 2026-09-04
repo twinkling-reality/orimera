@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { EntityRecord } from '@orimera/graph-client';
-import { ProposalGate, ProposalGateError } from '@orimera/graph-client/mutations';
+import type { EntityRecord } from '@exulanica/graph-client';
+import { ProposalGate, ProposalGateError } from '@exulanica/graph-client/mutations';
 import {
   SNAPSHOT_T3,
   finalizeDraft,
   sequentialIds,
   unmetRequirements,
-} from '@orimera/companion-runtime';
-import type { ConfirmationAcknowledgement } from '@orimera/companion-runtime';
+} from '@exulanica/companion-runtime';
+import type { ConfirmationAcknowledgement } from '@exulanica/companion-runtime';
 import {
   confirmationFor,
   deleteConsequences,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { EntityRecord } from '@orimera/graph-client';
+import type { EntityRecord } from '@exulanica/graph-client';
 import {
   BAND_ORDER,
   MOCK_NOW_MS,
@@ -9,7 +9,7 @@ import {
   draftFromParse,
   parseUtterance,
   sequentialIds,
-} from '@orimera/companion-runtime';
+} from '@exulanica/companion-runtime';
 import {
   ACTION_TIER,
   ALL_FACETS,

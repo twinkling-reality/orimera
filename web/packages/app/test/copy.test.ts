@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BAND_ORDER } from '@orimera/companion-runtime';
-import { rungProperties } from '@orimera/atlas-core';
-import { rungSentence } from '@orimera/formation';
+import { BAND_ORDER } from '@exulanica/companion-runtime';
+import { rungProperties } from '@exulanica/atlas-core';
+import { rungSentence } from '@exulanica/formation';
 
 import { FORBIDDEN_WORDS, everyPhrase, say } from '../src/ui/copy.js';
 

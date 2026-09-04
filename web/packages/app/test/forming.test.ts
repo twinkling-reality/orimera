@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import type { FormationState, StageEvent } from '@orimera/formation';
-import { initialFormationState, reduceFormation, withStreamState } from '@orimera/formation';
+import type { FormationState, StageEvent } from '@exulanica/formation';
+import { initialFormationState, reduceFormation, withStreamState } from '@exulanica/formation';
 
 import { buildFormation } from '../src/ui/formation.js';
 
@@ -122,7 +122,7 @@ describe('the forming panel', () => {
 
   it('hides the completed receipt once the region is ready', () => {
     const panel = buildFormation();
-    panel.render(ready(), '.orimera/media/intake/synthetic');
+    panel.render(ready(), '.exulanica/media/intake/synthetic');
     expect(panel.root.hidden).toBe(true);
     expect(panel.root.textContent).toBe('');
   });

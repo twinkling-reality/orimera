@@ -2,7 +2,7 @@ import {
   PRESENTATION_THEMES,
   type PresentationTheme,
   type WorldArtProfile,
-} from '@orimera/presentation';
+} from '@exulanica/presentation';
 import { resolvedAppearance, type AtlasPreferences } from './preferences.js';
 
 export function themeForPreferences(

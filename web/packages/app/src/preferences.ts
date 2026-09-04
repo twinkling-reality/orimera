@@ -5,9 +5,9 @@ import {
   resolveWorldStyleParameters,
   type WorldArtProfileId,
   type WorldStyleParameters,
-} from '@orimera/presentation';
+} from '@exulanica/presentation';
 
-export const PREFERENCES_KEY = 'orimera.atlas.preferences.v1';
+export const PREFERENCES_KEY = 'exulanica.atlas.preferences.v1';
 
 export type AppearancePreference = 'dawn';
 export type ContrastPreference = 'standard' | 'high';
@@ -75,7 +75,7 @@ export const DEFAULT_PREFERENCES: AtlasPreferences = Object.freeze({
   transition: 'system',
   companionInitiative: 'normal',
   companionBody: 'circle',
-  companionColor: 'rose',
+  companionColor: 'ink',
   companionFace: 'neutral',
   companionSide: 'right',
 });

@@ -83,7 +83,7 @@ export class HttpFormationEventSource implements FormationEventSource {
   /**
    * @param captureId the intake batch to watch. Named `captureId` because that is what the
    *   interface calls the thing a person uploaded; the server calls one photograph a capture and
-   *   calls this a batch, and the two words meeting here is recorded in `orimera/ingest/batch.py`.
+   *   calls this a batch, and the two words meeting here is recorded in `exulanica/ingest/batch.py`.
    */
   subscribe(
     captureId: string,

@@ -1,10 +1,10 @@
 {
-  "name": "@orimera/landing",
+  "name": "@exulanica/landing",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "dependencies": {
-    "@orimera/presentation": "workspace:*"
+    "@exulanica/presentation": "workspace:*"
   },
   "devDependencies": {
     "vite": "^6"

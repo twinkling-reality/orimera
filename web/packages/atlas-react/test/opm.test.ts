@@ -51,7 +51,7 @@ function buildOpm(
 
   const header = (offsets: readonly number[]): OpmHeader =>
     ({
-      format: 'orimera-point-map',
+      format: 'exulanica-point-map',
       version: 2,
       pointCount: count,
       rung: 3,

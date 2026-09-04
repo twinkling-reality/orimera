@@ -3,8 +3,8 @@ import type {
   GroundMovementResolution,
   NavigationWorld,
   SpatialClassification,
-} from '@orimera/atlas-core';
-import { atlasVec3, forwardFromYawPitch, resolveGroundMovement } from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
+import { atlasVec3, forwardFromYawPitch, resolveGroundMovement } from '@exulanica/atlas-core';
 
 /**
  * First-person controls: pointer-lock mouse-look plus WASD, and a reticle at fixed screen centre.

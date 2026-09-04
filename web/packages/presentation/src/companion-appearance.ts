@@ -74,10 +74,19 @@ export function companionAppearanceConfiguration(
   });
 }
 
-/** Pink circle is the selected avatar shown in the supplied Grok Bot reference crop. */
+/*
+ * The resting presence.
+ *
+ * It was pink because pink was the avatar in a supplied reference crop, which is a reason to
+ * offer the colour and not a reason to make it the default. Against a world made of light it was
+ * the most saturated thing on screen by a distance and read as a sticker on the field. Ink is the
+ * same near-black the rest of the interface reads in, so the Companion arrives belonging to the
+ * world. Every other colour stays one click away in Customize, and this choice is a device
+ * preference: it never enters a style version or a graph assertion.
+ */
 export const DEFAULT_COMPANION = companionAppearanceConfiguration({
   body: 'circle',
-  color: 'rose',
+  color: 'ink',
   face: 'neutral',
 });
 

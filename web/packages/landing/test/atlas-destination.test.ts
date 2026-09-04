@@ -2,16 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import { resolveAtlasDestination } from '../src/atlas-destination.js';
 
-const landingHref = 'https://orimera.example/welcome';
+const landingHref = 'https://exulanica.example/welcome';
 
 describe('the canonical Atlas handoff', () => {
   it('uses an absolute deployment destination exactly', () => {
     const destination = resolveAtlasDestination({
-      configured: 'https://atlas.orimera.example/session',
+      configured: 'https://atlas.exulanica.example/session',
       development: false,
       landingHref,
     });
-    expect(destination?.href).toBe('https://atlas.orimera.example/session');
+    expect(destination?.href).toBe('https://atlas.exulanica.example/session');
   });
 
   it('supports a same-origin deployment path', () => {
@@ -20,7 +20,7 @@ describe('the canonical Atlas handoff', () => {
       development: false,
       landingHref,
     });
-    expect(destination?.href).toBe('https://orimera.example/atlas');
+    expect(destination?.href).toBe('https://exulanica.example/atlas');
   });
 
   it('uses the documented app preview during local development', () => {

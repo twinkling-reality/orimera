@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ReconstructionSceneRecord } from '@orimera/graph-client';
+import type { ReconstructionSceneRecord } from '@exulanica/graph-client';
 import { GeometryClient, regionsByCapture } from '../src/geometry-api.js';
 
 /**
  * The production reconstruction boundary, ADR-0009 D10 from the client's side.
  *
  * The container is rebuilt here rather than imported. A test directory is not a package export
- * and the app may not reach into `@orimera/atlas-react`'s, and the duplication is the same one
+ * and the app may not reach into `@exulanica/atlas-react`'s, and the duplication is the same one
  * the decoder itself carries for the same reason: what is under test is that real bytes, checked
  * against a real digest, reach a decoder that was given no help.
  */
@@ -21,7 +21,7 @@ const align = (n: number): number => Math.ceil(n / 16) * 16;
 function buildOpm(seed = 0, count = 4): ArrayBuffer {
   const sizes = { position: count * 12, color: count * 4, tags: count * 4 };
   const header = (offsets: [number, number, number]) => ({
-    format: 'orimera-point-map',
+    format: 'exulanica-point-map',
     version: 2,
     pointCount: count,
     rung: 3,
@@ -118,7 +118,7 @@ function serve(rows: unknown[], bytes: ArrayBuffer, etag?: string) {
     return new Response(bytes, {
       status: 200,
       headers: {
-        'content-type': 'application/vnd.orimera.point-map',
+        'content-type': 'application/vnd.exulanica.point-map',
         ...(etag === undefined ? {} : { etag: `"${etag}"` }),
       },
     });
@@ -188,7 +188,7 @@ describe('production reconstruction geometry', () => {
     const digest = await sha256(bytes);
     const { fetch, requests } = serve([], bytes);
     const session = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
     }).loadScenes([sceneRecord(digest, bytes.byteLength)], regions);
 
     expect(session.issues).toEqual([]);
@@ -208,7 +208,7 @@ describe('production reconstruction geometry', () => {
     const wrong = 'f'.repeat(64);
     const partialServer = serve([], bytes);
     const partial = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch: partialServer.fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch: partialServer.fetch,
     }).loadScenes([sceneRecord(digest, bytes.byteLength, wrong)], regions);
     expect(partial.placedPointMaps).toHaveLength(1);
     expect(partial.issues[0]!.state).toBe('verification_failed');
@@ -216,7 +216,7 @@ describe('production reconstruction geometry', () => {
 
     const failedServer = serve([], bytes);
     const failed = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch: failedServer.fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch: failedServer.fetch,
     }).loadScenes([sceneRecord(wrong, bytes.byteLength, wrong)], regions);
     expect(failed.placedPointMaps).toHaveLength(0);
     expect(failed.renderingByScene.get('scene-1')).toBe('source_photographs');
@@ -230,7 +230,7 @@ describe('production reconstruction geometry', () => {
       bytes,
     );
     const session = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
     }).load(regions);
 
     expect(session.issues).toEqual([]);
@@ -255,7 +255,7 @@ describe('production reconstruction geometry', () => {
       bytes,
     );
     const session = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
     }).load(regions);
 
     expect(session.pointMaps.size).toBe(0);
@@ -280,7 +280,7 @@ describe('production reconstruction geometry', () => {
       await sha256(substituted),
     );
     const session = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
     }).load(regions);
 
     expect(session.pointMaps.size).toBe(0);
@@ -296,7 +296,7 @@ describe('production reconstruction geometry', () => {
       bytes,
     );
     const session = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
     }).load(regions);
 
     expect(session.issues[0]!.state).toBe('verification_failed');
@@ -319,7 +319,7 @@ describe('production reconstruction geometry', () => {
     vi.stubGlobal('crypto', {});
     try {
       const session = await new GeometryClient({
-        baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+        baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
       }).load(regions);
       expect(session.pointMaps.size).toBe(0);
       expect(session.issues[0]!.state).toBe('unverifiable');
@@ -349,7 +349,7 @@ describe('production reconstruction geometry', () => {
       bytes,
     );
     const session = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
     }).load(regions);
 
     expect(session.pointMaps.size).toBe(0);
@@ -363,7 +363,7 @@ describe('production reconstruction geometry', () => {
     const bytes = buildOpm();
     const reference = { content_sha256: await sha256(bytes), byte_size: bytes.byteLength };
     const client = new GeometryClient({
-      baseUrl: 'https://orimera.test/api',
+      baseUrl: 'https://exulanica.test/api',
       token: 'private-token',
       fetch: serve([descriptor({ reference })], bytes).fetch,
     });
@@ -372,7 +372,7 @@ describe('production reconstruction geometry', () => {
 
     const second = serve([descriptor({ reference })], bytes);
     const again = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch: second.fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch: second.fetch,
     }).load(regions, first.byArtifact);
 
     expect(again.pointMaps.get(REGION as never)).toBe(first.pointMaps.get(REGION as never));
@@ -383,7 +383,7 @@ describe('production reconstruction geometry', () => {
     const bytes = buildOpm();
     const reference = { content_sha256: await sha256(bytes), byte_size: bytes.byteLength };
     const client = new GeometryClient({
-      baseUrl: 'https://orimera.test/api',
+      baseUrl: 'https://exulanica.test/api',
       token: 'private-token',
       fetch: serve([descriptor({ reference })], bytes).fetch,
     });
@@ -393,7 +393,7 @@ describe('production reconstruction geometry', () => {
     // The photograph was deleted, so the server no longer lists it. The held map must not
     // survive the list that stopped naming it.
     const after = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api',
+      baseUrl: 'https://exulanica.test/api',
       token: 'private-token',
       fetch: serve([], bytes).fetch,
     }).load(regions, first.byArtifact);
@@ -418,7 +418,7 @@ describe('production reconstruction geometry', () => {
       bytes,
     );
     const session = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
     }).load(regions);
 
     expect(session.issues.map((issue) => issue.state)).toEqual(['error']);
@@ -439,7 +439,7 @@ describe('production reconstruction geometry', () => {
       });
     });
     const session = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
       signal: AbortSignal.timeout(20),
     }).load(regions);
 
@@ -466,7 +466,7 @@ describe('production reconstruction geometry', () => {
       bytes,
     );
     const session = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
     }).load(regions);
 
     expect(session.pointMaps.size).toBe(1);
@@ -501,7 +501,7 @@ describe('production reconstruction geometry', () => {
       bytes,
     );
     const session = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
     }).load(regions);
 
     expect(session.pointMaps.size).toBe(0);
@@ -522,7 +522,7 @@ describe('production reconstruction geometry', () => {
       return json({ code: 'tombstoned', detail: 'geometry was deleted' }, 410);
     });
     const session = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
     }).load(regions);
 
     expect(session.issues[0]!.state).toBe('error');
@@ -540,7 +540,7 @@ describe('production reconstruction geometry', () => {
       bytes,
     );
     const session = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
     }).load(regions);
 
     expect(session.issues[0]!.state).toBe('error');
@@ -554,7 +554,7 @@ describe('production reconstruction geometry', () => {
       buildOpm(),
     );
     await expect(new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
     }).load(regions)).rejects.toThrow(/SHA-256/);
   });
 
@@ -567,7 +567,7 @@ describe('production reconstruction geometry', () => {
       bytes,
     );
     const session = await new GeometryClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
     }).load(new Map());
 
     expect(session.pointMaps.size).toBe(0);

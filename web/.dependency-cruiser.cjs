@@ -19,7 +19,7 @@ const RENDERER = String.raw`^(?:node_modules/)?(?:three|@react-three/[^/]+|@spar
 /** React itself. Not "anything that renders": React specifically, per the section 1.1 table. */
 const REACT = String.raw`^(?:node_modules/)?(?:react|react-dom|react/[^/]+|react-dom/[^/]+)(?:$|/)`;
 /** The mutation gate, as both a source path and the subpath specifier callers actually write. */
-const MUTATIONS = String.raw`^packages/graph-client/src/mutations/|^(?:node_modules/)?@orimera/graph-client/mutations$`;
+const MUTATIONS = String.raw`^packages/graph-client/src/mutations/|^(?:node_modules/)?@exulanica/graph-client/mutations$`;
 
 const pkg = (name) => String.raw`^packages/${name}/`;
 
@@ -35,11 +35,11 @@ const pkg = (name) => String.raw`^packages/${name}/`;
  */
 const pkgRef = (...names) => {
   const alt = names.join('|');
-  return String.raw`^packages/(?:${alt})/|^(?:node_modules/)?@orimera/(?:${alt})(?:$|/)`;
+  return String.raw`^packages/(?:${alt})/|^(?:node_modules/)?@exulanica/(?:${alt})(?:$|/)`;
 };
 const notPkgRef = (...names) => {
   const alt = names.join('|');
-  return String.raw`^packages/(?!(?:${alt})/)|^(?:node_modules/)?@orimera/(?!(?:${alt})(?:$|/))`;
+  return String.raw`^packages/(?!(?:${alt})/)|^(?:node_modules/)?@exulanica/(?!(?:${alt})(?:$|/))`;
 };
 
 module.exports = {
@@ -130,7 +130,7 @@ module.exports = {
       severity: 'error',
       comment:
         'atlas-react may READ the graph and may render its state. It may not write it. The ' +
-        'mutation gate is a separate entry point (@orimera/graph-client/mutations) so that ' +
+        'mutation gate is a separate entry point (@exulanica/graph-client/mutations) so that ' +
         '"forbidden: graph mutations" is a path this rule can name.',
       from: { path: pkg('atlas-react') },
       to: { path: MUTATIONS },
@@ -161,7 +161,7 @@ module.exports = {
         'interaction-model.md 1.2: no distance function over AtlasVec3 may be reachable from the ' +
         'query layer, because a region\'s atlas position carries no real-world meaning. The ' +
         'distance functions the layout and focus solvers need live behind ' +
-        '@orimera/atlas-core/presentation-metrics, which only atlas-core internals and the ' +
+        '@exulanica/atlas-core/presentation-metrics, which only atlas-core internals and the ' +
         'renderer binding may import.',
       from: {
         path: String.raw`^packages/`,

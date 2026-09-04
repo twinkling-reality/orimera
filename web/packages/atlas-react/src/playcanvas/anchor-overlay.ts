@@ -1,12 +1,12 @@
 import * as pc from 'playcanvas';
-import type { AnchorTable, EmphasisBuffers, IslandId } from '@orimera/atlas-core';
+import type { AnchorTable, EmphasisBuffers, IslandId } from '@exulanica/atlas-core';
 import {
   DEFAULT_FOCUS_CONFIG,
   MAX_CAPTIONS,
   MAX_EDGE_CHEVRONS,
   MAX_FOCUS_LABELS,
   rendersAsPresenceMarker,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 import {
   resolveInteractionAffordance,
   type InteractionAffordanceStage,
@@ -123,7 +123,7 @@ export class AnchorOverlay {
    */
   constructor(parent: HTMLElement, markerBudget = 12) {
     this.root = document.createElement('div');
-    this.root.className = 'orimera-overlay';
+    this.root.className = 'exulanica-overlay';
     this.root.setAttribute('role', 'region');
     this.root.setAttribute('aria-label', 'Atlas anchors');
     this.root.style.position = 'absolute';

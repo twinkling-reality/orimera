@@ -1,4 +1,4 @@
-import type { SourceMediaCatalog, SourceMediaDescriptor } from '@orimera/atlas-react/playcanvas';
+import type { SourceMediaCatalog, SourceMediaDescriptor } from '@exulanica/atlas-react/playcanvas';
 import { PREVIEW_IDS as ID } from './preview-graph.js';
 
 interface PreviewSource extends SourceMediaDescriptor {

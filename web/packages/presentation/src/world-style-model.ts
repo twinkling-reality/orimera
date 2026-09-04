@@ -329,10 +329,21 @@ export function oklchHex(lightness: number, chroma: number, hue: number): string
   return fromOklch({ l: lightness, c: Math.max(0, chroma), h: hue });
 }
 
-/** Place a world colour at an authored lightness, keeping its hue and at least `chromaFloor`. */
-const toneAt = (hex: string, lightness: number, chromaFloor = 0): string => {
+/**
+ * Place a world colour at an authored lightness, keeping its hue.
+ *
+ * `chromaFloor` rescues a hue a world did author from vanishing at low lightness. `chromaCeiling`
+ * is the opposite guard and exists for structure: a role that means nothing by being coloured has
+ * to stay under a cap however saturated the world is.
+ */
+const toneAt = (
+  hex: string,
+  lightness: number,
+  chromaFloor = 0,
+  chromaCeiling = Number.POSITIVE_INFINITY,
+): string => {
   const { c, h } = toOklch(hex);
-  return fromOklch({ l: lightness, c: Math.max(c, chromaFloor), h });
+  return fromOklch({ l: lightness, c: Math.min(chromaCeiling, Math.max(c, chromaFloor)), h });
 };
 
 /**
@@ -386,11 +397,9 @@ const INTERFACE_LIGHTNESS = Object.freeze({
   capture: 0.52,
   inference: 0.53,
   external: 0.53,
-  companionSurface: 0.32,
-  companionSurfaceHover: 0.4,
-  companionAccent: 0.85,
-  companionSecondary: 0.82,
-  companionUnavailable: 0.78,
+  companionAccent: 0.52,
+  companionSecondary: 0.51,
+  companionUnavailable: 0.53,
   shadow: 0.22,
   vignette: 0.36,
 });
@@ -405,7 +414,22 @@ const INTERFACE_LIGHTNESS = Object.freeze({
  * palette stays grey and large enough that a pale one still reads as coloured. It lifts chroma; it
  * never chooses a hue, so a profile's identity still decides what colour the interface is.
  */
-const STRUCTURE_CHROMA_FLOOR = 0.022;
+const STRUCTURE_CHROMA_FLOOR = 0.008;
+
+/**
+ * The most colour a structural role may carry.
+ *
+ * Reading text, panel material, shadow and the Companion's own surface are structure. They say
+ * nothing by being coloured, and colouring them is how an interface ends up teal: every one of
+ * these was a darkened world hue and the result was a product where the type, the rules, the
+ * focus ring and the speech band were all tinted and none of that tint meant anything.
+ *
+ * Hue is reserved for the roles that carry meaning, which is provenance, caution and error, plus
+ * one accent. A world still shows through here, because the ceiling is a cap and not a conversion
+ * to grey: a warm world reads warm and a cool world reads cool, at the strength of a paper stock
+ * rather than of a colour.
+ */
+const STRUCTURE_CHROMA_CEILING = 0.014;
 const EVIDENCE_CHROMA_FLOOR = 0.03;
 
 /**
@@ -454,13 +478,25 @@ export function deriveWorldUiColors(
   authored?: WorldInterfacePalette,
 ): WorldUiColors {
   const face = authored ?? interfacePaletteFromWorld(palette);
-  const ground = mixHex(palette.haze, face.plate, 0.3);
-  const surface = mixHex(palette.haze, face.plate, 0.58);
-  const raised = face.plate;
+  const ground = toneAt(mixHex(palette.haze, face.plate, 0.3),
+    toOklch(mixHex(palette.haze, face.plate, 0.3)).l, 0, STRUCTURE_CHROMA_CEILING);
+  const surface = toneAt(mixHex(palette.haze, face.plate, 0.58),
+    toOklch(mixHex(palette.haze, face.plate, 0.58)).l, 0, STRUCTURE_CHROMA_CEILING);
+  const raised = toneAt(face.plate, toOklch(face.plate).l, 0, STRUCTURE_CHROMA_CEILING);
   const structural = (lightness: number): string =>
-    toneAt(face.ink, lightness, STRUCTURE_CHROMA_FLOOR);
-  const companionSurface = accessibleTone(
-    structural(INTERFACE_LIGHTNESS.companionSurface), face.plate, 7);
+    toneAt(face.ink, lightness, STRUCTURE_CHROMA_FLOOR, STRUCTURE_CHROMA_CEILING);
+  /*
+   * The Companion speaks from the same paper everything else is written on.
+   *
+   * These roles used to resolve to a dark surface with light text, which was right while the held
+   * plates were dark too. Once the plates became paper the speech band, the choice rail and the
+   * utilities were the only dark slabs left in the product, and a presence that is meant to be in
+   * the world instead read as a panel pasted over it. The polarity flips as a set: `text` is the
+   * reading colour on paper, and `ink` stays the light one because components use it on top of
+   * `text` and `accent` as backgrounds, which is how the speaker-name pill inverts.
+   */
+  const companionSurface = toneAt(mixHex(face.plate, face.ink, 0.07),
+    toOklch(mixHex(face.plate, face.ink, 0.07)).l, 0, STRUCTURE_CHROMA_CEILING);
   return Object.freeze({
     ground,
     surface,
@@ -468,6 +504,8 @@ export function deriveWorldUiColors(
     ink: accessibleTone(structural(INTERFACE_LIGHTNESS.ink), raised, 7),
     body: accessibleTone(structural(INTERFACE_LIGHTNESS.body), surface, READING_FLOOR),
     muted: accessibleTone(structural(INTERFACE_LIGHTNESS.muted), surface, READING_FLOOR),
+    // The single accent. Focus, active state and the one control worth pointing at, and nothing
+    // else: it is the interface's only decorative hue and it is spent in very few places.
     accent: accessibleTone(toneAt(face.structure, INTERFACE_LIGHTNESS.accent), surface, READING_FLOOR),
     secondary: accessibleTone(toneAt(face.evidence, INTERFACE_LIGHTNESS.secondary), surface, READING_FLOOR),
     focus: accessibleTone(toneAt(face.structure, INTERFACE_LIGHTNESS.focus), ground, 3),
@@ -497,15 +535,17 @@ export function deriveWorldUiColors(
     externalMark: accessibleTone(
       mixHex(face.uncertain, face.evidence, 0.4), surface, MARK_FLOOR),
     companionSurface,
-    companionSurfaceHover: structural(INTERFACE_LIGHTNESS.companionSurfaceHover),
-    companionText: accessibleTone(face.plate, companionSurface, 7),
+    companionSurfaceHover: toneAt(mixHex(face.plate, face.ink, 0.14),
+      toOklch(mixHex(face.plate, face.ink, 0.14)).l, 0, STRUCTURE_CHROMA_CEILING),
+    companionText: accessibleTone(structural(INTERFACE_LIGHTNESS.ink), companionSurface, 7),
     companionAccent: accessibleTone(
-      toneAt(palette.sun, INTERFACE_LIGHTNESS.companionAccent), companionSurface, 4.5),
+      structural(INTERFACE_LIGHTNESS.companionAccent), companionSurface, READING_FLOOR),
     companionSecondary: accessibleTone(
-      toneAt(palette.terrainLift, INTERFACE_LIGHTNESS.companionSecondary), companionSurface, 4.5),
+      structural(INTERFACE_LIGHTNESS.companionSecondary), companionSurface, READING_FLOOR),
     companionInk: companionSurface,
     companionUnavailable: accessibleTone(
-      toneAt(face.uncertain, INTERFACE_LIGHTNESS.companionUnavailable), companionSurface, 4.5),
+      toneAt(face.uncertain, INTERFACE_LIGHTNESS.companionUnavailable), companionSurface,
+      READING_FLOOR),
     shadow: structural(INTERFACE_LIGHTNESS.shadow),
     vignette: structural(INTERFACE_LIGHTNESS.vignette),
   });

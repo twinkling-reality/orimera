@@ -98,8 +98,12 @@
   --radius-control: 8px;
   --radius-panel: 6px;
   --radius-pill: 999px;
-  --ui-choice-radius: 999px;
-  --ui-speech-radius: 34px;
+  /*
+   * The Companion's surfaces are captions over a live world, not cards. A caption is square: the
+   * 34px lens and the 999px capsule were the shapes of a panel, and a panel is what they read as.
+   */
+  --ui-choice-radius: 2px;
+  --ui-speech-radius: 2px;
   --profile-blur-world: 8px;
   --profile-blur-system: 18px;
   --profile-ui-companion-blur: 24px;
@@ -156,13 +160,21 @@
 
 :root[data-contrast='high'] {
   --edge: color-mix(in srgb, var(--ink) 58%, transparent);
+}
+
+/*
+ * Both access modes strip the blur AND make the materials opaque.
+ *
+ * The opaque half used to apply under high contrast only, so choosing Reduced transparency alone
+ * removed the frost and left the fill translucent, which is the worse of the two states: the world
+ * behind stops being a wash and becomes legible detail under small type. Blur and opacity are one
+ * decision and belong in one block.
+ */
+:root[data-transparency='reduced'],
+:root[data-contrast='high'] {
   --material-archive: var(--raised);
   --material-system: var(--surface);
   --material-instrument: var(--surface);
-}
-
-:root[data-transparency='reduced'],
-:root[data-contrast='high'] {
   --blur-world: 0px;
   --blur-system: 0px;
   --ui-companion-blur: 0px;

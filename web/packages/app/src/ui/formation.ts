@@ -6,7 +6,7 @@
  * no invented percentage."
  *
  * **This file renders a label and does not compose one.** `formationLabel` in
- * `@orimera/formation` already decides the stage name, the one factual sentence, the supporting
+ * `@exulanica/formation` already decides the stage name, the one factual sentence, the supporting
  * facts, whether elapsed time belongs on screen at all, and what to say when contact was lost.
  * An earlier version of this panel worked those out again from the raw state, which is two places
  * for the same rules to drift and one of them untested. Everything below writes out what the
@@ -17,8 +17,8 @@
  * total that is often unknown, which is the exact invention section 8.1 rules out.
  */
 
-import type { FormationState } from '@orimera/formation';
-import { formationLabel } from '@orimera/formation';
+import type { FormationState } from '@exulanica/formation';
+import { formationLabel } from '@exulanica/formation';
 import { el, replace } from './dom.js';
 
 export interface FormationPanel {

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { DAWN_THEME, ORIGIN_LANDSCAPE, SURVEY_RELIEF } from '@orimera/presentation';
+import { DAWN_THEME, ORIGIN_LANDSCAPE, SURVEY_RELIEF } from '@exulanica/presentation';
 import { DEFAULT_PREFERENCES, normalisePreferences } from '../src/preferences.js';
 import {
   applyDocumentAppearance,

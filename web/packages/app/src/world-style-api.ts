@@ -7,13 +7,13 @@
  * and keeps preview handles transient.
  */
 
-import type { WorldStyleParameterDefinition, WorldStyleParameterValue } from '@orimera/atlas-core';
-import { ApiError, Transport, type TransportOptions } from '@orimera/graph-client';
+import type { WorldStyleParameterDefinition, WorldStyleParameterValue } from '@exulanica/atlas-core';
+import { ApiError, Transport, type TransportOptions } from '@exulanica/graph-client';
 import {
   WORLD_STYLE_CONTRACT_COMMIT,
   WORLD_STYLE_RECIPES,
   worldStyleRecipe,
-} from '@orimera/presentation';
+} from '@exulanica/presentation';
 
 export type WorldStyleOrigin = 'user' | 'settings' | 'companion';
 export type WorldStyleScope =

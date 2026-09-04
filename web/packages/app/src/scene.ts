@@ -42,7 +42,7 @@ import type {
   LayoutCoverage,
   LocalVec3,
   ReconstructionRung,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 import {
   DEFAULT_LAYOUT_CONFIG,
   MAX_ISLANDS,
@@ -62,14 +62,14 @@ import {
   phyllotaxisSeed,
   placement,
   solveLayout,
-} from '@orimera/atlas-core';
-import type { EvidenceRef } from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
+import type { EvidenceRef } from '@exulanica/atlas-core';
 import type {
   GraphSnapshot,
   IslandRecord,
   OccurrenceKind,
   OccurrenceRecord,
-} from '@orimera/graph-client';
+} from '@exulanica/graph-client';
 
 /**
  * What an island renders as when nothing has reconstructed it.

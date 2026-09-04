@@ -4,7 +4,7 @@
  * Four rewrites got here, and each failure was a different kind. The first used the design
  * documents' vocabulary, which is precise there and impenetrable to a stranger. The second fixed
  * the vocabulary and kept the packaging: eyebrow, "in four steps", numbered cards. The third
- * dropped the packaging and mistook plain for vague, opening on "Orimera turns your photographs
+ * dropped the packaging and mistook plain for vague, opening on "Exulanica turns your photographs
  * into places", a metaphor with no mechanism and nothing a reader could check. The fourth put the
  * real numbers back and read like a specification being recited at somebody.
  *
@@ -41,15 +41,21 @@ function figure(svg: string, caption: string): HTMLElement {
 }
 
 export function buildMethod(): HTMLElement {
-  const root = el('section', { id: 'method', class: 'pane pane-method', tabindex: '-1' });
+  const root = el('section', {
+    id: 'method',
+    class: 'pane pane-method',
+    tabindex: '-1',
+    'aria-labelledby': 'method-title',
+  });
   const inner = el('article', { class: 'prose-column' });
 
   inner.append(
+    el('h1', { class: 'sr-only', id: 'method-title', text: 'Method' }),
     para(
       'I wanted to be able to walk back into a moment I had photographs of, and ask a question about it, and get an answer I could check. Not a folder, not a slideshow, and not a chatbot with confident opinions about my own life.',
     ),
     para(
-      'So Orimera takes a set of photographs, recovers the geometry the camera saw, and puts that geometry into one continuous space next to every other capture you have given it. Then it holds one rule everywhere: an answer about your past cites the photograph it came from, never the reconstruction.',
+      'So Exulanica takes a set of photographs, recovers the geometry the camera saw, and puts that geometry into one continuous space next to every other capture you have given it. Then it holds one rule everywhere: an answer about your past cites the photograph it came from, never the reconstruction.',
     ),
     para(
       'That rule is doing more work than it looks like. It means a region built from four blurry photographs answers a question exactly as reliably as one built from four hundred good ones, because in neither case is the geometry what the answer rests on. Reconstruction quality never touches whether an answer is true.',
@@ -69,7 +75,7 @@ export function buildMethod(): HTMLElement {
       'A system that names people correctly slightly more often than a coin flip should not be naming people. So it does not. It will tell you it thinks two photographs might be the same person, and it will use that hunch to arrange things and light things up, but the hunch cannot appear in a sentence until you say yes. The name comes from you or it does not exist.',
     ),
     para(
-      'I also have not measured how often Orimera gets that hunch right, so there is no accuracy number for it anywhere: not here, not in the demo, not in the documentation. When I measure it, it goes on this page whatever it says.',
+      'I also have not measured how often Exulanica gets that hunch right, so there is no accuracy number for it anywhere: not here, not in the demo, not in the documentation. When I measure it, it goes on this page whatever it says.',
     ),
 
     heading('Why some places let you walk around and others do not'),
@@ -107,14 +113,14 @@ export function buildMethod(): HTMLElement {
 
     heading('What it will never do'),
     para(
-      'There is no progress ring, no streak, and no count of what is left to sort out. The number of things Orimera is unsure about is allowed to sit there, unchanged, forever. Every product built around a photo library eventually starts nagging, and the reason is that finishing is easy to measure and remembering is not. A memory is not a task and this will not keep score of one.',
+      'There is no progress ring, no streak, and no count of what is left to sort out. The number of things Exulanica is unsure about is allowed to sit there, unchanged, forever. Every product built around a photo library eventually starts nagging, and the reason is that finishing is easy to measure and remembering is not. A memory is not a task and this will not keep score of one.',
     ),
 
     el('p', { class: 'prose prose-foot' }, [
       'Every number above comes from the ',
       el('a', {
         class: 'inline-link',
-        href: 'https://github.com/twinkling-reality/orimera/tree/main/docs',
+        href: 'https://github.com/twinkling-reality/exulanica/tree/main/docs',
         rel: 'noreferrer',
         text: 'specification',
       }),

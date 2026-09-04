@@ -5,10 +5,10 @@ import type {
   HistoryEvent,
   OccurrenceRecord,
   RelationView,
-} from '@orimera/graph-client';
-import { occurrencesOf } from '@orimera/graph-client';
-import type { ProposalDraft, ProvenancePanel, ConfirmationSurface } from '@orimera/companion-runtime';
-import { buildProvenancePanel } from '@orimera/companion-runtime';
+} from '@exulanica/graph-client';
+import { occurrencesOf } from '@exulanica/graph-client';
+import type { ProposalDraft, ProvenancePanel, ConfirmationSurface } from '@exulanica/companion-runtime';
+import { buildProvenancePanel } from '@exulanica/companion-runtime';
 import type { ActionOffer } from './actions.js';
 import { availableActions } from './actions.js';
 import type { IndexRow } from './rows.js';

@@ -40,7 +40,7 @@ function map(options: {
   }
   return {
     header: {
-      format: 'orimera-point-map',
+      format: 'exulanica-point-map',
       version: 2,
       pointCount: count,
       rung: 3,

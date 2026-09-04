@@ -3,7 +3,7 @@ import { PACKED_STRIDE_BYTES, TAG_ONE_SIDED, decodeOpm, encodeOpm } from '../src
 import { DEFAULT_GENERATE, POINT_LADDER, generatePointMap } from '../src/generate.js';
 import { buildFixtureScene } from '../src/island-fixture.js';
 import { SEGMENTS } from '../src/scene.js';
-import { buildAnchorTable, islandRung } from '@orimera/atlas-core';
+import { buildAnchorTable, islandRung } from '@exulanica/atlas-core';
 
 /**
  * The generator's contract with ADR-0003.

@@ -1,4 +1,4 @@
-import type { AnchorIdRef, ConsequenceTier, EntityIdRef, EvidenceHandle } from '@orimera/graph-client';
+import type { AnchorIdRef, ConsequenceTier, EntityIdRef, EvidenceHandle } from '@exulanica/graph-client';
 import type { ProposalDraft } from './draft.js';
 import type { Intent } from './intent.js';
 import { assertMultiSelectable, assertOfferable } from './tiers.js';

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { companionAppearanceConfiguration } from '@orimera/presentation';
+import { companionAppearanceConfiguration } from '@exulanica/presentation';
 import { buildCompanionStage } from '../src/ui/companion-stage.js';
 
 afterEach(() => {

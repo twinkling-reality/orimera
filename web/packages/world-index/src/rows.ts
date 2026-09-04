@@ -5,8 +5,8 @@ import type {
   EntityRecord,
   IndexStatus,
   IslandIdRef,
-} from '@orimera/graph-client';
-import { knowledgeSources } from '@orimera/graph-client';
+} from '@exulanica/graph-client';
+import { knowledgeSources } from '@exulanica/graph-client';
 
 /**
  * THE INDEX ROW (interaction-model.md 6.1).

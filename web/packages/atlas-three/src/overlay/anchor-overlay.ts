@@ -6,13 +6,13 @@ import type {
   EmphasisBuffers,
   EntityId,
   FocusCandidate,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 import {
   MAX_CAPTIONS,
   MAX_EDGE_CHEVRONS,
   levelAt,
   readsAsUnconfirmed,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 
 /**
  * Screen-space anchors: 3D world positions projected by hand into pre-allocated DOM nodes.

@@ -8,7 +8,7 @@ import { CAMERA_HEIGHT, PRIMITIVES, SEGMENTS } from './scene.js';
 import { trimToExactly } from './select.js';
 import type { OpmMetadata } from './format/opm.js';
 
-export const GENERATOR = '@orimera/scene-synth 0.1.0';
+export const GENERATOR = '@exulanica/scene-synth 0.1.0';
 
 /** The bake-off ladder from ADR-0003 experiment X-R1, plus a 250k entry for a rung 3 floor. */
 export const POINT_LADDER: readonly number[] = Object.freeze([

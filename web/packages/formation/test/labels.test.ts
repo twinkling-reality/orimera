@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rungProperties } from '@orimera/atlas-core';
+import { rungProperties } from '@exulanica/atlas-core';
 
 import {
   FORMATION_STAGES,

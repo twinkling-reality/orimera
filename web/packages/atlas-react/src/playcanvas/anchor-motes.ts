@@ -1,12 +1,12 @@
 import * as pc from 'playcanvas';
-import type { AnchorKind, AnchorTable, EmphasisBuffers } from '@orimera/atlas-core';
-import { readsAsUnconfirmed, rendersAsPresenceMarker } from '@orimera/atlas-core';
-import type { ProvenanceClass } from '@orimera/atlas-core';
+import type { AnchorKind, AnchorTable, EmphasisBuffers } from '@exulanica/atlas-core';
+import { readsAsUnconfirmed, rendersAsPresenceMarker } from '@exulanica/atlas-core';
+import type { ProvenanceClass } from '@exulanica/atlas-core';
 import {
   DAWN_THEME,
   byteRgba,
   type PresentationTheme,
-} from '@orimera/presentation';
+} from '@exulanica/presentation';
 
 /**
  * One mote per anchor. What a region with no reconstructed geometry actually looks like.
@@ -250,7 +250,7 @@ export function createAnchorMotes(options: AnchorMotesOptions): AnchorMotes {
   };
 
   const material = new pc.ShaderMaterial({
-    uniqueName: 'orimera-anchor-motes',
+    uniqueName: 'exulanica-anchor-motes',
     attributes: { ...ATTRIBUTES },
     vertexGLSL: VERTEX_GLSL,
     fragmentGLSL: MOTE_FRAGMENT_GLSL,

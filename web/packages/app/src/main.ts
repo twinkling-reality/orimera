@@ -20,7 +20,7 @@
  * interface would be confidently wrong. Re-reading costs one request and cannot drift.
  */
 
-import '@orimera/presentation/tokens.css';
+import '@exulanica/presentation/tokens.css';
 import './style.css';
 import './appearance.css';
 import './unified-interface.css';
@@ -30,14 +30,14 @@ import type {
   OccurrenceRecord,
   ReconstructionSceneRecord,
   RenderingSubstrate,
-} from '@orimera/graph-client';
-import { ApiError } from '@orimera/graph-client';
+} from '@exulanica/graph-client';
+import { ApiError } from '@exulanica/graph-client';
 import {
   anchorId as toAnchorId,
   islandId as toIslandId,
   localVec3,
   type IslandId,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 import {
   FACET_KEYS,
   confirmationFor,
@@ -45,18 +45,18 @@ import {
   draftEdit,
   encodeFacets,
   type IndexFacets,
-} from '@orimera/world-index';
+} from '@exulanica/world-index';
 import { mountAtlas, type MountedAtlas } from './atlas.js';
 import type {
   PlacedScenePointMap,
   PointMap,
   SourceMediaCatalog,
-} from '@orimera/atlas-react/playcanvas';
+} from '@exulanica/atlas-react/playcanvas';
 import {
   footprintRadiusOf,
   scenePointMapFootprint,
   scenePointMapViewpoint,
-} from '@orimera/atlas-react/playcanvas';
+} from '@exulanica/atlas-react/playcanvas';
 import {
   applicationTitle,
   credentials,
@@ -78,7 +78,7 @@ import { buildOptions } from './ui/options.js';
 import { buildWorldChrome } from './ui/world-chrome.js';
 import { buildCompanionStage, type CompanionStage } from './ui/companion-stage.js';
 import { createCompanionController } from './companion.js';
-import type { CompanionSession, Turn } from '@orimera/companion-runtime';
+import type { CompanionSession, Turn } from '@exulanica/companion-runtime';
 import { buildDetail } from './ui/detail.js';
 import { buildFormation } from './ui/formation.js';
 import { el, replace } from './ui/dom.js';
@@ -122,7 +122,7 @@ import {
   readSourceLight,
   sourceLightParameters,
   worldArtProfile,
-} from '@orimera/presentation';
+} from '@exulanica/presentation';
 import {
   commandForKeystroke,
   initialWorldShell,
@@ -262,7 +262,7 @@ async function boot(): Promise<void> {
 /**
  * The credential prompt.
  *
- * There is no account system to sign in to. `orimera/api/authorisation.py` says so plainly, and
+ * There is no account system to sign in to. `exulanica/api/authorisation.py` says so plainly, and
  * this asks for the bearer token the operator configured rather than inventing a registration
  * flow a config module has no business deciding. Nothing is stored: the value goes to the
  * transport and is not written to storage, a cookie or the URL.
@@ -279,7 +279,7 @@ function askForToken(): void {
   failure.hidden = true;
 
   form.append(
-    el('h1', { text: 'Orimera' }),
+    el('h1', { text: 'Exulanica' }),
     el('p', { class: 'gate-note' }, [
       'This instance authenticates with a bearer token the operator configures. There is no ' +
         'account system, no registration and no password reset. The token is held for this tab ' +

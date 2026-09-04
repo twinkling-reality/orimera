@@ -1,5 +1,5 @@
-import type { Anchor, AnchorId, EmphasisBuffers } from '@orimera/atlas-core';
-import { readsAsUnconfirmed } from '@orimera/atlas-core';
+import type { Anchor, AnchorId, EmphasisBuffers } from '@exulanica/atlas-core';
+import { readsAsUnconfirmed } from '@exulanica/atlas-core';
 import type { OpmHeader } from './opm.js';
 
 /**

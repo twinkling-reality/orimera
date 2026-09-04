@@ -1,10 +1,9 @@
-import type { Turn } from '@orimera/companion-runtime';
+import type { Turn } from '@exulanica/companion-runtime';
 import { el, replace } from './dom.js';
 import { say } from './copy.js';
 
 export interface CompanionSpeechOptions {
   readonly speakerName: string;
-  readonly onEvidence: (handleIndex: number) => void;
 }
 
 export interface CompanionSpeech {
@@ -13,12 +12,17 @@ export interface CompanionSpeech {
   reportRefusal(reasonKey: string): void;
 }
 
-function evidenceActionLabel(turn: Turn): string {
-  if (turn.intent === 'confirm_continuity') {
-    return turn.evidence.length === 1 ? 'Show the other memory' : 'Compare the memories';
-  }
-  return turn.evidence.length === 1 ? 'Show supporting memory' : 'Review supporting memories';
-}
+/*
+ * The band holds speech, and only speech.
+ *
+ * It used to carry a control that opened the cited photograph, sitting inside the sentence the
+ * Companion had just spoken. Two things were wrong with it and renaming it fixed neither. It put
+ * an action in the one region reserved for what the Companion says, while the rail beside it
+ * exists to hold what a person can do. And it was a third route to a place already reachable two
+ * ways: aiming at the memory and pressing Interact opens that occurrence's detail, and the
+ * conversation's own third choice asks to see both moments. The citation did not need a button
+ * inside a paragraph; it needed to be somewhere a person looks for actions, and it already was.
+ */
 
 export function buildCompanionSpeech(options: CompanionSpeechOptions): CompanionSpeech {
   const root = el('section', {
@@ -35,23 +39,6 @@ export function buildCompanionSpeech(options: CompanionSpeechOptions): Companion
       }),
       el('p', { class: 'companion-utterance', text: turn.utterance ?? say(turn.utteranceKey) }),
     ];
-
-    if (turn.evidence.length > 0) {
-      const label = evidenceActionLabel(turn);
-      content.push(el(
-        'ul',
-        { class: 'companion-evidence', 'aria-label': 'Memory evidence' },
-        turn.evidence.map((_, index) => {
-          const action = el('button', {
-            type: 'button',
-            class: 'companion-evidence-action',
-            text: turn.evidence.length === 1 ? label : `${label} ${index + 1}`,
-          });
-          action.addEventListener('click', () => options.onEvidence(index));
-          return el('li', {}, [action]);
-        }),
-      ));
-    }
 
     replace(root, content);
   };

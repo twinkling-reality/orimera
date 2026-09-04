@@ -29,25 +29,25 @@ importers:
 
   packages/app:
     dependencies:
-      '@orimera/atlas-core':
+      '@exulanica/atlas-core':
         specifier: workspace:*
         version: link:../atlas-core
-      '@orimera/atlas-react':
+      '@exulanica/atlas-react':
         specifier: workspace:*
         version: link:../atlas-react
-      '@orimera/companion-runtime':
+      '@exulanica/companion-runtime':
         specifier: workspace:*
         version: link:../companion-runtime
-      '@orimera/formation':
+      '@exulanica/formation':
         specifier: workspace:*
         version: link:../formation
-      '@orimera/graph-client':
+      '@exulanica/graph-client':
         specifier: workspace:*
         version: link:../graph-client
-      '@orimera/presentation':
+      '@exulanica/presentation':
         specifier: workspace:*
         version: link:../presentation
-      '@orimera/world-index':
+      '@exulanica/world-index':
         specifier: workspace:*
         version: link:../world-index
     devDependencies:
@@ -59,19 +59,19 @@ importers:
 
   packages/atlas-react:
     dependencies:
-      '@orimera/atlas-core':
+      '@exulanica/atlas-core':
         specifier: workspace:*
         version: link:../atlas-core
-      '@orimera/companion-runtime':
+      '@exulanica/companion-runtime':
         specifier: workspace:*
         version: link:../companion-runtime
-      '@orimera/graph-client':
+      '@exulanica/graph-client':
         specifier: workspace:*
         version: link:../graph-client
-      '@orimera/presentation':
+      '@exulanica/presentation':
         specifier: workspace:*
         version: link:../presentation
-      '@orimera/world-index':
+      '@exulanica/world-index':
         specifier: workspace:*
         version: link:../world-index
     devDependencies:
@@ -84,7 +84,7 @@ importers:
 
   packages/atlas-three:
     dependencies:
-      '@orimera/atlas-core':
+      '@exulanica/atlas-core':
         specifier: workspace:*
         version: link:../atlas-core
       '@sparkjsdev/spark':
@@ -103,10 +103,10 @@ importers:
 
   packages/bakeoff:
     dependencies:
-      '@orimera/atlas-core':
+      '@exulanica/atlas-core':
         specifier: workspace:*
         version: link:../atlas-core
-      '@orimera/atlas-three':
+      '@exulanica/atlas-three':
         specifier: workspace:*
         version: link:../atlas-three
       three:
@@ -119,16 +119,16 @@ importers:
 
   packages/companion-runtime:
     dependencies:
-      '@orimera/atlas-core':
+      '@exulanica/atlas-core':
         specifier: workspace:*
         version: link:../atlas-core
-      '@orimera/graph-client':
+      '@exulanica/graph-client':
         specifier: workspace:*
         version: link:../graph-client
 
   packages/formation:
     dependencies:
-      '@orimera/atlas-core':
+      '@exulanica/atlas-core':
         specifier: workspace:*
         version: link:../atlas-core
 
@@ -136,7 +136,7 @@ importers:
 
   packages/landing:
     dependencies:
-      '@orimera/presentation':
+      '@exulanica/presentation':
         specifier: workspace:*
         version: link:../presentation
     devDependencies:
@@ -146,25 +146,25 @@ importers:
 
   packages/presentation:
     dependencies:
-      '@orimera/atlas-core':
+      '@exulanica/atlas-core':
         specifier: workspace:*
         version: link:../atlas-core
 
   packages/scene-synth:
     dependencies:
-      '@orimera/atlas-core':
+      '@exulanica/atlas-core':
         specifier: workspace:*
         version: link:../atlas-core
 
   packages/world-index:
     dependencies:
-      '@orimera/atlas-core':
+      '@exulanica/atlas-core':
         specifier: workspace:*
         version: link:../atlas-core
-      '@orimera/companion-runtime':
+      '@exulanica/companion-runtime':
         specifier: workspace:*
         version: link:../companion-runtime
-      '@orimera/graph-client':
+      '@exulanica/graph-client':
         specifier: workspace:*
         version: link:../graph-client
 

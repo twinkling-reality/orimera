@@ -36,8 +36,8 @@
  */
 
 import * as pc from 'playcanvas';
-import { atlasMapPose, type AtlasScene, type IslandId } from '@orimera/atlas-core';
-import type { WorldArtProfile } from '@orimera/presentation';
+import { atlasMapPose, type AtlasScene, type IslandId } from '@exulanica/atlas-core';
+import type { WorldArtProfile } from '@exulanica/presentation';
 import type { PointMap } from './opm.js';
 
 export interface RegionRelief {
@@ -196,7 +196,7 @@ export function createRegionRelief(
   const reconstructed = new Set<IslandId>();
 
   const material = new pc.ShaderMaterial({
-    uniqueName: 'orimera-region-relief',
+    uniqueName: 'exulanica-region-relief',
     attributes: { aPosition: pc.SEMANTIC_POSITION, aColor: pc.SEMANTIC_COLOR },
     vertexGLSL: VERTEX_GLSL,
     fragmentGLSL: FRAGMENT_GLSL,

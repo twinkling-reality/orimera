@@ -1,4 +1,4 @@
-import type { Turn } from '@orimera/companion-runtime';
+import type { Turn } from '@exulanica/companion-runtime';
 import {
   buildCompanionChoiceRail,
   type CompanionChoiceHandlers,
@@ -8,11 +8,7 @@ import { buildCompanionSpeech } from './companion-speech.js';
 import { el, replace } from './dom.js';
 import type { FirstUsePrompt } from './first-use-guidance.js';
 
-export interface CompanionHandlers extends CompanionChoiceHandlers {
-  readonly onEvidence: (handleIndex: number) => void;
-  readonly onCustomizeCompanion?: () => void;
-  readonly onCustomizeWorld?: () => void;
-}
+export type CompanionHandlers = CompanionChoiceHandlers;
 
 export type PanelState = 'enter' | 'summon' | 'open';
 
@@ -29,6 +25,8 @@ export interface CompanionEncounter {
   render(turn: Turn | null): void;
   reportRefusal(reasonKey: string): void;
   pressNumber(index: number): boolean;
+  /** `E` while the encounter is open: show the photograph this turn cites. */
+  openEvidence(): boolean;
   setPlacement(placement: CompanionPlacement): void;
   placement(): CompanionPlacement | null;
   hide(): void;
@@ -45,22 +43,17 @@ export function buildCompanionEncounter(
     'aria-live': 'polite',
     'data-state': 'enter',
   });
-  const speech = buildCompanionSpeech({
-    speakerName,
-    onEvidence: handlers.onEvidence,
-  });
+  /*
+   * No design routes here.
+   *
+   * The encounter carried "Design Companion" and "Design World" as deep links. Whatever the
+   * placement, world appearance has nothing to do with being asked whether two photographs show
+   * the same person, and offering it mid-question is an invitation to leave the only thing the
+   * Companion is for. Customize is already one of the four Atlas commands and is reachable from
+   * the encounter like everywhere else.
+   */
+  const speech = buildCompanionSpeech({ speakerName });
   const choices = buildCompanionChoiceRail(handlers);
-  const utilities = el('nav', { class: 'companion-utilities', 'aria-label': 'Companion deep links' });
-  if (handlers.onCustomizeCompanion !== undefined) {
-    const customize = el('button', { type: 'button', text: 'Design Companion' });
-    customize.addEventListener('click', handlers.onCustomizeCompanion);
-    utilities.append(customize);
-  }
-  if (handlers.onCustomizeWorld !== undefined) {
-    const customize = el('button', { type: 'button', text: 'Design World' });
-    customize.addEventListener('click', handlers.onCustomizeWorld);
-    utilities.append(customize);
-  }
   let state: PanelState = 'enter';
   let lastTurn: Turn | null = null;
   let currentPlacement: CompanionPlacement | null = null;
@@ -97,7 +90,7 @@ export function buildCompanionEncounter(
   function renderTurn(turn: Turn): void {
     speech.render(turn);
     choices.render(turn);
-    replace(root, [speech.root, choices.root, ...(utilities.childElementCount === 0 ? [] : [utilities])]);
+    replace(root, [speech.root, choices.root]);
   }
 
   renderPrompt();
@@ -138,6 +131,9 @@ export function buildCompanionEncounter(
     },
     pressNumber(index) {
       return state === 'open' ? choices.pressNumber(index) : false;
+    },
+    openEvidence() {
+      return state === 'open' ? choices.openEvidence() : false;
     },
     hide() {
       root.setAttribute('hidden', '');

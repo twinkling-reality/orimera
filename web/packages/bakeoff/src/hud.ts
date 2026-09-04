@@ -1,4 +1,4 @@
-import type { RendererCapabilities } from '@orimera/atlas-three';
+import type { RendererCapabilities } from '@exulanica/atlas-three';
 import type { RunResult } from './harness.js';
 
 export const HUD_CSS = `

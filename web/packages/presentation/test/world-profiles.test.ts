@@ -62,21 +62,30 @@ describe('world art profiles', () => {
     )).toBeGreaterThanOrEqual(7);
   });
 
-  it('carries an authored hue through derivation and leaves a grey world grey', () => {
-    // The whole interface once came from the ground root. When a world authored a near-white
-    // field, `#eef7f2`, every structural role arrived as grey: sRGB darkening keeps the channel
-    // ratio and throws away the channel difference. Chroma is the property that was lost, so
-    // chroma is the property asserted.
+  it('spends hue only where hue means something', () => {
+    // Reading text, panel material, shadow and the Companion's own surface say nothing by being
+    // coloured. They were all darkened world hues, so the type, the rules, the focus ring and the
+    // speech band were tinted and none of that tint carried information. Provenance, caution and
+    // error are the roles where hue is the message, plus one accent.
     const aeroheart = ORIGIN_LANDSCAPE.ui.colors;
-    const chromatic = ['ink', 'body', 'accent', 'focus', 'shadow'] as const;
-    for (const role of chromatic) {
-      expect(perceptualColour(aeroheart[role]).chroma).toBeGreaterThan(0.02);
+    const structure = [
+      'ground', 'surface', 'raised', 'ink', 'body', 'muted', 'shadow', 'vignette',
+      'companionSurface', 'companionText', 'companionAccent', 'companionSecondary',
+    ] as const;
+    for (const role of structure) {
+      expect(perceptualColour(aeroheart[role]).chroma).toBeLessThanOrEqual(0.016);
     }
-    // Survey Relief authors no root above 0.07 chroma and is meant to stay a drab ledger. The
-    // floor may rescue a hue; it may not invent one.
+    const meaning = ['accent', 'focus', 'user', 'inference', 'external', 'warning', 'error'] as const;
+    for (const role of meaning) {
+      expect(perceptualColour(aeroheart[role]).chroma).toBeGreaterThan(0.05);
+    }
+    // The cap is a ceiling, not a conversion to grey: a world's own cast still reaches structure,
+    // and a world that authors no hue at all stays exactly as drab as it wrote itself.
+    // `error` is anchored to a red literal on purpose and stays red in every world, because a
+    // world's taste does not get to decide how a failure looks.
     const survey = SURVEY_RELIEF.ui.colors;
-    for (const role of chromatic) {
-      expect(perceptualColour(survey[role]).chroma).toBeLessThan(0.05);
+    for (const role of [...structure, ...meaning].filter((name) => name !== 'error')) {
+      expect(perceptualColour(survey[role]).chroma).toBeLessThan(0.08);
     }
   });
 

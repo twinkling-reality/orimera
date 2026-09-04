@@ -1,6 +1,6 @@
-# @orimera/landing
+# @exulanica/landing
 
-The public Orimera title and Method surfaces. This package is deliberately not an Atlas shell.
+The public Exulanica title and Method surfaces. This package is deliberately not an Atlas shell.
 It contains no application state, Companion runtime, formation replay, graph client, or renderer.
 
 ```bash
@@ -10,7 +10,7 @@ pnpm --dir web landing:build
 
 ## Canonical Atlas handoff
 
-The title's **Enter Atlas** link opens the single application composition root in `@orimera/app`.
+The title's **Enter Atlas** link opens the single application composition root in `@exulanica/app`.
 The destination is deployment-owned:
 
 ```bash
@@ -32,17 +32,18 @@ does not accept it.
 
 ## Boundaries
 
-The landing package depends only on `@orimera/presentation` for shared semantic visual tokens.
+The landing package depends only on `@exulanica/presentation` for shared semantic visual tokens.
 `web/.dependency-cruiser.cjs` enforces that boundary and separately prevents renderer imports.
 This keeps the public first paint lightweight while leaving world-owned visual identity, Atlas
 navigation, the geometric Companion, evidence, Map, and Index inside the canonical application.
 
 ## Surfaces
 
-- **Title** keeps the two Orimera figures, product definition, navigation legend, and one explicit
-  entry into Atlas.
+- **Title** places the Exulanica wordmark over one generated memory crescent, with a lower-left
+  navigation menu and one explicit entry into Atlas. It uses no scenic or photographic backdrop.
 - **Method** explains the evidence and reconstruction contracts with the generated ladder figure.
 - **Viewport boundary** states the product's current desktop input requirement rather than showing
   a fake small-screen product.
 
-The signed-out surfaces share the dawn field, keyboard focus treatment, and reduced-motion rules.
+The signed-out surfaces share a neutral light canvas, keyboard focus treatment, and reduced-motion
+rules. The landing palette is scoped locally so Atlas world profiles remain independent.

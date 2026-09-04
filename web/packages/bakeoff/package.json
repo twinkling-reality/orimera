@@ -1,11 +1,11 @@
 {
-  "name": "@orimera/bakeoff",
+  "name": "@exulanica/bakeoff",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "dependencies": {
-    "@orimera/atlas-core": "workspace:*",
-    "@orimera/atlas-three": "workspace:*",
+    "@exulanica/atlas-core": "workspace:*",
+    "@exulanica/atlas-three": "workspace:*",
     "three": "0.185.1"
   },
   "devDependencies": { "vite": "^8.2.2" },

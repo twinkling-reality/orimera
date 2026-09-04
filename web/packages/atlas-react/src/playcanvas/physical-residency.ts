@@ -3,7 +3,7 @@ import type {
   ResidencyAction,
   ResidencyRequest,
   ResidencyStage,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 
 export type AssetAvailability =
   | 'available'

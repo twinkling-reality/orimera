@@ -10,7 +10,7 @@ import {
   Vector2,
   Vector3,
 } from 'three';
-import { DISSOLVE_BAND_FRACTION } from '@orimera/atlas-core';
+import { DISSOLVE_BAND_FRACTION } from '@exulanica/atlas-core';
 import { SEGMENT_TABLE_WIDTH } from '../semantic-state.js';
 import { POINT_FRAGMENT_SHADER, POINT_VERTEX_SHADER } from './point-shader.js';
 

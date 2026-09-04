@@ -1,7 +1,7 @@
-import type { EntityRecord, GraphSnapshot } from '@orimera/graph-client';
-import { occurrencesOf } from '@orimera/graph-client';
-import type { ConfirmationSummary, IdFactory, ProposalDraft } from '@orimera/companion-runtime';
-import { buildConfirmation, draftOperation, makeDraft, tierPolicy } from '@orimera/companion-runtime';
+import type { EntityRecord, GraphSnapshot } from '@exulanica/graph-client';
+import { occurrencesOf } from '@exulanica/graph-client';
+import type { ConfirmationSummary, IdFactory, ProposalDraft } from '@exulanica/companion-runtime';
+import { buildConfirmation, draftOperation, makeDraft, tierPolicy } from '@exulanica/companion-runtime';
 import { ACTION_TIER } from './actions.js';
 
 /**

@@ -1,4 +1,4 @@
-# @orimera/bakeoff
+# @exulanica/bakeoff
 
 The ADR-0003 **X-R1** harness for the three.js + Spark binding.
 
@@ -23,12 +23,12 @@ Also `&islands=1..3` `&warmup=1500` `&measure=6000` `&dpr=2` `&motes=0` `&people
 Console output is prefixed and parseable, one JSON object per line:
 
 ```
-ORIMERA_BAKEOFF_ENV     {...}   capabilities and the full configuration
-ORIMERA_BAKEOFF_ROW     {...}   one per rung
-ORIMERA_BAKEOFF_SUMMARY {...}   the whole set, once, with its caveats attached
+EXULANICA_BAKEOFF_ENV     {...}   capabilities and the full configuration
+EXULANICA_BAKEOFF_ROW     {...}   one per rung
+EXULANICA_BAKEOFF_SUMMARY {...}   the whole set, once, with its caveats attached
 ```
 
-`window.orimeraBakeoff` carries the same objects plus the live renderer, for a driver that would
+`window.exulanicaBakeoff` carries the same objects plus the live renderer, for a driver that would
 rather read a value than parse a transcript.
 
 ## The result sink, and why it exists

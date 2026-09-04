@@ -76,7 +76,7 @@ export function buildViewportBoundary(): {
   const body = el('p', { class: 'boundary-body' });
 
   root.append(
-    el('p', { class: 'boundary-eyebrow', text: 'Orimera' }),
+    el('p', { class: 'boundary-eyebrow', text: 'Exulanica' }),
     el('h1', { class: 'boundary-head', text: 'Desktop only, for now.' }),
     body,
   );

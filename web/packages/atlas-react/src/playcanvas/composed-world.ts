@@ -1,5 +1,5 @@
 import * as pc from 'playcanvas';
-import { atlasLandscapeHeight, type WorldModuleInstance, type WorldTopologySnapshot } from '@orimera/atlas-core';
+import { atlasLandscapeHeight, type WorldModuleInstance, type WorldTopologySnapshot } from '@exulanica/atlas-core';
 import {
   DAWN_THEME,
   ORIGIN_LANDSCAPE,
@@ -9,7 +9,7 @@ import {
   type PresentationTheme,
   type WorldArtProfile,
   type WorldArtProfileId,
-} from '@orimera/presentation';
+} from '@exulanica/presentation';
 
 export interface ComposedWorld {
   readonly entity: pc.Entity;
@@ -169,7 +169,7 @@ function createMaterial(
 
 function createSkyMaterial(profile: WorldArtProfile): pc.ShaderMaterial {
   const material = new pc.ShaderMaterial({
-    uniqueName: `orimera-origin-sky:${profile.profileId}`,
+    uniqueName: `exulanica-origin-sky:${profile.profileId}`,
     attributes: { aPosition: pc.SEMANTIC_POSITION },
     vertexGLSL: SKY_VERTEX_GLSL,
     fragmentGLSL: SKY_FRAGMENT_GLSL,

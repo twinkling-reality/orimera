@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
-import type { BandRow, ConfirmationSummary } from '@orimera/companion-runtime';
+import type { BandRow, ConfirmationSummary } from '@exulanica/companion-runtime';
 
 import { buildConfirm } from '../src/ui/confirm.js';
 

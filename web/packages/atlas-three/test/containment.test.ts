@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { atlasVec3, localToAtlas, localVec3, placement } from '@orimera/atlas-core';
-import type { Island } from '@orimera/atlas-core';
-import { islandId, makeIsland } from '@orimera/atlas-core';
+import { atlasVec3, localToAtlas, localVec3, placement } from '@exulanica/atlas-core';
+import type { Island } from '@exulanica/atlas-core';
+import { islandId, makeIsland } from '@exulanica/atlas-core';
 import type { PointMapData, OpmHeader } from '../src/opm.js';
 import { atlasGroundToIslandGrid, buildOccupancyGrid, sampleGround } from '../src/containment.js';
 
@@ -73,7 +73,7 @@ function synthetic(): PointMapData {
   for (let k = 0; k < 60; k += 1) push(-4, 0.5 + k * 0.02, -4, 2);
 
   const header = {
-    format: 'orimera-point-map',
+    format: 'exulanica-point-map',
     version: 2,
     pointCount: segs.length,
     rung: 3,

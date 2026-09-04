@@ -17,7 +17,7 @@
  * product it is least acceptable to get wrong.
  */
 
-import type { BandRow, ConfirmationSummary } from '@orimera/companion-runtime';
+import type { BandRow, ConfirmationSummary } from '@exulanica/companion-runtime';
 import { el, replace } from './dom.js';
 
 export interface ConfirmHandlers {

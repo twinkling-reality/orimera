@@ -1,4 +1,4 @@
-import type { WorldStyleParameterDefinition } from '@orimera/atlas-core';
+import type { WorldStyleParameterDefinition } from '@exulanica/atlas-core';
 
 export interface WorldStyleCapability {
   readonly capability: string;

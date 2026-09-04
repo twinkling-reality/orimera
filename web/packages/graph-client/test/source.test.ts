@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   loadGraph,
-  OrimeraClient,
+  ExulanicaClient,
   type ApiError,
   type GraphLoadState,
   type GraphSource,
@@ -23,8 +23,8 @@ describe('the shared graph source', () => {
         headers: { 'content-type': 'application/json' },
       }),
     );
-    const live = new OrimeraClient({
-      baseUrl: 'https://orimera.invalid',
+    const live = new ExulanicaClient({
+      baseUrl: 'https://exulanica.invalid',
       token: 'explicit-live-token',
       fetch,
     });
@@ -53,8 +53,8 @@ describe('the shared graph source', () => {
   });
 
   it('keeps a failed live load as an error instead of substituting fixture data', async () => {
-    const live = new OrimeraClient({
-      baseUrl: 'https://orimera.invalid',
+    const live = new ExulanicaClient({
+      baseUrl: 'https://exulanica.invalid',
       token: 'explicit-live-token',
       fetch: async () =>
         new Response(JSON.stringify({ code: 'database_unavailable', detail: 'try later' }), {

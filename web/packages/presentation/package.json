@@ -1,5 +1,5 @@
 {
-  "name": "@orimera/presentation",
+  "name": "@exulanica/presentation",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
     "./tokens.css": "./src/tokens.css"
   },
   "dependencies": {
-    "@orimera/atlas-core": "workspace:*"
+    "@exulanica/atlas-core": "workspace:*"
   },
   "scripts": {
     "typecheck": "tsc --build"

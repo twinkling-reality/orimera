@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Anchor, AnchorKind } from '@orimera/atlas-core';
+import type { Anchor, AnchorKind } from '@exulanica/atlas-core';
 import {
   anchorId,
   buildAnchorTable,
@@ -10,7 +10,7 @@ import {
   occurrenceId,
   placement,
   atlasVec3,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 
 import {
   MOTE_FRAGMENT_GLSL,

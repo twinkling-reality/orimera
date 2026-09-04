@@ -20,6 +20,40 @@
    * diffuse colour through as a wash instead of turning it to mud.
    */
   --atlas-plane: color-mix(in srgb, var(--raised) 93%, var(--ink));
+
+  /*
+   * The Companion's materials, composed once.
+   *
+   * A held plate is somewhere you go, so it is paper and the world behind it is incidental. The
+   * Companion's surfaces are the opposite: a subtitle and its answers, read straight over whatever
+   * the world happens to be showing, near-white field one moment and a photograph the next. They
+   * carry their own scrim so the world never has to move out of the way.
+   *
+   * They live here beside `--atlas-plane` because composed materials belong in one place. The
+   * alternative is what was here an hour ago: five different percentages invented at five call
+   * sites, where changing the Companion's weight means finding all five and hoping.
+   */
+  --companion-scrim: color-mix(in srgb, var(--ui-companion-text) 82%, transparent);
+  --companion-scrim-soft: color-mix(in srgb, var(--ui-companion-text) 74%, transparent);
+  --companion-edge: color-mix(in srgb, var(--ui-companion-surface) 34%, transparent);
+  --companion-edge-faint: color-mix(in srgb, var(--ui-companion-surface) 22%, transparent);
+  --companion-key-edge: color-mix(in srgb, var(--ui-companion-surface) 62%, transparent);
+  /* Two reading weights on that scrim, and only two. */
+  --companion-ink: color-mix(in srgb, var(--ui-companion-surface) 92%, transparent);
+  --companion-ink-soft: color-mix(in srgb, var(--ui-companion-surface) 78%, transparent);
+}
+
+/*
+ * The Companion's materials go genuinely opaque, at the token rather than at each consumer.
+ *
+ * Every surface built from these already reads them, so one override reaches all of them and a
+ * new surface cannot be added that quietly misses the list. That list was the bug: the choice
+ * rail was not on it, so it kept a 74% fill while its blur was stripped, which is the failure the
+ * plates were fixed for two passes ago.
+ */
+:root:is([data-transparency='reduced'], [data-contrast='high']) {
+  --companion-scrim: var(--ui-companion-text);
+  --companion-scrim-soft: var(--ui-companion-text);
 }
 
 :where(
@@ -56,8 +90,6 @@
   .index-facets,
   .index-results,
   #shell[data-primary='index'] > .detail,
-  .instrument-pages,
-  .instrument-register,
   .settings-pages
 )::-webkit-scrollbar {
   width: 0.45rem;
@@ -68,8 +100,6 @@
   .index-facets,
   .index-results,
   #shell[data-primary='index'] > .detail,
-  .instrument-pages,
-  .instrument-register,
   .settings-pages
 )::-webkit-scrollbar-track {
   background: transparent;
@@ -79,8 +109,6 @@
   .index-facets,
   .index-results,
   #shell[data-primary='index'] > .detail,
-  .instrument-pages,
-  .instrument-register,
   .settings-pages
 )::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--ink) 20%, transparent);
@@ -322,107 +350,11 @@
     border-top: 1px solid var(--edge);
   }
 
-  .atlas-instrument .instrument-head {
-    grid-column: 1 / -1;
-    grid-row: 1;
-    padding: 0.6rem 1.15rem 0.55rem;
-    border-bottom-color: var(--edge);
-  }
-
-  .atlas-instrument .instrument-head h1 { font-size: 2.1rem; }
-
-  .instrument-nav {
-    grid-column: 1;
-    padding: 0.85rem 0.75rem;
-    background: var(--plate-recess);
-    border-right-color: var(--edge);
-  }
-
-  .instrument-nav-item {
-    min-height: 4.3rem;
-    color: var(--ink-soft);
-    border-bottom-color: var(--edge);
-  }
-
-  .instrument-nav-item:hover,
-  .instrument-nav-item:focus-visible,
-  .instrument-nav-item[aria-current='page'] {
-    color: var(--ink);
-    background: color-mix(in srgb, var(--raised) 7%, transparent);
-  }
-
-  .instrument-nav-item[aria-current='page']::before,
-  .instrument-nav-item:focus-visible::before { background: var(--accent); }
-
-  .instrument-pages {
-    grid-column: 2;
-    padding: clamp(1.2rem, 2.4vw, 2.2rem);
-    scrollbar-color: var(--accent) transparent;
-  }
-
-  .instrument-page-head { border-bottom-color: var(--edge); }
-  .instrument-page-head h2 { color: var(--ink); }
-
-  .world-control-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0 1.4rem;
-  }
-
-  .world-control-grid .option-field,
-  .companion-control-grid .option-field {
-    color: var(--ink);
-    border-bottom-color: var(--edge);
-  }
-
   .atlas-instrument :where(select, input:not([type='range'])) {
     color: var(--ink);
     background: color-mix(in srgb, var(--raised) 7%, transparent);
     border: 1px solid var(--edge);
     border-radius: 1px;
-  }
-
-  .instrument-register {
-    grid-column: 3;
-    padding: 1.35rem 1.1rem;
-    color: var(--ink);
-    background: var(--plate-recess-strong);
-    border-left-color: var(--edge);
-  }
-
-  .instrument-register .world-style-apply {
-    color: var(--raised);
-    background: var(--accent);
-    border-color: var(--accent);
-    border-radius: 1px;
-  }
-
-  .atlas-instrument[data-section='companion'] .companion-workshop-preview {
-    position: fixed;
-    left: clamp(2rem, 9vw, 9rem);
-    top: 50%;
-    width: min(24vw, 23rem);
-    min-height: 24rem;
-    margin: 0;
-    background: transparent;
-    border: 0;
-    transform: translateY(-48%);
-  }
-
-  .atlas-instrument[data-section='companion'] .companion-workshop-preview::after {
-    right: 50%;
-    bottom: 0;
-    color: var(--ink-faint);
-    transform: translateX(50%);
-  }
-
-  .atlas-instrument[data-section='companion'] .companion-workshop-preview .companion-avatar {
-    width: min(18vw, 17rem);
-    height: min(18vw, 17rem);
-  }
-
-  .companion-control-grid {
-    grid-template-columns: 1fr;
-    gap: 0;
   }
 
   /* Settings follows the supplied category/row model, using the same Atlas material language. */
@@ -621,7 +553,6 @@
     grid-template-rows: 3.8rem minmax(0, 1fr);
   }
 
-  .atlas-instrument .instrument-head,
   .settings-head { padding-block: 0.45rem; }
 
   .settings-pages { padding-block: 1rem; }

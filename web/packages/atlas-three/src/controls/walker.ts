@@ -1,4 +1,4 @@
-import type { Island } from '@orimera/atlas-core';
+import type { Island } from '@exulanica/atlas-core';
 import type { OccupancyGrid } from '../containment.js';
 import { atlasGroundToIslandGrid, sampleGround } from '../containment.js';
 import type { PointerLook } from './pointer-look.js';

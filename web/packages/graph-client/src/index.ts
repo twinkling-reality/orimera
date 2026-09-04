@@ -1,11 +1,11 @@
 /**
- * @orimera/graph-client
+ * @exulanica/graph-client
  *
  * Entity graph reads, the assertion log and evidence resolution. This package sits UNDER
  * everything: it may not import atlas-core, atlas-react, companion-runtime or world-index
  * (architecture-overview.md 1.1), and `.dependency-cruiser.cjs` enforces that.
  *
- * Mutations live behind a second entry point, `@orimera/graph-client/mutations`, so that
+ * Mutations live behind a second entry point, `@exulanica/graph-client/mutations`, so that
  * "atlas-react forbids graph mutations" is a path a lint rule can name rather than a habit.
  *
  * The transport is real, and four files divide the work of speaking to it. `wire.ts` says what
@@ -33,7 +33,7 @@ export { loadGraph } from './source.js';
 export { adaptSnapshot } from './snapshot.js';
 
 export type { ClientOptions } from './client.js';
-export { OrimeraClient } from './client.js';
+export { ExulanicaClient } from './client.js';
 
 export type { ApiProblem, TransportOptions } from './transport.js';
 export { ApiError, Transport, toApiError } from './transport.js';

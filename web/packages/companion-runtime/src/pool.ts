@@ -6,8 +6,8 @@ import type {
   GraphSnapshot,
   IslandIdRef,
   MatchProposalView,
-} from '@orimera/graph-client';
-import { hasActiveAssertion, isNeverSame, occurrencesOf } from '@orimera/graph-client';
+} from '@exulanica/graph-client';
+import { hasActiveAssertion, isNeverSame, occurrencesOf } from '@exulanica/graph-client';
 import type { ProposalDraft } from './draft.js';
 import { draftOperation, makeDraft } from './draft.js';
 import type { IdFactory } from './ids.js';

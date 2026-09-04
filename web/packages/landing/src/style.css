@@ -1,8 +1,8 @@
 /*
  * The landing surface.
  *
- * The signed-out title and Method share one pale Orimera ground. The Atlas owns its own world
- * identity in `@orimera/app`; this package does not duplicate or imitate that surface.
+ * The signed-out title and Method share one neutral Exulanica canvas. The Atlas owns its own world
+ * identity in `@exulanica/app`; this package does not duplicate or imitate that surface.
  *
  * Typography is a system stack at light weights rather than a web font: no network request on
  * first paint, no layout shift when a face arrives, and on the stated target machine it resolves
@@ -10,17 +10,45 @@
  */
 
 :root {
+  color-scheme: light;
+
+  --landing-canvas: #f7f9f7;
+  --landing-ink: #121715;
+  --landing-ink-soft: #35413b;
+  --landing-ink-faint: #59655f;
+  --landing-lime: #d9ff73;
+  --landing-ice: #cfe4ff;
+  --landing-violet: #ddd7ff;
+
+  /* Landing-only overrides. Atlas world profiles continue to own their shared presentation roles. */
+  --ground: var(--landing-canvas);
+  --ink: var(--landing-ink);
+  --ink-soft: var(--landing-ink-soft);
+  --ink-faint: var(--landing-ink-faint);
+  --focus: #235c43;
   --rule: color-mix(in srgb, var(--ink) 14%, transparent);
 
   --step: clamp(0.6rem, 1.4vh, 1.1rem);
-  --measure: 34rem;
 
   --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial,
     sans-serif;
+  --font-utility: ui-monospace, 'SFMono-Regular', Consolas, monospace;
 }
 
 * {
   box-sizing: border-box;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /*
@@ -46,15 +74,9 @@ body {
 }
 
 /*
- * The ground: a broad directional light field plus grain.
+ * The ground is neutral rather than a world palette. The title's one chromatic object is the
+ * incomplete crescent, so the page does not need a second atmospheric field behind it.
  *
- * The planes cross the complete viewport, so the atmosphere reads as an exposure of one space
- * rather than as decorative lights placed behind the interface. They remain deliberately close
- * together in value; the composition is carried by the figures, and a ground with contrast in it
- * would compete with them.
- *
- * The grain is an inline SVG turbulence rather than a raster tile: no request, no cache entry,
- * and it resolves at whatever pixel density the display has instead of being fixed at export.
  */
 body {
   margin: 0;
@@ -64,38 +86,6 @@ body {
   background-color: var(--ground);
   -webkit-font-smoothing: antialiased;
   letter-spacing: 0.005em;
-}
-
-#mesh {
-  --field-key-color: var(--dawn-field-key);
-  --field-crosslight-color: var(--dawn-field-crosslight);
-  --field-afterimage-color: var(--dawn-field-afterimage);
-  --field-bounce-color: var(--dawn-field-bounce);
-  --field-rim-color: var(--dawn-field-rim);
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-color: var(--dawn-ground);
-  background-image: var(--field-image);
-  transition: opacity 900ms cubic-bezier(0.65, 0, 0.35, 1);
-}
-
-/*
- * The grain, over whichever ground is showing.
- *
- * An inline SVG turbulence rather than a raster tile: no request, no cache entry, and it resolves
- * at whatever pixel density the display has instead of being fixed at export.
- */
-#grain {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.5;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.22'/%3E%3C/svg%3E");
-  transition: opacity 900ms ease;
 }
 
 #overlay {
@@ -133,264 +123,366 @@ body {
   padding: 0;
 }
 
-/*
- * The figures are the title screen's composition, not the product's wallpaper. Method is a page to
- * read and the Atlas is a place to be, and two glowing heads behind either would be decoration
- * competing with content.
- */
-.figures {
-  transition: opacity 700ms cubic-bezier(0.65, 0, 0.35, 1);
-}
-
-:root:not([data-surface='title']) .figures {
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* ------------------------------------------------------------------ topbar */
+/* --------------------------------------------------------------- navigation */
 
 .topbar {
   position: absolute;
+  z-index: 4;
+}
+
+:root[data-surface='title'] .topbar {
+  left: clamp(2.4rem, 5vw, 5.2rem);
+  bottom: clamp(2.5rem, 7vh, 5rem);
+}
+
+:root[data-surface='method'] .topbar {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
   padding: clamp(1.4rem, 3vw, 2.1rem) clamp(1.5rem, 4vw, 3rem);
 }
 
 .destinations {
+  position: relative;
   display: flex;
+}
+
+:root[data-surface='title'] .destinations {
+  min-width: 16rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.08rem;
+}
+
+:root[data-surface='method'] .destinations {
   align-items: center;
   gap: clamp(1rem, 2.2vw, 1.7rem);
 }
 
 /*
- * A destination is a key chip and a label, and the whole thing is one hit target.
- *
- * The chip carries the underline on hover rather than the label, which is the small idea that
- * makes this feel like a console menu instead of a nav bar: what lights up is the key you would
- * press, not the word you would click.
+ * The title menu borrows the hierarchy of a game title screen without borrowing its furniture.
+ * One micro-Companion marks the current way into the product; the compact Method header keeps a
+ * conventional underline because the character belongs to the title composition only.
  */
 .destination {
   position: relative;
   appearance: none;
   border: 0;
-  padding: 0.3rem 0;
+  padding: 0.54rem 0;
   background: none;
   font: inherit;
-  font-size: 0.84rem;
-  font-weight: 300;
-  letter-spacing: 0.015em;
+  font-size: 0.76rem;
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--ink-soft);
   text-decoration: none;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55em;
-  transition: color 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  display: block;
+  text-align: left;
+  transition: color 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.key {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.7em;
-  padding: 0.28em 0.42em 0.24em;
-  font: inherit;
-  font-size: 0.78em;
-  letter-spacing: 0.06em;
-  color: var(--ink);
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  transition:
-    border-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
-    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.key-wide {
-  min-width: 0;
-  letter-spacing: 0.14em;
-  text-indent: 0.14em;
-  padding: 0.3em 0.62em 0.26em;
-}
-
+.destination-primary,
 .destination:hover,
 .destination:focus-visible {
   color: var(--ink);
 }
 
-.destination:hover .key,
-.destination:focus-visible .key {
-  border-color: color-mix(in srgb, var(--ink) 40%, transparent);
-  background: color-mix(in srgb, #ffffff 62%, transparent);
-  transform: translateY(-1px);
+.destination-label {
+  display: inline-block;
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.destination-label::after {
+:root[data-surface='title'] .destination:hover .destination-label,
+:root[data-surface='title'] .destination:focus-visible .destination-label {
+  transform: translateX(0.1rem);
+}
+
+:root[data-surface='title'] .destination::after {
   content: '';
   position: absolute;
-  left: 0;
+  top: 50%;
+  left: -1.68rem;
+  width: 0.38rem;
+  height: 1px;
+  background: color-mix(in srgb, var(--ink) 16%, transparent);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: background 180ms ease;
+}
+
+:root[data-surface='title'] .destination-primary::after,
+:root[data-surface='title'] .destination:hover::after,
+:root[data-surface='title'] .destination:focus-visible::after {
+  background: color-mix(in srgb, var(--ink) 28%, transparent);
+}
+
+.companion-menu-marker {
+  --companion-marker-y: 1rem;
+  --companion-travel-ms: 330ms;
+  --companion-settle-transform: scale(1);
+  --companion-wake-opacity: 0;
+  position: absolute;
+  top: 0;
+  left: -2.43rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  overflow: visible;
+  pointer-events: none;
+  color: var(--ink);
+  transform: translate3d(0, calc(var(--companion-marker-y) - 50%), 0);
+}
+
+.companion-menu-marker[data-positioned='true'] {
+  transition: transform var(--companion-travel-ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.companion-menu-marker,
+.companion-menu-marker * {
+  pointer-events: none;
+}
+
+.companion-menu-wake,
+.companion-menu-orb,
+.companion-menu-gaze {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.companion-menu-wake {
+  opacity: var(--companion-wake-opacity);
+  filter: blur(5px);
+  transform: scale(0.88);
+  transition:
+    opacity 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.companion-menu-orb {
+  transform: var(--companion-settle-transform);
+}
+
+.companion-menu-body {
+  stroke: var(--ink);
+  stroke-width: 7px;
+}
+
+.companion-menu-marker[data-state='attending'] .companion-menu-orb {
+  --companion-settle-transform: scale(1);
+}
+
+.companion-menu-marker[data-state='attending'] .companion-menu-gaze {
+  transform: translateY(-4px) scaleY(1.04);
+}
+
+.companion-menu-marker[data-state='attending'] {
+  --companion-wake-opacity: 0.14;
+}
+
+.companion-menu-marker[data-state='attending'] .companion-menu-wake {
+  transform: scale(1);
+}
+
+.companion-menu-marker:is([data-motion='down-a'], [data-motion='down-b']) .companion-menu-orb {
+  animation: companion-travel-down var(--companion-travel-ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.companion-menu-marker:is([data-motion='up-a'], [data-motion='up-b']) .companion-menu-orb {
+  animation: companion-travel-up var(--companion-travel-ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.companion-menu-marker:is([data-motion='down-a'], [data-motion='down-b']) .companion-menu-wake {
+  animation: companion-wake-down var(--companion-travel-ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.companion-menu-marker:is([data-motion='up-a'], [data-motion='up-b']) .companion-menu-wake {
+  animation: companion-wake-up var(--companion-travel-ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes companion-travel-down {
+  0% { transform: scale(1); }
+  42% { transform: rotate(1.5deg) scale(0.96, 1.05); }
+  78% { transform: rotate(-2deg) scale(1.04, 0.96); }
+  100% { transform: var(--companion-settle-transform); }
+}
+
+@keyframes companion-travel-up {
+  0% { transform: scale(1); }
+  42% { transform: rotate(-1.5deg) scale(0.96, 1.05); }
+  78% { transform: rotate(2deg) scale(1.04, 0.96); }
+  100% { transform: var(--companion-settle-transform); }
+}
+
+@keyframes companion-wake-down {
+  0% { opacity: 0; transform: scale(0.78); }
+  34% { opacity: 0.2; transform: translateY(-12px) scale(0.92, 1.12); }
+  100% { opacity: var(--companion-wake-opacity); transform: scale(1); }
+}
+
+@keyframes companion-wake-up {
+  0% { opacity: 0; transform: scale(0.78); }
+  34% { opacity: 0.2; transform: translateY(12px) scale(0.92, 1.12); }
+  100% { opacity: var(--companion-wake-opacity); transform: scale(1); }
+}
+
+:root[data-surface='method'] .destination {
+  display: inline-flex;
+  width: auto;
+  padding: 0.3rem 0;
+  gap: 0.55em;
+  font-size: 0.8rem;
+  font-weight: 300;
+  letter-spacing: 0.015em;
+  text-transform: none;
+}
+
+:root[data-surface='method'] .destination::before {
+  content: '';
+  position: absolute;
+  top: auto;
   right: 0;
   bottom: 0;
+  left: 0;
+  width: auto;
   height: 1px;
-  background: currentColor;
+  background: var(--ink);
   transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: center;
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root[data-surface='method'] .destination:hover,
+:root[data-surface='method'] .destination:focus-visible {
+  transform: none;
+}
+
+:root[data-surface='method'] .destination:hover::before,
+:root[data-surface='method'] .destination:focus-visible::before,
+:root[data-surface='method'] .destination[aria-current='page']::before {
+  transform: scaleX(1);
 }
 
 /* -------------------------------------------------------------- title screen */
 
-/*
- * Two figures facing each other across a centred title, and a start prompt under it.
- */
 .pane-title {
   position: relative;
   height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: clamp(4.5rem, 11vh, 7rem) clamp(1.25rem, 4vw, 3rem) clamp(3.5rem, 9vh, 5rem);
-}
-
-/* ------------------------------------------------------------------ figures */
-
-.figures {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
   overflow: hidden;
-  pointer-events: none;
+  background: var(--landing-canvas);
 }
 
 /*
- * Large, and reaching past the frame on both sides. They are the composition rather than a pair of
- * illustrations beside it, so they are sized to crop rather than to fit.
+ * The aperture is intentionally incomplete. Its luminous material is the reconstructed world;
+ * the unfilled cutout is what the source photographs never observed and the product will not
+ * invent. It is generated entirely in CSS, not fetched as a background illustration.
  */
-.figure {
+.memory-aperture {
   position: absolute;
-  bottom: -14%;
-  width: clamp(17rem, 31vw, 34rem);
-  max-width: 38%;
-  height: auto;
+  top: -23%;
+  left: 50%;
+  width: min(64vw, 58rem);
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  z-index: 0;
+  pointer-events: none;
   opacity: 0;
-  animation: figure-in 1600ms cubic-bezier(0.22, 1, 0.36, 1) 120ms forwards;
+  animation: aperture-in 1700ms cubic-bezier(0.22, 1, 0.36, 1) 80ms forwards;
 }
 
-.figure-left {
-  left: -2%;
+.memory-crescent {
+  position: absolute;
+  inset: 7%;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      circle at 18% 52%,
+      color-mix(in srgb, var(--landing-lime) 88%, white),
+      transparent 31%
+    ),
+    radial-gradient(
+      circle at 48% 78%,
+      color-mix(in srgb, var(--landing-ice) 78%, white),
+      transparent 36%
+    ),
+    radial-gradient(
+      circle at 72% 20%,
+      color-mix(in srgb, var(--landing-violet) 72%, white),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 36% 28%,
+      #ffffff 4%,
+      color-mix(in srgb, var(--landing-ice) 48%, white) 64%
+    );
+  box-shadow: 0 0 5rem color-mix(in srgb, var(--landing-ice) 24%, transparent);
+  filter: blur(1.2px) saturate(0.92);
+  -webkit-mask: radial-gradient(circle at 63% 43%, transparent 0 56%, #000 56.6% 100%);
+  mask: radial-gradient(circle at 63% 43%, transparent 0 56%, #000 56.6% 100%);
 }
 
-.figure-right {
-  right: -2%;
-  animation-delay: 260ms;
-}
-
-@keyframes figure-in {
+@keyframes aperture-in {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(1.015);
+    transform: translateX(-50%) translateY(-0.8rem) scale(0.975);
   }
   to {
-    opacity: 1;
-    transform: none;
+    opacity: 0.9;
+    transform: translateX(-50%) translateY(0) scale(1);
   }
-}
-
-/*
- * A slow drift, well under the rate at which motion reads as animation. It exists so the screen
- * is never completely static while it waits, which is what makes a title screen feel live rather
- * than like a screenshot.
- */
-@media (prefers-reduced-motion: no-preference) {
-  .figure-left {
-    animation:
-      figure-in 1600ms cubic-bezier(0.22, 1, 0.36, 1) 120ms forwards,
-      drift-a 19s ease-in-out 1800ms infinite;
-  }
-
-  .figure-right {
-    animation:
-      figure-in 1600ms cubic-bezier(0.22, 1, 0.36, 1) 260ms forwards,
-      drift-b 23s ease-in-out 2100ms infinite;
-  }
-}
-
-@keyframes drift-a {
-  0%, 100% { transform: translate3d(0, 0, 0); }
-  50% { transform: translate3d(0.5%, -1.1%, 0); }
-}
-
-@keyframes drift-b {
-  0%, 100% { transform: translate3d(0, 0, 0); }
-  50% { transform: translate3d(-0.5%, -0.8%, 0); }
 }
 
 /* -------------------------------------------------------------------- title */
 
 .title {
-  position: relative;
+  position: absolute;
+  top: 51%;
+  left: 50%;
   z-index: 1;
+  width: min(92vw, 88rem);
+  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(0.8rem, 2vh, 1.5rem);
+  gap: clamp(1rem, 2.4vh, 1.7rem);
+  text-align: center;
 }
 
 /*
- * The name, small and above the line that explains it.
- *
- * Wide tracking at this size is what keeps it from reading as a caption. It is the only text on
- * the screen set in uppercase, which is the whole of its emphasis: no weight, no colour, no rule.
+ * The name is the title screen. Its wide measure creates the same quiet scale as a landscape
+ * title without needing a landscape behind it.
  */
-.brandline {
+.wordmark {
   margin: 0;
-  font-size: clamp(0.72rem, 0.9vw, 0.82rem);
-  font-weight: 300;
-  letter-spacing: 0.46em;
-  text-indent: 0.46em;
+  font-size: clamp(5.1rem, 9.2vw, 9.3rem);
+  font-weight: 200;
+  line-height: 0.88;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink);
+  opacity: 0;
+  animation: wordmark-in 1450ms cubic-bezier(0.22, 1, 0.36, 1) 220ms forwards;
+}
+
+.proposition {
+  margin: 0;
+  font-size: clamp(0.68rem, 0.84vw, 0.8rem);
+  font-weight: 400;
+  line-height: 1.3;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
   text-transform: uppercase;
   color: var(--ink-soft);
   opacity: 0;
-  animation: rise 1000ms cubic-bezier(0.22, 1, 0.36, 1) 200ms forwards;
+  animation: rise 1000ms cubic-bezier(0.22, 1, 0.36, 1) 640ms forwards;
 }
 
-/*
- * The proposition, at title scale.
- *
- * Weight 200 and nothing heavier anywhere on this page. The tracking settles from open to set
- * rather than starting there, which is the only reveal on the screen: one property, on one
- * element, moving nothing else.
- */
-.proposition {
-  margin: 0;
-  /*
-   * No measure cap. This is one short line and it should stay one line wherever it fits; a `ch`
-   * limit was breaking it across two on screens wide enough to hold it, which reads as a layout
-   * accident rather than as a decision. `balance` handles the narrow case, splitting it evenly
-   * instead of orphaning the last word.
-   */
-  max-width: none;
-  text-wrap: balance;
-  font-size: clamp(2.1rem, 4.4vw, 4rem);
-  font-weight: 200;
-  line-height: 1.06;
-  letter-spacing: -0.012em;
-  color: var(--ink);
-  opacity: 0;
-  animation: proposition-in 1500ms cubic-bezier(0.22, 1, 0.36, 1) 340ms forwards;
-}
-
-@keyframes proposition-in {
-  from { opacity: 0; letter-spacing: 0.08em; }
-  to { opacity: 1; letter-spacing: -0.012em; }
+@keyframes wordmark-in {
+  from { opacity: 0; letter-spacing: 0.28em; transform: translateY(0.45rem); }
+  to { opacity: 1; letter-spacing: 0.2em; transform: none; }
 }
 
 @keyframes rise {
@@ -398,71 +490,35 @@ body {
   to { opacity: 1; transform: none; }
 }
 
-/* -------------------------------------------------------------------- start */
-
-/*
- * The start prompt.
- *
- * A real navigation link, not just a key hint. Pointer and keyboard input follow the same URL,
- * and the link keeps the browser's native open, copy, history, and accessibility semantics.
- */
-.start {
-  appearance: none;
-  border: 0;
-  background: none;
-  padding: 0.9rem 0.4rem 0.5rem;
-  margin-top: clamp(0.5rem, 2vh, 1.4rem);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.62em;
-  font: inherit;
-  font-size: clamp(0.7rem, 0.86vw, 0.78rem);
-  font-weight: 300;
-  letter-spacing: 0.3em;
-  text-indent: 0.3em;
+.publisher-mark {
+  position: absolute;
+  right: clamp(2.4rem, 5vw, 5.2rem);
+  bottom: clamp(2.7rem, 7vh, 5.1rem);
+  z-index: 2;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-family: var(--font-utility);
+  font-size: clamp(0.63rem, 0.72vw, 0.7rem);
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
-  color: var(--ink-soft);
-  text-decoration: none;
-  cursor: pointer;
+  color: var(--ink-faint);
   opacity: 0;
-  animation: rise 1100ms cubic-bezier(0.22, 1, 0.36, 1) 860ms forwards;
-  transition: color 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: rise 900ms cubic-bezier(0.22, 1, 0.36, 1) 860ms forwards;
 }
 
 .entry-status {
-  margin: clamp(1rem, 2vh, 1.8rem) 0 0;
-  font-size: 0.78rem;
+  margin: 0;
+  max-width: 16rem;
+  padding: 0.54rem 0;
+  font-size: 0.76rem;
   font-weight: 300;
-  letter-spacing: 0.08em;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
   color: var(--ink-soft);
-}
-
-.start:hover,
-.start:focus-visible {
-  color: var(--ink);
-}
-
-.start:hover .key,
-.start:focus-visible .key {
-  border-color: color-mix(in srgb, var(--ink) 42%, transparent);
-  background: color-mix(in srgb, #ffffff 55%, transparent);
-  transform: translateY(-1px);
-}
-
-/*
- * A breath on the prompt, so the screen reads as waiting for you rather than as finished. Slow
- * and shallow: this is the only thing on the page that repeats, and it sits directly under the
- * title where a faster pulse would be impossible to look away from.
- */
-@media (prefers-reduced-motion: no-preference) {
-  .start .key {
-    animation: breathe 3.6s ease-in-out 2s infinite;
-  }
-}
-
-@keyframes breathe {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.58; }
 }
 
 /* ---------------------------------------------------------------- boundary */
@@ -488,7 +544,7 @@ body {
   gap: 1rem;
   text-align: center;
   padding: clamp(1.5rem, 8vw, 4rem);
-  background: #f2f0ee;
+  background: var(--landing-canvas);
 }
 
 .boundary-eyebrow {
@@ -519,8 +575,7 @@ body {
   color: var(--ink-soft);
 }
 
-/* Everything behind the boundary stops: no drift, no breathing, nothing to scroll to. */
-:root[data-blocked='true'] .figures,
+/* Everything behind the boundary stops: no entrance motion and nothing to scroll to. */
 :root[data-blocked='true'] #overlay {
   display: none;
 }
@@ -640,20 +695,6 @@ body {
   border-bottom-color: currentColor;
 }
 
-/* --------------------------------------------------------------- type */
-
-/*
- * No bold anywhere on this surface. The lead-in of each commitment is separated by ink weight of
- * COLOUR, not of stroke: full ink against the softened rest of the sentence. A 500 here was the
- * only heavy thing on the page and it read as a different typeface.
- */
-/* ------------------------------------------------------- how it works */
-
-.steps h3,
-.steps p,
-/* The four provenance classes. Distinguishable by mark shape as well as by colour, because a
-   colour-only distinction is not a distinction for every reader. */
-
 /* ------------------------------------------------------------------ focus */
 
 :focus-visible {
@@ -672,9 +713,55 @@ body {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 160ms !important;
     scroll-behavior: auto !important;
   }
 
+  .companion-menu-marker,
+  .companion-menu-wake,
+  .companion-menu-orb,
+  .companion-menu-gaze {
+    transition: none !important;
+  }
+
+  .destination-label {
+    transition: none !important;
+  }
+
+  :root[data-surface='title'] .destination:hover .destination-label,
+  :root[data-surface='title'] .destination:focus-visible .destination-label {
+    transform: none;
+  }
+
+  .companion-menu-marker[data-state='attending'] .companion-menu-orb,
+  .companion-menu-marker[data-state='attending'] .companion-menu-wake,
+  .companion-menu-marker[data-state='attending'] .companion-menu-gaze {
+    animation: none !important;
+    transform: none;
+  }
+
+  .companion-menu-wake {
+    opacity: 0 !important;
+  }
+
+}
+
+@media (forced-colors: active) {
+  .companion-menu-wake {
+    display: none;
+  }
+
+  .companion-menu-body,
+  :root[data-surface='title'] .destination::after {
+    fill: CanvasText;
+    stroke: CanvasText;
+    background: CanvasText;
+    forced-color-adjust: auto;
+  }
+
+  .companion-menu-eye {
+    fill: Canvas;
+  }
 }

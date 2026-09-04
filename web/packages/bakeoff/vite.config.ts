@@ -26,7 +26,7 @@ const resultsDir = fileURLToPath(new URL('../../bakeoff-results', import.meta.ur
  */
 function resultSink(): Plugin {
   return {
-    name: 'orimera-bakeoff-result-sink',
+    name: 'exulanica-bakeoff-result-sink',
     configureServer(server) {
       server.middlewares.use('/__bakeoff/result', (req, res) => {
         if (req.method !== 'POST') {

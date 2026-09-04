@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Anchor, AnchorId } from '@orimera/atlas-core';
-import { anchorId, evidenceRef, islandId, localVec3, occurrenceId } from '@orimera/atlas-core';
+import type { Anchor, AnchorId } from '@exulanica/atlas-core';
+import { anchorId, evidenceRef, islandId, localVec3, occurrenceId } from '@exulanica/atlas-core';
 import type { OpmHeader } from '../src/opm.js';
 import {
   PROVENANCE_CODE,

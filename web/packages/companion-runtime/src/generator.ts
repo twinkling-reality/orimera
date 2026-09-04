@@ -1,4 +1,4 @@
-import type { EntityIdRef, EntityRecord, EvidenceHandle, GraphSnapshot } from '@orimera/graph-client';
+import type { EntityIdRef, EntityRecord, EvidenceHandle, GraphSnapshot } from '@exulanica/graph-client';
 import { escapeOptions } from './escapes.js';
 import type { IdFactory } from './ids.js';
 import type { Intent } from './intent.js';

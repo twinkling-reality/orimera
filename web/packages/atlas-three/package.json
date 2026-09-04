@@ -1,5 +1,5 @@
 {
-  "name": "@orimera/atlas-three",
+  "name": "@exulanica/atlas-three",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@orimera/atlas-core": "workspace:*",
+    "@exulanica/atlas-core": "workspace:*",
     "@sparkjsdev/spark": "2.1.0",
     "three": "0.185.1"
   },

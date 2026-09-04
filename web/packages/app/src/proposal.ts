@@ -18,8 +18,8 @@
  * The gate then applies its own three refusals on top: not pending, expired, tier 3.
  */
 
-import type { ProposalDraft } from '@orimera/companion-runtime';
-import type { ProposalOperation, UpdateProposal } from '@orimera/graph-client';
+import type { ProposalDraft } from '@exulanica/companion-runtime';
+import type { ProposalOperation, UpdateProposal } from '@exulanica/graph-client';
 
 export type Translation =
   | { readonly ok: true; readonly proposal: UpdateProposal }

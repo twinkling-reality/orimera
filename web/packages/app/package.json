@@ -1,16 +1,16 @@
 {
-  "name": "@orimera/app",
+  "name": "@exulanica/app",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "dependencies": {
-    "@orimera/atlas-core": "workspace:*",
-    "@orimera/atlas-react": "workspace:*",
-    "@orimera/companion-runtime": "workspace:*",
-    "@orimera/formation": "workspace:*",
-    "@orimera/graph-client": "workspace:*",
-    "@orimera/presentation": "workspace:*",
-    "@orimera/world-index": "workspace:*"
+    "@exulanica/atlas-core": "workspace:*",
+    "@exulanica/atlas-react": "workspace:*",
+    "@exulanica/companion-runtime": "workspace:*",
+    "@exulanica/formation": "workspace:*",
+    "@exulanica/graph-client": "workspace:*",
+    "@exulanica/presentation": "workspace:*",
+    "@exulanica/world-index": "workspace:*"
   },
   "devDependencies": {
     "vite": "^6"

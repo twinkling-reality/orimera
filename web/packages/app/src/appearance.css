@@ -87,14 +87,21 @@ body {
 /* Access preferences outrank world material. Removing blur while leaving a translucent fill would
  * expose moving world geometry through the text, so these modes also make the reading surfaces
  * genuinely opaque. Shape, placement, and semantics remain unchanged. */
+/*
+ * This list used to set `background-color: var(--ui-companion-surface)`. That token was the dark
+ * one when the rule was written and is the light paper since the derivation flipped, so under
+ * Reduced the speech band was painted the exact colour of its own text: 1:1, invisible. The fill
+ * now comes from the material tokens, which the surfaces already use and which are made opaque in
+ * unified-interface.css, so there is one source for it instead of two that can disagree.
+ */
 :root:is([data-transparency='reduced'], [data-contrast='high']) :where(
   .companion-speech,
   .companion-choice,
   .companion-choices-submit,
   .companion-composer,
-  .choice-item.unavailable
+  .choice-item.unavailable,
+  .companion-choice-rail
 ) {
-  background-color: var(--ui-companion-surface);
   backdrop-filter: none;
 }
 
@@ -102,7 +109,7 @@ body {
   .companion-choice:hover:not([disabled]),
 :root:is([data-transparency='reduced'], [data-contrast='high'])
   .companion-choice:focus-visible {
-  background-color: var(--ui-companion-surface-hover);
+  background-color: var(--companion-scrim-soft);
 }
 
 :root:is([data-transparency='reduced'], [data-contrast='high']) .atlas-commands button {
@@ -390,8 +397,6 @@ body {
 
   .options-view .overlay-head { margin-bottom: 0.75rem; }
   .options-view .option-group { padding: 0.6rem 0 0.3rem; }
-  .options-view .atmosphere-picker { margin-bottom: 0.45rem; }
-  .options-view .atmosphere-choice { grid-template-rows: 3rem auto; }
   .options-view .option-field { min-height: 2.55rem; }
   .options-view .world-style-explanation,
   .options-view .world-style-future,
@@ -431,124 +436,6 @@ body {
 .detail-section h2,
 .band h3 {
   font-weight: 500;
-}
-
-/* Three curated exposures are clearer than a hue picker and visible before selection. */
-.atmosphere-picker {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.55rem;
-  margin: 0 0 1rem;
-  padding: 0;
-  border: 0;
-}
-
-.atmosphere-choice {
-  position: relative;
-  display: grid;
-  grid-template-rows: 3.9rem auto;
-  overflow: hidden;
-  color: var(--ink-soft);
-  background: color-mix(in srgb, var(--raised) 62%, transparent);
-  border: 1px solid var(--edge);
-  border-radius: var(--radius-panel);
-  cursor: pointer;
-}
-
-.atmosphere-choice:has(input:checked) {
-  color: var(--ink);
-  border-color: var(--focus);
-  box-shadow: inset 0 0 0 1px var(--focus);
-}
-
-.atmosphere-choice input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-.atmosphere-choice input:focus-visible + .atmosphere-sample {
-  outline: 2px solid var(--focus);
-  outline-offset: -3px;
-}
-
-.atmosphere-sample {
-  --field-key-color: var(--dawn-field-key);
-  --field-crosslight-color: var(--dawn-field-crosslight);
-  --field-afterimage-color: var(--dawn-field-afterimage);
-  --field-bounce-color: var(--dawn-field-bounce);
-  --field-rim-color: var(--dawn-field-rim);
-  position: relative;
-  display: block;
-  overflow: hidden;
-  border-bottom: 1px solid var(--edge);
-  background-color: var(--dawn-ground);
-  background-image: var(--field-image);
-}
-
-.atmosphere-sample[data-atmosphere='blue-hour'] {
-  --field-key-color: var(--blue-hour-field-key);
-  --field-crosslight-color: var(--blue-hour-field-crosslight);
-  --field-afterimage-color: var(--blue-hour-field-afterimage);
-  --field-bounce-color: var(--blue-hour-field-bounce);
-  --field-rim-color: var(--blue-hour-field-rim);
-  background-color: var(--blue-hour-ground);
-  background-image: var(--field-image);
-}
-
-.atmosphere-sample[data-atmosphere='system'] {
-  background: transparent;
-}
-
-.atmosphere-sample[data-atmosphere='system']::before,
-.atmosphere-sample[data-atmosphere='system']::after {
-  content: '';
-  position: absolute;
-  inset-block: 0;
-  width: 50%;
-  background-image: var(--field-image);
-}
-
-.atmosphere-sample[data-atmosphere='system']::before {
-  inset-inline-start: 0;
-  --field-key-color: var(--dawn-field-key);
-  --field-crosslight-color: var(--dawn-field-crosslight);
-  --field-afterimage-color: var(--dawn-field-afterimage);
-  --field-bounce-color: var(--dawn-field-bounce);
-  --field-rim-color: var(--dawn-field-rim);
-  background-color: var(--dawn-ground);
-}
-
-.atmosphere-sample[data-atmosphere='system']::after {
-  inset-inline-end: 0;
-  --field-key-color: var(--blue-hour-field-key);
-  --field-crosslight-color: var(--blue-hour-field-crosslight);
-  --field-afterimage-color: var(--blue-hour-field-afterimage);
-  --field-bounce-color: var(--blue-hour-field-bounce);
-  --field-rim-color: var(--blue-hour-field-rim);
-  background-color: var(--blue-hour-ground);
-  border-inline-start: 1px solid color-mix(in srgb, var(--focus) 58%, transparent);
-}
-
-.atmosphere-copy {
-  display: grid;
-  gap: 0.12rem;
-  padding: 0.58rem 0.65rem 0.64rem;
-}
-
-.atmosphere-copy strong {
-  color: inherit;
-  font-size: 0.82rem;
-  font-weight: 500;
-}
-
-.atmosphere-copy small {
-  color: var(--ink-faint);
-  font-size: 0.68rem;
-  line-height: 1.35;
 }
 
 :root[data-contrast='high'] .status,

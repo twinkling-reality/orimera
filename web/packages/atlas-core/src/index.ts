@@ -1,5 +1,5 @@
 /**
- * @orimera/atlas-core
+ * @exulanica/atlas-core
  *
  * The scene graph, island frames, focus resolution, view manifest application and the layout
  * solver. Pure TypeScript: no React, no DOM, no renderer.
@@ -11,7 +11,7 @@
  * NOTE ON WHAT IS NOT EXPORTED HERE. There is no distance function over `AtlasVec3` in this
  * barrel, and no `atlasToLocal`. An island's atlas position is a layout artifact and reading it
  * as geometry is risk R-48. The layout and focus solvers need atlas-space distance and get it
- * from `@orimera/atlas-core/presentation-metrics`, which the query layer may not import.
+ * from `@exulanica/atlas-core/presentation-metrics`, which the query layer may not import.
  */
 
 export type { Brand } from './brand.js';

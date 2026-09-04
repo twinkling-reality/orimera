@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { BAND_ORDER } from '@orimera/companion-runtime';
-import type { EntityRecord, GraphSnapshot, OccurrenceRecord } from '@orimera/graph-client';
+import { BAND_ORDER } from '@exulanica/companion-runtime';
+import type { EntityRecord, GraphSnapshot, OccurrenceRecord } from '@exulanica/graph-client';
 
 import { EvidenceCache } from '../src/evidence.js';
 import { buildDetail } from '../src/ui/detail.js';
@@ -169,7 +169,14 @@ describe('the desktop viewport boundary', () => {
 
   it('uses a directional atmosphere rather than decorative gradient circles', () => {
     const appearance = readFileSync('packages/app/src/appearance.css', 'utf8');
-    expect(appearance).toContain('var(--field-image)');
+    // This also asserted that appearance.css consumed `var(--field-image)`. Its only consumer
+    // there was the atmosphere-picker's swatches, including a `[data-atmosphere='blue-hour']`
+    // variant for a treatment atlas-visual-language.md lists among the rejected ones. No `.ts`
+    // in the workspace has emitted that markup for some time, so the assertion was guarding dead
+    // rules for a dropped feature. The token is still defined once in tokens.css and still used
+    // once by the landing page, and both of those are asserted by their own suites
+    // (presentation/test/system.test.ts and landing/test/viewport-boundary.test.ts). What is real
+    // here is the prohibition, so that is what stays.
     expect(appearance).not.toContain('radial-gradient');
   });
 });

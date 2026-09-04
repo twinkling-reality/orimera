@@ -16,7 +16,7 @@ import {
 
 const header = (segments: OpmHeader['segments']): OpmHeader =>
   ({
-    format: 'orimera-point-map',
+    format: 'exulanica-point-map',
     version: 2,
     pointCount: 1,
     rung: 3,

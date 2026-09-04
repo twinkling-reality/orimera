@@ -93,7 +93,7 @@ function main(): void {
     if (args.ply) {
       writeFileSync(
         resolve(outDir, `${name}.ply`),
-        encodePly(result.points, `orimera synthetic point map, seed ${args.seed}`),
+        encodePly(result.points, `exulanica synthetic point map, seed ${args.seed}`),
       );
     }
 

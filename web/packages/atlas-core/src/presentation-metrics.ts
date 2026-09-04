@@ -12,9 +12,9 @@ import { dot, sub } from './coords.js';
  * the query layer: they are deciding where to draw things and what the reticle is pointing at.
  * So the functions exist, they live in this one file, and this file is:
  *
- *   - NOT re-exported from `index.ts`, so `import { atlasDistance } from '@orimera/atlas-core'`
+ *   - NOT re-exported from `index.ts`, so `import { atlasDistance } from '@exulanica/atlas-core'`
  *     does not resolve;
- *   - reachable only as `@orimera/atlas-core/presentation-metrics`;
+ *   - reachable only as `@exulanica/atlas-core/presentation-metrics`;
  *   - forbidden to world-index, companion-runtime, graph-client and scene-synth by the
  *     `no-atlas-distance-outside-presentation` rule in `.dependency-cruiser.cjs`.
  *

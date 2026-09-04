@@ -1,7 +1,7 @@
-import type { GraphSnapshot } from '@orimera/graph-client';
-import { openQuestionCount } from '@orimera/graph-client';
-import type { CompanionMemory, OpenQuestionIndicator } from '@orimera/companion-runtime';
-import { EMPTY_MEMORY, openQuestionIndicator, rankByValue } from '@orimera/companion-runtime';
+import type { GraphSnapshot } from '@exulanica/graph-client';
+import { openQuestionCount } from '@exulanica/graph-client';
+import type { CompanionMemory, OpenQuestionIndicator } from '@exulanica/companion-runtime';
+import { EMPTY_MEMORY, openQuestionIndicator, rankByValue } from '@exulanica/companion-runtime';
 import type { IndexFacets } from './facets.js';
 import { ALL_FACETS, applyFacets, encodeFacets } from './facets.js';
 import type { SemanticQuery } from './search.js';
@@ -27,7 +27,7 @@ import { isReviewQueue } from './review-queue.js';
  * requires all functionality to be keyboard operable except where the function "requires input
  * that depends on the path of the user's movement".
  * https://www.w3.org/WAI/WCAG22/Understanding/keyboard.html
- * Free camera movement is path-dependent; none of Orimera's actual functionality is, and this
+ * Free camera movement is path-dependent; none of Exulanica's actual functionality is, and this
  * surface is the compliance route for all of it.
  */
 

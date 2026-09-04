@@ -23,8 +23,8 @@
  */
 
 import * as pc from 'playcanvas';
-import { atlasMapPose, localToAtlas, type AtlasScene, type IslandId } from '@orimera/atlas-core';
-import type { WorldArtProfile } from '@orimera/presentation';
+import { atlasMapPose, localToAtlas, type AtlasScene, type IslandId } from '@exulanica/atlas-core';
+import type { WorldArtProfile } from '@exulanica/presentation';
 
 export interface RegionMass {
   readonly entity: pc.Entity;

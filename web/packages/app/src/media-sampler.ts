@@ -1,7 +1,7 @@
 /**
  * Turning the photographs already on screen into pixels the palette reader can use.
  *
- * The maths lives in `@orimera/presentation`, where it is pure and testable. Decoding is a browser
+ * The maths lives in `@exulanica/presentation`, where it is pure and testable. Decoding is a browser
  * job and it lives here, so nothing in the style layer has to know what an `Image` is.
  *
  * Two things this deliberately does not do. It never re-fetches: it reads the same
@@ -13,7 +13,7 @@
  * face is a smudge.
  */
 
-import { MEDIA_SAMPLE_EDGE, type MediaSample } from '@orimera/presentation';
+import { MEDIA_SAMPLE_EDGE, type MediaSample } from '@exulanica/presentation';
 
 /** A source the renderer already resolved to authorized bytes. */
 export interface SampleableSource {

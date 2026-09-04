@@ -31,9 +31,20 @@ describe('the viewport boundary', () => {
 });
 
 describe('the landing atmosphere', () => {
-  it('uses the shared directional field without decorative gradient circles', () => {
+  it('uses one generated crescent without the retired figure assets or world field', () => {
     const style = readFileSync('packages/landing/src/style.css', 'utf8');
-    expect(style.match(/var\(--field-image\)/g)).toHaveLength(1);
-    expect(style).not.toContain('radial-gradient');
+    const document = readFileSync('packages/landing/index.html', 'utf8');
+    const main = readFileSync('packages/landing/src/main.ts', 'utf8');
+    const title = readFileSync('packages/landing/src/ui/title.ts', 'utf8');
+
+    expect(style.match(/\.memory-crescent\s*\{/g)).toHaveLength(1);
+    expect(style).toContain('radial-gradient');
+    expect(style).not.toContain('var(--field-image)');
+    expect(style).not.toContain('background-image: url(');
+    expect(document).not.toContain('/figures/');
+    expect(document).not.toContain('id="grain"');
+    expect(main).not.toContain('buildFigures');
+    expect(title).not.toContain("el('img'");
+    expect(title).not.toMatch(/orimera[12]/i);
   });
 });

@@ -32,7 +32,7 @@ import type { DepthBuffers } from './raster.js';
  * Bit 0 of a point's flags channel: a four-neighbour was carved at an occlusion boundary.
  *
  * Declared beside the type that carries the channel rather than in `format/opm.ts`, which is the
- * same placement `orimera/reconstruction/pointmap.py` has and the arrangement that keeps the
+ * same placement `exulanica/reconstruction/pointmap.py` has and the arrangement that keeps the
  * dependency one-way: the writer reads the point map, and the point map knows nothing about the
  * container it will be written into.
  */

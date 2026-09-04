@@ -5,7 +5,7 @@ import type {
   EntityRecord,
   EvidenceHandle,
   IslandIdRef,
-} from '@orimera/graph-client';
+} from '@exulanica/graph-client';
 import type { ProposalDraft } from './draft.js';
 import { affectedAnchors, affectedIslands } from './draft.js';
 import { PREDICATES } from './pool.js';

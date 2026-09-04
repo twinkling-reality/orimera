@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeDraft, draftOperation } from '@orimera/companion-runtime';
+import { makeDraft, draftOperation } from '@exulanica/companion-runtime';
 
 import { toUpdateProposal } from '../src/proposal.js';
 

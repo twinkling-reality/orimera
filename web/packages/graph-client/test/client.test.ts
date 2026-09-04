@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ApiError, OrimeraClient, Transport } from '../src/index.js';
+import { ApiError, ExulanicaClient, Transport } from '../src/index.js';
 import { ProposalGate, httpCommitTransport } from '../src/mutations/index.js';
 import type { UpdateProposal } from '../src/index.js';
 
@@ -75,7 +75,7 @@ describe('the transport', () => {
   });
 
   it('reads the modality and the clock uncertainty the evidence response carries', async () => {
-    const client = new OrimeraClient({
+    const client = new ExulanicaClient({
       baseUrl: 'https://example.invalid',
       token: 't',
       fetch: async () =>
@@ -83,9 +83,9 @@ describe('the transport', () => {
           status: 200,
           headers: {
             'content-type': 'image/jpeg',
-            'x-orimera-modality': 'frame_region',
-            'x-orimera-captured-at': '2026-03-04T10:00:00+00:00',
-            'x-orimera-captured-at-uncertainty-ms': '3600000',
+            'x-exulanica-modality': 'frame_region',
+            'x-exulanica-captured-at': '2026-03-04T10:00:00+00:00',
+            'x-exulanica-captured-at-uncertainty-ms': '3600000',
           },
         }),
     });

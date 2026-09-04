@@ -1,4 +1,4 @@
-import type { EntityRecord } from '@orimera/graph-client';
+import type { EntityRecord } from '@exulanica/graph-client';
 import type { CompanionMemory } from './memory.js';
 import { priorityPenalty } from './memory.js';
 

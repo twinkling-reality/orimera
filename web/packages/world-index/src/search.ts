@@ -1,4 +1,4 @@
-import type { AssertionKind, EntityKind, IndexStatus } from '@orimera/graph-client';
+import type { AssertionKind, EntityKind, IndexStatus } from '@exulanica/graph-client';
 import type { IndexFacets } from './facets.js';
 import { ALL_FACETS, FACET_VALUES } from './facets.js';
 

@@ -5,7 +5,7 @@ import * as pc from 'playcanvas';
  *
  * The ADR asks for verification rather than repetition, so each probe reads the ACTUAL ENGINE at
  * runtime and reports what it finds, including when the finding is that the claim is real but does
- * not apply to the workload Orimera actually has. A correction is worth more than a confirmation.
+ * not apply to the workload Exulanica actually has. A correction is worth more than a confirmation.
  *
  * The three claims, verbatim from the ADR:
  *

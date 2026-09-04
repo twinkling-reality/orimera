@@ -13,7 +13,7 @@
  * `gl_PointSize` and gets perspective-correct point sprites; the WebGPU `point-list` topology
  * draws every point as exactly one pixel and there is no way to ask for more. PlayCanvas's own
  * engine acknowledges this by writing `gl_PointSize = 1.0` in its only reference to point size.
- * The consequence for Orimera is direct: the WebGPU path cannot render a point map that looks
+ * The consequence for Exulanica is direct: the WebGPU path cannot render a point map that looks
  * like a surface, only one that looks like static, unless the geometry is rebuilt as expanded
  * quads at six vertices per point. See the harness notes.
  *

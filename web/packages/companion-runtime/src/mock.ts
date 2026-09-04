@@ -5,7 +5,7 @@ import type {
   IslandRecord,
   MatchProposalView,
   OccurrenceRecord,
-} from '@orimera/graph-client';
+} from '@exulanica/graph-client';
 
 /**
  * REALISTIC FIXTURE DATA, shaped like the real domain types.

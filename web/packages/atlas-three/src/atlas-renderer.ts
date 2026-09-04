@@ -19,7 +19,7 @@ import type {
   Island,
   TierState,
   ViewManifest,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 import {
   EMPTY_TIER_STATE,
   INITIAL_FOCUS_STATE,
@@ -30,7 +30,7 @@ import {
   occurrenceNormalizer,
   resolveFocus,
   resolveTiers,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 import { PointerLook } from './controls/pointer-look.js';
 import type { IslandGround } from './controls/walker.js';
 import { Walker } from './controls/walker.js';

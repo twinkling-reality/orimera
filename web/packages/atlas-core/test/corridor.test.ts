@@ -9,7 +9,7 @@ import {
 } from '../src/index.js';
 
 const artifact = (changes: Partial<CorridorArtifactWire> = {}): CorridorArtifactWire => ({
-  profile: 'orimera.corridor-artifact/v1',
+  profile: 'exulanica.corridor-artifact/v1',
   manifest_digest: '1'.repeat(64),
   reconstruction_digest: '2'.repeat(64),
   topology_digest: '3'.repeat(64),

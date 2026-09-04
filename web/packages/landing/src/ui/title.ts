@@ -1,61 +1,28 @@
-/** The Orimera title composition and its single explicit product entry. */
+/** Exulanica's signed-out title: one wordmark, one proposition, and one incomplete memory. */
 
 import { el } from './dom.js';
 
-export interface TitleOptions {
-  readonly atlasHref: string | null;
-}
+export function buildTitle(): HTMLElement {
+  const root = el('section', {
+    id: 'title',
+    class: 'pane pane-title',
+    tabindex: '-1',
+    'aria-labelledby': 'title-wordmark',
+  });
+  const aperture = el('div', { class: 'memory-aperture', 'aria-hidden': 'true' });
+  aperture.append(el('div', { class: 'memory-crescent' }));
 
-export function buildFigures(): HTMLElement {
-  const wrap = el('div', { class: 'figures', 'aria-hidden': 'true' });
-  for (const [side, file] of [['left', 'orimera1'], ['right', 'orimera2']] as const) {
-    wrap.append(
-      el('img', {
-        class: `figure figure-${side}`,
-        src: `/figures/${file}-1400.webp`,
-        srcset: `/figures/${file}-900.webp 900w, /figures/${file}-1400.webp 1400w`,
-        sizes: '31vw',
-        alt: '',
-        decoding: 'async',
-      }),
-    );
-  }
-  return wrap;
-}
-
-function entryLabel(): readonly HTMLElement[] {
-  return [
-    el('kbd', { class: 'key key-wide', text: 'Enter' }),
-    el('span', { class: 'start-word', text: 'Enter Atlas' }),
-  ];
-}
-
-export function buildTitle(options: TitleOptions): HTMLElement {
-  const root = el('section', { id: 'title', class: 'pane pane-title', tabindex: '-1' });
   const stack = el('div', { class: 'title' });
   stack.append(
-    el('p', { class: 'brandline', text: 'Orimera' }),
-    el('h1', { class: 'proposition', text: 'A Personal World Memory Model' }),
+    el('h1', { class: 'wordmark', id: 'title-wordmark', text: 'Exulanica' }),
+    el('p', { class: 'proposition', text: 'A personal world memory model' }),
   );
 
-  if (options.atlasHref !== null) {
-    stack.append(
-      el(
-        'a',
-        { class: 'start', id: 'path-enter', href: options.atlasHref, 'aria-label': 'Enter Atlas' },
-        entryLabel(),
-      ),
-    );
-  } else {
-    stack.append(
-      el('p', {
-        class: 'entry-status',
-        role: 'status',
-        text: 'Atlas is not connected in this build.',
-      }),
-    );
-  }
+  const publisher = el('p', { class: 'publisher-mark' }, [
+    el('span', { text: '© 2026 ' }),
+    el('span', { text: 'Twinkling Reality' }),
+  ]);
 
-  root.append(stack);
+  root.append(aperture, stack, publisher);
   return root;
 }

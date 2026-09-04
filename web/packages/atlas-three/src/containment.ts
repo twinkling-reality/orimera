@@ -1,4 +1,4 @@
-import type { Island } from '@orimera/atlas-core';
+import type { Island } from '@exulanica/atlas-core';
 import type { PointMapData } from './opm.js';
 
 /**

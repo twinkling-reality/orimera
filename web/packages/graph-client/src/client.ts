@@ -22,7 +22,7 @@ export interface ClientOptions extends TransportOptions {
   readonly islandOf?: IslandOf;
 }
 
-export class OrimeraClient implements GraphSource {
+export class ExulanicaClient implements GraphSource {
   readonly #transport: Transport;
   readonly #islandOf: IslandOf | undefined;
 
@@ -71,13 +71,13 @@ export class OrimeraClient implements GraphSource {
           handle,
           // The server says which modality this span is; it is not assumed from the shape of
           // the request. A frame region and a whole still image are different citations.
-          modality: (response.headers.get('x-orimera-modality') ??
+          modality: (response.headers.get('x-exulanica-modality') ??
             'still_image') as ResolvedEvidence['modality'],
           sourceKey: this.#transport.url(`/evidence/${handle}`),
-          capturedAtMs: toMs(response.headers.get('x-orimera-captured-at')),
+          capturedAtMs: toMs(response.headers.get('x-exulanica-captured-at')),
           capturedAtUncertaintyMs: headerInt(
             response,
-            'x-orimera-captured-at-uncertainty-ms',
+            'x-exulanica-captured-at-uncertainty-ms',
           ),
           region: null,
         } as ResolvedEvidence;

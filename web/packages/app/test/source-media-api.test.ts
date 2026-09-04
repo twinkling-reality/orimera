@@ -42,7 +42,7 @@ describe('production source media boundary', () => {
       });
     });
     const client = new SourceMediaClient({
-      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'private-token', fetch,
       createObjectURL: () => 'blob:source-1', revokeObjectURL: revoke,
     });
     const session = await client.load('#7c71b5');
@@ -81,7 +81,7 @@ describe('production source media boundary', () => {
       return json({ code: 'not_authenticated', detail: 'token expired' }, 401);
     });
     const session = await new SourceMediaClient({
-      baseUrl: 'https://orimera.test/api', token: 't', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 't', fetch,
       createObjectURL: () => 'never', revokeObjectURL: vi.fn(),
     }).load('#7c71b5');
     expect(session.issues.map((issue) => issue.state)).toEqual([
@@ -101,7 +101,7 @@ describe('production source media boundary', () => {
       },
     })]));
     const session = await new SourceMediaClient({
-      baseUrl: 'https://orimera.test/api', token: 't', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 't', fetch,
       createObjectURL: () => 'never', revokeObjectURL: vi.fn(),
     }).load('#7c71b5');
     expect(fetch).toHaveBeenCalledOnce();
@@ -111,7 +111,7 @@ describe('production source media boundary', () => {
 
   it('surfaces list loading failures instead of fabricating an empty successful catalog', async () => {
     const client = new SourceMediaClient({
-      baseUrl: 'https://orimera.test/api', token: 't',
+      baseUrl: 'https://exulanica.test/api', token: 't',
       fetch: vi.fn(async () => { throw new TypeError('network offline'); }),
     });
     await expect(client.load('#7c71b5')).rejects.toThrow('network offline');

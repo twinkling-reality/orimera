@@ -117,7 +117,7 @@ export interface OpmViewpoint {
 }
 
 export interface OpmHeader {
-  readonly format: 'orimera-point-map';
+  readonly format: 'exulanica-point-map';
   readonly version: number;
   readonly generator: string;
   readonly seed: number;
@@ -180,7 +180,7 @@ export function encodeOpm(points: PointMap, meta: OpmMetadata): Uint8Array {
   // Two passes: lay out the sections against a placeholder header, then rewrite the header with
   // the real offsets. The header is padded to a fixed length so the second pass cannot move it.
   const buildHeader = (offsets: readonly number[]): OpmHeader => ({
-    format: 'orimera-point-map',
+    format: 'exulanica-point-map',
     version: OPM_VERSION,
     generator: meta.generator,
     seed: meta.seed,

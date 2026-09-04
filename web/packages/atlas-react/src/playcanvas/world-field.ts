@@ -1,5 +1,5 @@
 import * as pc from 'playcanvas';
-import type { NavigationPose, NavigationWorld } from '@orimera/atlas-core';
+import type { NavigationPose, NavigationWorld } from '@exulanica/atlas-core';
 import {
   DAWN_THEME,
   ORIGIN_LANDSCAPE,
@@ -7,7 +7,7 @@ import {
   worldSilhouetteTone,
   type PresentationTheme,
   type WorldArtProfile,
-} from '@orimera/presentation';
+} from '@exulanica/presentation';
 
 const AEROHEART_IDLE_CYCLE_MS = 5_200;
 
@@ -280,7 +280,7 @@ export function createWorldField(
   // silhouette and the horizon read correctly, and 96 does that at a fifth of the geometry.
   const mesh = createLandscapeMesh(device, world, visualHalfExtent, 96);
   const material = new pc.ShaderMaterial({
-    uniqueName: `orimera-grounded-world-field:${buffers.regionCapacity}:${buffers.traceCapacity}`,
+    uniqueName: `exulanica-grounded-world-field:${buffers.regionCapacity}:${buffers.traceCapacity}`,
     attributes: { aPosition: pc.SEMANTIC_POSITION, aNormal: pc.SEMANTIC_NORMAL },
     vertexGLSL: VERTEX_GLSL,
     fragmentGLSL: fragmentGlsl(buffers.regionCapacity, buffers.traceCapacity),

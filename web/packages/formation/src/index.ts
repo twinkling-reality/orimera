@@ -1,5 +1,5 @@
 /**
- * @orimera/formation
+ * @exulanica/formation
  *
  * The formation contract: what a pipeline stage event is, the reducer that turns a stream of them
  * into one state, the labels written from that state, and the visual it maps to.
@@ -16,7 +16,7 @@
  * rather than reading events. `http-source.ts` is the exception and is the only file here that
  * knows a network exists; `test/purity.test.ts` asserts the split rather than trusting it.
  *
- * **The ordered stage list is duplicated in Python**, in `orimera/ingest/formation.py`, because
+ * **The ordered stage list is duplicated in Python**, in `exulanica/ingest/formation.py`, because
  * neither language can import the other. `tests/test_formation_stream.py` reads this package's
  * copy and compares.
  */

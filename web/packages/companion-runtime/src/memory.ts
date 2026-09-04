@@ -1,4 +1,4 @@
-import type { EntityIdRef } from '@orimera/graph-client';
+import type { EntityIdRef } from '@exulanica/graph-client';
 import type { Intent } from './intent.js';
 import type { EscapeKind } from './turn.js';
 

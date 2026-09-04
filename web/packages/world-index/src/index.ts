@@ -1,5 +1,5 @@
 /**
- * @orimera/world-index
+ * @exulanica/world-index
  *
  * The index UI, entity detail and the provenance panel. Forbidden: the renderer
  * (architecture-overview.md 1.1).

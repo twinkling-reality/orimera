@@ -1,5 +1,5 @@
 {
-  "name": "orimera-web",
+  "name": "exulanica-web",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.7.1",
@@ -12,12 +12,12 @@
     "test": "vitest run",
     "check": "pnpm run typecheck && pnpm run boundaries && pnpm run test",
     "synth": "tsx packages/scene-synth/src/cli.ts",
-    "bakeoff": "pnpm --filter @orimera/bakeoff dev",
-    "app": "pnpm --filter @orimera/app dev",
-    "app:build": "pnpm --filter @orimera/app build",
-    "landing": "pnpm --filter @orimera/landing dev",
-    "landing:build": "pnpm --filter @orimera/landing build",
-    "bakeoff:build": "pnpm --filter @orimera/bakeoff build"
+    "bakeoff": "pnpm --filter @exulanica/bakeoff dev",
+    "app": "pnpm --filter @exulanica/app dev",
+    "app:build": "pnpm --filter @exulanica/app build",
+    "landing": "pnpm --filter @exulanica/landing dev",
+    "landing:build": "pnpm --filter @exulanica/landing build",
+    "bakeoff:build": "pnpm --filter @exulanica/bakeoff build"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

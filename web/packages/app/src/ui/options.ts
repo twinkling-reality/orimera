@@ -13,8 +13,8 @@ import {
   resolveWorldStyleParameters,
   worldArtProfile,
   worldStyleControls,
-} from '@orimera/presentation';
-import type { WorldStyleParameterDefinition, WorldStyleParameterValue } from '@orimera/atlas-core';
+} from '@exulanica/presentation';
+import type { WorldStyleParameterDefinition, WorldStyleParameterValue } from '@exulanica/atlas-core';
 import { commandAction, el } from './dom.js';
 import { createModalFocus } from './modal-focus.js';
 

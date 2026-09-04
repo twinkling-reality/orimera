@@ -1,5 +1,5 @@
 {
-  "name": "@orimera/atlas-react",
+  "name": "@exulanica/atlas-react",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,11 +8,11 @@
     "./playcanvas": "./src/playcanvas/index.ts"
   },
   "dependencies": {
-    "@orimera/atlas-core": "workspace:*",
-    "@orimera/companion-runtime": "workspace:*",
-    "@orimera/graph-client": "workspace:*",
-    "@orimera/presentation": "workspace:*",
-    "@orimera/world-index": "workspace:*"
+    "@exulanica/atlas-core": "workspace:*",
+    "@exulanica/companion-runtime": "workspace:*",
+    "@exulanica/graph-client": "workspace:*",
+    "@exulanica/presentation": "workspace:*",
+    "@exulanica/world-index": "workspace:*"
   },
   "scripts": {
     "typecheck": "tsc --build",

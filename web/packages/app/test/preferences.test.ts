@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { worldStyleControls } from '@orimera/presentation';
+import { DEFAULT_COMPANION, worldStyleControls } from '@exulanica/presentation';
 import {
   DEFAULT_PREFERENCES,
   PREFERENCES_KEY,
@@ -28,8 +28,13 @@ describe('Atlas preferences', () => {
     expect(DEFAULT_PREFERENCES.worldArtProfile).toBe('origin-landscape');
     expect(DEFAULT_PREFERENCES.worldArtProfileVersion).toBe(1);
     expect(DEFAULT_PREFERENCES.cameraBob).toBe(false);
+    // Two files hold this default and they have to agree, or a fresh install and a
+    // reset would put the person in front of two different presences.
+    expect(DEFAULT_PREFERENCES.companionBody).toBe(DEFAULT_COMPANION.bodyVariant);
+    expect(DEFAULT_PREFERENCES.companionColor).toBe(DEFAULT_COMPANION.colorVariant);
+    expect(DEFAULT_PREFERENCES.companionFace).toBe(DEFAULT_COMPANION.faceVariant);
     expect(DEFAULT_PREFERENCES.companionBody).toBe('circle');
-    expect(DEFAULT_PREFERENCES.companionColor).toBe('rose');
+    expect(DEFAULT_PREFERENCES.companionColor).toBe('ink');
   });
 
   it('round trips one versioned object', () => {
@@ -114,7 +119,7 @@ describe('Atlas preferences', () => {
       companionAccessory: 'antenna',
     });
     expect(migrated.companionBody).toBe('circle');
-    expect(migrated.companionColor).toBe('rose');
+    expect(migrated.companionColor).toBe('ink');
     expect(migrated.companionFace).toBe('neutral');
     expect(migrated).not.toHaveProperty('companionAccessory');
   });

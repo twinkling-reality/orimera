@@ -8,7 +8,7 @@ import {
   makeIsland,
   makeScene,
   placement,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 import { MapRegionOverlay } from '../src/playcanvas/map-region-overlay.js';
 
 const scene = makeScene([

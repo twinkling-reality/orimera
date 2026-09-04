@@ -19,12 +19,12 @@
  * showed only what is known, and the whole point of the fourth band is what is not.
  */
 
-import type { EntityRecord, GraphSnapshot, OccurrenceRecord } from '@orimera/graph-client';
-import type { BandRow, ConfirmationBand } from '@orimera/companion-runtime';
-import type { EntityDetailView, OccurrenceCitation } from '@orimera/world-index';
-import { DETAIL_SECTION_ORDER, buildEntityDetail } from '@orimera/world-index';
+import type { EntityRecord, GraphSnapshot, OccurrenceRecord } from '@exulanica/graph-client';
+import type { BandRow, ConfirmationBand } from '@exulanica/companion-runtime';
+import type { EntityDetailView, OccurrenceCitation } from '@exulanica/world-index';
+import { DETAIL_SECTION_ORDER, buildEntityDetail } from '@exulanica/world-index';
 import type { EvidenceCache } from '../evidence.js';
-import type { SourceMediaCatalog } from '@orimera/atlas-react/playcanvas';
+import type { SourceMediaCatalog } from '@exulanica/atlas-react/playcanvas';
 import { say } from './copy.js';
 import { el, replace } from './dom.js';
 

@@ -6,8 +6,8 @@ import {
   SpriteMaterial,
   SRGBColorSpace,
 } from 'three';
-import type { Anchor, AnchorTable, EmphasisBuffers } from '@orimera/atlas-core';
-import { rendersAsPresenceMarker } from '@orimera/atlas-core';
+import type { Anchor, AnchorTable, EmphasisBuffers } from '@exulanica/atlas-core';
+import { rendersAsPresenceMarker } from '@exulanica/atlas-core';
 
 /**
  * People are citations, not reconstructions.

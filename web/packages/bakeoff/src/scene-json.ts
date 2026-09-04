@@ -1,5 +1,5 @@
-import type { AtlasScene, EntityId, Island } from '@orimera/atlas-core';
-import { entityId, makeIsland, makeScene } from '@orimera/atlas-core';
+import type { AtlasScene, EntityId, Island } from '@exulanica/atlas-core';
+import { entityId, makeIsland, makeScene } from '@exulanica/atlas-core';
 
 /**
  * Rehydrate `harbour-scene.json` into a real `AtlasScene`.

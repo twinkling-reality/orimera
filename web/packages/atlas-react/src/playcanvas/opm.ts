@@ -1,5 +1,5 @@
 /**
- * Reading the `.opm` container that `@orimera/scene-synth` and `orimera.reconstruction` write.
+ * Reading the `.opm` container that `@exulanica/scene-synth` and `exulanica.reconstruction` write.
  *
  * The boundary contract forbids this package from importing scene-synth, so the container is
  * re-described here from its documented layout rather than shared as a type. That duplication is
@@ -69,7 +69,7 @@ export const PACKED_STRIDE_BYTES = REGISTRY.reduce((total, s) => total + strideO
  * fixed array. This module is not where that is enforced, for the same reason it never checked
  * segment ids against the declared list: both are per-point questions and the one requirement of
  * this decoder is no per-point JavaScript. The production validator in
- * `orimera/reconstruction/validation.py` walks every point already and enforces both, and
+ * `exulanica/reconstruction/validation.py` walks every point already and enforces both, and
  * `tests/test_reconstruction.py` reads `MAX_SEGMENTS` out of this package's own source to pin the
  * two languages to one number. A re-export of it from here would also make this module depend on
  * `semantics.ts`, which imports this one.
@@ -89,7 +89,7 @@ export interface OpmSegment {
  * What the colour buffer's alpha channel holds, declared rather than inferred (ADR-0010 D5).
  *
  * `support` is coverage: how much surface one sample was asked to stand for, counted. It is what
- * `orimera.reconstruction` writes. `confidence` is belief, and it is what `scene-synth` writes.
+ * `exulanica.reconstruction` writes. `confidence` is belief, and it is what `scene-synth` writes.
  * Under OPM/1 both said `confidence` and one of them had stopped meaning it, and this reader
  * told them apart by whether a statistics key was present, which is a format flag nobody
  * declared as one.
@@ -97,7 +97,7 @@ export interface OpmSegment {
 export type OpmColorAlpha = 'support' | 'confidence';
 
 export interface OpmHeader {
-  readonly format: 'orimera-point-map';
+  readonly format: 'exulanica-point-map';
   readonly version: number;
   readonly pointCount: number;
   readonly rung: 3;
@@ -198,7 +198,7 @@ function positiveInteger(value: unknown, name: string): asserts value is number 
  * the scaled value" could not be evaluated at all.
  *
  * The same arithmetic, in the same order, as `_model_grid_is_reachable` in
- * `orimera/reconstruction/validation.py`. Neither language can import the other and both must
+ * `exulanica/reconstruction/validation.py`. Neither language can import the other and both must
  * agree on the boundary, so the operations are written to match rather than to read well.
  */
 function modelGridIsReachable(
@@ -322,7 +322,7 @@ export function decodeOpm(buffer: ArrayBuffer): PointMap {
     new TextDecoder().decode(new Uint8Array(buffer, 8, headerLength)),
   ) as OpmHeader;
 
-  if (header.format !== 'orimera-point-map') {
+  if (header.format !== 'exulanica-point-map') {
     throw new Error(`unexpected .opm format field: ${String(header.format)}`);
   }
   validateHeader(header);

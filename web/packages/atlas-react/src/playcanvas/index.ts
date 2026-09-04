@@ -1,12 +1,12 @@
 /**
  * The PlayCanvas renderer binding for the Atlas, and its bake-off harness.
  *
- * One of the two competing implementations of `@orimera/atlas-react`'s renderer binding, per
+ * One of the two competing implementations of `@exulanica/atlas-react`'s renderer binding, per
  * ADR-0003. Everything engine-specific in the product is meant to live behind this barrel, so
  * that switching engines is a two-package change rather than a front-end rewrite.
  *
  * Nothing here decides what the world should look like. Tier selection, focus resolution, view
- * manifest application, layout and the coordinate frames all live in `@orimera/atlas-core`. This
+ * manifest application, layout and the coordinate frames all live in `@exulanica/atlas-core`. This
  * package converts those answers into PlayCanvas objects, and that is the whole job.
  */
 

@@ -1,4 +1,4 @@
-import type { AtlasScene } from '@orimera/atlas-core';
+import type { AtlasScene } from '@exulanica/atlas-core';
 
 /**
  * The scripted camera path, and why the bake-off cannot use a static camera.

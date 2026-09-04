@@ -1,4 +1,4 @@
-export const FIRST_USE_GUIDANCE_KEY = 'orimera.atlas.first-use.v1';
+export const FIRST_USE_GUIDANCE_KEY = 'exulanica.atlas.first-use.v1';
 
 export type FirstUsePhase = 'arrival' | 'traversal' | 'companion' | 'complete';
 export type FirstUseMode = 'traverse' | 'converse';

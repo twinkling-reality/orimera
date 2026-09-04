@@ -13,8 +13,8 @@
  * which is one more reason it may only be reached behind `?preview=1` in a development build.
  *
  * **The file is a reconstruction, not a fixture.** `glasshouse-courtyard.opm` was produced by
- * `orimera.reconstruction` from `glasshouse-courtyard.jpg`, the same photograph the courtyard
- * region already cites, and it is the decoder in `@orimera/atlas-react` that reads it here.
+ * `exulanica.reconstruction` from `glasshouse-courtyard.jpg`, the same photograph the courtyard
+ * region already cites, and it is the decoder in `@exulanica/atlas-react` that reads it here.
  * That is the whole point of there being one decoder: the renderer cannot tell this from a
  * synthetic bake-off fixture, so what is on screen is a measurement of the real path.
  *
@@ -23,9 +23,9 @@
  * so a missing or corrupt file must not take the world down with it.
  */
 
-import type { IslandId } from '@orimera/atlas-core';
-import type { PointMap } from '@orimera/atlas-react/playcanvas';
-import { decodeOpm } from '@orimera/atlas-react/playcanvas';
+import type { IslandId } from '@exulanica/atlas-core';
+import type { PointMap } from '@exulanica/atlas-react/playcanvas';
+import { decodeOpm } from '@exulanica/atlas-react/playcanvas';
 import { PREVIEW_IDS } from './preview-graph.js';
 
 /**

@@ -1,4 +1,4 @@
-# Orimera front end
+# Exulanica front end
 
 pnpm workspace. TypeScript, strict. `pnpm check` runs the three gates:
 
@@ -12,16 +12,16 @@ pnpm run test         # vitest
 
 | Package | Contains | Forbidden |
 | --- | --- | --- |
-| `@orimera/atlas-core` | scene graph, island frames, focus resolution, view manifest application, layout solver | React, DOM, any renderer, and any other workspace package |
-| `@orimera/presentation` | the authored Origin Landscape identity, renderer colors, shared CSS tokens and material grammar; internal compatibility fixtures are not product choices | DOM, renderers, and every workspace package except atlas-core |
-| `@orimera/atlas-react` | renderer bindings, anchor overlay, HUD, comfort settings | graph mutations |
-| `@orimera/companion-runtime` | turn generation, option pools, proposal drafting, escape handling, initiative gate | renderer, React, DOM |
-| `@orimera/world-index` | index UI, entity detail, provenance panel | renderer |
-| `@orimera/graph-client` | entity graph reads and writes, assertion log, evidence resolution | all of the above |
-| `@orimera/atlas-three` | the three.js r185 + Spark 2.1.0 renderer binding, ADR-0003 option A | React, and every workspace package except atlas-core |
-| `@orimera/scene-synth` | the synthetic scene generator for the ADR-0003 bake-off | everything except atlas-core; offline only |
-| `@orimera/bakeoff` | the ADR-0003 X-R1 harness page | everything except atlas-core and atlas-three |
-| `@orimera/landing` | the public title and Method surfaces; a configured link opens the real application | every renderer, and every workspace package except presentation |
+| `@exulanica/atlas-core` | scene graph, island frames, focus resolution, view manifest application, layout solver | React, DOM, any renderer, and any other workspace package |
+| `@exulanica/presentation` | the authored Origin Landscape identity, renderer colors, shared CSS tokens and material grammar; internal compatibility fixtures are not product choices | DOM, renderers, and every workspace package except atlas-core |
+| `@exulanica/atlas-react` | renderer bindings, anchor overlay, HUD, comfort settings | graph mutations |
+| `@exulanica/companion-runtime` | turn generation, option pools, proposal drafting, escape handling, initiative gate | renderer, React, DOM |
+| `@exulanica/world-index` | index UI, entity detail, provenance panel | renderer |
+| `@exulanica/graph-client` | entity graph reads and writes, assertion log, evidence resolution | all of the above |
+| `@exulanica/atlas-three` | the three.js r185 + Spark 2.1.0 renderer binding, ADR-0003 option A | React, and every workspace package except atlas-core |
+| `@exulanica/scene-synth` | the synthetic scene generator for the ADR-0003 bake-off | everything except atlas-core; offline only |
+| `@exulanica/bakeoff` | the ADR-0003 X-R1 harness page | everything except atlas-core and atlas-three |
+| `@exulanica/landing` | the public title and Method surfaces; a configured link opens the real application | every renderer, and every workspace package except presentation |
 
 From `docs/architecture-overview.md` section 1.1, plus four packages that are not among the
 five shipped modules: `presentation` owns visual policy without owning a surface, `scene-synth` is a build-time tool, `bakeoff` is a harness,
@@ -52,7 +52,7 @@ Two further guards worth knowing about:
   in the `atlas-core` barrel. An island's atlas position is a layout artifact,
   and reading it as geometry is risk R-48. The distance functions the layout and
   focus solvers genuinely need live in
-  `@orimera/atlas-core/presentation-metrics`, which the query layer may not
+  `@exulanica/atlas-core/presentation-metrics`, which the query layer may not
   import.
 - The view manifest type has no field that can express a position or a camera
   pose, so a query structurally cannot move the world or the user.

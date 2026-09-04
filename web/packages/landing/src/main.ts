@@ -1,19 +1,19 @@
 /**
- * Orimera's signed-out surfaces: the title and Method.
+ * Exulanica's signed-out surfaces: the title and Method.
  *
- * The Atlas itself has one composition root in `@orimera/app`. The landing page does not build a
+ * The Atlas itself has one composition root in `@exulanica/app`. The landing page does not build a
  * second Atlas, second Companion, or scripted formation journey. Entering follows the configured
  * Atlas destination, so development, preview, and deployment all cross the same explicit boundary.
  */
 
-import '@orimera/presentation/tokens.css';
+import '@exulanica/presentation/tokens.css';
 import './style.css';
 
 import { atlasDestinationFromEnvironment } from './atlas-destination.js';
 import { readEnv, watchReducedMotion } from './env.js';
 import { buildChrome, type Surface } from './ui/chrome.js';
 import { buildMethod } from './ui/method.js';
-import { buildFigures, buildTitle } from './ui/title.js';
+import { buildTitle } from './ui/title.js';
 import { boundaryReason, buildViewportBoundary, readViewport } from './ui/viewport-boundary.js';
 
 const overlay = document.getElementById('overlay');
@@ -21,14 +21,17 @@ if (!overlay) throw new Error('landing: expected #overlay in the document');
 
 const env = readEnv();
 const destination = atlasDestinationFromEnvironment(window.location.href);
-const title = buildTitle({ atlasHref: destination?.href ?? null });
+const title = buildTitle();
 const method = buildMethod();
 const chrome = buildChrome({
+  atlasHref: destination?.href ?? null,
   onHome: () => go('title'),
   onMethod: () => go('method'),
 });
 
-overlay.append(buildFigures(), chrome.root, title, method);
+// The title precedes navigation so its first Tab stop is Enter Atlas. Navigation precedes Method so
+// the visually top controls also precede the article's footer citation in keyboard order.
+overlay.append(title, chrome.root, method);
 
 const PANES: Readonly<Record<Surface, HTMLElement>> = { title, method };
 let surface: Surface = 'title';
@@ -38,8 +41,8 @@ go('title');
 function go(next: Surface): void {
   surface = next;
   document.documentElement.dataset['surface'] = next;
-  document.documentElement.dataset['ground'] = 'pale';
-  document.documentElement.dataset['theme'] = 'dawn';
+  document.documentElement.dataset['ground'] = 'light';
+  document.documentElement.dataset['theme'] = 'landing-light';
   chrome.setSurface(next);
 
   for (const [key, pane] of Object.entries(PANES) as [Surface, HTMLElement][]) {
@@ -49,14 +52,21 @@ function go(next: Surface): void {
   const shown = PANES[next];
   shown.classList.add('is-faded');
   requestAnimationFrame(() => shown.classList.remove('is-faded'));
-  shown.focus({ preventScroll: true });
+  if (next === 'title') {
+    shown.focus({ preventScroll: true });
+  } else if (!chrome.root.contains(document.activeElement)) {
+    // Pointer/keyboard activation leaves focus on Method naturally. This branch covers any future
+    // programmatic entry without dropping focus into the article ahead of the visible navigation.
+    document.getElementById('path-home')?.focus({ preventScroll: true });
+  }
 }
 
 /**
- * Keyboard legend for the signed-out surfaces.
+ * The one title-screen shortcut.
  *
- * Escape remains unbound. Modified presses are left to the browser, and a focused control keeps
- * its native keyboard behavior. Entering Atlas clicks the same link as pointer input.
+ * Modified presses are left to the browser, and a focused control keeps its native keyboard
+ * behavior. Entering Atlas clicks the same link as pointer input. Single-letter global shortcuts
+ * are deliberately absent so character-key input is never captured unexpectedly.
  */
 window.addEventListener('keydown', (event) => {
   if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -67,24 +77,9 @@ window.addEventListener('keydown', (event) => {
   const follow = (id: string): void => document.getElementById(id)?.click();
   switch (event.key.toLowerCase()) {
     case 'enter':
-    case ' ':
       if (surface !== 'title' || destination === null) return;
       event.preventDefault();
       follow('path-enter');
-      return;
-    case 'h':
-      event.preventDefault();
-      go('title');
-      return;
-    case 'm':
-      event.preventDefault();
-      go('method');
-      return;
-    case 'd':
-      follow('path-docs');
-      return;
-    case 'g':
-      follow('path-github');
       return;
     default:
   }

@@ -2,7 +2,7 @@
  * Where the API is, and how this session is credentialed.
  *
  * **There is no account system, and this file does not invent one.**
- * `orimera/api/authorisation.py` says so plainly: bearer-token authentication against a table of
+ * `exulanica/api/authorisation.py` says so plainly: bearer-token authentication against a table of
  * tokens the operator configures out of band, with no registration, no password, no expiry and
  * no refresh. A sign-in form here would be a product decision taken by a config module.
  *
@@ -13,7 +13,7 @@
  * photograph library. The cost is that a reload asks again, which is the correct trade for a
  * credential with no expiry and no revocation path.
  *
- * `VITE_ORIMERA_TOKEN` exists for development only and is read from the build environment rather
+ * `VITE_EXULANICA_TOKEN` exists for development only and is read from the build environment rather
  * than from the page. It is documented here rather than hidden because a developer who does not
  * know it exists cannot know to keep `.env.local` out of a commit.
  *
@@ -28,8 +28,8 @@
 const API_PATH = '/api';
 const PREVIEW_API_PATH = '/preview-api';
 const PREVIEW_TOKEN = 'atlas-preview-read-only';
-const PRODUCT_TITLE = 'Orimera';
-const PREVIEW_TITLE = 'Orimera — synthetic read-only development preview';
+const PRODUCT_TITLE = 'Exulanica';
+const PREVIEW_TITLE = 'Exulanica: synthetic read-only development preview';
 
 export interface Credentials {
   readonly baseUrl: string;
@@ -38,7 +38,7 @@ export interface Credentials {
 
 /** The development token, or null. Never read from the page, never written back to it. */
 export function developmentToken(): string | null {
-  const supplied = import.meta.env['VITE_ORIMERA_TOKEN'];
+  const supplied = import.meta.env['VITE_EXULANICA_TOKEN'];
   return typeof supplied === 'string' && supplied.length > 0 ? supplied : null;
 }
 

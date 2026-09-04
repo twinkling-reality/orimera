@@ -1,4 +1,4 @@
-import type { WorldStyleParameterDefinition } from '@orimera/atlas-core';
+import type { WorldStyleParameterDefinition } from '@exulanica/atlas-core';
 import {
   MIN_SURFACE_PRESENCE,
   contrastRatio,

@@ -11,7 +11,7 @@
  *
  * 2. WE CAN NEVER OWN THE ESCAPE KEY. "A default unlock gesture must always be available that
  *    will exit pointer lock", the specification recommends Escape, and the browser handles it.
- *    So Escape has exactly one meaning everywhere in Orimera: release the mouse. Nothing here
+ *    So Escape has exactly one meaning everywhere in Exulanica: release the mouse. Nothing here
  *    binds it, and there is deliberately no keydown listener for it to be added to.
  *
  * 3. WE CAN NEVER AUTO-RELOCK. Re-locking after a user-initiated unlock requires an engagement

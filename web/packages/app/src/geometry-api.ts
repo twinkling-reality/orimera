@@ -34,16 +34,16 @@
  * still attempts one unposed map per region.
  */
 
-import type { IslandId } from '@orimera/atlas-core';
-import type { PlacedScenePointMap, PointMap } from '@orimera/atlas-react/playcanvas';
-import { decodeOpm, validateScenePointMapPlacement } from '@orimera/atlas-react/playcanvas';
+import type { IslandId } from '@exulanica/atlas-core';
+import type { PlacedScenePointMap, PointMap } from '@exulanica/atlas-react/playcanvas';
+import { decodeOpm, validateScenePointMapPlacement } from '@exulanica/atlas-react/playcanvas';
 import {
   ApiError,
   Transport,
   type ReconstructionSceneRecord,
   type RenderingSubstrate,
   type TransportOptions,
-} from '@orimera/graph-client';
+} from '@exulanica/graph-client';
 
 export type GeometryIssueState =
   | 'bytes_missing'

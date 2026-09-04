@@ -29,7 +29,7 @@ import type {
   WorldPreviewSession,
   WorldProposalOrigin,
   WorldStyleVersion,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 import { shouldDrawFrame } from './frame-policy.js';
 import {
   DISSOLVE_BAND_FRACTION,
@@ -70,7 +70,7 @@ import {
   RepresentationPressureController,
   INITIAL_RENDER_ORIGIN,
   renderOriginForNeighborhood,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 import {
   DAWN_THEME,
   DEFAULT_WORLD_ART_PROFILE,
@@ -80,7 +80,7 @@ import {
   type PresentationTheme,
   type WorldArtProfile,
   type WorldStyleParameters,
-} from '@orimera/presentation';
+} from '@exulanica/presentation';
 import { AnchorOverlay } from './anchor-overlay.js';
 import { MapRegionOverlay } from './map-region-overlay.js';
 import type { AnchorMotes } from './anchor-motes.js';

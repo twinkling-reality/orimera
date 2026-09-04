@@ -1,7 +1,7 @@
 /** Authenticated, provenance-checked source media for the renderer. */
 
-import type { SourceMediaCatalog, SourceMediaDescriptor } from '@orimera/atlas-react/playcanvas';
-import { ApiError, Transport, type TransportOptions } from '@orimera/graph-client';
+import type { SourceMediaCatalog, SourceMediaDescriptor } from '@exulanica/atlas-react/playcanvas';
+import { ApiError, Transport, type TransportOptions } from '@exulanica/graph-client';
 
 export type SourceMediaIssueState =
   | 'unavailable_asset'

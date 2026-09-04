@@ -1,5 +1,5 @@
-import { ATLAS_OVERLAY_CSS, probeCapabilities } from '@orimera/atlas-three';
-import type { AtlasRenderer } from '@orimera/atlas-three';
+import { ATLAS_OVERLAY_CSS, probeCapabilities } from '@exulanica/atlas-three';
+import type { AtlasRenderer } from '@exulanica/atlas-three';
 import type { RunConfig, RunResult } from './harness.js';
 import { LADDER, labelFor, runOne } from './harness.js';
 import { HUD_CSS, Hud } from './hud.js';
@@ -19,11 +19,11 @@ import { HUD_CSS, Hud } from './hud.js';
  *   &islands=3 &warmup=1500 &measure=6000 &dpr=2 &motes=0 &people=1
  *
  * CONSOLE OUTPUT, parseable and prefixed:
- *   ORIMERA_BAKEOFF_ENV     {...}   capabilities and configuration
- *   ORIMERA_BAKEOFF_ROW     {...}   one per rung
- *   ORIMERA_BAKEOFF_SUMMARY {...}   the whole set, once, at the end
+ *   EXULANICA_BAKEOFF_ENV     {...}   capabilities and configuration
+ *   EXULANICA_BAKEOFF_ROW     {...}   one per rung
+ *   EXULANICA_BAKEOFF_SUMMARY {...}   the whole set, once, at the end
  *
- * `window.orimeraBakeoff` carries the same objects for a driver that would rather read a value
+ * `window.exulanicaBakeoff` carries the same objects for a driver that would rather read a value
  * than parse a transcript.
  */
 
@@ -60,7 +60,7 @@ const stage = document.getElementById('stage')!;
 
 declare global {
   interface Window {
-    orimeraBakeoff?: {
+    exulanicaBakeoff?: {
       capabilities: unknown;
       config: RunConfig;
       results: RunResult[];
@@ -75,7 +75,7 @@ async function main(): Promise<void> {
   const capabilities = await probeCapabilities();
   const hud = new Hud(stage, capabilities);
   const results: RunResult[] = [];
-  window.orimeraBakeoff = { capabilities, config, results, done: false, renderer: null };
+  window.exulanicaBakeoff = { capabilities, config, results, done: false, renderer: null };
 
   // ADR-0003 X-R1 step 3: the run must be in visible Chrome with the window in the foreground.
   // Stated on screen and carried in the result, because a number measured in a hidden pane is
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
     visibleAtStart,
     viewport: { w: innerWidth, h: innerHeight },
   };
-  console.log(`ORIMERA_BAKEOFF_ENV ${JSON.stringify(env)}`);
+  console.log(`EXULANICA_BAKEOFF_ENV ${JSON.stringify(env)}`);
   if (!visibleAtStart) {
     hud.setPhase(
       'WARNING',
@@ -134,10 +134,10 @@ async function main(): Promise<void> {
       const { result, renderer } = await runOne(runConfig, capabilities, handles);
       if (mode !== 'walk') results.push(result);
       live = renderer;
-      if (window.orimeraBakeoff !== undefined) window.orimeraBakeoff.renderer = renderer;
+      if (window.exulanicaBakeoff !== undefined) window.exulanicaBakeoff.renderer = renderer;
       hud.render(results);
     } catch (error) {
-      console.error(`ORIMERA_BAKEOFF_ERROR ${labelFor(points)}`, error);
+      console.error(`EXULANICA_BAKEOFF_ERROR ${labelFor(points)}`, error);
       hud.setPhase('failed', `${labelFor(points)}: ${String(error)}`);
       break;
     }
@@ -154,7 +154,7 @@ async function main(): Promise<void> {
         'a row with spoiled=true contained a period where the page was not visible.',
       ],
   };
-  console.log(`ORIMERA_BAKEOFF_SUMMARY ${JSON.stringify(summary)}`);
+  console.log(`EXULANICA_BAKEOFF_SUMMARY ${JSON.stringify(summary)}`);
 
   // Post the summary back to the dev server, so a run in a real foreground Chrome window (the
   // only run whose numbers are valid) can still be collected without reading that window's
@@ -167,10 +167,10 @@ async function main(): Promise<void> {
         body: JSON.stringify(summary),
       });
     } catch (error) {
-      console.warn('ORIMERA_BAKEOFF_POST_FAILED', error);
+      console.warn('EXULANICA_BAKEOFF_POST_FAILED', error);
     }
   }
-  if (window.orimeraBakeoff !== undefined) window.orimeraBakeoff.done = true;
+  if (window.exulanicaBakeoff !== undefined) window.exulanicaBakeoff.done = true;
 
   // Hand the world back to the walker. The scene is never reloaded: the same graph the
   // measurement ran against is the one the user now walks, which is the whole point of there

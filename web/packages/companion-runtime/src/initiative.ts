@@ -1,4 +1,4 @@
-import type { ConsequenceTier, EntityIdRef } from '@orimera/graph-client';
+import type { ConsequenceTier, EntityIdRef } from '@exulanica/graph-client';
 import type { Intent } from './intent.js';
 import type { CompanionMemory } from './memory.js';
 import { hardSuppression } from './memory.js';

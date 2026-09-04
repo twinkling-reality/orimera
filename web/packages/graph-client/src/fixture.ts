@@ -1,7 +1,7 @@
 /**
  * An in-memory graph source for an explicitly selected development preview.
  *
- * This module has its own package entry point, `@orimera/graph-client/fixture`. The normal client
+ * This module has its own package entry point, `@exulanica/graph-client/fixture`. The normal client
  * entry point does not export it, so a live application cannot acquire fixture data through an
  * accidental main-package import. The application still owns the stronger build-time rule that
  * decides whether this entry point may be loaded at all.

@@ -3,8 +3,8 @@ import {
   WORLD_STYLE_CONTRACT_COMMIT,
   WORLD_STYLE_RECIPES,
   worldStyleRecipe,
-} from '@orimera/presentation';
-import { ApiError } from '@orimera/graph-client';
+} from '@exulanica/presentation';
+import { ApiError } from '@exulanica/graph-client';
 import {
   WorldStyleClient,
   WorldStyleContractError,
@@ -133,7 +133,7 @@ describe('world style API boundary', () => {
     });
     const ids = ['proposal-1', 'proposal-2'];
     const client = new WorldStyleClient({
-      baseUrl: 'https://orimera.test/api', token: 'secret', fetch,
+      baseUrl: 'https://exulanica.test/api', token: 'secret', fetch,
       ids: () => ids.shift()!,
     });
     const connected = await client.connect();
@@ -181,7 +181,7 @@ describe('world style API boundary', () => {
     ]) {
       const fetch = connectedFetch((url) =>
         url.pathname.endsWith('/world/styles/catalog') ? json(broken) : undefined);
-      const client = new WorldStyleClient({ baseUrl: 'https://orimera.test/api', token: 't', fetch });
+      const client = new WorldStyleClient({ baseUrl: 'https://exulanica.test/api', token: 't', fetch });
       await expect(client.connect()).rejects.toBeInstanceOf(WorldStyleContractError);
     }
     expect(() => validateLocalReference({
@@ -200,7 +200,7 @@ describe('world style API boundary', () => {
       return json(value);
     });
     await expect(new WorldStyleClient({
-      baseUrl: 'https://orimera.test/api', token: 't', fetch: unknownCurrent,
+      baseUrl: 'https://exulanica.test/api', token: 't', fetch: unknownCurrent,
     }).connect()).rejects.toMatchObject({ code: 'unknown_profile_version' });
   });
 
@@ -225,7 +225,7 @@ describe('world style API boundary', () => {
     });
     const ids = ['proposal-stale', 'proposal-rebased'];
     const client = new WorldStyleClient({
-      baseUrl: 'https://orimera.test/api', token: 't', fetch, ids: () => ids.shift()!,
+      baseUrl: 'https://exulanica.test/api', token: 't', fetch, ids: () => ids.shift()!,
     });
     await client.connect();
     const recovered = await client.previewSettings({
@@ -261,7 +261,7 @@ describe('world style API boundary', () => {
     });
     const ids = ['proposal-1', 'proposal-2'];
     const client = new WorldStyleClient({
-      baseUrl: 'https://orimera.test/api', token: 't', fetch, ids: () => ids.shift()!,
+      baseUrl: 'https://exulanica.test/api', token: 't', fetch, ids: () => ids.shift()!,
     });
     await client.connect();
     await client.previewSettings({
@@ -285,7 +285,7 @@ describe('world style API boundary', () => {
       return undefined;
     });
     const client = new WorldStyleClient({
-      baseUrl: 'https://orimera.test/api', token: 't', fetch, ids: () => 'proposal-refined',
+      baseUrl: 'https://exulanica.test/api', token: 't', fetch, ids: () => 'proposal-refined',
     });
     await client.connect();
     await client.previewUpstream({
@@ -322,13 +322,13 @@ describe('world style API boundary', () => {
       }
       return undefined;
     });
-    const client = new WorldStyleClient({ baseUrl: 'https://orimera.test/api', token: 't', fetch });
+    const client = new WorldStyleClient({ baseUrl: 'https://exulanica.test/api', token: 't', fetch });
     await client.connect();
     expect((await client.rollback('v0')).kind).toBe('stale');
     expect(client.state()?.current.versionId).toBe('v1');
 
     const offline = new WorldStyleClient({
-      baseUrl: 'https://orimera.test/api', token: 't',
+      baseUrl: 'https://exulanica.test/api', token: 't',
       fetch: vi.fn(async () => { throw new TypeError('network offline'); }),
     });
     await expect(offline.connect()).rejects.toThrow('network offline');
@@ -342,7 +342,7 @@ describe('world style API boundary', () => {
       }
       return undefined;
     });
-    const client = new WorldStyleClient({ baseUrl: 'https://orimera.test/api', token: 't', fetch });
+    const client = new WorldStyleClient({ baseUrl: 'https://exulanica.test/api', token: 't', fetch });
     await client.connect();
     await client.previewSettings({ profileId: 'origin-landscape', profileVersion: 1 })
       .catch((error: ApiError) => expect(error.code).toBe('protected_topology_conflict'));

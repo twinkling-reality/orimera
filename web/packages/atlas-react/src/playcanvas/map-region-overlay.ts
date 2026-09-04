@@ -1,5 +1,5 @@
 import * as pc from 'playcanvas';
-import type { AtlasScene, IslandId } from '@orimera/atlas-core';
+import type { AtlasScene, IslandId } from '@exulanica/atlas-core';
 
 interface RegionNode {
   readonly islandId: IslandId;

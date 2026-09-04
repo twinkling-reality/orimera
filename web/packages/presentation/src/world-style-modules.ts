@@ -1,4 +1,4 @@
-import type { WorldStyleParameterValue } from '@orimera/atlas-core';
+import type { WorldStyleParameterValue } from '@exulanica/atlas-core';
 import { mixHex, oklchHex, type WorldArtProfileSource } from './world-style-model.js';
 
 export interface WorldStyleModule {

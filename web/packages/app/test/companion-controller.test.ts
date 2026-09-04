@@ -4,7 +4,7 @@ import type {
   ConfirmationSummary,
   SelectionOutcome,
   Turn,
-} from '@orimera/companion-runtime';
+} from '@exulanica/companion-runtime';
 
 import { createCompanionController } from '../src/companion.js';
 

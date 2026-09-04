@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ProposalGateError } from '@orimera/graph-client/mutations';
-import { deriveTier } from '@orimera/graph-client';
+import { ProposalGateError } from '@exulanica/graph-client/mutations';
+import { deriveTier } from '@exulanica/graph-client';
 import {
   CompanionSession,
   ConfirmationRefusedError,

@@ -3,7 +3,7 @@ import type {
   WorldStyleParameterDefinition,
   WorldStyleParameterValue,
   WorldStyleReference,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 import { assertWorldStyleControlManifest } from './world-style-capabilities.js';
 import { createWorldArtProfile, type WorldArtProfile } from './world-style-model.js';
 import type { WorldStyleModule } from './world-style-modules.js';

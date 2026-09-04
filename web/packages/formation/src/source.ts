@@ -13,7 +13,7 @@
  * somebody's photograph library in every proxy log on the way.
  *
  * ASSUMPTION A-29, whether the pipeline can emit real per-stage counters, is now settled by
- * `orimera/ingest/formation.py`: it can, for the stages that run, by counting runs that have
+ * `exulanica/ingest/formation.py`: it can, for the stages that run, by counting runs that have
  * finished each stage. What it cannot count is a stage that is one run for the whole batch, and
  * that arrives as a stage reporting no counters, which is the state this client was already
  * built to render as breathing plus elapsed time rather than as a guess.

@@ -1,17 +1,17 @@
 import * as pc from 'playcanvas';
-import type { AtlasScene, IslandId, ResidencyStage } from '@orimera/atlas-core';
+import type { AtlasScene, IslandId, ResidencyStage } from '@exulanica/atlas-core';
 import {
   atlasLandscapeHeight,
   localToAtlas,
   sourceFirstCardLocalPosition,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 import {
   DAWN_THEME,
   ORIGIN_LANDSCAPE,
   unitRgb,
   type PresentationTheme,
   type WorldArtProfile,
-} from '@orimera/presentation';
+} from '@exulanica/presentation';
 import { worldMotionSeconds } from './world-field.js';
 import type { SourceMediaCatalog } from './source-media.js';
 import { sourceMediaForIsland } from './source-media.js';
@@ -270,7 +270,7 @@ function createVeilMaterial(
   phase: number,
 ): pc.ShaderMaterial {
   const material = new pc.ShaderMaterial({
-    uniqueName: `orimera-memory-veil:${phase}`,
+    uniqueName: `exulanica-memory-veil:${phase}`,
     attributes: { aPosition: pc.SEMANTIC_POSITION, aUv0: pc.SEMANTIC_TEXCOORD0 },
     vertexGLSL: VEIL_VERTEX_GLSL,
     fragmentGLSL: VEIL_FRAGMENT_GLSL,
@@ -376,7 +376,7 @@ export function createSourceFirstGrove(
     const auraMaterial = createAtmosphereMaterial(
       AURA_VERTEX_GLSL,
       AURA_FRAGMENT_GLSL,
-      `orimera-memory-atmosphere:${phase}`,
+      `exulanica-memory-atmosphere:${phase}`,
       accent,
       initialProfile.palette.paper,
       phase,

@@ -1,4 +1,4 @@
-import type { ConsequenceTier } from '@orimera/graph-client';
+import type { ConsequenceTier } from '@exulanica/graph-client';
 
 /**
  * CONSEQUENCE TIERS (interaction-model.md 5.3), as an enforced policy table rather than four

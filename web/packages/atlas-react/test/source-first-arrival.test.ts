@@ -5,7 +5,7 @@ import {
   localVec3,
   makeIsland,
   placement,
-} from '@orimera/atlas-core';
+} from '@exulanica/atlas-core';
 import { sourceFirstArrivalPose } from '../src/playcanvas/atlas-binding.js';
 
 describe('source-first arrival presentation', () => {

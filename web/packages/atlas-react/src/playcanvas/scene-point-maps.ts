@@ -1,4 +1,4 @@
-import type { IslandId } from '@orimera/atlas-core';
+import type { IslandId } from '@exulanica/atlas-core';
 import type { PointMap } from './opm.js';
 
 /** One verified OPM artifact placed into a shared reconstruction-scene frame. */

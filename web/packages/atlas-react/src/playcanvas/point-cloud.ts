@@ -1,11 +1,11 @@
 import * as pc from 'playcanvas';
-import { DISSOLVE_BAND_FRACTION } from '@orimera/atlas-core';
+import { DISSOLVE_BAND_FRACTION } from '@exulanica/atlas-core';
 import {
   BLUE_HOUR_THEME,
   pointProvenancePalette,
   unitRgb,
   type PresentationTheme,
-} from '@orimera/presentation';
+} from '@exulanica/presentation';
 import type { PointMap } from './opm.js';
 import { footprintRadiusOf, packedVertexBytes } from './opm.js';
 import type { SegmentSemantics } from './semantics.js';
@@ -108,7 +108,7 @@ interface ShaderDesc {
 
 function buildShaderDesc(blend: boolean): ShaderDesc {
   return {
-    uniqueName: `orimera-point-map${blend ? '-blend' : ''}`,
+    uniqueName: `exulanica-point-map${blend ? '-blend' : ''}`,
     attributes: { ...ATTRIBUTES },
     vertexGLSL: blend ? `#define POINT_BLEND\n${POINT_VERTEX_GLSL}` : POINT_VERTEX_GLSL,
     fragmentGLSL: blend ? `#define POINT_BLEND\n${POINT_FRAGMENT_GLSL}` : POINT_FRAGMENT_GLSL,

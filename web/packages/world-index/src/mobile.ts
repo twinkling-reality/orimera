@@ -1,5 +1,5 @@
-import type { EntityRecord, GraphSnapshot } from '@orimera/graph-client';
-import { occurrencesOf } from '@orimera/graph-client';
+import type { EntityRecord, GraphSnapshot } from '@exulanica/graph-client';
+import { occurrencesOf } from '@exulanica/graph-client';
 
 /**
  * MOBILE (interaction-model.md 2.5), and why this package is the default there.

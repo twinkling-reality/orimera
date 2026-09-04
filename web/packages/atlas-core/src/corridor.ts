@@ -3,7 +3,7 @@ import { localDirectionToAtlas, localToAtlas, localVec3 } from './coords.js';
 import type { CorridorRule } from './navigation.js';
 
 export interface CorridorArtifactWire {
-  readonly profile: 'orimera.corridor-artifact/v1';
+  readonly profile: 'exulanica.corridor-artifact/v1';
   readonly manifest_digest: string;
   readonly reconstruction_digest: string;
   readonly topology_digest: string;
@@ -63,7 +63,7 @@ export function corridorRuleFromArtifact(
   placement: IslandPlacement,
   expected: { readonly reconstructionDigest: string; readonly topologyDigest: string },
 ): ValidatedCorridorRule {
-  if (value.profile !== 'orimera.corridor-artifact/v1' || !digest(value.sha256)) {
+  if (value.profile !== 'exulanica.corridor-artifact/v1' || !digest(value.sha256)) {
     throw new Error('unsupported or unaddressed corridor artifact');
   }
   if (value.reconstruction_digest !== expected.reconstructionDigest) {

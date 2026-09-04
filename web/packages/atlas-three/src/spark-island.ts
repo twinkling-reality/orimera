@@ -1,5 +1,5 @@
 import type { Scene, WebGLRenderer } from 'three';
-import type { Island } from '@orimera/atlas-core';
+import type { Island } from '@exulanica/atlas-core';
 
 /**
  * THE SPARK HALF OF ADR-0003 OPTION A, AND AN HONEST ACCOUNT OF WHAT IT IS FOR.

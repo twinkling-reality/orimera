@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ProposalGateError } from '@orimera/graph-client/mutations';
+import { ProposalGateError } from '@exulanica/graph-client/mutations';
 import {
   BAND_ORDER,
   CompanionSession,

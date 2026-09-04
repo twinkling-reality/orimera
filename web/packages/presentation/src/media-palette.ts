@@ -2,7 +2,7 @@
  * An interface palette read out of the person's own photographs.
  *
  * The world's colour was ten authored hex constants. That is defensible for a demonstration and
- * wrong for the product: Orimera's claim is that this is *your* world, and a world whose colour
+ * wrong for the product: Exulanica's claim is that this is *your* world, and a world whose colour
  * was decided by whoever wrote the recipe is not yours in any sense a person would recognise.
  * This reads the roots out of the media that is already loaded and already on screen.
  *

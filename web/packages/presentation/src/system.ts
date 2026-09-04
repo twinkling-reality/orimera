@@ -1,4 +1,4 @@
-import type { ProvenanceClass } from '@orimera/atlas-core';
+import type { ProvenanceClass } from '@exulanica/atlas-core';
 
 export type PresentationThemeName = 'dawn' | 'blue-hour';
 export type LightFieldRole = 'key' | 'crosslight' | 'afterimage' | 'bounce' | 'rim';
@@ -64,7 +64,7 @@ const plane = (
   stops: Object.freeze(stops.map(([offsetPct, alpha]) => Object.freeze({ offsetPct, alpha }))),
 });
 
-export const ORIMERA_WORLD: PresentationWorld = Object.freeze({
+export const EXULANICA_WORLD: PresentationWorld = Object.freeze({
   field: Object.freeze([
     plane('key', 118, [[-12, 0.42], [28, 0.24], [76, 0]]),
     plane('crosslight', 252, [[-8, 0.26], [34, 0.18], [72, 0]]),
@@ -80,6 +80,7 @@ export const ORIMERA_WORLD: PresentationWorld = Object.freeze({
     systemBlur: 18,
   }),
 });
+
 
 export const DAWN_THEME: PresentationTheme = Object.freeze({
   name: 'dawn',

@@ -21,6 +21,8 @@ import { el } from './dom.js';
 
 export type ShellMode = 'traverse' | 'converse';
 
+export const COMPANION_SIDE_KEY = 'exulanica.companion.side';
+
 export type CompanionSide = 'left' | 'right';
 
 export interface WorldChrome {
@@ -51,13 +53,14 @@ export function buildWorldChrome(shell: HTMLElement): WorldChrome {
    * side of your own screen you want a companion on is not a question worth interrupting anyone
    * with; it is a thing you flip once.
    */
-  const SIDE_KEY = 'orimera.companion.side';
+  const SIDE_KEY = COMPANION_SIDE_KEY;
   let side: CompanionSide = readSide();
   shell.setAttribute('data-companion-side', side);
 
   function readSide(): CompanionSide {
     try {
-      return window.localStorage.getItem(SIDE_KEY) === 'left' ? 'left' : 'right';
+      const stored = window.localStorage.getItem(SIDE_KEY);
+      return stored === 'left' ? 'left' : 'right';
     } catch {
       // Storage can be unavailable outright. A default is a better answer than a broken boot.
       return 'right';

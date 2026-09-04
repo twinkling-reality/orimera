@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { openQuestionCount } from '@orimera/graph-client';
+import { openQuestionCount } from '@exulanica/graph-client';
 import {
   BASE_INITIATIVE_COOLDOWN_MS,
   EMPTY_MEMORY,

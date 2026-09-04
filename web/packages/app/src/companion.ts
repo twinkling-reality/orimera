@@ -4,8 +4,8 @@ import {
   type ConfirmationSummary,
   type SelectionOutcome,
   type Turn,
-} from '@orimera/companion-runtime';
-import type { EvidenceHandle, GraphSnapshot } from '@orimera/graph-client';
+} from '@exulanica/companion-runtime';
+import type { EvidenceHandle, GraphSnapshot } from '@exulanica/graph-client';
 import type { CompanionEncounter } from './ui/companion-encounter.js';
 import { say } from './ui/copy.js';
 
