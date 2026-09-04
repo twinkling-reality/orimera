@@ -106,6 +106,11 @@ import type { PointMap } from './opm.js';
 import type { PointCloud } from './point-cloud.js';
 import { createPointCloud } from './point-cloud.js';
 import { defaultSemanticsFor } from './semantics.js';
+import {
+  opmPointInScene,
+  type PlacedScenePointMap,
+  validateScenePointMapPlacement,
+} from './scene-point-maps.js';
 
 /**
  * The PlayCanvas binding for the Atlas.
@@ -126,6 +131,7 @@ export interface IslandVisual {
   readonly island: Island;
   readonly entity: pc.Entity;
   readonly cloud: PointCloud;
+  readonly pointMap: PlacedScenePointMap;
   /** Reused so the per-frame uniform write allocates nothing. */
   readonly uIsland: Float32Array;
   readonly uPoint: Float32Array;
@@ -135,8 +141,10 @@ export interface AtlasBindingOptions {
   readonly canvas: HTMLCanvasElement;
   readonly overlayParent: HTMLElement;
   readonly scene: AtlasScene;
-  /** One point map per island. Islands with no map render as anchors only. */
+  /** Legacy unposed point maps, one per island. Islands with no map render as anchors only. */
   readonly pointMaps: ReadonlyMap<IslandId, PointMap>;
+  /** Every map in a posed reconstruction scene. Supersedes pointMaps when supplied. */
+  readonly placedPointMaps?: readonly PlacedScenePointMap[];
   /** Caller-authorized media presentation keyed by the scene's evidence handles. */
   readonly sourceMedia?: SourceMediaCatalog;
   readonly deviceTypes?: readonly string[];
@@ -395,10 +403,44 @@ export class AtlasBinding {
     app.root.addChild(renderRoot);
     const navigationWorld = buildNavigationWorld(options.scene, atlasLandscapeSurface());
     const neighborhoodIndex = buildNeighborhoodIndex(options.scene);
+    const explicitPointMaps = options.placedPointMaps ?? [];
+    const explicitlyPlacedIslands = new Set(explicitPointMaps.map((value) => value.islandId));
+    const placedPointMaps = [
+      ...explicitPointMaps,
+      ...[...options.pointMaps]
+        .filter(([islandId]) => !explicitlyPlacedIslands.has(islandId))
+        .map(
+          ([islandId, map], index): PlacedScenePointMap => ({
+            sceneId: `legacy:${islandId}`,
+            artifactId: `legacy:${islandId}:${index}`,
+            islandId,
+            map,
+            sceneFromOpmRowMajor: [
+              1, 0, 0, 0,
+              0, 1, 0, 0,
+              0, 0, 1, 0,
+              0, 0, 0, 1,
+            ],
+            localUnitsToSceneUnits: 1,
+          }),
+        ),
+    ];
+    for (const value of placedPointMaps) validateScenePointMapPlacement(value);
+    const pointMapsByIsland = new Map<IslandId, PlacedScenePointMap[]>();
+    for (const value of placedPointMaps) {
+      const held = pointMapsByIsland.get(value.islandId);
+      if (held === undefined) pointMapsByIsland.set(value.islandId, [value]);
+      else held.push(value);
+    }
     const residencyCatalog: ResidencyAsset[] = options.scene.islands.map((island) => ({
       islandId: island.islandId,
-      cost: options.pointMaps.has(island.islandId)
-        ? Object.freeze({ stub: 0, proxy: 4, coarse: 10, full: 24 })
+      cost: pointMapsByIsland.has(island.islandId)
+        ? Object.freeze({
+            stub: 0,
+            proxy: 4 * pointMapsByIsland.get(island.islandId)!.length,
+            coarse: 10 * pointMapsByIsland.get(island.islandId)!.length,
+            full: 24 * pointMapsByIsland.get(island.islandId)!.length,
+          })
         : Object.freeze({ stub: 0, proxy: 2, coarse: 2, full: 2 }),
     }));
     const field = createWorldField(
@@ -419,7 +461,7 @@ export class AtlasBinding {
     );
     renderRoot.addChild(sourceFirst.entity);
     const topology = composeAtlasWorld(options.scene, {
-      availableReconstruction: new Set(options.pointMaps.keys()),
+      availableReconstruction: new Set(pointMapsByIsland.keys()),
     });
     const composedWorld = createComposedWorld(
       device,
@@ -434,7 +476,9 @@ export class AtlasBinding {
     const regionRelief = createRegionRelief(
       device,
       options.scene,
-      options.pointMaps,
+      new Map(
+        [...pointMapsByIsland].map(([islandId, maps]) => [islandId, maps[0]!.map] as const),
+      ),
       initialArtProfile,
     );
     renderRoot.addChild(regionRelief.entity);
@@ -468,13 +512,15 @@ export class AtlasBinding {
     const visuals: IslandVisual[] = [];
 
     for (const island of options.scene.islands) {
-      const entity = new pc.Entity(`island:${island.islandId}`);
-      applyPlacement(entity, island);
+      const islandEntity = new pc.Entity(`island:${island.islandId}`);
+      applyPlacement(islandEntity, island);
+      renderRoot.addChild(islandEntity);
 
-      const map = options.pointMaps.get(island.islandId);
-      let cloud: PointCloud | null = null;
-      if (map !== undefined) {
-        cloud = createPointCloud({
+      for (const pointMap of pointMapsByIsland.get(island.islandId) ?? []) {
+        const entity = new pc.Entity(`point-map:${pointMap.artifactId}`);
+        applyScenePointMapPlacement(entity, pointMap);
+        const map = pointMap.map;
+        const cloud = createPointCloud({
           device,
           map,
           semantics: defaultSemanticsFor(map.header),
@@ -485,20 +531,18 @@ export class AtlasBinding {
         });
         const instance = new pc.MeshInstance(cloud.mesh, cloud.material, entity);
         entity.addComponent('render', { meshInstances: [instance] });
-      }
+        islandEntity.addChild(entity);
 
-      renderRoot.addChild(entity);
-
-      if (cloud !== null) {
         visuals.push({
           island,
           entity,
           cloud,
+          pointMap,
           uIsland: new Float32Array([
             1,
             cloud.footprintRadiusLocal,
             cloud.footprintRadiusLocal * (1 - DISSOLVE_BAND_FRACTION),
-            island.placement.scale,
+            island.placement.scale * pointMap.localUnitsToSceneUnits,
           ]),
           uPoint: new Float32Array([
             options.sizeGain ?? cloud.defaultSizeGain,
@@ -924,7 +968,14 @@ export class AtlasBinding {
     for (const visual of this.islands) {
       let worst = 0;
       for (const probe of probes) {
-        const expected = localToAtlas(visual.island.placement, probe);
+        const scenePoint = opmPointInScene(
+          visual.pointMap,
+          [probe.x, probe.y, probe.z],
+        );
+        const expected = localToAtlas(
+          visual.island.placement,
+          localVec3(scenePoint[0], scenePoint[1], scenePoint[2]),
+        );
         v.set(probe.x, probe.y, probe.z);
         visual.entity.getWorldTransform().transformPoint(v, v);
         worst = Math.max(worst, Math.hypot(
@@ -1303,4 +1354,19 @@ function applyPlacement(entity: pc.Entity, island: Island): void {
   entity.setLocalPosition(p.position.x, p.position.y, p.position.z);
   entity.setLocalEulerAngles(0, (p.yaw * 180) / Math.PI, 0);
   entity.setLocalScale(p.scale, p.scale, p.scale);
+}
+
+/** Convert the receipt's row-major affine transform into PlayCanvas local TRS. */
+function applyScenePointMapPlacement(entity: pc.Entity, value: PlacedScenePointMap): void {
+  const m = value.sceneFromOpmRowMajor;
+  const rotation = new pc.Mat4().set([
+    m[0]!, m[4]!, m[8]!, 0,
+    m[1]!, m[5]!, m[9]!, 0,
+    m[2]!, m[6]!, m[10]!, 0,
+    0, 0, 0, 1,
+  ]);
+  entity.setLocalPosition(m[3]!, m[7]!, m[11]!);
+  entity.setLocalRotation(new pc.Quat().setFromMat4(rotation));
+  const scale = value.localUnitsToSceneUnits;
+  entity.setLocalScale(scale, scale, scale);
 }

@@ -8,15 +8,14 @@ bearer in the header, and the content hash verified against the descriptor that 
 
 This module is the read half of that. Seven decisions in it are load bearing.
 
-**This list holds point maps and nothing above them, and that is a property of its shape rather
-than of its filter.** The descriptor query inner-joins ``capture`` on ``source_blob_sha256``,
-which is the identity scheme ADR-0009 D9 says a pose receipt, a splat and a placement record
-have no home in: they are "facts about N photographs" and get a scene identity with an explicit
-many-to-many source relation. Adding a kind to this query would return zero rows for such an
-artifact, or one row keyed to whichever member's blob happened to land in the column, which would
-present a corridor as one photograph's geometry. The route generalises by carrying ``kind`` on
-the wire; **the read does not generalise, and the scene-artifact half is a second read against a
-relation that does not exist yet.**
+**This list is the legacy unposed path and holds only point maps that are not members of a
+reconstruction scene.** The descriptor query inner-joins ``capture`` on ``source_blob_sha256``,
+which is the identity scheme ADR-0009 D9 says a pose receipt, splat and placement record have no
+home in: those are facts about N photographs and use a scene identity. Once a capture belongs to
+such a scene, ``GET /graph`` carries its exact digest-bound placement and this list must not offer
+the same bytes as an unrelated shell at the island origin. That exclusion also makes deletion
+terminal for presentation: a scene withdrawn by one member cannot reappear as one surviving
+member's unposed point map.
 
 **A descriptor is keyed by CAPTURE, never by island.** ``orimera.graph``'s own docstring says why:
 "Islands are not a server concept... A server that shipped an island id would be settling that
@@ -196,6 +195,11 @@ select distinct on (c.capture_id)
    and a.content_sha256 is not null
    and a.byte_size is not null
    and not tombstone_blocks_capture(a.workspace_id, c.capture_id)
+   and not exists (
+     select 1 from reconstruction_scene_member m
+      where m.workspace_id = a.workspace_id
+        and m.capture_id = c.capture_id
+   )
  order by c.capture_id, a.stage_version desc, a.created_at desc, a.artifact_id
 """
 

@@ -83,6 +83,7 @@ describe('the shared graph source', () => {
       occurrences: [],
       proposals: [],
       scene_groups: [],
+      reconstruction_scenes: [],
       never_same: [],
       deleted_entity_ids: [],
     });

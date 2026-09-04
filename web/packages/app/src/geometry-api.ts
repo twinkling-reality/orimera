@@ -28,20 +28,22 @@
  * every region and says why once. Decoding unverified bytes because the environment made checking
  * inconvenient would be the exact trade this design exists to refuse.
  *
- * **One region attempts one point map, and the rest are counted rather than hidden.**
- * `AtlasBinding` takes one map per island, and until the placement record of ADR-0009 D6 exists
- * there is nothing that says where a second camera stood: two shells at one region's origin would
- * be two photographs drawn on top of each other. So the first descriptor the server returned for
- * a region is the one attempted, in the presentation order the server documents, and every other
- * map that region holds becomes an `unplaced` issue with a reason naming what would place it.
- * Attempted rather than drawn: a region whose first candidate fails does not fall through to the
- * next, because a region of sixteen photographs would then fetch all sixteen to draw nothing.
+ * **A validated scene loads every placed member.** The graph record binds each point map to the
+ * pose and placement receipt that puts it in a shared frame, so those maps may be drawn together.
+ * The older descriptor-list method remains for single-photograph regions with no scene record and
+ * still attempts one unposed map per region.
  */
 
 import type { IslandId } from '@orimera/atlas-core';
-import type { PointMap } from '@orimera/atlas-react/playcanvas';
-import { decodeOpm } from '@orimera/atlas-react/playcanvas';
-import { ApiError, Transport, type TransportOptions } from '@orimera/graph-client';
+import type { PlacedScenePointMap, PointMap } from '@orimera/atlas-react/playcanvas';
+import { decodeOpm, validateScenePointMapPlacement } from '@orimera/atlas-react/playcanvas';
+import {
+  ApiError,
+  Transport,
+  type ReconstructionSceneRecord,
+  type RenderingSubstrate,
+  type TransportOptions,
+} from '@orimera/graph-client';
 
 export type GeometryIssueState =
   | 'bytes_missing'
@@ -58,6 +60,7 @@ export type GeometryIssueState =
 export interface GeometryIssue {
   readonly captureId: string;
   readonly islandId: string | null;
+  readonly sceneId?: string;
   readonly state: GeometryIssueState;
   readonly reason: string;
 }
@@ -65,6 +68,8 @@ export interface GeometryIssue {
 export interface GeometrySession {
   /** One decoded, verified point map per region. Regions absent from it are drawn as anchors. */
   readonly pointMaps: ReadonlyMap<IslandId, PointMap>;
+  /** Every successfully verified map with its receipt-validated scene placement. */
+  readonly placedPointMaps: readonly PlacedScenePointMap[];
   /**
    * The same maps by artifact id, to be handed back to the next `load`.
    *
@@ -75,6 +80,8 @@ export interface GeometrySession {
    */
   readonly byArtifact: ReadonlyMap<string, PointMap>;
   readonly issues: readonly GeometryIssue[];
+  /** What this browser can draw now, after transport, digest and decode checks. */
+  readonly renderingByScene: ReadonlyMap<string, RenderingSubstrate>;
 }
 
 /** What a previous session decoded, by artifact id. See `GeometryClient.load`. */
@@ -192,7 +199,11 @@ export class GeometryClient {
    * geometry arrives, which is a change to `mount()` rather than to the fetch order, and it is
    * left undone rather than done unmeasured.
    */
-  async load(regionOf: RegionOfCapture, held?: HeldPointMaps): Promise<GeometrySession> {
+  async load(
+    regionOf: RegionOfCapture,
+    held?: HeldPointMaps,
+    excludedCaptureIds: ReadonlySet<string> = new Set(),
+  ): Promise<GeometrySession> {
     const descriptors = parseGeometryList(
       await this.#transport(LIST_TIMEOUT_MS).getJson<unknown>('/geometry'),
     );
@@ -203,6 +214,7 @@ export class GeometryClient {
     const digest = globalThis.crypto?.subtle;
 
     for (const descriptor of descriptors) {
+      if (excludedCaptureIds.has(descriptor.captureId)) continue;
       const islandId = regionOf.get(descriptor.captureId) ?? null;
       const report = (state: GeometryIssueState, reason: string): void => {
         issues.push(Object.freeze({ captureId: descriptor.captureId, islandId, state, reason }));
@@ -311,7 +323,154 @@ export class GeometryClient {
       }
     }
 
-    return Object.freeze({ pointMaps, byArtifact, issues: Object.freeze(issues) });
+    return Object.freeze({
+      pointMaps,
+      placedPointMaps: Object.freeze([]),
+      byArtifact,
+      issues: Object.freeze(issues),
+      renderingByScene: new Map(),
+    });
+  }
+
+  /** Load every placed map named by validated reconstruction-scene records. */
+  async loadScenes(
+    scenes: readonly ReconstructionSceneRecord[],
+    regionOf: RegionOfCapture,
+    held?: HeldPointMaps,
+  ): Promise<GeometrySession> {
+    const pointMaps = new Map<IslandId, PointMap>();
+    const placedPointMaps: PlacedScenePointMap[] = [];
+    const byArtifact = new Map<string, PointMap>();
+    const renderingByScene = new Map<string, RenderingSubstrate>();
+    const issues: GeometryIssue[] = [];
+    const digest = globalThis.crypto?.subtle;
+
+    for (const scene of scenes) {
+      let loadedForScene = 0;
+      const resolvedIslands = new Set(
+        scene.members.map((member) => regionOf.get(member.captureId)).filter(
+          (value): value is IslandId => value !== undefined,
+        ),
+      );
+      const islandId = resolvedIslands.size === 1 && scene.members.every(
+        (member) => regionOf.has(member.captureId),
+      ) ? [...resolvedIslands][0]! : null;
+
+      for (const member of scene.members) {
+        const placement = member.placement;
+        if (placement === null) continue;
+        const report = (state: GeometryIssueState, reason: string): void => {
+          issues.push(Object.freeze({
+            sceneId: scene.sceneId,
+            captureId: member.captureId,
+            islandId,
+            state,
+            reason,
+          }));
+        };
+        if (islandId === null || scene.islandId !== islandId) {
+          report(
+            'no_region',
+            'The reconstruction scene no longer resolves to one complete region in this graph.',
+          );
+          continue;
+        }
+        if (placement.state !== 'available' || placement.reference === null) {
+          report('bytes_missing', 'The placed point map is recorded and its bytes are unavailable.');
+          continue;
+        }
+        if (placement.container !== null && placement.container !== SUPPORTED_CONTAINER) {
+          report(
+            'unsupported_container',
+            `This build reads ${SUPPORTED_CONTAINER} and the reconstruction is ${placement.container}.`,
+          );
+          continue;
+        }
+        const reference = placement.reference;
+        if (
+          reference.authorization !== 'workspace-bearer'
+          || reference.href !== `/geometry/${placement.artifactId}`
+          || !safeGeometryPath(reference.href)
+          || reference.contentSha256 !== placement.contentSha256
+        ) {
+          report('error', 'The scene geometry reference failed its provenance check.');
+          continue;
+        }
+
+        let map = held?.get(placement.artifactId);
+        if (map === undefined) {
+          if (digest === undefined) {
+            report(
+              'unverifiable',
+              'This page has no SubtleCrypto, so scene geometry is not loaded unchecked.',
+            );
+            continue;
+          }
+          try {
+            const response = await this.#transport(BYTES_TIMEOUT_MS).getBytes(reference.href);
+            const bytes = await response.arrayBuffer();
+            const failure = await verify(
+              digest,
+              bytes,
+              reference.contentSha256,
+              reference.byteSize,
+            );
+            if (failure !== null) {
+              report('verification_failed', failure);
+              continue;
+            }
+            map = decodeOpm(bytes);
+          } catch (error) {
+            if (error instanceof ApiError) {
+              report(
+                error.isUnauthenticated ? 'unauthorized' : 'error',
+                geometryFailure(error),
+              );
+              continue;
+            }
+            if (error instanceof DOMException && error.name === 'TimeoutError') {
+              report('timed_out', 'The reconstruction did not arrive in time.');
+              continue;
+            }
+            report(
+              'undecodable',
+              error instanceof Error ? error.message : 'The container did not decode.',
+            );
+            continue;
+          }
+        }
+        const placed: PlacedScenePointMap = {
+          sceneId: scene.sceneId,
+          artifactId: placement.artifactId,
+          islandId,
+          map,
+          sceneFromOpmRowMajor: placement.sceneFromOpmRowMajor,
+          localUnitsToSceneUnits: placement.localUnitsToSceneUnits,
+        };
+        try {
+          validateScenePointMapPlacement(placed);
+        } catch (error) {
+          report('error', error instanceof Error ? error.message : 'The placement is invalid.');
+          continue;
+        }
+        placedPointMaps.push(Object.freeze(placed));
+        byArtifact.set(placement.artifactId, map);
+        if (!pointMaps.has(islandId)) pointMaps.set(islandId, map);
+        loadedForScene += 1;
+      }
+      renderingByScene.set(
+        scene.sceneId,
+        loadedForScene > 0 ? 'posed_point_maps' : 'source_photographs',
+      );
+    }
+
+    return Object.freeze({
+      pointMaps,
+      placedPointMaps: Object.freeze(placedPointMaps),
+      byArtifact,
+      issues: Object.freeze(issues),
+      renderingByScene,
+    });
   }
 
   /** A transport for one request, carrying its own deadline. See `load`. */

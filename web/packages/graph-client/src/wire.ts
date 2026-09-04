@@ -33,6 +33,44 @@ export interface HistoryPayload {
   readonly created_at: string;
 }
 
+export interface ReconstructionScenePayload {
+  readonly scene_id: string;
+  readonly member_digest: string;
+  readonly pose_receipt_sha256: string | null;
+  readonly placement_receipt_sha256: string | null;
+  readonly gate_digest: string | null;
+  readonly recorded_rung: number | null;
+  readonly recorded_reasons: readonly string[];
+  readonly displayed_rung: 1 | 2 | 3 | 4;
+  readonly display_reasons: readonly string[];
+  readonly member_count: number;
+  readonly registered_member_count: number;
+  readonly receipt_state: 'available' | 'missing' | 'invalid';
+  readonly placement_state: 'available' | 'partial' | 'bytes_missing' | 'unavailable' | 'invalid';
+  readonly rendering_substrate: 'posed_point_maps' | 'source_photographs';
+  readonly members: readonly {
+    readonly capture_id: string;
+    readonly ordinal: number;
+    readonly registered: boolean;
+    readonly exclusion_reason: string | null;
+    readonly placement: {
+      readonly artifact_id: string;
+      readonly content_sha256: string;
+      readonly container: string | null;
+      readonly scene_from_opm_row_major: readonly number[];
+      readonly local_units_to_scene_units: number;
+      readonly scale_status: 'unvalidated-identity';
+      readonly state: 'available' | 'bytes_missing';
+      readonly reference: {
+        readonly href: string;
+        readonly authorization: 'workspace-bearer';
+        readonly content_sha256: string;
+        readonly byte_size: number;
+      } | null;
+    } | null;
+  }[];
+}
+
 /** What the API's `GET /graph` answers with. Server terms, not read-model terms. */
 export interface GraphPayload {
   readonly state_version: number;
@@ -85,6 +123,7 @@ export interface GraphPayload {
     readonly rung: number | null;
     readonly rung_capture_count: number;
   }[];
+  readonly reconstruction_scenes: readonly ReconstructionScenePayload[];
   readonly never_same: readonly (readonly [string, string])[];
   readonly deleted_entity_ids: readonly string[];
 }

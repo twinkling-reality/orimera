@@ -106,6 +106,7 @@ export const PAYLOAD: GraphPayload = {
       rung_capture_count: 2,
     },
   ],
+  reconstruction_scenes: [],
   never_same: [['e1', 'e2']],
   deleted_entity_ids: [],
 };

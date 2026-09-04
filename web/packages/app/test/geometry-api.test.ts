@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { ReconstructionSceneRecord } from '@orimera/graph-client';
 import { GeometryClient, regionsByCapture } from '../src/geometry-api.js';
 
 /**
@@ -127,7 +128,100 @@ function serve(rows: unknown[], bytes: ArrayBuffer, etag?: string) {
 
 const regions = new Map([[CAPTURE_A, REGION as never], [CAPTURE_B, REGION as never]]);
 
+function sceneRecord(
+  contentSha256: string,
+  byteSize: number,
+  secondDigest = contentSha256,
+): ReconstructionSceneRecord {
+  const member = (captureId: string, ordinal: number, artifactId: string, digest: string) => ({
+    captureId,
+    ordinal,
+    registered: true,
+    exclusionReason: null,
+    placement: {
+      artifactId,
+      contentSha256: digest,
+      container: 'opm/2',
+      sceneFromOpmRowMajor: [
+        1, 0, 0, ordinal * 3,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1,
+      ],
+      localUnitsToSceneUnits: 1,
+      scaleStatus: 'unvalidated-identity' as const,
+      state: 'available' as const,
+      reference: {
+        href: `/geometry/${artifactId}`,
+        authorization: 'workspace-bearer' as const,
+        contentSha256: digest,
+        byteSize,
+      },
+    },
+  });
+  return {
+    sceneId: 'scene-1',
+    islandId: REGION,
+    memberDigest: '1'.repeat(64),
+    poseReceiptSha256: '2'.repeat(64),
+    placementReceiptSha256: '3'.repeat(64),
+    gateDigest: '4'.repeat(64),
+    recordedRung: 3,
+    recordedReasons: [],
+    displayedRung: 3,
+    displayReasons: [],
+    memberCount: 2,
+    registeredMemberCount: 2,
+    receiptState: 'available',
+    placementState: 'available',
+    renderingSubstrate: 'posed_point_maps',
+    members: [
+      member(CAPTURE_A, 0, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', contentSha256),
+      member(CAPTURE_B, 1, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', secondDigest),
+    ],
+  };
+}
+
 describe('production reconstruction geometry', () => {
+  it('loads every digest-verified point map in a posed scene with its distinct transform', async () => {
+    const bytes = buildOpm();
+    const digest = await sha256(bytes);
+    const { fetch, requests } = serve([], bytes);
+    const session = await new GeometryClient({
+      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch,
+    }).loadScenes([sceneRecord(digest, bytes.byteLength)], regions);
+
+    expect(session.issues).toEqual([]);
+    expect(session.placedPointMaps).toHaveLength(2);
+    expect(session.placedPointMaps.map((value) => value.sceneFromOpmRowMajor[3]))
+      .toEqual([0, 3]);
+    expect(session.renderingByScene.get('scene-1')).toBe('posed_point_maps');
+    expect(requests.map((request) => request.path)).toEqual([
+      '/api/geometry/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      '/api/geometry/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    ]);
+  });
+
+  it('keeps valid scene members when one map is corrupt and falls back when none verify', async () => {
+    const bytes = buildOpm();
+    const digest = await sha256(bytes);
+    const wrong = 'f'.repeat(64);
+    const partialServer = serve([], bytes);
+    const partial = await new GeometryClient({
+      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch: partialServer.fetch,
+    }).loadScenes([sceneRecord(digest, bytes.byteLength, wrong)], regions);
+    expect(partial.placedPointMaps).toHaveLength(1);
+    expect(partial.issues[0]!.state).toBe('verification_failed');
+    expect(partial.renderingByScene.get('scene-1')).toBe('posed_point_maps');
+
+    const failedServer = serve([], bytes);
+    const failed = await new GeometryClient({
+      baseUrl: 'https://orimera.test/api', token: 'private-token', fetch: failedServer.fetch,
+    }).loadScenes([sceneRecord(wrong, bytes.byteLength, wrong)], regions);
+    expect(failed.placedPointMaps).toHaveLength(0);
+    expect(failed.renderingByScene.get('scene-1')).toBe('source_photographs');
+  });
+
   it('fetches with a bearer, verifies against the descriptor, and decodes', async () => {
     const bytes = buildOpm();
     const digest = await sha256(bytes);

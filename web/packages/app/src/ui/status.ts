@@ -1,6 +1,10 @@
 /** Atlas orientation and omission disclosures. */
 
-import type { OccurrenceKind } from '@orimera/graph-client';
+import type {
+  OccurrenceKind,
+  ReconstructionRungRef,
+  RenderingSubstrate,
+} from '@orimera/graph-client';
 import { el } from './dom.js';
 
 /** Fixed by interaction-model.md 6.2 and shown with Atlas Map, where layout can be misread. */
@@ -19,6 +23,17 @@ export interface StatusInput {
    * second use of this one.
    */
   readonly notices?: readonly string[];
+  readonly reconstructionScenes?: readonly ReconstructionRungDisclosure[];
+}
+
+export interface ReconstructionRungDisclosure {
+  readonly sceneId: string;
+  readonly recordedRung: ReconstructionRungRef | null;
+  readonly displayedRung: ReconstructionRungRef;
+  readonly registeredMemberCount: number;
+  readonly memberCount: number;
+  readonly renderingSubstrate: RenderingSubstrate;
+  readonly reasons: readonly string[];
 }
 
 function counted(count: number, singular: string, plural: string): string {
@@ -52,6 +67,29 @@ export function buildStatus(input: StatusInput): HTMLElement {
 
   for (const notice of input.notices ?? []) {
     bar.append(el('p', { class: 'status-warning source-status', text: notice }));
+  }
+
+  for (const scene of input.reconstructionScenes ?? []) {
+    const details = el('details', { class: 'reconstruction-rung' });
+    details.dataset.sceneId = scene.sceneId;
+    const recorded = scene.recordedRung === null ? 'unreadable' : String(scene.recordedRung);
+    const substrate = scene.renderingSubstrate === 'posed_point_maps'
+      ? 'posed point maps'
+      : 'source photographs';
+    details.append(
+      el('summary', {
+        text: `Recorded rung ${recorded}; showing rung ${scene.displayedRung} from ${substrate}.`,
+      }),
+      el('p', {
+        text: `${scene.registeredMemberCount} of ${scene.memberCount} photographs registered.`,
+      }),
+    );
+    if (scene.reasons.length > 0) {
+      const reasons = el('ul', { class: 'reconstruction-rung-reasons' });
+      for (const reason of scene.reasons) reasons.append(el('li', { text: reason }));
+      details.append(reasons);
+    }
+    bar.append(details);
   }
 
   return bar;

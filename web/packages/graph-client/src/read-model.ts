@@ -307,6 +307,53 @@ export interface OccurrenceRecord {
  */
 export type ReconstructionRungRef = 1 | 2 | 3 | 4;
 
+export type RenderingSubstrate = 'posed_point_maps' | 'source_photographs';
+
+export interface ReconstructionPointMapRecord {
+  readonly artifactId: string;
+  readonly contentSha256: string;
+  readonly container: string | null;
+  readonly sceneFromOpmRowMajor: readonly number[];
+  readonly localUnitsToSceneUnits: number;
+  readonly scaleStatus: 'unvalidated-identity';
+  readonly state: 'available' | 'bytes_missing';
+  readonly reference: {
+    readonly href: string;
+    readonly authorization: 'workspace-bearer';
+    readonly contentSha256: string;
+    readonly byteSize: number;
+  } | null;
+}
+
+export interface ReconstructionSceneMemberRecord {
+  readonly captureId: string;
+  readonly ordinal: number;
+  readonly registered: boolean;
+  readonly placement: ReconstructionPointMapRecord | null;
+  readonly exclusionReason: string | null;
+}
+
+/** One receipt-backed reconstruction scene, distinct from a presentation island or scene group. */
+export interface ReconstructionSceneRecord {
+  readonly sceneId: string;
+  /** Null when a caller's custom island policy split the immutable member set. */
+  readonly islandId: IslandIdRef | null;
+  readonly memberDigest: string;
+  readonly poseReceiptSha256: string | null;
+  readonly placementReceiptSha256: string | null;
+  readonly gateDigest: string | null;
+  readonly recordedRung: ReconstructionRungRef | null;
+  readonly recordedReasons: readonly string[];
+  readonly displayedRung: ReconstructionRungRef;
+  readonly displayReasons: readonly string[];
+  readonly memberCount: number;
+  readonly registeredMemberCount: number;
+  readonly receiptState: 'available' | 'missing' | 'invalid';
+  readonly placementState: 'available' | 'partial' | 'bytes_missing' | 'unavailable' | 'invalid';
+  readonly renderingSubstrate: RenderingSubstrate;
+  readonly members: readonly ReconstructionSceneMemberRecord[];
+}
+
 export interface IslandRecord {
   readonly islandId: IslandIdRef;
   readonly captureIds: readonly string[];
@@ -333,6 +380,13 @@ export interface IslandRecord {
    * no rung would be a measurement standing behind a claim that was never made.
    */
   readonly rungCaptureCount: number;
+  /** The scene gate's immutable result, separate from what this client can draw. */
+  readonly recordedSceneRung?: ReconstructionRungRef | null;
+  /** The honest presentation rung after receipt and byte availability are applied. */
+  readonly displayedRung?: ReconstructionRungRef;
+  readonly displayReasons?: readonly string[];
+  readonly renderingSubstrate?: RenderingSubstrate;
+  readonly reconstructionSceneId?: string | null;
 }
 
 /**
@@ -354,6 +408,8 @@ export interface GraphSnapshot {
    * on one set rather than each deriving its own from the occurrences.
    */
   readonly islands: readonly IslandRecord[];
+  /** Present on API snapshots. Optional only for old, hand-built local test snapshots. */
+  readonly reconstructionScenes?: readonly ReconstructionSceneRecord[];
   /** Ranked candidate links awaiting a user decision. Drives the confirm-continuity intent. */
   readonly matchProposals: readonly MatchProposalView[];
   /**

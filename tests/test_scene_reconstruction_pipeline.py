@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from orimera.evidence.blob import BlobId
 from orimera.graph import read_snapshot
+from orimera.graph.geometry import point_map_descriptors, read_point_map
 from orimera.ingest.pipeline import PhotoIngestPipeline
 from orimera.ingest.scene_reconstruction import SceneReconstructionProcessor
 from orimera.ingest.scenes import run_scene_grouping
@@ -256,6 +257,7 @@ def test_deleting_one_scene_member_withdraws_it_from_the_graph(repository, tmp_p
     _processor(repository, store, tmp_path, FakeColmap(registered=3)).process(claimed)
     before = read_snapshot(repository.connection, repository.workspace_id, store)
     assert len(before.reconstruction_scenes) == 1
+    assert point_map_descriptors(repository.connection, repository.workspace_id, store) == ()
 
     repository.insert_tombstone(
         scope="capture",
@@ -267,6 +269,16 @@ def test_deleting_one_scene_member_withdraws_it_from_the_graph(repository, tmp_p
 
     assert after.state_version == before.state_version + 1
     assert after.reconstruction_scenes == []
+    # The old descriptor list cannot reintroduce a surviving member at the island origin after
+    # the scene placement is withdrawn. Exact artifact reads remain available for surviving
+    # captures, which is what lets another valid scene refer to the same immutable point map.
+    assert point_map_descriptors(repository.connection, repository.workspace_id, store) == ()
+    assert read_point_map(
+        repository.connection,
+        repository.workspace_id,
+        _point_artifacts[0],
+        store,
+    ) is not None
 
 
 def test_a_process_death_resumes_from_the_last_pose_checkpoint(ingest_spine, tmp_path):

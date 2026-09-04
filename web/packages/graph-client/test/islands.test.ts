@@ -86,6 +86,11 @@ describe('what an island is, decided by the client', () => {
       spreadMetres: null,
       rung: null,
       rungCaptureCount: 0,
+      recordedSceneRung: null,
+      displayedRung: 4,
+      displayReasons: [],
+      renderingSubstrate: 'source_photographs',
+      reconstructionSceneId: null,
     });
   });
 

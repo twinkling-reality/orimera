@@ -109,6 +109,26 @@ export function buildIslands(
   const islands: IslandRecord[] = [];
   for (const [islandId, captureIds] of capturesByIsland) {
     const group = groupWhollyIn(groupsByIsland.get(islandId), captureIds, islandId, islandOf);
+    const reconstruction = payload.reconstruction_scenes.find((scene) =>
+      scene.members.length === captureIds.length
+      && scene.members.every((member) => islandOf(member.capture_id) === islandId)
+      && captureIds.every((captureId) => scene.members.some((member) => member.capture_id === captureId))
+    );
+    const reconstructionPresentation = reconstruction === undefined
+      ? {
+          recordedSceneRung: null,
+          displayedRung: 4 as const,
+          displayReasons: [] as readonly string[],
+          renderingSubstrate: 'source_photographs' as const,
+          reconstructionSceneId: null,
+        }
+      : {
+          recordedSceneRung: asRung(reconstruction.recorded_rung),
+          displayedRung: reconstruction.displayed_rung,
+          displayReasons: reconstruction.display_reasons,
+          renderingSubstrate: reconstruction.rendering_substrate,
+          reconstructionSceneId: reconstruction.scene_id,
+        };
     if (group === undefined) {
       islands.push({
         islandId,
@@ -121,6 +141,7 @@ export function buildIslands(
         // honest answer rather than a guess at rung 4.
         rung: null,
         rungCaptureCount: 0,
+        ...reconstructionPresentation,
       });
       continue;
     }
@@ -139,6 +160,7 @@ export function buildIslands(
       spreadMetres: group.positioned_member_count > 0 ? group.radius_m : null,
       rung,
       rungCaptureCount: rung === null ? 0 : group.rung_capture_count,
+      ...reconstructionPresentation,
     });
   }
 

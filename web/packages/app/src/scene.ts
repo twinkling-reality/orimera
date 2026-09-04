@@ -271,13 +271,10 @@ export function buildScene(
       creationOrdinal: resolvedOrdinals.get(toIslandId(record.islandId))!,
       createdAt: orderingKey(record),
       placement: layout.placements.get(toIslandId(record.islandId)) ?? originPlacement(),
-      // Geometry that is actually loaded outranks the record. The record reports what the
-      // SERVER has run; a region holding a decoded point map is standing in rung 3 geometry
-      // right now, and a scene graph that called it rung 4 would have the renderer draw a
-      // point cloud inside a region every other system was told has none.
-      rung: reconstructions.get(toIslandId(record.islandId))?.rung
-        ?? record.rung
-        ?? NO_GEOMETRY_RUNG,
+      // What is actually loaded decides this renderer rung. The record remains available on the
+      // graph snapshot as a separate historical fact. A failed fetch therefore presents rung 4
+      // source photographs without rewriting the rung 3 that the durable gate recorded.
+      rung: reconstructions.get(toIslandId(record.islandId))?.rung ?? NO_GEOMETRY_RUNG,
       // Not metric even at rung 3. A monocular point map has a real metric scale of its own,
       // but an island's frame is the ATLAS's, and where a region sits there is a layout
       // decision carrying no real-world meaning. Making the island metric would let a query

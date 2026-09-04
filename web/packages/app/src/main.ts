@@ -25,7 +25,12 @@ import './style.css';
 import './appearance.css';
 import './unified-interface.css';
 
-import type { GraphSnapshot, OccurrenceRecord } from '@orimera/graph-client';
+import type {
+  GraphSnapshot,
+  OccurrenceRecord,
+  ReconstructionSceneRecord,
+  RenderingSubstrate,
+} from '@orimera/graph-client';
 import { ApiError } from '@orimera/graph-client';
 import {
   anchorId as toAnchorId,
@@ -42,8 +47,16 @@ import {
   type IndexFacets,
 } from '@orimera/world-index';
 import { mountAtlas, type MountedAtlas } from './atlas.js';
-import type { PointMap, SourceMediaCatalog } from '@orimera/atlas-react/playcanvas';
-import { footprintRadiusOf } from '@orimera/atlas-react/playcanvas';
+import type {
+  PlacedScenePointMap,
+  PointMap,
+  SourceMediaCatalog,
+} from '@orimera/atlas-react/playcanvas';
+import {
+  footprintRadiusOf,
+  scenePointMapFootprint,
+  scenePointMapViewpoint,
+} from '@orimera/atlas-react/playcanvas';
 import {
   applicationTitle,
   credentials,
@@ -73,7 +86,11 @@ import { createFirstUseGuidance, type FirstUseMode } from './ui/first-use-guidan
 import { buildWorldIndex } from './ui/world-index.js';
 import { MapPeek } from './ui/map-peek.js';
 import { buildRegionPlan } from './ui/region-plan.js';
-import { buildStatus, MAP_ORIENTATION_CAPTION } from './ui/status.js';
+import {
+  buildStatus,
+  MAP_ORIENTATION_CAPTION,
+  type ReconstructionRungDisclosure,
+} from './ui/status.js';
 import { readPreferences, writePreferences, type AtlasPreferences } from './preferences.js';
 import {
   WorldStyleClient,
@@ -138,6 +155,8 @@ let previewSourceMedia: SourceMediaCatalog | undefined;
  * that branched on which would be a second place for the two to diverge.
  */
 let pointMaps_: ReadonlyMap<IslandId, PointMap> | undefined;
+/** All maps with their shared-scene transforms. Undefined for the legacy preview path. */
+let placedPointMaps_: readonly PlacedScenePointMap[] | undefined;
 /** What the last production load decoded, by artifact id, so a re-mount re-fetches no bytes. */
 let heldPointMaps_: HeldPointMaps | undefined;
 
@@ -147,6 +166,7 @@ let worldStyleFailure: string | null = null;
 let sourceMediaSession: SourceMediaSession | null = null;
 let sourceMediaNotices: readonly string[] = Object.freeze([]);
 let geometryNotices: readonly string[] = Object.freeze([]);
+let reconstructionRungs: readonly ReconstructionRungDisclosure[] = Object.freeze([]);
 let stopWorldStyleProposalInbox: (() => void) | null = null;
 
 /**
@@ -159,9 +179,25 @@ let stopWorldStyleProposalInbox: (() => void) | null = null;
  */
 function reconstructionsOf(
   maps: ReadonlyMap<IslandId, PointMap> | undefined,
+  placedMaps: readonly PlacedScenePointMap[] | undefined,
 ): ReadonlyMap<IslandId, ReconstructedGeometry> {
   const out = new Map<IslandId, ReconstructedGeometry>();
+  const placedByIsland = new Map<IslandId, PlacedScenePointMap[]>();
+  for (const placed of placedMaps ?? []) {
+    const held = placedByIsland.get(placed.islandId);
+    if (held === undefined) placedByIsland.set(placed.islandId, [placed]);
+    else held.push(placed);
+  }
+  for (const [islandId, values] of placedByIsland) {
+    const viewpoint = scenePointMapViewpoint(values[0]!);
+    out.set(islandId, {
+      rung: 3,
+      viewpointLocal: localVec3(viewpoint[0], viewpoint[1], viewpoint[2]),
+      footprintRadiusLocal: scenePointMapFootprint(values),
+    });
+  }
   for (const [islandId, map] of maps ?? []) {
+    if (out.has(islandId)) continue;
     const [x, y, z] = map.header.viewpoint.position;
     out.set(islandId, {
       rung: map.header.rung,
@@ -367,18 +403,60 @@ async function loadGeometry(
   from: GraphSnapshot,
 ): Promise<void> {
   try {
-    const loaded = await new GeometryClient(where)
-      .load(regionsByCapture(from.islands), heldPointMaps_);
-    pointMaps_ = loaded.pointMaps;
-    heldPointMaps_ = loaded.byArtifact;
-    geometryNotices = geometryNoticesFor(loaded.issues);
+    const client = new GeometryClient(where);
+    const regions = regionsByCapture(from.islands);
+    const scenes = from.reconstructionScenes ?? [];
+    const sceneGeometry = await client.loadScenes(scenes, regions, heldPointMaps_);
+    const sceneCaptures = new Set(
+      scenes.flatMap((scene) => scene.members.map((member) => member.captureId)),
+    );
+    const held = new Map([...(heldPointMaps_ ?? []), ...sceneGeometry.byArtifact]);
+    const legacyGeometry = await client.load(regions, held, sceneCaptures);
+    pointMaps_ = new Map([...legacyGeometry.pointMaps, ...sceneGeometry.pointMaps]);
+    placedPointMaps_ = sceneGeometry.placedPointMaps;
+    heldPointMaps_ = new Map([...legacyGeometry.byArtifact, ...sceneGeometry.byArtifact]);
+    geometryNotices = geometryNoticesFor([
+      ...sceneGeometry.issues,
+      ...legacyGeometry.issues,
+    ]);
+    reconstructionRungs = reconstructionRungsFor(scenes, sceneGeometry.renderingByScene);
   } catch (error) {
     pointMaps_ = undefined;
+    placedPointMaps_ = undefined;
     heldPointMaps_ = undefined;
     geometryNotices = Object.freeze([
       `Reconstructions unavailable: ${error instanceof Error ? error.message : 'the request failed'}`,
     ]);
+    reconstructionRungs = reconstructionRungsFor(
+      from.reconstructionScenes ?? [],
+      new Map(),
+    );
   }
+}
+
+function reconstructionRungsFor(
+  scenes: readonly ReconstructionSceneRecord[],
+  actual: ReadonlyMap<string, RenderingSubstrate>,
+): readonly ReconstructionRungDisclosure[] {
+  return Object.freeze(scenes.map((scene) => {
+    const substrate = actual.get(scene.sceneId) ?? 'source_photographs';
+    const displayedRung = substrate === 'posed_point_maps' ? Math.max(scene.displayedRung, 3) : 4;
+    const reasons = [...scene.displayReasons];
+    if (substrate !== scene.renderingSubstrate) {
+      reasons.push(
+        'This browser could not load a verified posed map, so it is displaying source photographs.',
+      );
+    }
+    return Object.freeze({
+      sceneId: scene.sceneId,
+      recordedRung: scene.recordedRung,
+      displayedRung: displayedRung as 1 | 2 | 3 | 4,
+      registeredMemberCount: scene.registeredMemberCount,
+      memberCount: scene.memberCount,
+      renderingSubstrate: substrate,
+      reasons: Object.freeze(reasons),
+    });
+  }));
 }
 
 /**
@@ -447,7 +525,13 @@ async function mount(): Promise<void> {
   // would open every refresh by asking the question the user just answered.
   currentCompanion.observeSnapshot(current);
 
-  const built = buildScene(current, 1, new Map(), new Map(), reconstructionsOf(pointMaps_));
+  const built = buildScene(
+    current,
+    1,
+    new Map(),
+    new Map(),
+    reconstructionsOf(pointMaps_, placedPointMaps_),
+  );
   // A graph write remounts every surface. Stop the previous field before replacing its node, or
   // its frame loop and observers would survive invisibly for the rest of the session.
   mountedCompanionStage?.dispose();
@@ -1026,6 +1110,7 @@ async function mount(): Promise<void> {
         omittedRegionCount: built.omitted.length,
         undrawable: built.undrawable,
         notices: [...sourceMediaNotices, ...geometryNotices],
+        reconstructionScenes: reconstructionRungs,
       }),
   ]);
 
@@ -1152,6 +1237,7 @@ async function mount(): Promise<void> {
       : {}),
     ...(previewSourceMedia === undefined ? {} : { sourceMedia: previewSourceMedia }),
     ...(pointMaps_ === undefined ? {} : { pointMaps: pointMaps_ }),
+    ...(placedPointMaps_ === undefined ? {} : { placedPointMaps: placedPointMaps_ }),
     reducedMotion: systemReducedMotion.matches,
   });
   (canvas as HTMLCanvasElement).dataset.companionRenderer = 'svg';

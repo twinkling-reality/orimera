@@ -366,6 +366,7 @@ export const PREVIEW_GRAPH = {
       rung_capture_count: 0,
     },
   ],
+  reconstruction_scenes: [],
   never_same: [],
   deleted_entity_ids: [],
 } satisfies GraphPayload;

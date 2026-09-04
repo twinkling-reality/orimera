@@ -73,8 +73,12 @@ export type {
   OccurrenceIdRef,
   OccurrenceKind,
   OccurrenceRecord,
+  ReconstructionPointMapRecord,
   ReconstructionRungRef,
+  ReconstructionSceneMemberRecord,
+  ReconstructionSceneRecord,
   RelationView,
+  RenderingSubstrate,
   ResolvedEvidence,
 } from './read-model.js';
 export {

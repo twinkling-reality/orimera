@@ -6,11 +6,9 @@
  * two-package change; nothing here names `playcanvas`, and `.dependency-cruiser.cjs` would fail
  * the build if it did.
  *
- * **Point maps arrive from the caller, and an island without one is anchors only.**
- * `AtlasBinding` takes one point map per island; a region absent from the map is rung 4 rendered
- * as rung 4. This file does not decide which regions have geometry and must not: production
- * reads that from the API and the preview loads a reconstruction from disk, and a default
- * chosen here would be a third answer that neither of them asked for.
+ * **Point maps arrive from the caller, and an island without one is anchors only.** A production
+ * reconstruction scene may carry several maps with receipt-backed transforms; the preview and
+ * older single-frame path may carry one. This file does not decide which regions have geometry.
  *
  * That sentence was false when it was written, and ADR-0009 D10 says so: "the app's own comment
  * claiming that production reads point maps from an API describes an implementation that does not
@@ -37,6 +35,7 @@ import type {
   FrameReport,
   PlacementCheck,
   PointMap,
+  PlacedScenePointMap,
   SourceMediaCatalog,
 } from '@orimera/atlas-react/playcanvas';
 import { AtlasBinding } from '@orimera/atlas-react/playcanvas';
@@ -64,6 +63,7 @@ export async function mountAtlas(
     readonly sourceMedia?: SourceMediaCatalog;
     readonly reducedMotion?: boolean;
     readonly pointMaps?: ReadonlyMap<IslandId, PointMap>;
+    readonly placedPointMaps?: readonly PlacedScenePointMap[];
   },
 ): Promise<MountedAtlas> {
   const binding = await AtlasBinding.create({
@@ -71,6 +71,9 @@ export async function mountAtlas(
     overlayParent,
     scene,
     pointMaps: presentation?.pointMaps ?? NO_POINT_MAPS,
+    ...(presentation?.placedPointMaps === undefined
+      ? {}
+      : { placedPointMaps: presentation.placedPointMaps }),
     ...(presentation === undefined
       ? {}
       : {

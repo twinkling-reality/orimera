@@ -124,6 +124,89 @@ describe('the snapshot adapter states what the server cannot answer', () => {
   });
 });
 
+describe('a receipt-backed reconstruction scene remains distinct from its island', () => {
+  const scene = {
+    scene_id: 'scene-1',
+    member_digest: '1'.repeat(64),
+    pose_receipt_sha256: '2'.repeat(64),
+    placement_receipt_sha256: '3'.repeat(64),
+    gate_digest: '4'.repeat(64),
+    recorded_rung: 3,
+    recorded_reasons: ['Rung 2 withheld: no measured corridor receipt is available.'],
+    displayed_rung: 3 as const,
+    display_reasons: ['Rung 2 withheld: no measured corridor receipt is available.'],
+    member_count: 2,
+    registered_member_count: 1,
+    receipt_state: 'available' as const,
+    placement_state: 'available' as const,
+    rendering_substrate: 'posed_point_maps' as const,
+    members: [
+      {
+        capture_id: 'c1',
+        ordinal: 0,
+        registered: true,
+        exclusion_reason: null,
+        placement: {
+          artifact_id: 'artifact-1',
+          content_sha256: '5'.repeat(64),
+          container: 'opm/2',
+          scene_from_opm_row_major: [
+            1, 0, 0, 2,
+            0, 1, 0, 0,
+            0, 0, 1, -3,
+            0, 0, 0, 1,
+          ],
+          local_units_to_scene_units: 1,
+          scale_status: 'unvalidated-identity' as const,
+          state: 'available' as const,
+          reference: {
+            href: '/geometry/artifact-1',
+            authorization: 'workspace-bearer' as const,
+            content_sha256: '5'.repeat(64),
+            byte_size: 120,
+          },
+        },
+      },
+      {
+        capture_id: 'c2',
+        ordinal: 1,
+        registered: false,
+        exclusion_reason: 'pose-not-registered',
+        placement: null,
+      },
+    ],
+  };
+
+  it('carries recorded rung, displayed rung, reasons, substrate and exact transforms separately', () => {
+    const snapshot = adaptSnapshot({ ...PAYLOAD, reconstruction_scenes: [scene] });
+    expect(snapshot.reconstructionScenes).toHaveLength(1);
+    expect(snapshot.reconstructionScenes![0]).toMatchObject({
+      sceneId: 'scene-1',
+      islandId: 'g1',
+      recordedRung: 3,
+      displayedRung: 3,
+      renderingSubstrate: 'posed_point_maps',
+    });
+    expect(snapshot.reconstructionScenes![0]!.members[0]!.placement)
+      .toMatchObject({ artifactId: 'artifact-1', localUnitsToSceneUnits: 1 });
+    expect(snapshot.islands[0]).toMatchObject({
+      recordedSceneRung: 3,
+      displayedRung: 3,
+      renderingSubstrate: 'posed_point_maps',
+      reconstructionSceneId: 'scene-1',
+    });
+  });
+
+  it('does not place one scene into either region when a custom island policy splits its members', () => {
+    const snapshot = adaptSnapshot(
+      { ...PAYLOAD, reconstruction_scenes: [scene] },
+      (captureId) => `island:${captureId}` as never,
+    );
+    expect(snapshot.reconstructionScenes![0]!.islandId).toBeNull();
+    expect(snapshot.islands.every((island) => island.reconstructionSceneId === null)).toBe(true);
+  });
+});
+
 describe('a timestamp the client cannot read', () => {
   it('becomes null rather than NaN, because NaN goes on to be rendered as a date', () => {
     // `wire.ts` says of `toMs` that it is "never NaN", and this is that sentence. A NaN travels

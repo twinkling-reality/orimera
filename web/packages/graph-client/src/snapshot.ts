@@ -26,6 +26,7 @@ import type {
   LinkState,
   MatchProposalView,
   OccurrenceRecord,
+  ReconstructionSceneRecord,
 } from './read-model.js';
 import { type AssertionPayload, type GraphPayload, type HistoryPayload, toMs } from './wire.js';
 
@@ -155,17 +156,69 @@ export function adaptSnapshot(
     },
   );
 
+  const reconstructionScenes: readonly ReconstructionSceneRecord[] =
+    payload.reconstruction_scenes.map((row) => {
+      const islandIds = new Set(row.members.map((member) => toIsland(member.capture_id)));
+      return {
+        sceneId: row.scene_id,
+        islandId: islandIds.size === 1 ? [...islandIds][0]! : null,
+        memberDigest: row.member_digest,
+        poseReceiptSha256: row.pose_receipt_sha256,
+        placementReceiptSha256: row.placement_receipt_sha256,
+        gateDigest: row.gate_digest,
+        recordedRung: asRung(row.recorded_rung),
+        recordedReasons: row.recorded_reasons,
+        displayedRung: row.displayed_rung,
+        displayReasons: row.display_reasons,
+        memberCount: row.member_count,
+        registeredMemberCount: row.registered_member_count,
+        receiptState: row.receipt_state,
+        placementState: row.placement_state,
+        renderingSubstrate: row.rendering_substrate,
+        members: row.members.map((member) => ({
+          captureId: member.capture_id,
+          ordinal: member.ordinal,
+          registered: member.registered,
+          exclusionReason: member.exclusion_reason,
+          placement: member.placement === null
+            ? null
+            : {
+                artifactId: member.placement.artifact_id,
+                contentSha256: member.placement.content_sha256,
+                container: member.placement.container,
+                sceneFromOpmRowMajor: member.placement.scene_from_opm_row_major,
+                localUnitsToSceneUnits: member.placement.local_units_to_scene_units,
+                scaleStatus: member.placement.scale_status,
+                state: member.placement.state,
+                reference: member.placement.reference === null
+                  ? null
+                  : {
+                      href: member.placement.reference.href,
+                      authorization: member.placement.reference.authorization,
+                      contentSha256: member.placement.reference.content_sha256,
+                      byteSize: member.placement.reference.byte_size,
+                    },
+              },
+        })),
+      };
+    });
+
   return {
     stateVersion: payload.state_version,
     entities,
     occurrences,
     islands: buildIslands(payload, toIsland),
+    reconstructionScenes,
     matchProposals,
     neverSame: payload.never_same.map(
       ([a, b]) => [a as EntityIdRef, b as EntityIdRef] as const,
     ),
     deletedEntityIds: payload.deleted_entity_ids as readonly EntityIdRef[],
   };
+}
+
+function asRung(value: number | null): 1 | 2 | 3 | 4 | null {
+  return value === 1 || value === 2 || value === 3 || value === 4 ? value : null;
 }
 
 /** The modalities a proposal was built from, from its recorded basis. Never invented. */

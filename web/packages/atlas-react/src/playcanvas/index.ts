@@ -13,6 +13,14 @@
 export type { OpmHeader, OpmSection, OpmSegment, PointMap } from './opm.js';
 export { decodeOpm, footprintRadiusOf, packedVertexBytes, sourcePanelEnvelopeOf } from './opm.js';
 
+export type { PlacedScenePointMap } from './scene-point-maps.js';
+export {
+  opmPointInScene,
+  scenePointMapFootprint,
+  scenePointMapViewpoint,
+  validateScenePointMapPlacement,
+} from './scene-point-maps.js';
+
 export type { SegmentSemantics } from './semantics.js';
 export {
   MAX_SEGMENTS,
