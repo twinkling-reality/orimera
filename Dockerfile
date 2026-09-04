@@ -43,7 +43,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable ${EXULANICA_SYNC_EXTRAS}
 
 FROM python:3.11-slim-trixie AS runtime
-LABEL org.opencontainers.image.source="https://github.com/twinkling-reality/orimera"
+LABEL org.opencontainers.image.source="https://github.com/twinkling-reality/exulanica"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 # No apt packages at all, and that is a property rather than an omission: psycopg[binary] ships
