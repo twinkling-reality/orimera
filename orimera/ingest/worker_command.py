@@ -27,11 +27,15 @@ from orimera.models.client import ModelClient
 from orimera.models.manifest import Role
 from orimera.store.local import LocalContentAddressedStore
 
-__all__ = ["WORKSPACES_ENV", "main", "parse_workspaces"]
+__all__ = ["DEPTH_MODEL_ENV", "WORKSPACES_ENV", "main", "parse_workspaces"]
 
 WORKSPACES_ENV: Final = "ORIMERA_WORKSPACE_IDS"
 DATA_DIR_ENV: Final = "ORIMERA_DATA_DIR"
 MODEL_KEY_ENV: Final = "NEBIUS_API_KEY"
+DEPTH_MODEL_ENV: Final = "ORIMERA_DEPTH_MODEL"
+DEPTH_MODEL_ID_ENV: Final = "ORIMERA_DEPTH_MODEL_ID"
+DEPTH_MODEL_REVISION_ENV: Final = "ORIMERA_DEPTH_MODEL_REVISION"
+DEPTH_DEVICE_ENV: Final = "ORIMERA_DEPTH_DEVICE"
 
 
 def parse_workspaces(values: list[str], environ: Mapping[str, str]) -> frozenset[uuid.UUID]:
@@ -73,6 +77,7 @@ def _build_worker(args: argparse.Namespace, environ: Mapping[str, str]) -> Deriv
 
     client = ModelClient(max_attempts=1) if environ.get(MODEL_KEY_ENV) else None
     vision = NebiusVisionModel(client) if client is not None else None
+    depth = _build_depth(environ)
     lease_seconds = lease_seconds_for(
         client.worst_case_seconds(Role.VISION) if client is not None else None
     )
@@ -82,9 +87,35 @@ def _build_worker(args: argparse.Namespace, environ: Mapping[str, str]) -> Deriv
         LocalContentAddressedStore(data_dir / "blobs"),
         parse_workspaces(args.workspace, environ),
         vision=vision,
+        depth=depth,
         name=_worker_name(args.name),
         poll_seconds=args.poll_seconds,
         lease_seconds=lease_seconds,
+    )
+
+
+def _build_depth(environ: Mapping[str, str]) -> Any:
+    mode = environ.get(DEPTH_MODEL_ENV, "unavailable").strip().lower()
+    if mode == "unavailable":
+        return None
+    if mode != "moge":
+        raise ValueError(f"{DEPTH_MODEL_ENV} must be 'moge' or 'unavailable', not {mode!r}")
+    from orimera.ingest.stages import stage
+    from orimera.reconstruction.moge import (
+        DEFAULT_MOGE_MODEL,
+        DEFAULT_MOGE_REVISION,
+        MoGeDepthModel,
+    )
+
+    revision = environ.get(DEPTH_MODEL_REVISION_ENV, DEFAULT_MOGE_REVISION)
+    if len(revision) != 40 or any(character not in "0123456789abcdef" for character in revision):
+        raise ValueError(f"{DEPTH_MODEL_REVISION_ENV} must be a full lowercase Git commit")
+
+    return MoGeDepthModel(
+        model_id=environ.get(DEPTH_MODEL_ID_ENV, DEFAULT_MOGE_MODEL),
+        revision=revision,
+        max_edge_px=int(stage("depth").params["max_edge_px"]),
+        device=environ.get(DEPTH_DEVICE_ENV) or None,
     )
 
 

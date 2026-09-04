@@ -189,6 +189,9 @@ def test_the_derivative_worker_is_a_separate_restartable_command():
     assert "orimera-derivative-worker" in COMPOSE
     assert "restart: unless-stopped" in COMPOSE
     assert "ORIMERA_DERIVATIVE_WORKER: \"off\"" in COMPOSE
+    assert 'ORIMERA_SYNC_EXTRAS: "--extra reconstruction"' in COMPOSE
+    assert "ORIMERA_DEPTH_MODEL: moge" in COMPOSE
+    assert "HF_HOME: /var/lib/orimera/model-cache" in COMPOSE
     assert 'orimera-derivative-worker = "orimera.ingest.worker_command:main"' in PYPROJECT
 
 
@@ -201,6 +204,10 @@ def test_the_pose_worker_is_separate_restartable_and_provenance_configured():
     assert "ORIMERA_POSE_RUNTIME_IMAGE=" in ENV_EXAMPLE
     assert '--extra server --extra pose' in DOCKERFILE
     assert 'orimera-scene-worker = "orimera.ingest.scene_worker_command:main"' in PYPROJECT
+
+
+def test_non_http_workers_do_not_inherit_the_api_health_probe():
+    assert COMPOSE.count('"import os; os.kill(1, 0)"') == 2
 
 
 def test_no_deployment_artefact_names_a_target():

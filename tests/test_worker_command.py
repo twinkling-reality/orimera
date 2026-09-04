@@ -35,6 +35,45 @@ def test_startup_failure_is_machine_readable_and_returns_failure():
     assert event["failure_class"] == "DatabaseNotConfigured"
 
 
+def test_depth_configuration_is_explicit_and_passes_the_pinned_model_binding(monkeypatch):
+    from orimera.reconstruction import moge
+
+    captured = {}
+
+    class FakeDepth:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(moge, "MoGeDepthModel", FakeDepth)
+
+    assert worker_command._build_depth({}) is None
+    depth = worker_command._build_depth(
+        {
+            worker_command.DEPTH_MODEL_ENV: "moge",
+            worker_command.DEPTH_MODEL_ID_ENV: "example/moge-checkpoint",
+            worker_command.DEPTH_MODEL_REVISION_ENV: "a" * 40,
+            worker_command.DEPTH_DEVICE_ENV: "cuda",
+        }
+    )
+
+    assert isinstance(depth, FakeDepth)
+    assert captured == {
+        "model_id": "example/moge-checkpoint",
+        "revision": "a" * 40,
+        "max_edge_px": 512,
+        "device": "cuda",
+    }
+    with pytest.raises(ValueError, match="must be 'moge' or 'unavailable'"):
+        worker_command._build_depth({worker_command.DEPTH_MODEL_ENV: "automatic"})
+    with pytest.raises(ValueError, match="full lowercase Git commit"):
+        worker_command._build_depth(
+            {
+                worker_command.DEPTH_MODEL_ENV: "moge",
+                worker_command.DEPTH_MODEL_REVISION_ENV: "main",
+            }
+        )
+
+
 def test_once_mode_uses_observed_lifecycle_and_reports_terminal_counts(monkeypatch):
     class FakeWorker:
         name = "worker-a"

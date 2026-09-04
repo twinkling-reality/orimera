@@ -38,9 +38,15 @@ from PIL import Image
 
 from orimera.reconstruction.depth import DepthPrediction
 
-__all__ = ["DEFAULT_MOGE_MODEL", "MoGeDepthModel", "to_opm_frame"]
+__all__ = [
+    "DEFAULT_MOGE_MODEL",
+    "DEFAULT_MOGE_REVISION",
+    "MoGeDepthModel",
+    "to_opm_frame",
+]
 
 DEFAULT_MOGE_MODEL: Final = "Ruicheng/moge-2-vitl"
+DEFAULT_MOGE_REVISION: Final = "39c4d5e957afe587e04eec59dc2bcc3be5ecd968"
 
 #: Passed to `infer`. Trades tokens for detail; 6 is the level the timing above was measured at.
 _RESOLUTION_LEVEL: Final = 6
@@ -83,9 +89,15 @@ class MoGeDepthModel:
         self,
         *,
         model_id: str = DEFAULT_MOGE_MODEL,
+        revision: str | None = DEFAULT_MOGE_REVISION,
         max_edge_px: int = 512,
         device: str | None = None,
     ) -> None:
+        if revision is not None and (
+            len(revision) != 40
+            or any(character not in "0123456789abcdef" for character in revision)
+        ):
+            raise ValueError("a MoGe checkpoint revision must be a full lowercase Git commit")
         try:
             import torch
             from moge.model.v2 import MoGeModel
@@ -97,11 +109,22 @@ class MoGeDepthModel:
             ) from exc
 
         self._torch = torch
-        self._model_id = model_id
+        self._model_id = f"{model_id}@{revision}" if revision else model_id
         self._max_edge_px = max_edge_px
-        resolved = device or ("mps" if torch.backends.mps.is_available() else "cpu")
+        resolved = device or (
+            "mps"
+            if torch.backends.mps.is_available()
+            else "cuda"
+            if torch.cuda.is_available()
+            else "cpu"
+        )
         self._device = torch.device(resolved)
-        self._model = MoGeModel.from_pretrained(model_id).to(self._device).eval()
+        pretrained = (
+            MoGeModel.from_pretrained(model_id, revision=revision)
+            if revision
+            else MoGeModel.from_pretrained(model_id)
+        )
+        self._model = pretrained.to(self._device).eval()
         # Read from the loaded checkpoint, not from its name. `infer` multiplies the points by a
         # recovered `metric_scale` only when the model carries a scale head, so this is the same
         # condition the model itself branches on.

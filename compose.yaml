@@ -65,13 +65,26 @@ services:
         condition: service_completed_successfully
 
   derivative-worker:
-    build: .
+    build:
+      context: .
+      args:
+        ORIMERA_SYNC_EXTRAS: "--extra reconstruction"
     command: ["orimera-derivative-worker"]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
     environment:
       ORIMERA_DATABASE_URL: postgresql://orimera_app:${ORIMERA_APP_ROLE_PASSWORD}@postgres:5432/orimera
       ORIMERA_WORKSPACE_IDS: ${ORIMERA_WORKSPACE_IDS:?set ORIMERA_WORKSPACE_IDS to the comma-separated workspaces this worker may drain}
       ORIMERA_DATA_DIR: /var/lib/orimera
+      ORIMERA_DEPTH_MODEL: moge
+      ORIMERA_DEPTH_MODEL_ID: ${ORIMERA_DEPTH_MODEL_ID:-Ruicheng/moge-2-vitl}
+      ORIMERA_DEPTH_MODEL_REVISION: ${ORIMERA_DEPTH_MODEL_REVISION:-39c4d5e957afe587e04eec59dc2bcc3be5ecd968}
+      ORIMERA_DEPTH_DEVICE: ${ORIMERA_DEPTH_DEVICE:-}
+      HF_HOME: /var/lib/orimera/model-cache
       NEBIUS_API_KEY: ${NEBIUS_API_KEY:-}
     volumes:
       - media:/var/lib/orimera
@@ -83,6 +96,11 @@ services:
     build: .
     command: ["orimera-scene-worker"]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
     environment:
       ORIMERA_DATABASE_URL: postgresql://orimera_app:${ORIMERA_APP_ROLE_PASSWORD}@postgres:5432/orimera
       ORIMERA_WORKSPACE_IDS: ${ORIMERA_WORKSPACE_IDS:?set ORIMERA_WORKSPACE_IDS to the comma-separated workspaces this worker may drain}

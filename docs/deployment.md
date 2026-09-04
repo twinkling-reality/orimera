@@ -1,7 +1,7 @@
 # Deployment
 
 - Status: mixed, labelled per claim. See [README.md](README.md) for the status convention.
-- Date: 2026-08-31.
+- Date: 2026-09-04.
 - Relationship to other documents: this expands
   [architecture-overview.md](architecture-overview.md) sections 2, 2.1, 4 and 7 into an operational
   plan. Where a platform fact appears in both, the architecture overview is the source and this
@@ -43,10 +43,10 @@ deployment" are different facts and only the first one is true.
 
 What exists in the repository, and is checked by `tests/test_deployment.py`:
 
-*   `Dockerfile`, one image for the API and console commands: uvicorn serves the API, `orimera-db`
-    migrates and provisions runtime roles, `orimera-ingest` ingests a directory, and
-    `orimera-derivative-worker` drains uploads. Non-root, no apt packages, liveness on `/healthz`
-    and never on `/readyz`.
+*   `Dockerfile`, one reviewed recipe with dependency-specific builds. The default serves the API,
+    migrations and pose worker; Compose selects the reconstruction extra for the MoGe derivative
+    worker. Both are non-root, have no apt packages, and use liveness on `/healthz`, never
+    readiness.
 *   `.dockerignore`, an allowlist rather than a denylist, because `credentials.py` walks up from
     the working directory looking for a `.env` and a denylist is one forgotten line away from an
     image that carries a credential.
@@ -75,7 +75,14 @@ image was exercised rather than only weighed:
     and says which role, rather than starting and failing on the first request. That is section
     5.3's "fail closed at startup", observed rather than asserted.
 
-The reconstruction extra is still absent from the image, exactly as the Dockerfile's header says.
+**CORRECTED and VERIFIED 2026-09-04.** The default image still excludes torch. Compose now builds
+the derivative worker from the same recipe with the reconstruction extra, configures MoGe, and
+keeps its checkpoint cache on the media volume. A clean `linux/amd64` build of that locked target
+completed at 5,483,041,226 bytes and retained the non-root `orimera` user. Under Docker x86
+emulation it imported torch 2.13.0+cu130, `utils3d_moge`, `MoGeModel`, and the production worker;
+CUDA correctly reported unavailable on the non-GPU host. This verifies the image and import
+closure, not model inference: no chosen production host or authorized dense capture was available,
+and the 1.3 GB checkpoint was neither fetched nor exercised in this verification.
 
 ---
 
@@ -352,6 +359,10 @@ is done, no claim is made here about range requests being on the browser path.
 | `ORIMERA_READONLY_DATABASE_URL` | The Selection executor's role | Optional, and `/readyz` says so when it is absent |
 | `ORIMERA_DERIVATIVE_WORKER` | Whether this process drains what `POST /intake` queues | Defaults to **on**. Off is for an instance that leaves the queue to somebody else, and `/readyz` reports which it is: a queue nobody drains and a queue drained elsewhere look identical from outside |
 | `ORIMERA_WORKSPACE_IDS` | Comma-separated UUIDs the dedicated derivative worker is authorised to drain | Required by the worker command unless one or more `--workspace` flags are supplied. An empty set is a startup failure, not a healthy idle process |
+| `ORIMERA_DEPTH_MODEL` | Selects the production depth implementation | Compose sets `moge` on the derivative worker. Other processes leave it unavailable |
+| `ORIMERA_DEPTH_MODEL_ID` | Reviewed MoGe repository identifier | Defaults to `Ruicheng/moge-2-vitl`; changing it changes the point-map artifact binding |
+| `ORIMERA_DEPTH_MODEL_REVISION` | Full Git commit for the MoGe checkpoint | Defaults to the measured `39c4d5e957afe587e04eec59dc2bcc3be5ecd968`; mutable branches and tags are refused |
+| `ORIMERA_DEPTH_DEVICE` | Optional torch device such as `cuda`, `mps`, or `cpu` | The derivative worker; when absent it selects MPS, then CUDA, then CPU |
 | `ORIMERA_CODE_REVISION` | Exact 40-character source revision recorded in every production pose manifest | Required by `orimera-scene-worker`; no inferred checkout or mutable default is accepted |
 | `ORIMERA_POSE_RUNTIME_IMAGE` | Digest-pinned image reference recorded in every production pose manifest | Required by `orimera-scene-worker`; a mutable tag does not provide complete provenance |
 | `ORIMERA_APP_ROLE_PASSWORD`, `ORIMERA_EXECUTOR_ROLE_PASSWORD`, `ORIMERA_PURGE_ROLE_PASSWORD` | Passwords for the three roles `orimera-db` provisions | Optional. Set only when supplied, because a deployment authenticating by certificate or by peer has none, and inventing one would create a credential nobody asked for |
@@ -441,7 +452,7 @@ drain when the current role is a superuser, has BYPASSRLS, or owns any row-level
 role starts and cannot see another workspace, while the bootstrap owner is rejected. The same
 check runs in the API lifespan and the dedicated worker command before either accepts work.
 
-There are now fifty-two workspace-keyed FORCE RLS tables. The package-export receipt is append-only
+There are now fifty-three workspace-keyed FORCE RLS tables. The package-export receipt is append-only
 and scoped by the same session workspace as the protected world state whose Merkle root it
 records; migration 0024's `reconstruction_scene` and `reconstruction_scene_member` are the two
 most recent, and are append-only for a different reason, given in that file.

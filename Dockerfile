@@ -1,25 +1,29 @@
-# The image every process in this deployment runs. One image, several commands: uvicorn serves
-# the API, `orimera-db` migrates, and separate workers drain depth and pose work. They share every
-# layer, so a second image for the ingest job would be the same bytes under another name.
+# The default image serves the API, migrates, and runs the pose worker. Compose builds the
+# derivative worker from the same source with the depth extra instead, keeping torch and pycolmap
+# out of one process while retaining one reviewed recipe.
 #
 # There is no ENTRYPOINT, only a CMD. An entrypoint would make the migration one-shot and make
 # the ingest job reach for `--entrypoint`, and the whole point of one image is that they do not.
 #
-# WHAT THIS IMAGE CONTAINS is the small CPU pose extra, but not the torch depth extra. pycolmap
-# runs only in the separate scene worker process. An instance without a separately configured
-# depth producer can recover cameras but has no point maps to place, so its gate remains at source
-# photographs. Every citation still resolves to original bytes because reconstruction is never
-# evidence.
+# WHAT THE DEFAULT CONTAINS is the small CPU pose extra. The derivative-worker build argument
+# selects the torch depth extra. Every citation still resolves to original bytes because
+# reconstruction is never evidence.
 
 FROM ghcr.io/astral-sh/uv:0.9.5 AS uv
 
 FROM python:3.11-slim-trixie AS builder
 COPY --from=uv /uv /usr/local/bin/uv
+# The locked depth extra names source repositories at exact commits. Git exists only in this
+# discarded builder stage; no package manager or Git binary reaches the runtime image.
+RUN apt-get update \
+ && apt-get install --yes --no-install-recommends g++ git libx11-dev \
+ && rm -rf /var/lib/apt/lists/*
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
     UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /src
+ARG ORIMERA_SYNC_EXTRAS="--extra server --extra pose"
 
 # Dependencies first and the project second, so editing a source file does not re-resolve the
 # closure. `--locked` rather than `--frozen`: a uv.lock that no longer matches pyproject.toml
@@ -28,7 +32,7 @@ WORKDIR /src
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --locked --no-dev --no-install-project --extra server --extra pose
+    uv sync --locked --no-dev --no-install-project ${ORIMERA_SYNC_EXTRAS}
 
 # The package directory is copied, and it is not optional: without it hatchling builds an empty
 # wheel, uv installs that over the working one, and the image's own entry points raise
@@ -36,7 +40,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY pyproject.toml uv.lock LICENSE THIRD_PARTY_NOTICES.md ./
 COPY orimera ./orimera
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable --extra server --extra pose
+    uv sync --locked --no-dev --no-editable ${ORIMERA_SYNC_EXTRAS}
 
 FROM python:3.11-slim-trixie AS runtime
 LABEL org.opencontainers.image.source="https://github.com/twinkling-reality/orimera"
