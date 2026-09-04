@@ -20,8 +20,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from orimera.evidence.blob import BlobId
-from orimera.store import ContentAddressedStore
+from exulanica.evidence.blob import BlobId
+from exulanica.store import ContentAddressedStore
 
 __all__ = [
     "ScratchBusy",

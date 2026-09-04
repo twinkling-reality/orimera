@@ -17,10 +17,10 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from orimera.epistemics.assertions import AssertionWriter
-from orimera.identity import IdentityRepository, confirm_link, name_occurrence, reject_link
-from orimera.identity.proposer import PROPOSER_PARAMS, propose_matches
-from orimera.identity.signals import (
+from exulanica.epistemics.assertions import AssertionWriter
+from exulanica.identity import IdentityRepository, confirm_link, name_occurrence, reject_link
+from exulanica.identity.proposer import PROPOSER_PARAMS, propose_matches
+from exulanica.identity.signals import (
     SCENE_GROUP_KIND,
     CaptureContext,
     ContextSignals,
@@ -33,12 +33,12 @@ pytestmark = pytest.mark.postgres
 def test_the_scene_group_kind_is_the_one_ingest_writes():
     """A literal duplicated across a boundary nothing checks is a literal that drifts.
 
-    ``orimera.identity`` may not import ``orimera.ingest``: the layer contract makes them
+    ``exulanica.identity`` may not import ``exulanica.ingest``: the layer contract makes them
     siblings. So the ``derived_artifact.kind`` string is written in one and read in the other,
     and this test is the only thing that can see both. It needs no database, which is why it
     would still catch the drift on a machine with no server.
     """
-    from orimera.ingest.scenes import SCENE_GROUP_KIND as ingest_kind
+    from exulanica.ingest.scenes import SCENE_GROUP_KIND as ingest_kind
 
     assert ingest_kind == SCENE_GROUP_KIND
 
@@ -139,10 +139,10 @@ def corpus(repository):
     Built by hand rather than by ingest, because what is under test is the proposer and a vision
     model in the loop would make the fixture about the detector instead.
     """
-    from orimera.evidence import EvidenceAddress
-    from orimera.evidence.blob import BlobId
-    from orimera.identity.keys import occurrence_identity_key
-    from orimera.ingest.ledger import Ledger
+    from exulanica.evidence import EvidenceAddress
+    from exulanica.evidence.blob import BlobId
+    from exulanica.identity.keys import occurrence_identity_key
+    from exulanica.ingest.ledger import Ledger
 
     run = Ledger.start_run(repository, trigger="ingest")
     captures: list[uuid.UUID] = []
@@ -368,7 +368,7 @@ def test_the_open_question_count_falls_when_the_question_is_answered(corpus):
     Counting ``outcome = 'surfaced'`` counts answered proposals forever, and the ambient counter
     the interface shows would read the same number for the rest of time.
     """
-    from orimera.graph import read_snapshot
+    from exulanica.graph import read_snapshot
 
     repository, run_id, _captures, occurrences = corpus
     actor = uuid.uuid4()
@@ -385,10 +385,10 @@ def test_the_open_question_count_falls_when_the_question_is_answered(corpus):
 
 def test_no_proposal_is_written_when_nothing_corroborates(repository):
     """A label match with no context signal is not a weak question. It is not a question."""
-    from orimera.evidence import EvidenceAddress
-    from orimera.evidence.blob import BlobId
-    from orimera.identity.keys import occurrence_identity_key
-    from orimera.ingest.ledger import Ledger
+    from exulanica.evidence import EvidenceAddress
+    from exulanica.evidence.blob import BlobId
+    from exulanica.identity.keys import occurrence_identity_key
+    from exulanica.ingest.ledger import Ledger
 
     run = Ledger.start_run(repository, trigger="ingest")
     occurrences = []
@@ -443,7 +443,7 @@ def test_the_surface_threshold_is_a_parameter_and_not_a_constant():
     Same discipline as the depth stage: parameters rather than constants, so a later tuning pass
     is recorded on the rows it produced rather than applied retroactively.
     """
-    from orimera.identity.proposer import params_digest
+    from exulanica.identity.proposer import params_digest
 
     original = params_digest()
     PROPOSER_PARAMS["surface_threshold_milli"] = 999
@@ -462,10 +462,10 @@ def test_one_signal_alone_is_recorded_and_not_asked_about(repository):
     "we considered this and did not ask" is the part of the record that explains why the user is
     not being asked, and because the threshold was measured by nobody and may move.
     """
-    from orimera.evidence import EvidenceAddress
-    from orimera.evidence.blob import BlobId
-    from orimera.identity.keys import occurrence_identity_key
-    from orimera.ingest.ledger import Ledger
+    from exulanica.evidence import EvidenceAddress
+    from exulanica.evidence.blob import BlobId
+    from exulanica.identity.keys import occurrence_identity_key
+    from exulanica.ingest.ledger import Ledger
 
     run = Ledger.start_run(repository, trigger="ingest")
     occurrences = []
@@ -512,7 +512,7 @@ def test_a_rejected_proposal_reads_as_suppressed_even_though_its_row_still_says_
     read that trusted the column would show a proposal the user has refused as a live one, which
     is the interface asking again with no record of having been told no.
     """
-    from orimera.graph import read_snapshot
+    from exulanica.graph import read_snapshot
 
     repository, run_id, _captures, occurrences = corpus
     actor = uuid.uuid4()

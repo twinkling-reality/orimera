@@ -11,24 +11,25 @@ import sys
 import threading
 import uuid
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any, Final
 
-from orimera.db.migrate import verify_schema
-from orimera.db.roles import assert_runtime_role
-from orimera.db.session import Database
-from orimera.ingest.scene_worker import SceneReconstructionWorker
-from orimera.ingest.worker_command import DATA_DIR_ENV, parse_workspaces
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.db.migrate import verify_schema
+from exulanica.db.roles import assert_runtime_role
+from exulanica.db.session import Database
+from exulanica.env import env_get, env_name, resolve_data_dir
+from exulanica.ingest.scene_worker import SceneReconstructionWorker
+from exulanica.ingest.worker_command import parse_workspaces
+from exulanica.store.local import LocalContentAddressedStore
 
 __all__ = ["main"]
 
-CODE_REVISION_ENV: Final = "ORIMERA_CODE_REVISION"
-POSE_IMAGE_ENV: Final = "ORIMERA_POSE_RUNTIME_IMAGE"
+CODE_REVISION_ENV: Final = env_name("CODE_REVISION")
+POSE_IMAGE_ENV: Final = env_name("POSE_RUNTIME_IMAGE")
 
 
 def _required(environment: Mapping[str, str], name: str) -> str:
-    value = environment.get(name)
+    suffix = name.removeprefix("EXULANICA_")
+    value = env_get(suffix, environment)
     if not value:
         raise ValueError(f"{name} is required for a provenance-complete pose manifest")
     return value
@@ -53,7 +54,7 @@ def _build(
     verify_schema(database)
     with database.unscoped() as connection:
         assert_runtime_role(connection)
-    data_directory = Path(environment.get(DATA_DIR_ENV, ".orimera/local"))
+    data_directory = resolve_data_dir(environment)
     return SceneReconstructionWorker(
         database,
         LocalContentAddressedStore(data_directory / "blobs"),
@@ -75,7 +76,7 @@ def main(
     stream: Any = None,
 ) -> int:
     parser = argparse.ArgumentParser(
-        prog="orimera-scene-worker",
+        prog="exulanica-scene-worker",
         description="Drain exact scene sets through checkpointed camera-pose recovery.",
     )
     parser.add_argument("--workspace", action="append", default=[])

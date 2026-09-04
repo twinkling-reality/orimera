@@ -223,6 +223,81 @@ nvtx = [
 ]
 
 [[package]]
+name = "exulanica"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "cryptography" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "jsonschema" },
+    { name = "pillow" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic" },
+    { name = "python-multipart" },
+]
+
+[package.optional-dependencies]
+pose = [
+    { name = "pycolmap" },
+]
+reconstruction = [
+    { name = "huggingface-hub" },
+    { name = "moge" },
+    { name = "numpy" },
+    { name = "opencv-python-headless" },
+    { name = "scipy" },
+    { name = "torch", version = "2.13.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
+    { name = "torch", version = "2.14.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
+    { name = "torch", version = "2.14.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'darwin' and sys_platform != 'linux'" },
+    { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine != 'arm64' and sys_platform == 'darwin'" },
+    { name = "utils3d-moge" },
+]
+server = [
+    { name = "uvicorn" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "import-linter" },
+    { name = "pytest" },
+    { name = "ruff" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cryptography", specifier = ">=43" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "huggingface-hub", marker = "extra == 'reconstruction'", specifier = ">=0.26" },
+    { name = "jsonschema", specifier = ">=4.23" },
+    { name = "moge", marker = "extra == 'reconstruction'", git = "https://github.com/microsoft/MoGe.git?rev=74fbce054ebed49800de42d0ad0e83495065719a" },
+    { name = "numpy", marker = "extra == 'reconstruction'", specifier = ">=1.26" },
+    { name = "opencv-python-headless", marker = "extra == 'reconstruction'", specifier = ">=4.10" },
+    { name = "pillow", specifier = ">=12.3.0" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "pycolmap", marker = "extra == 'pose'", specifier = "==4.2.0" },
+    { name = "pydantic", specifier = ">=2.9" },
+    { name = "python-multipart", specifier = ">=0.0.20" },
+    { name = "scipy", marker = "extra == 'reconstruction'", specifier = ">=1.11" },
+    { name = "torch", marker = "sys_platform == 'darwin' and extra == 'reconstruction'", specifier = ">=2.5", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torch", marker = "sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'reconstruction'", specifier = ">=2.5" },
+    { name = "torch", marker = "sys_platform == 'linux' and extra == 'reconstruction'", specifier = ">=2.5", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "utils3d-moge", marker = "extra == 'reconstruction'", git = "https://github.com/EasternJournalist/utils3d-moge.git?rev=62f09d58509485564e24d5d9f6aac9ee9ebc0c37" },
+    { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.30" },
+]
+provides-extras = ["server", "reconstruction", "pose"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "import-linter", specifier = ">=2.0" },
+    { name = "pytest", specifier = ">=8.3" },
+    { name = "ruff", specifier = ">=0.7" },
+    { name = "uvicorn", specifier = ">=0.30" },
+]
+
+[[package]]
 name = "fastapi"
 version = "0.141.1"
 source = { registry = "https://pypi.org/simple" }
@@ -738,81 +813,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/9b/21/f6ef335f6e65724aa78b8d792b48d40a48c381715f1e62f5a5049e09d07e/opencv_python_headless-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:ed709fdf9aa0bd1f2ed8549e71d19449b03a675bb581eb292285f6861953be37", size = 61204038, upload-time = "2026-07-02T06:56:41.823Z" },
     { url = "https://files.pythonhosted.org/packages/d0/8f/b8756467ea991449a293797f6b3fa80fcfdd29598a0a60d1cd5715b96e61/opencv_python_headless-5.0.0.93-cp37-abi3-win32.whl", hash = "sha256:c6bcd96b185975ea240d22cfdb15a1f6d080cc95264cfbe2621f21bb144d89b9", size = 35411237, upload-time = "2026-07-02T05:50:12.901Z" },
     { url = "https://files.pythonhosted.org/packages/b8/88/763b967f7efd7226b82c9fae16d560cba049b1f0c036647e65c610fd636e/opencv_python_headless-5.0.0.93-cp37-abi3-win_amd64.whl", hash = "sha256:829717b6a95554f273e49e357cee3b3a2a26b6f4842fbc1bed2b45bdd8f87e0e", size = 43825962, upload-time = "2026-07-02T05:50:09.627Z" },
-]
-
-[[package]]
-name = "orimera"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "cryptography" },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "jsonschema" },
-    { name = "pillow" },
-    { name = "psycopg", extra = ["binary"] },
-    { name = "pydantic" },
-    { name = "python-multipart" },
-]
-
-[package.optional-dependencies]
-pose = [
-    { name = "pycolmap" },
-]
-reconstruction = [
-    { name = "huggingface-hub" },
-    { name = "moge" },
-    { name = "numpy" },
-    { name = "opencv-python-headless" },
-    { name = "scipy" },
-    { name = "torch", version = "2.13.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
-    { name = "torch", version = "2.14.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
-    { name = "torch", version = "2.14.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'darwin' and sys_platform != 'linux'" },
-    { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine != 'arm64' and sys_platform == 'darwin'" },
-    { name = "utils3d-moge" },
-]
-server = [
-    { name = "uvicorn" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "import-linter" },
-    { name = "pytest" },
-    { name = "ruff" },
-    { name = "uvicorn" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "cryptography", specifier = ">=43" },
-    { name = "fastapi", specifier = ">=0.115" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "huggingface-hub", marker = "extra == 'reconstruction'", specifier = ">=0.26" },
-    { name = "jsonschema", specifier = ">=4.23" },
-    { name = "moge", marker = "extra == 'reconstruction'", git = "https://github.com/microsoft/MoGe.git?rev=74fbce054ebed49800de42d0ad0e83495065719a" },
-    { name = "numpy", marker = "extra == 'reconstruction'", specifier = ">=1.26" },
-    { name = "opencv-python-headless", marker = "extra == 'reconstruction'", specifier = ">=4.10" },
-    { name = "pillow", specifier = ">=12.3.0" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
-    { name = "pycolmap", marker = "extra == 'pose'", specifier = "==4.2.0" },
-    { name = "pydantic", specifier = ">=2.9" },
-    { name = "python-multipart", specifier = ">=0.0.20" },
-    { name = "scipy", marker = "extra == 'reconstruction'", specifier = ">=1.11" },
-    { name = "torch", marker = "sys_platform == 'darwin' and extra == 'reconstruction'", specifier = ">=2.5", index = "https://download.pytorch.org/whl/cpu" },
-    { name = "torch", marker = "sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'reconstruction'", specifier = ">=2.5" },
-    { name = "torch", marker = "sys_platform == 'linux' and extra == 'reconstruction'", specifier = ">=2.5", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "utils3d-moge", marker = "extra == 'reconstruction'", git = "https://github.com/EasternJournalist/utils3d-moge.git?rev=62f09d58509485564e24d5d9f6aac9ee9ebc0c37" },
-    { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.30" },
-]
-provides-extras = ["server", "reconstruction", "pose"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "import-linter", specifier = ">=2.0" },
-    { name = "pytest", specifier = ">=8.3" },
-    { name = "ruff", specifier = ">=0.7" },
-    { name = "uvicorn", specifier = ">=0.30" },
 ]
 
 [[package]]

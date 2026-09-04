@@ -8,15 +8,15 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from orimera.db.session import Database
-from orimera.ingest.reconstruction_scratch import cleanup_abandoned_scene_scratch
-from orimera.ingest.repository import IngestRepository
-from orimera.ingest.scene_reconstruction import (
+from exulanica.db.session import Database
+from exulanica.ingest.reconstruction_scratch import cleanup_abandoned_scene_scratch
+from exulanica.ingest.repository import IngestRepository
+from exulanica.ingest.scene_reconstruction import (
     SceneBuildOutcome,
     SceneReconstructionProcessor,
 )
-from orimera.ingest.spine.reconstruction_jobs import ClaimedSceneJob
-from orimera.store import ContentAddressedStore
+from exulanica.ingest.spine.reconstruction_jobs import ClaimedSceneJob
+from exulanica.store import ContentAddressedStore
 
 __all__ = ["SceneReconstructionWorker"]
 

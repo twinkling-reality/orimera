@@ -5,7 +5,7 @@ stage, stage index, counters, a message, a timestamp and an event id. The client
 visual state and resumes from the last event id on reconnect."
 
 The route validates and delegates. Everything about what an event MEANS lives in
-:mod:`orimera.ingest.formation`, which is where the ledger's vocabulary meets the interface's,
+:mod:`exulanica.ingest.formation`, which is where the ledger's vocabulary meets the interface's,
 and this file decides only how that reaches a browser.
 
 Four things it does decide, each of which is a property of streaming rather than of formation.
@@ -42,8 +42,8 @@ from fastapi import APIRouter, Header, HTTPException, Path, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
-from orimera.api.dependencies import CurrentSession, ReadOnlyConnection
-from orimera.ingest.formation import FORMATION_STAGES, FormationEvent, project_formation
+from exulanica.api.dependencies import CurrentSession, ReadOnlyConnection
+from exulanica.ingest.formation import FORMATION_STAGES, FormationEvent, project_formation
 
 router = APIRouter(prefix="/formation", tags=["formation"])
 

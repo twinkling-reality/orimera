@@ -4,7 +4,7 @@ import hashlib
 import json
 
 import pytest
-from orimera.reconstruction.placement import (
+from exulanica.reconstruction.placement import (
     PointMapInput,
     build_placement_record,
     validate_placement_record,
@@ -17,7 +17,7 @@ def _canonical(value: object) -> bytes:
 
 def _receipt() -> bytes:
     manifest = {
-        "profile": "orimera.colmap-pose-build/v1",
+        "profile": "exulanica.colmap-pose-build/v1",
         "scene_ref": "scene-1",
         "code_revision": "a" * 40,
         "colmap_version": "pycolmap 4.2.0",
@@ -82,7 +82,7 @@ def _receipt() -> bytes:
     }
     return _canonical(
         {
-            "profile": "orimera.colmap-pose-receipt/v2",
+            "profile": "exulanica.colmap-pose-receipt/v2",
             "manifest_digest": hashlib.sha256(_canonical(manifest)).hexdigest(),
             "manifest": manifest,
             "quality_digest": hashlib.sha256(_canonical(quality)).hexdigest(),
@@ -197,7 +197,9 @@ def test_duplicate_or_missing_member_outcomes_are_refused():
             "orthonormal",
         ),
         (
-            lambda payload: payload.__setitem__("profile", "orimera.posed-point-map-placement/v2"),
+            lambda payload: payload.__setitem__(
+                "profile", "exulanica.posed-point-map-placement/v2"
+            ),
             "version",
         ),
     ],

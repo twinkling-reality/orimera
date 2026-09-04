@@ -26,7 +26,7 @@ import pathlib
 import re
 
 import pytest
-from orimera.migrations import Migration, migrations, verify_applied
+from exulanica.migrations import Migration, migrations, verify_applied
 
 from pg_harness import migrated_schema
 
@@ -344,7 +344,7 @@ def test_every_guard_asserts_the_workspace_context_before_it_trusts_a_lookup():
     """Otherwise the guard fails open, which is the worst direction for it to fail in.
 
     The guards read tombstone and evidence_span, both under FORCE row-level security. A session
-    that never set orimera.workspace_id sees them as empty and finds no tombstone. A BYPASSRLS
+    that never set exulanica.workspace_id sees them as empty and finds no tombstone. A BYPASSRLS
     role skips the policy entirely. Triggers are bypassed by neither, so the assertion belongs
     here rather than only in the policy.
     """
@@ -422,8 +422,8 @@ def test_row_level_security_is_forced_not_merely_enabled():
 #: because a list built by grepping the tree for the sentence would contain exactly the files
 #: that still carry it and would go quiet on the one that stopped.
 _FILES_STATING_THE_WORKSPACE_POLICY_COUNT = (
-    "orimera/db/session.py",
-    "orimera/ingest/spine/__init__.py",
+    "exulanica/db/session.py",
+    "exulanica/ingest/spine/__init__.py",
     "tests/test_ingest_persistence.py",
 )
 

@@ -24,7 +24,7 @@ from typing import Final
 
 import psycopg
 
-from orimera.errors import TombstonedError
+from exulanica.errors import TombstonedError
 
 __all__ = ["TOMBSTONE_REFUSAL", "terminal_if_tombstoned"]
 

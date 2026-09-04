@@ -25,7 +25,7 @@ __all__ = [
     "validate_scene_gate_decision",
 ]
 
-SCENE_GATE_PROFILE: Final = "orimera.reconstruction-scene-gate/v1"
+SCENE_GATE_PROFILE: Final = "exulanica.reconstruction-scene-gate/v1"
 
 
 def _canonical(value: object) -> bytes:
@@ -151,7 +151,7 @@ class SceneGateDecision:
     def to_bytes(self) -> bytes:
         return _canonical(
             {
-                "profile": "orimera.reconstruction-scene-gate-envelope/v1",
+                "profile": "exulanica.reconstruction-scene-gate-envelope/v1",
                 "decision_sha256": self.digest,
                 "decision": self.payload(),
             }
@@ -166,7 +166,7 @@ def validate_scene_gate_decision(data: bytes) -> SceneGateDecision:
         raise ValueError("the scene gate receipt is not JSON") from error
     if (
         not isinstance(envelope, dict)
-        or envelope.get("profile") != "orimera.reconstruction-scene-gate-envelope/v1"
+        or envelope.get("profile") != "exulanica.reconstruction-scene-gate-envelope/v1"
     ):
         raise ValueError("the scene gate envelope version is unsupported")
     raw = envelope.get("decision")

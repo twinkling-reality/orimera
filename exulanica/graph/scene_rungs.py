@@ -14,7 +14,7 @@ from typing import Any
 
 import psycopg
 
-from orimera.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
+from exulanica.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
 
 __all__ = ["SceneRungRow", "scene_rung_rows"]
 

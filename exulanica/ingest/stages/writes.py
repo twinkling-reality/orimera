@@ -23,12 +23,12 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Protocol
 
-from orimera.evidence.blob import BlobId
-from orimera.ingest.ledger import StageRecorder
-from orimera.ingest.report import IngestOutcome
-from orimera.ingest.repository import IngestRepository
-from orimera.ingest.stages import StageSpec
-from orimera.store.base import ContentAddressedStore
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.ledger import StageRecorder
+from exulanica.ingest.report import IngestOutcome
+from exulanica.ingest.repository import IngestRepository
+from exulanica.ingest.stages import StageSpec
+from exulanica.store.base import ContentAddressedStore
 
 __all__ = ["StageResult", "StageWrites"]
 

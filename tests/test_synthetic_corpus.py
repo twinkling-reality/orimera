@@ -25,11 +25,11 @@ from collections import Counter
 from dataclasses import replace
 
 import pytest
-from orimera.corpus.photograph import TO_SENSOR_TRANSPOSE, compose, encode_jpeg
-from orimera.corpus.plan import DEVICES, TRIPS, build_plan
-from orimera.corpus.render import dot, sub
-from orimera.corpus.world import PLACES, SUBJECT_BUILDERS, box, prism
-from orimera.ingest.exif import UNKNOWN_OFFSET_UNCERTAINTY_MS, extract_exif_facts
+from exulanica.corpus.photograph import TO_SENSOR_TRANSPOSE, compose, encode_jpeg
+from exulanica.corpus.plan import DEVICES, TRIPS, build_plan
+from exulanica.corpus.render import dot, sub
+from exulanica.corpus.world import PLACES, SUBJECT_BUILDERS, box, prism
+from exulanica.ingest.exif import UNKNOWN_OFFSET_UNCERTAINTY_MS, extract_exif_facts
 from PIL import Image
 
 ALL_ORIENTATIONS = list(range(1, 9))
@@ -119,9 +119,9 @@ def test_every_frame_says_in_its_own_bytes_that_it_is_synthetic():
     frame = _frames()[0]
     _image, facts = extract_exif_facts(_open(encode_jpeg(frame, compose(frame))))
 
-    assert facts.camera_make == "Orimera"
+    assert facts.camera_make == "Exulanica"
     assert facts.camera_model is not None and facts.camera_model.startswith("Synthetic Camera")
-    assert facts.software == "orimera-corpus 1"
+    assert facts.software == "exulanica-corpus 1"
     assert "Synthetic" in str(facts.raw_tags["ifd0"]["270"])
 
 

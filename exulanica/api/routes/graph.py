@@ -1,6 +1,6 @@
 """The entity graph, as one snapshot at one state version.
 
-The payload and the reads that build it are ``orimera.graph``, one layer down, because eight SQL
+The payload and the reads that build it are ``exulanica.graph``, one layer down, because eight SQL
 statements is not what this package means by "routes validate and delegate". What is left here
 is the route: take the workspace off the session, return the snapshot.
 """
@@ -11,9 +11,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from orimera.api.dependencies import CurrentSession, ReadOnlyConnection, get_services
-from orimera.api.services import Services
-from orimera.graph import GraphPayload, read_snapshot
+from exulanica.api.dependencies import CurrentSession, ReadOnlyConnection, get_services
+from exulanica.api.services import Services
+from exulanica.graph import GraphPayload, read_snapshot
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 

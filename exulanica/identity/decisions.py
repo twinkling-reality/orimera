@@ -1,8 +1,8 @@
 """One user decision, applied as one transaction, recorded so that undo is exact.
 
 Five decisions live here: confirm, reject, revoke, merge and split, plus the naming of an
-occurrence. Their shared vocabulary is in :mod:`orimera.identity.subjects`, their inverses are in
-:mod:`orimera.identity.undo`, and renaming an entity is in :mod:`orimera.identity.naming`. The
+occurrence. Their shared vocabulary is in :mod:`exulanica.identity.subjects`, their inverses are in
+:mod:`exulanica.identity.undo`, and renaming an entity is in :mod:`exulanica.identity.naming`. The
 split happened when this file passed 700 lines and was holding three responsibilities at once.
 
 Every function here is a thing a person did. There is no function a model can call, and that is
@@ -27,7 +27,7 @@ again, which is the opposite failure and just as bad.
 any kind. Identity is established by the account holder pointing at a photograph and saying who
 that is. Automatic proposal from non-biometric signals (time proximity, scene grouping, place,
 co-occurrence) is the next rung and would write ``match_proposal`` rows through
-:meth:`orimera.identity.proposals.Proposals.record`; face embeddings are a separate decision with
+:meth:`exulanica.identity.proposals.Proposals.record`; face embeddings are a separate decision with
 legal weight and open item P-1 has not been answered.
 """
 
@@ -36,10 +36,10 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 
-from orimera.epistemics.assertions import AssertionWriter
-from orimera.identity.keys import USER_STATEMENT_BASIS
-from orimera.identity.repository import IdentityRepository
-from orimera.identity.subjects import (
+from exulanica.epistemics.assertions import AssertionWriter
+from exulanica.identity.keys import USER_STATEMENT_BASIS
+from exulanica.identity.repository import IdentityRepository
+from exulanica.identity.subjects import (
     ENTITY_ENTITY,
     OCCURRENCE_ENTITY,
     AlreadyIdentified,
@@ -51,7 +51,7 @@ from orimera.identity.subjects import (
     require_occurrence,
 )
 
-#: Re-exported so that `from orimera.identity.decisions import OCCURRENCE_ENTITY` keeps working
+#: Re-exported so that `from exulanica.identity.decisions import OCCURRENCE_ENTITY` keeps working
 #: and so the two rejection scopes stay readable beside the decisions that file them.
 __all__ = [
     "ENTITY_ENTITY",

@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Final
 
-from orimera.models.manifest import ModelSpec, Role
+from exulanica.models.manifest import ModelSpec, Role
 
 __all__ = ["USD_QUANTUM", "CallUsage", "CostLedger"]
 

@@ -21,7 +21,7 @@ against it, and the report says all of that above the results rather than in a f
 
 from __future__ import annotations
 
-from orimera.evaluation.bundle import (
+from exulanica.evaluation.bundle import (
     AccessPurpose,
     AccessReceipt,
     AuthorizedSource,
@@ -29,24 +29,24 @@ from orimera.evaluation.bundle import (
     CorpusContractError,
     CorpusItem,
 )
-from orimera.evaluation.counts import Count, NamedCase, Sample, render, wilson
-from orimera.evaluation.execution import execution_snapshot
-from orimera.evaluation.ground_truth import Frame, GroundTruth
-from orimera.evaluation.metrics import METRICS, Component
-from orimera.evaluation.provenance import (
+from exulanica.evaluation.counts import Count, NamedCase, Sample, render, wilson
+from exulanica.evaluation.execution import execution_snapshot
+from exulanica.evaluation.ground_truth import Frame, GroundTruth
+from exulanica.evaluation.metrics import METRICS, Component
+from exulanica.evaluation.provenance import (
     ArchiveError,
     ArchiveReceipt,
     create_archive,
     verify_archive,
 )
-from orimera.evaluation.replay import (
+from exulanica.evaluation.replay import (
     CleanDatabaseError,
     ReplayError,
     ReplayReceipt,
     assert_pristine_database,
     run_clean_replay,
 )
-from orimera.evaluation.report import BANNED, banned_words_in, render_report
+from exulanica.evaluation.report import BANNED, banned_words_in, render_report
 
 __all__ = [
     "BANNED",

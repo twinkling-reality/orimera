@@ -1,16 +1,16 @@
 """Canonical JSON and the one rounding rule, both of which feed digests.
 
 Everything in this module exists because a digest input must serialise the same way forever,
-on every machine, in every language that later reads an Orimera package. Two rules do the
+on every machine, in every language that later reads an Exulanica package. Two rules do the
 work:
 
 1.  **No floats, anywhere, ever, in a digest input.** IEEE 754 has no canonical decimal
     rendering that every JSON writer agrees on, so a float in a digest input is a latent
     cross-language mismatch. Callers quantise to integers first (see
-    ``orimera.evidence.region`` for how normalised coordinates become integers).
+    ``exulanica.evidence.region`` for how normalised coordinates become integers).
 2.  **One rounding rule**, ``round_half_down``, used by both the nanosecond/tick conversion in
-    ``orimera.evidence.timebase`` and the coordinate quantisation in
-    ``orimera.evidence.region``, implemented in exact integer arithmetic.
+    ``exulanica.evidence.timebase`` and the coordinate quantisation in
+    ``exulanica.evidence.region``, implemented in exact integer arithmetic.
 
 The canonical form is a strict subset of RFC 8785 (JCS): sorted keys, no insignificant
 whitespace, UTF-8. Because floats are rejected outright, the only place this could diverge
@@ -25,7 +25,7 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from orimera.errors import CanonicalisationError
+from exulanica.errors import CanonicalisationError
 
 __all__ = ["canonical_json", "round_half_down", "sha256_digest", "sha256_of_canonical"]
 
@@ -86,7 +86,7 @@ def round_half_down(numerator: int, denominator: int) -> int:
     This is the frozen rounding rule named in the spine contract as ``round_half_down``. The
     name is taken to mean what ``decimal.ROUND_HALF_DOWN`` and Java's ``RoundingMode.HALF_DOWN``
     mean, namely ties resolve toward zero. See the note in the module docstring of
-    ``orimera.evidence.timebase``: the contract names the rule but does not define it, and the
+    ``exulanica.evidence.timebase``: the contract names the rule but does not define it, and the
     two plausible readings differ only on exact halves for negative values.
 
     Implemented in integer arithmetic. Using floats here would silently lose precision at

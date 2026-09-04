@@ -18,8 +18,8 @@ from pydantic import (
     model_validator,
 )
 
-from orimera.api.dependencies import CurrentSession, ReadOnlyConnection, ScopedConnection
-from orimera.world import (
+from exulanica.api.dependencies import CurrentSession, ReadOnlyConnection, ScopedConnection
+from exulanica.world import (
     INTERACTION_POLICY_REGISTRY,
     InteractionPolicyVersion,
     InteractionPreview,

@@ -1,7 +1,7 @@
 """A synthetic photograph corpus, generated deterministically, labelled synthetic in its bytes.
 
 **What this is for.** Nothing about scene grouping, continuity, reconstruction or evaluation is
-real until a corpus exists, and `.orimera/media/intake/` holds a README. This package produces
+real until a corpus exists, and `.exulanica/media/intake/` holds a README. This package produces
 one: eighty-odd JPEGs with genuine EXIF, arranged so that the properties the pipeline claims are
 actually exercised rather than assumed. It runs the real ingest path, not a fixture loader, so
 what it verifies is the code that will run on the real corpus when there is one.
@@ -23,14 +23,14 @@ corpus twice is a genuine no-op and the idempotency guarantee is exercised rathe
 That property is why the grain is drawn from a seeded stream rather than from Pillow's own noise
 generator, which is unseeded.
 
-Run it with `uv run orimera-corpus`.
+Run it with `uv run exulanica-corpus`.
 """
 
 from __future__ import annotations
 
-from orimera.corpus.plan import DEVICES, TRIPS, Device, FramePlan, Trip, build_plan
-from orimera.corpus.render import Camera, Face, Light, render
-from orimera.corpus.world import PLACES, SUBJECTS, Place
+from exulanica.corpus.plan import DEVICES, TRIPS, Device, FramePlan, Trip, build_plan
+from exulanica.corpus.render import Camera, Face, Light, render
+from exulanica.corpus.world import PLACES, SUBJECTS, Place
 
 __all__ = [
     "DEVICES",

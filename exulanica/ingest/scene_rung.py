@@ -1,7 +1,7 @@
 """Record the rung earned by a reconstruction scene.
 
 ``reconstruction_scene`` is the set of photographs a reconstruction was run over. It is a
-different subject from :mod:`orimera.ingest.scenes`, which records a ``scene_group`` proposal
+different subject from :mod:`exulanica.ingest.scenes`, which records a ``scene_group`` proposal
 produced by time-and-space clustering. A group's worst member rung is useful for panels. A
 reconstruction scene's rung is supported by the members that registered and is never a reduction
 over the individual photographs' rungs.
@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import uuid
 
-from orimera.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
-from orimera.evidence import EvidenceAddress
-from orimera.ingest.repository import IngestRepository
-from orimera.reconstruction.scene_gate import SceneGateDecision
+from exulanica.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
+from exulanica.evidence import EvidenceAddress
+from exulanica.ingest.repository import IngestRepository
+from exulanica.reconstruction.scene_gate import SceneGateDecision
 
 __all__ = ["record_scene_rung"]
 

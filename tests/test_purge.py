@@ -23,27 +23,35 @@ import uuid
 
 import psycopg
 import pytest
-from orimera.db.roles import PURGE_ROLE, RUNTIME_ROLE, provision_purge_role, provision_runtime_role
-from orimera.deletion import queue
-from orimera.deletion.worker import PurgeWorker
-from orimera.evidence.blob import BlobId
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.repository import IngestRepository
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.db.roles import (
+    PURGE_ROLE,
+    RUNTIME_ROLE,
+    provision_purge_role,
+    provision_runtime_role,
+)
+from exulanica.deletion import queue
+from exulanica.deletion.worker import PurgeWorker
+from exulanica.env import env_get
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.repository import IngestRepository
+from exulanica.store.local import LocalContentAddressedStore
 
 from conftest import CountingVisionModel, write_photo
 
 #: Suffixed, because **a role is a CLUSTER object** and the harness's "the database name must
 #: contain test" guard does not reach one. Provisioning the deployment's own role names here
-#: would leave the developer's live `orimera_app` and `orimera_purge` carrying whatever this file
-#: last chose, in the same cluster the `orimera` database uses.
+#: would leave the developer's live `exulanica_app` and `exulanica_purge`
+#: carrying whatever this file last chose, in the same cluster the `exulanica`
+#: database uses.
 _PURGE_ROLE = f"{PURGE_ROLE}_suite"
 _APP_ROLE = f"{RUNTIME_ROLE}_suite"
 
 # **Generated, never committed.** `provision_runtime_role` and `provision_purge_role` issue
 # `alter role ... password`, and a role is a CLUSTER object: the harness's "the database name must
 # contain test" guard does not reach it. With constants here, every run of this file left the
-# developer's live `orimera_app` and `orimera_purge` roles authenticating with two strings sitting
+# developer's live `exulanica_app` and `exulanica_purge` roles authenticating
+# with two strings sitting
 # in a public repository. Measured against `pg_authid` by recomputing the SCRAM verifier: they
 # matched. One process, one pair of secrets, and nothing to read afterwards.
 _PURGE_PASSWORD = secrets.token_urlsafe(32)
@@ -66,12 +74,12 @@ class Purged:
 
     def database(self, *, role: str | None = None, password: str | None = None):
         """A Database pointed at the scratch schema, optionally as a non-owner role."""
-        import os
         import urllib.parse
 
-        from orimera.db.session import Database
+        from exulanica.db.session import Database
 
-        base = os.environ["ORIMERA_TEST_DATABASE_URL"]
+        base = env_get("TEST_DATABASE_URL")
+        assert base is not None
         options = urllib.parse.quote(f"-csearch_path={self.scratch},public", safe="")
         url = f"{base}{'&' if '?' in base else '?'}options={options}"
         if role is not None:
@@ -119,12 +127,12 @@ def purged(tmp_path, photo_dir, repository, spine_schema):
     outcome = pipeline.ingest_file(write_photo(photo_dir, "a.jpg"))
     assert outcome.error is None, outcome.error
 
-    import os
     import urllib.parse
 
-    from orimera.db.session import Database
+    from exulanica.db.session import Database
 
-    base = os.environ["ORIMERA_TEST_DATABASE_URL"]
+    base = env_get("TEST_DATABASE_URL")
+    assert base is not None
     options = urllib.parse.quote(f"-csearch_path={scratch},public", safe="")
     owner = Database(url=f"{base}{'&' if '?' in base else '?'}options={options}")
     with owner.unscoped() as connection:
@@ -374,7 +382,7 @@ def test_an_ingest_waits_for_a_purge_of_the_same_object(purged, photo_dir):
 
 
 def test_a_purger_that_cannot_see_across_workspaces_refuses_to_destroy_anything(purged):
-    """`ORIMERA_PURGE_DATABASE_URL` is a name and nothing used to check the role behind it.
+    """`EXULANICA_PURGE_DATABASE_URL` is a name and nothing used to check the role behind it.
 
     Measured with the writer's URL in that variable: one object destroyed, zero skipped, the
     tombstone recorded complete, another workspace's live photograph gone, and nothing in the

@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from orimera.reconstruction.depth import DepthPrediction
+from exulanica.reconstruction.depth import DepthPrediction
 
 __all__ = ["MIN_VALID_FRACTION", "RungDecision", "decide_rung"]
 

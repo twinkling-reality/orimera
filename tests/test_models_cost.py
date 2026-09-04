@@ -10,18 +10,18 @@ import json
 from decimal import Decimal
 
 import pytest
-from orimera.models.budget import BudgetGuard
-from orimera.models.cache import (
+from exulanica.models.budget import BudgetGuard
+from exulanica.models.cache import (
     FileResponseCache,
     InMemoryResponseCache,
     cache_key,
     request_digest,
 )
-from orimera.models.client import ModelClient
-from orimera.models.errors import BudgetExceededError
-from orimera.models.manifest import Role
-from orimera.models.transport import HttpResponse
-from orimera.models.usage import CallUsage, CostLedger
+from exulanica.models.client import ModelClient
+from exulanica.models.errors import BudgetExceededError
+from exulanica.models.manifest import Role
+from exulanica.models.transport import HttpResponse
+from exulanica.models.usage import CallUsage, CostLedger
 
 from model_fakes import chat_body
 
@@ -101,12 +101,12 @@ def test_the_model_id_is_not_in_the_key(manifest):
 def test_the_request_digest_encoding_is_injective():
     """No payload can forge the tag another type is encoded under and read its cache entry.
 
-    ``orimera.canonical`` refuses floats, so ``temperature`` is escaped into a tagged mapping on
+    ``exulanica.canonical`` refuses floats, so ``temperature`` is escaped into a tagged mapping on
     the way to the digest. While a payload mapping went through unwrapped, the float ``0.0`` and
     the mapping ``{"__float__": "0.0"}`` encoded identically and shared one cache entry, so one
     request could have been answered with another request's stored response.
 
-    This is the unframed idempotency key of ``orimera.ingest.stages`` a second time, and it gets
+    This is the unframed idempotency key of ``exulanica.ingest.stages`` a second time, and it gets
     the same answer: frame the encoding rather than rely on no payload ever spelling the tag.
 
     There were two live forgeries, not one. ``__repr__`` is the other tag, and it is reachable
@@ -290,13 +290,19 @@ def test_the_reservation_is_pessimistic(manifest):
 
 
 def test_budget_ceiling_reads_the_environment(monkeypatch):
-    monkeypatch.setenv("ORIMERA_BUDGET_USD", "0.25")
+    monkeypatch.setenv("EXULANICA_BUDGET_USD", "0.25")
     assert BudgetGuard().ceiling_usd == Decimal("0.25")
 
 
+def test_budget_ceiling_prefers_the_exulanica_name(monkeypatch):
+    monkeypatch.setenv("EXULANICA_BUDGET_USD", "0.25")
+    monkeypatch.setenv("EXULANICA_BUDGET_USD", "0.50")
+    assert BudgetGuard().ceiling_usd == Decimal("0.50")
+
+
 def test_a_nonsense_ceiling_is_rejected(monkeypatch):
-    monkeypatch.setenv("ORIMERA_BUDGET_USD", "lots")
-    with pytest.raises(ValueError, match="ORIMERA_BUDGET_USD"):
+    monkeypatch.setenv("EXULANICA_BUDGET_USD", "lots")
+    with pytest.raises(ValueError, match="EXULANICA_BUDGET_USD"):
         BudgetGuard()
 
 

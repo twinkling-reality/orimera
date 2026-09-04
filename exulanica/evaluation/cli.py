@@ -1,4 +1,4 @@
-"""``orimera-eval``. Run what can be measured and say plainly what cannot.
+"""``exulanica-eval``. Run what can be measured and say plainly what cannot.
 
 The ``run`` scoring path reads through the database and HTTP application and writes no product
 state. There is no direct INSERT, UPDATE or DELETE in this package, and every product number is
@@ -21,22 +21,22 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import os
 import pathlib
 import subprocess
 import sys
 import uuid
 from typing import Any, Final
 
-from orimera.api.routes import routable_paths
-from orimera.db.session import Database
-from orimera.errors import OrimeraError
-from orimera.evaluation.bundle import AccessPurpose, CorpusBundle, CorpusContractError
-from orimera.evaluation.counts import Count, Sample
-from orimera.evaluation.coverage import what_the_corpus_cannot_support
-from orimera.evaluation.execution import execution_snapshot
-from orimera.evaluation.ground_truth import GroundTruth
-from orimera.evaluation.provenance import (
+from exulanica.api.routes import routable_paths
+from exulanica.db.session import Database
+from exulanica.env import env_get, env_name, resolve_data_dir
+from exulanica.errors import ExulanicaError
+from exulanica.evaluation.bundle import AccessPurpose, CorpusBundle, CorpusContractError
+from exulanica.evaluation.counts import Count, Sample
+from exulanica.evaluation.coverage import what_the_corpus_cannot_support
+from exulanica.evaluation.execution import execution_snapshot
+from exulanica.evaluation.ground_truth import GroundTruth
+from exulanica.evaluation.provenance import (
     RUN_PROFILE,
     ArchiveError,
     create_archive,
@@ -46,9 +46,9 @@ from orimera.evaluation.provenance import (
     repository_snapshot,
     verify_archive,
 )
-from orimera.evaluation.replay import ReplayError, run_clean_replay
-from orimera.evaluation.report import render_report
-from orimera.evaluation.scorers import (
+from exulanica.evaluation.replay import ReplayError, run_clean_replay
+from exulanica.evaluation.report import render_report
+from exulanica.evaluation.scorers import (
     score_authorisation,
     score_capture_time_windows,
     score_citation_identity,
@@ -72,7 +72,7 @@ SCORED: Final[tuple[str, ...]] = (
 )
 
 _PUBLIC = {"/healthz", "/readyz", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
-_EVALUATION_OWNER_DATABASE_URL_ENV = "ORIMERA_EVALUATION_OWNER_DATABASE_URL"
+_EVALUATION_OWNER_DATABASE_URL_ENV = env_name("EVALUATION_OWNER_DATABASE_URL")
 
 
 def _cmd_inspect_corpus(args: argparse.Namespace, stream: Any) -> int:
@@ -135,7 +135,7 @@ def _cmd_replay_bundle(args: argparse.Namespace, stream: Any) -> int:
         blind_key = None
         if args.blind_key_file:
             blind_key = pathlib.Path(args.blind_key_file).read_text(encoding="utf-8").rstrip("\r\n")
-        owner_url = os.environ.get(_EVALUATION_OWNER_DATABASE_URL_ENV)
+        owner_url = env_get("EVALUATION_OWNER_DATABASE_URL")
         if not owner_url:
             raise ReplayError(
                 f"{_EVALUATION_OWNER_DATABASE_URL_ENV} is not set to a new empty database"
@@ -147,7 +147,7 @@ def _cmd_replay_bundle(args: argparse.Namespace, stream: Any) -> int:
             bundle=bundle,
             owner_database=owner_database,
             runtime_database=runtime_database,
-            data_dir=pathlib.Path(args.data_dir),
+            data_dir=resolve_data_dir(explicit=args.data_dir),
             audit_path=pathlib.Path(args.access_audit),
             archive_parent=pathlib.Path(args.archive_parent),
             repository_state=repository_state,
@@ -159,7 +159,7 @@ def _cmd_replay_bundle(args: argparse.Namespace, stream: Any) -> int:
     except (
         ArchiveError,
         CorpusContractError,
-        OrimeraError,
+        ExulanicaError,
         ReplayError,
         RuntimeError,
         OSError,
@@ -180,17 +180,17 @@ def _replay_vision(args: argparse.Namespace, bundle: CorpusBundle, stream: Any) 
             raise ReplayError("--offline is refused for a real evaluation bundle")
         print("vision: disabled for an explicitly synthetic replay fixture", file=stream)
         return None
-    from orimera.ingest.vision import NebiusVisionModel
-    from orimera.models.cache import FileResponseCache
-    from orimera.models.client import ModelClient
-    from orimera.models.preflight import run_preflight
+    from exulanica.ingest.vision import NebiusVisionModel
+    from exulanica.models.cache import FileResponseCache
+    from exulanica.models.client import ModelClient
+    from exulanica.models.preflight import run_preflight
 
     preflight = run_preflight()
     if not preflight.ok:
         failures = "; ".join(str(issue) for issue in preflight.failures)
         raise ReplayError(f"model preflight failed before replay: {failures}")
     client = ModelClient(
-        cache=FileResponseCache(pathlib.Path(args.data_dir) / "model-cache"),
+        cache=FileResponseCache(resolve_data_dir(explicit=args.data_dir) / "model-cache"),
         max_attempts=3,
     )
     return NebiusVisionModel(client)
@@ -230,12 +230,12 @@ def _cmd_run(args: argparse.Namespace, stream: Any) -> int:
     workspace = uuid.UUID(args.workspace)
     database = Database.from_env()
 
-    from orimera.store.local import LocalContentAddressedStore
+    from exulanica.store.local import LocalContentAddressedStore
 
-    store = LocalContentAddressedStore(pathlib.Path(args.data_dir) / "blobs")
+    store = LocalContentAddressedStore(resolve_data_dir(explicit=args.data_dir) / "blobs")
 
     def read_blob(digest: bytes) -> bytes | None:
-        from orimera.evidence.blob import BlobId
+        from exulanica.evidence.blob import BlobId
 
         blob = BlobId(digest)
         return store.get(blob) if store.exists(blob) else None
@@ -367,7 +367,7 @@ def _score_authorisation_over_http(args: argparse.Namespace) -> Count | None:
     try:
         from fastapi.testclient import TestClient
 
-        from orimera.api.app import create_app
+        from exulanica.api.app import create_app
     except ImportError:
         return None
 
@@ -394,7 +394,7 @@ def _score_authorisation_over_http(args: argparse.Namespace) -> Count | None:
 
 def main(argv: list[str] | None = None, stream: Any = None) -> int:
     stream = stream or sys.stdout
-    parser = argparse.ArgumentParser(prog="orimera-eval", description=__doc__)
+    parser = argparse.ArgumentParser(prog="exulanica-eval", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     inspect = sub.add_parser(
         "inspect-corpus",
@@ -442,7 +442,11 @@ def main(argv: list[str] | None = None, stream: Any = None) -> int:
     run = sub.add_parser("run", help="measure what can be measured against a corpus")
     run.add_argument("--corpus", required=True, help="the directory holding MANIFEST.json")
     run.add_argument("--workspace", required=True, help="the workspace uuid the corpus is in")
-    run.add_argument("--data-dir", default=".orimera/local", help="where the object store lives")
+    run.add_argument(
+        "--data-dir",
+        default=None,
+        help="where the object store lives (defaults to .exulanica/local)",
+    )
     run.add_argument("--record", default=None, help="write the machine-readable record here")
     run.add_argument(
         "--archive-parent",

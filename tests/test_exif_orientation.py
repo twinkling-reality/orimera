@@ -14,10 +14,10 @@ from __future__ import annotations
 import io
 
 import pytest
-from orimera.evidence.region import MIRRORED_EXIF_ORIENTATIONS, rotation_for_exif_orientation
-from orimera.ingest.derivatives import render
-from orimera.ingest.exif import _ORIENTATION_TRANSFORM, extract_exif_facts
-from orimera.ingest.stages import stage
+from exulanica.evidence.region import MIRRORED_EXIF_ORIENTATIONS, rotation_for_exif_orientation
+from exulanica.ingest.derivatives import render
+from exulanica.ingest.exif import _ORIENTATION_TRANSFORM, extract_exif_facts
+from exulanica.ingest.stages import stage
 from PIL import Image, ImageOps
 
 from conftest import photo_bytes, upright_pixels
@@ -77,7 +77,7 @@ def test_the_recorded_transform_matches_what_was_actually_applied(orientation):
 
 @pytest.mark.parametrize("orientation", sorted(set(ALL_ORIENTATIONS) - MIRRORED_EXIF_ORIENTATIONS))
 def test_rotation_agrees_with_the_evidence_layer_for_unmirrored_values(orientation):
-    """``orimera.evidence.region`` refuses mirrored values; where it answers, we must match.
+    """``exulanica.evidence.region`` refuses mirrored values; where it answers, we must match.
 
     That module refuses because it assumes pixels were NOT normalised, in which case a flip
     cannot be expressed in the ``rotation`` column. Ingest takes the other branch the domain

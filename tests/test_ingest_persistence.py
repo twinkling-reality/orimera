@@ -35,16 +35,16 @@ import uuid
 
 import psycopg
 import pytest
-from orimera.errors import EpistemicViolation, TombstonedError
-from orimera.evidence import Modality
-from orimera.ingest import pipeline as pipeline_module
-from orimera.ingest.ledger import Ledger
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.resolve import resolve_region_image
-from orimera.ingest.stages import StageSpec
-from orimera.store.base import PurgeAuthorization, privileged_purger
-from orimera.store.local import LocalContentAddressedStore
-from orimera.store.resolve import address_from_span_row, resolve_original_bytes
+from exulanica.errors import EpistemicViolation, TombstonedError
+from exulanica.evidence import Modality
+from exulanica.ingest import pipeline as pipeline_module
+from exulanica.ingest.ledger import Ledger
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.resolve import resolve_region_image
+from exulanica.ingest.stages import StageSpec
+from exulanica.store.base import PurgeAuthorization, privileged_purger
+from exulanica.store.local import LocalContentAddressedStore
+from exulanica.store.resolve import address_from_span_row, resolve_original_bytes
 from psycopg.types.json import Jsonb
 
 from conftest import DEFAULT_PAYLOAD, CountingVisionModel, bomb_png, write_photo
@@ -263,7 +263,7 @@ def test_a_located_person_becomes_an_occurrence_and_never_anything_more(ingested
     row = repository.connection.execute(
         "select content_sha256 from artifact where stage_key = 'vision'"
     ).fetchone()
-    from orimera.evidence.blob import BlobId
+    from exulanica.evidence.blob import BlobId
 
     document = json.loads(store.get(BlobId(bytes(row["content_sha256"]))))
     assert document["person_labels"] == ["person"]
@@ -359,7 +359,7 @@ def test_the_region_crop_refuses_an_original_over_the_pixel_budget(tmp_path):
     It is reached from ``GET /evidence/{span_id}/region``, a synchronous route on the same
     threadpool as the upload, and one call at the budget costs half a gigabyte. It used to open
     and load the original itself. That was not unprotected, because importing anything under
-    ``orimera.ingest`` assigns ``Image.MAX_IMAGE_PIXELS`` process-wide, but process state is not
+    ``exulanica.ingest`` assigns ``Image.MAX_IMAGE_PIXELS`` process-wide, but process state is not
     a bound: reset the warning filters and a frame in Pillow's warn-only band decodes in full.
     So this asserts the explicit comparison, by its exception type and by its message, and it
     goes red if the call goes back to a bare ``Image.open``.
@@ -367,9 +367,9 @@ def test_the_region_crop_refuses_an_original_over_the_pixel_budget(tmp_path):
     No database. The bytes are put in a store directly, because a photograph over the budget
     cannot be ingested by definition and so cannot be reached through the ``ingested`` fixture.
     """
-    from orimera.evidence.address import EvidenceAddress
-    from orimera.evidence.blob import BlobId
-    from orimera.ingest.decode import MAX_PIXELS
+    from exulanica.evidence.address import EvidenceAddress
+    from exulanica.evidence.blob import BlobId
+    from exulanica.ingest.decode import MAX_PIXELS
     from PIL import Image
 
     width, height = 20_000, MAX_PIXELS // 20_000 + 100
@@ -529,8 +529,8 @@ def test_a_photograph_becomes_pixels_in_exactly_one_module():
     broke it before.
     """
     assert _image_open_call_sites() == [
-        "orimera/ingest/decode.py:open_upright",
-        "orimera/ingest/decode.py:probe",
+        "exulanica/ingest/decode.py:open_upright",
+        "exulanica/ingest/decode.py:probe",
     ]
 
 
@@ -555,7 +555,7 @@ def test_wall_clock_lives_in_a_clock_anchor_with_its_uncertainty(ingested):
 def test_an_exif_timestamp_with_no_zone_carries_the_size_of_that_unknown(
     tmp_path, photo_dir, repository
 ):
-    from orimera.ingest.exif import UNKNOWN_OFFSET_UNCERTAINTY_MS
+    from exulanica.ingest.exif import UNKNOWN_OFFSET_UNCERTAINTY_MS
 
     path = write_photo(photo_dir, "nozone.jpg", offset=None)
     store = LocalContentAddressedStore(tmp_path / "blobs")
@@ -627,8 +627,8 @@ def test_the_ledger_records_the_prompt_and_schema_version_in_the_artifact_it_poi
 ):
     """The replay must be able to answer 'which prompt produced this' without the source."""
     repository, store, *_ = ingested
-    from orimera.evidence.blob import BlobId
-    from orimera.ingest.vision import PROMPT_VERSION, SCHEMA_VERSION, prompt_digest
+    from exulanica.evidence.blob import BlobId
+    from exulanica.ingest.vision import PROMPT_VERSION, SCHEMA_VERSION, prompt_digest
 
     row = repository.connection.execute(
         "select content_sha256 from artifact where stage_key = 'vision'"
@@ -779,7 +779,7 @@ _SPINE_MODULES = (
 def _swept_packages() -> list[pathlib.Path]:
     """The packages a store write could plausibly be written into.
 
-    ``orimera.ingest`` because that is where the pipeline lives, and ``orimera.api`` because
+    ``exulanica.ingest`` because that is where the pipeline lives, and ``exulanica.api`` because
     ``POST /intake`` handles uploaded bytes in a request thread. The route is the one place in
     the codebase where somebody holds a photograph and a store at the same moment, and the
     obvious thing to do with them, write the bytes to the store on arrival so they are inside a
@@ -1158,7 +1158,7 @@ def test_an_interval_tombstone_covers_the_degenerate_photograph_interval(ingeste
     capture = repository.connection.execute("select capture_id from capture").fetchone()
     capture_id = capture["capture_id"]
     blob_row = repository.connection.execute("select blob_sha256 from blob").fetchone()
-    from orimera.evidence.blob import BlobId
+    from exulanica.evidence.blob import BlobId
 
     blob_id = BlobId(bytes(blob_row["blob_sha256"]))
     assert not repository.tombstone_blocks(blob_id, "img", 0, 1)
@@ -1171,7 +1171,7 @@ def test_an_interval_tombstone_covers_the_degenerate_photograph_interval(ingeste
     )
     assert repository.tombstone_blocks(blob_id, "img", 0, 1)
 
-    from orimera.evidence import EvidenceAddress
+    from exulanica.evidence import EvidenceAddress
 
     with pytest.raises(TombstonedError):
         repository.upsert_span(EvidenceAddress.photograph(blob_id))
@@ -1202,7 +1202,7 @@ def test_a_deterministic_stage_that_changes_its_bytes_emits_an_event_and_keeps_t
     determinism, the stored artifact wins, because citations and replays already point at it,
     and the disagreement is recorded rather than absorbed.
     """
-    from orimera.ingest.stages import rendition as rendition_stage
+    from exulanica.ingest.stages import rendition as rendition_stage
 
     path = write_photo(photo_dir, "a.jpg")
     store = LocalContentAddressedStore(tmp_path / "blobs")
@@ -1224,8 +1224,8 @@ def test_a_deterministic_stage_that_changes_its_bytes_emits_an_event_and_keeps_t
 
     monkeypatch.setattr(rendition_stage, "render", wobble)
     # Remove the stored bytes so the stage recomputes instead of short circuiting on the store.
-    from orimera.evidence.blob import BlobId
-    from orimera.store.base import PurgeAuthorization, privileged_purger
+    from exulanica.evidence.blob import BlobId
+    from exulanica.store.base import PurgeAuthorization, privileged_purger
 
     purger = privileged_purger(
         store, PurgeAuthorization(tombstone_id="t", actor="test", reason="force a recompute")
@@ -1412,7 +1412,7 @@ def test_the_artifact_guard_refuses_directly_and_not_only_through_the_pipeline(i
     """
     import uuid as _uuid
 
-    from orimera.evidence.blob import BlobId
+    from exulanica.evidence.blob import BlobId
 
     repository, _open_another = ingest_spine
     data = b"bytes that are about to be deleted"
@@ -1470,8 +1470,8 @@ def test_a_row_count_is_schema_wide_and_not_workspace_scoped(ingest_spine, works
     rows in this schema", never "none of mine", and a test that read it the second way would be
     asserting something the database does not say.
     """
-    from orimera.evidence.blob import BlobId
-    from orimera.ingest.repository import IngestRepository
+    from exulanica.evidence.blob import BlobId
+    from exulanica.ingest.repository import IngestRepository
 
     repository, open_another = ingest_spine
     other_workspace = uuid.uuid4()

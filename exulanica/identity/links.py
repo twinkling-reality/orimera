@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from orimera.identity.repository import IdentityRepository
+    from exulanica.identity.repository import IdentityRepository
 
 __all__ = ["LinkRow", "Links"]
 

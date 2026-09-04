@@ -183,7 +183,7 @@ def claim(
 
     ``lease_seconds`` is a value rather than a constant here because the only thing that can
     compute it is the caller that knows what the claimant will be doing between two beats. See
-    :func:`orimera.ingest.worker.lease_seconds_for`.
+    :func:`exulanica.ingest.worker.lease_seconds_for`.
     """
     reclaimed = False
     with connection.transaction():
@@ -447,7 +447,7 @@ def abandon(
     is passed over by :func:`claim` for ever, and while it sits in ``running`` it holds
     ``job_one_live_job_per_batch`` against its batch, so that batch can never acquire another job
     and never gets a terminal event. That is the original R20 symptom with a different cause, and
-    reaching it by fixing R20 would be a poor trade. :meth:`orimera.ingest.worker.DerivativeWorker
+    reaching it by fixing R20 would be a poor trade. :meth:`exulanica.ingest.worker.DerivativeWorker
     .drain` runs this on the pass where it claims nothing, and closes the batch this returns.
 
     ``failed`` rather than ``cancelled``: the work did not happen and nobody withdrew it.

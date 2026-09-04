@@ -48,10 +48,10 @@ from fastapi import APIRouter, Depends, Path, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
-from orimera.api.dependencies import CurrentSession, ReadOnlyConnection, get_services
-from orimera.api.services import Services
-from orimera.errors import BlobNotFoundError
-from orimera.graph.geometry import (
+from exulanica.api.dependencies import CurrentSession, ReadOnlyConnection, get_services
+from exulanica.api.services import Services
+from exulanica.errors import BlobNotFoundError
+from exulanica.graph.geometry import (
     GeometryDescriptor,
     GeometryState,
     point_map_descriptors,
@@ -66,7 +66,7 @@ router = APIRouter(prefix="/geometry", tags=["geometry"])
 #: that a proxy configured to transform images leaves it alone. The container VERSION is not in
 #: it: that is the descriptor's ``container`` field, because ADR-0010 bumps the version and a
 #: media type that moved with it would rewrite every ``Accept`` header for a header change.
-POINT_MAP_MEDIA_TYPE: Final = "application/vnd.orimera.point-map"
+POINT_MAP_MEDIA_TYPE: Final = "application/vnd.exulanica.point-map"
 
 
 class GeometryReferenceView(BaseModel):
@@ -86,7 +86,7 @@ class GeometryReferenceView(BaseModel):
 
 
 class GeometryView(BaseModel):
-    """One capture's geometry. No rung: see :mod:`orimera.graph.geometry` for why not."""
+    """One capture's geometry. No rung: see :mod:`exulanica.graph.geometry` for why not."""
 
     model_config = ConfigDict(extra="forbid")
 

@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Final
 
-from orimera.errors import InvalidAddressError
+from exulanica.errors import InvalidAddressError
 
 __all__ = ["DIGEST_BYTES", "HASH_ALGORITHM", "NI_PREFIX", "BlobId"]
 

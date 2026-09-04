@@ -8,8 +8,8 @@ and answers with prose and an HTTP 200.
 
 from __future__ import annotations
 
-from orimera.models.budget import DEFAULT_CEILING_USD, DEFAULT_MAX_CALLS, BudgetGuard
-from orimera.models.cache import (
+from exulanica.models.budget import DEFAULT_CEILING_USD, DEFAULT_MAX_CALLS, BudgetGuard
+from exulanica.models.cache import (
     CacheKey,
     FileResponseCache,
     InMemoryResponseCache,
@@ -18,10 +18,10 @@ from orimera.models.cache import (
     cache_key,
     request_digest,
 )
-from orimera.models.chain import ChainResponse, ModelChain
-from orimera.models.client import ModelClient
-from orimera.models.credentials import api_key_from_env
-from orimera.models.errors import (
+from exulanica.models.chain import ChainResponse, ModelChain
+from exulanica.models.client import ModelClient
+from exulanica.models.credentials import api_key_from_env
+from exulanica.models.errors import (
     AmbiguousStructuredOutputError,
     BudgetExceededError,
     GuidedJsonForbiddenError,
@@ -36,7 +36,7 @@ from orimera.models.errors import (
     TransportError,
     TruncatedResponseError,
 )
-from orimera.models.manifest import (
+from exulanica.models.manifest import (
     PROVIDER,
     Manifest,
     ModelSpec,
@@ -44,11 +44,11 @@ from orimera.models.manifest import (
     RoleBinding,
     load_manifest,
 )
-from orimera.models.messages import image_part, text_part
-from orimera.models.preflight import PreflightReport, run_preflight
-from orimera.models.reasoning import SplitContent, split_message, split_reasoning
-from orimera.models.results import ChatResult, EmbeddingResult, StructuredResult
-from orimera.models.schema import (
+from exulanica.models.messages import image_part, text_part
+from exulanica.models.preflight import PreflightReport, run_preflight
+from exulanica.models.reasoning import SplitContent, split_message, split_reasoning
+from exulanica.models.results import ChatResult, EmbeddingResult, StructuredResult
+from exulanica.models.schema import (
     extract_json_object,
     json_object_candidates,
     response_format_for,
@@ -56,8 +56,8 @@ from orimera.models.schema import (
     strict_json_schema,
     validate_against_schema,
 )
-from orimera.models.transport import HttpResponse, HttpxTransport, Transport
-from orimera.models.usage import CallUsage, CostLedger
+from exulanica.models.transport import HttpResponse, HttpxTransport, Transport
+from exulanica.models.usage import CallUsage, CostLedger
 
 __all__ = [
     "DEFAULT_CEILING_USD",

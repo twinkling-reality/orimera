@@ -39,12 +39,12 @@ from typing import Any, Final, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from orimera.errors import OrimeraError
-from orimera.models.client import ModelClient
-from orimera.models.manifest import Role
-from orimera.models.messages import image_part
-from orimera.models.results import ChatResult
-from orimera.models.schema import response_format_for_schema
+from exulanica.errors import ExulanicaError
+from exulanica.models.client import ModelClient
+from exulanica.models.manifest import Role
+from exulanica.models.messages import image_part
+from exulanica.models.results import ChatResult
+from exulanica.models.schema import response_format_for_schema
 
 __all__ = [
     "OBSERVATION_SCHEMA",
@@ -62,7 +62,7 @@ __all__ = [
 
 SCHEMA_VERSION: Final = 1
 PROMPT_VERSION: Final = 1
-OBSERVATION_SCHEMA_NAME: Final = "orimera_photo_observation_v1"
+OBSERVATION_SCHEMA_NAME: Final = "exulanica_photo_observation_v1"
 
 #: Labels that denote a human being. A located one becomes a person occurrence; none of them
 #: ever becomes an entity, a name, or an embedding.
@@ -88,7 +88,7 @@ _PERSON_LABELS: Final = frozenset(
 )
 
 
-class ObservationError(OrimeraError):
+class ObservationError(ExulanicaError):
     """The model's output was not a valid observation record."""
 
 

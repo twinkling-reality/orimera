@@ -214,7 +214,7 @@ def main():
     # --- Embeddings. The role with no possible fallback. ---------------------
     try:
         r = client.post(f"{BASE}/embeddings", json={
-            "model": MANIFEST["embedding"]["id"], "input": "orimera evidence span"})
+            "model": MANIFEST["embedding"]["id"], "input": "exulanica evidence span"})
         ok = r.status_code == 200
         dim = len(r.json()["data"][0]["embedding"]) if ok else None
         record("embeddings", ok, f"HTTP {r.status_code}, dim={dim}")

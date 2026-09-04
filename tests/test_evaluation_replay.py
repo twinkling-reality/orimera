@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from collections.abc import Iterator
 
 import psycopg
 import pytest
-from orimera.db import Database
-from orimera.evaluation.bundle import AccessPurpose, CorpusBundle
-from orimera.evaluation.provenance import verify_archive
-from orimera.evaluation.replay import (
+from exulanica.db import Database
+from exulanica.env import env_get
+from exulanica.evaluation.bundle import AccessPurpose, CorpusBundle
+from exulanica.evaluation.provenance import verify_archive
+from exulanica.evaluation.replay import (
     CleanDatabaseError,
     assert_pristine_database,
     run_clean_replay,
@@ -26,13 +26,13 @@ from test_evaluation_bundle import _bundle
 
 @pytest.fixture
 def empty_replay_database() -> Iterator[Database]:
-    base = os.environ.get("ORIMERA_TEST_DATABASE_URL")
+    base = env_get("TEST_DATABASE_URL")
     if not base:
-        pytest.skip("set ORIMERA_TEST_DATABASE_URL to run the clean replay")
+        pytest.skip("set EXULANICA_TEST_DATABASE_URL to run the clean replay")
     configured = conninfo_to_dict(base)
     if "test" not in configured.get("dbname", ""):
         pytest.skip("refusing an admin URL whose database name does not contain test")
-    name = f"orimera_replay_test_{uuid.uuid4().hex[:12]}"
+    name = f"exulanica_replay_test_{uuid.uuid4().hex[:12]}"
     with psycopg.connect(base, autocommit=True) as admin:
         admin.execute(sql.SQL("create database {}").format(sql.Identifier(name)))
     url = make_conninfo(base, dbname=name)
@@ -45,7 +45,7 @@ def empty_replay_database() -> Iterator[Database]:
                 "where datname = %s and pid <> pg_backend_pid()",
                 (name,),
             )
-            if not name.startswith("orimera_replay_test_"):
+            if not name.startswith("exulanica_replay_test_"):
                 raise AssertionError("refusing to drop an unexpected database")
             admin.execute(sql.SQL("drop database {}").format(sql.Identifier(name)))
 

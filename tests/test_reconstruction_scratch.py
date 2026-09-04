@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 import pytest
-from orimera.ingest.reconstruction_scratch import (
+from exulanica.ingest.reconstruction_scratch import (
     ScratchSource,
     active_scene_scratch,
     cleanup_abandoned_scene_scratch,
@@ -16,7 +16,7 @@ from orimera.ingest.reconstruction_scratch import (
     scene_scratch_key,
     stage_scene_sources,
 )
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.store.local import LocalContentAddressedStore
 
 
 def _key() -> str:

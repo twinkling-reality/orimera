@@ -20,7 +20,7 @@ deprecation must still hit the cache, otherwise a withdrawal turns into a full r
 a quality regression. The identifier that actually served each entry is recorded *in* the entry,
 so provenance survives even though it does not participate in lookup.
 
-Digest input goes through ``orimera.canonical``, the same canonical JSON the evidence spine uses.
+Digest input goes through ``exulanica.canonical``, the same canonical JSON the evidence spine uses.
 That module refuses floats outright, which is right for a citation digest and inconvenient here
 because ``temperature`` is a float, so floats are converted to a tagged repr string first. The
 tagged form is injective, so no payload can forge a tag and be served another payload's stored
@@ -39,8 +39,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, Protocol
 
-from orimera.canonical import sha256_of_canonical
-from orimera.models.manifest import Role
+from exulanica.canonical import sha256_of_canonical
+from exulanica.models.manifest import Role
 
 __all__ = [
     "CacheKey",
@@ -58,9 +58,9 @@ _NON_SEMANTIC: Final = frozenset({"model", "stream", "stream_options", "user"})
 
 
 def _digest_safe(value: Any) -> Any:
-    """Encode a request payload injectively, in a form ``orimera.canonical`` accepts.
+    """Encode a request payload injectively, in a form ``exulanica.canonical`` accepts.
 
-    Floats become a tagged string rather than being rejected. ``orimera.canonical`` bans floats
+    Floats become a tagged string rather than being rejected. ``exulanica.canonical`` bans floats
     because a citation digest must serialise identically in every language forever; a cache key
     has no such obligation, and the tag keeps ``0.0`` from colliding with the string ``"0.0"``.
 

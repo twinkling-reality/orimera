@@ -44,9 +44,9 @@ from typing import Final
 
 import psycopg
 
-from orimera.evidence import EvidenceAddress
-from orimera.selection.executor import SelectionResult
-from orimera.store.resolve import address_from_span_row
+from exulanica.evidence import EvidenceAddress
+from exulanica.selection.executor import SelectionResult
+from exulanica.store.resolve import address_from_span_row
 
 __all__ = [
     "MAX_PACKET_ITEMS",

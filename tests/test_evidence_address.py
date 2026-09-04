@@ -5,8 +5,8 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from orimera.errors import InvalidAddressError, LossyAddressError
-from orimera.evidence import (
+from exulanica.errors import InvalidAddressError, LossyAddressError
+from exulanica.evidence import (
     PHOTOGRAPH_INTERVAL,
     BlobId,
     DisplayGeometry,
@@ -83,7 +83,7 @@ def test_every_citation_kind_round_trips_losslessly(address):
 
 def test_the_documented_short_uri_form_still_parses():
     """The domain document renders a span without v= or m=. Those strings must stay readable."""
-    uri = f"orimera://blob/{BLOB.ni_uri}/v:0#t=12.5,18.25"
+    uri = f"exulanica://blob/{BLOB.ni_uri}/v:0#t=12.5,18.25"
     parsed = parse_uri(uri)
     assert parsed.modality is Modality.VIDEO_TIME
     assert parsed.interval == TimeInterval(12_500_000_000, 18_250_000_000)
@@ -92,14 +92,14 @@ def test_the_documented_short_uri_form_still_parses():
 
 def test_a_single_time_point_is_not_an_address():
     with pytest.raises(InvalidAddressError):
-        parse_uri(f"orimera://blob/{BLOB.ni_uri}/v:0#t=12.5")
+        parse_uri(f"exulanica://blob/{BLOB.ni_uri}/v:0#t=12.5")
 
 
 def test_a_region_uri_without_its_display_space_is_refused():
     """display is inside span_digest, so a URI that dropped it would parse to a different span."""
     with pytest.raises(InvalidAddressError):
         parse_uri(
-            f"orimera://blob/{BLOB.ni_uri}/img#t=0,0.000000001&xywh=percent:31.2,22.0,18.4,40.1"
+            f"exulanica://blob/{BLOB.ni_uri}/img#t=0,0.000000001&xywh=percent:31.2,22.0,18.4,40.1"
         )
 
 

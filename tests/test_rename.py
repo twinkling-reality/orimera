@@ -12,8 +12,8 @@ import uuid
 
 import psycopg
 import pytest
-from orimera.epistemics.assertions import AssertionWriter
-from orimera.identity import (
+from exulanica.epistemics.assertions import AssertionWriter
+from exulanica.identity import (
     IdentityRepository,
     name_occurrence,
     rename_entity,
@@ -28,8 +28,8 @@ def named(repository, photo_dir, tmp_path):
     """One ingested photograph with one person in it, named Julie."""
     import copy
 
-    from orimera.ingest.pipeline import PhotoIngestPipeline
-    from orimera.store.local import LocalContentAddressedStore
+    from exulanica.ingest.pipeline import PhotoIngestPipeline
+    from exulanica.store.local import LocalContentAddressedStore
 
     from conftest import DEFAULT_PAYLOAD, CountingVisionModel, write_photo
 
@@ -152,7 +152,7 @@ def test_renaming_an_entity_that_does_not_exist_is_refused(named):
 
 def test_a_rename_reaches_the_graph(named):
     """The snapshot the interface renders is what has to change, not only the table."""
-    from orimera.graph import read_snapshot
+    from exulanica.graph import read_snapshot
 
     identity, writer, entity_id, actor = named
     rename_entity(identity, writer, entity_id=entity_id, display_name="Julie R.", actor=actor)
@@ -202,7 +202,7 @@ def test_the_new_name_may_not_be_written_by_anything_but_the_user(named):
 def test_a_rename_is_one_transaction(named):
     """Both writes land under one transaction id, so no reader sees the person unnamed.
 
-    The module docstring of ``orimera.identity.naming`` measures the gap: between the assertion
+    The module docstring of ``exulanica.identity.naming`` measures the gap: between the assertion
     insert and the cache write, ``entity.display_name`` reads None. Inside one transaction that
     state is unobservable; outside one it is a real state another session can read, and what
     they would see is somebody losing their name for the width of a statement.

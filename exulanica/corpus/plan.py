@@ -33,8 +33,8 @@ import random
 from dataclasses import dataclass
 from typing import Final
 
-from orimera.corpus.render import Camera, Vec3
-from orimera.corpus.world import PLACES
+from exulanica.corpus.render import Camera, Vec3
+from exulanica.corpus.world import PLACES
 
 __all__ = ["DEVICES", "TRIPS", "Device", "FramePlan", "Trip", "build_plan"]
 
@@ -69,7 +69,7 @@ class Device:
 DEVICES: dict[str, Device] = {
     "a": Device(
         key="a",
-        make="Orimera",
+        make="Exulanica",
         model="Synthetic Camera A",
         writes_offset=True,
         writes_subsecond=True,
@@ -79,7 +79,7 @@ DEVICES: dict[str, Device] = {
     # the recorded instant uncertain to 26 hours rather than to one second.
     "b": Device(
         key="b",
-        make="Orimera",
+        make="Exulanica",
         model="Synthetic Camera B",
         writes_offset=False,
         writes_subsecond=False,

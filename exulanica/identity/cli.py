@@ -1,6 +1,6 @@
-"""``orimera-identity propose``. Ask the corpus what it thinks it recognises.
+"""``exulanica-identity propose``. Ask the corpus what it thinks it recognises.
 
-A separate command from ``orimera-ingest`` because the moment that matters is different. Scene
+A separate command from ``exulanica-ingest`` because the moment that matters is different. Scene
 grouping's input is captures, which exist as soon as an ingest finishes, so running it at the end
 of an ingest covers every case. This producer's input is NAMED ENTITIES, and the moment one
 appears is when a user names an occurrence, after which no ingest follows. Wired only into
@@ -24,10 +24,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from orimera.db.session import Database
-from orimera.identity.proposer import PROPOSER_PARAMS, params_digest, propose_matches
-from orimera.identity.repository import IdentityRepository
-from orimera.identity.signals import ContextSignals
+from exulanica.db.session import Database
+from exulanica.identity.proposer import PROPOSER_PARAMS, params_digest, propose_matches
+from exulanica.identity.repository import IdentityRepository
+from exulanica.identity.signals import ContextSignals
 
 __all__ = ["main"]
 
@@ -98,14 +98,14 @@ def _cmd_propose(args: argparse.Namespace, stream: Any) -> int:
 
 def main(argv: list[str] | None = None, stream: Any = None) -> int:
     stream = stream or sys.stdout
-    parser = argparse.ArgumentParser(prog="orimera-identity", description=__doc__)
+    parser = argparse.ArgumentParser(prog="exulanica-identity", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     propose = sub.add_parser(
         "propose", help="propose matches between named people and unlinked detections"
     )
     propose.add_argument("--workspace", required=True, help="the workspace uuid to run over")
     propose.add_argument(
-        "--database-url", default=None, help="overrides ORIMERA_DATABASE_URL for this run"
+        "--database-url", default=None, help="overrides EXULANICA_DATABASE_URL for this run"
     )
     propose.set_defaults(handler=_cmd_propose)
 

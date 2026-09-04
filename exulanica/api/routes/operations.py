@@ -7,8 +7,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
-from orimera.api.dependencies import CurrentSession, ScopedConnection
-from orimera.ingest.operations import (
+from exulanica.api.dependencies import CurrentSession, ScopedConnection
+from exulanica.ingest.operations import (
     derivative_job_events,
     derivative_job_metrics,
     reconstruction_scene_job,

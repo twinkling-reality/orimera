@@ -97,7 +97,7 @@ class BodyTooLarge(HTTPException):
     400 about a malformed request, which is the wrong answer and hides the limit that produced
     it. Measured, before this base class was chosen.
 
-    :func:`orimera.api.app.create_app` registers a handler for this exact class, so the response
+    :func:`exulanica.api.app.create_app` registers a handler for this exact class, so the response
     carries the same ``{"code", "detail"}`` shape every other refusal in this API uses rather
     than Starlette's bare ``{"detail"}``.
     """

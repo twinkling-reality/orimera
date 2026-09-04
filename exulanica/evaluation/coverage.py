@@ -27,7 +27,7 @@ import uuid
 
 import psycopg
 
-from orimera.evaluation.ground_truth import GroundTruth
+from exulanica.evaluation.ground_truth import GroundTruth
 
 __all__ = ["subject_of", "what_the_corpus_cannot_support"]
 

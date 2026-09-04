@@ -10,9 +10,9 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from orimera.db.guards import terminal_if_tombstoned
-from orimera.evidence.blob import BlobId
-from orimera.ingest.spine.scope import WorkspaceScope
+from exulanica.db.guards import terminal_if_tombstoned
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.spine.scope import WorkspaceScope
 
 __all__ = [
     "ArtifactRow",

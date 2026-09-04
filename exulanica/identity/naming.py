@@ -38,8 +38,8 @@ from dataclasses import dataclass
 
 import psycopg
 
-from orimera.epistemics.assertions import AssertionWriter
-from orimera.identity.repository import IdentityRepository
+from exulanica.epistemics.assertions import AssertionWriter
+from exulanica.identity.repository import IdentityRepository
 
 __all__ = ["ConcurrentRename", "RenamedEntity", "rename_entity"]
 

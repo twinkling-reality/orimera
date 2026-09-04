@@ -4,7 +4,7 @@ The second run must say what it skipped and why. A tool that silently does nothi
 identical to a tool that silently did everything again and billed for it.
 
 Unlike every other test of the ingest path, nothing here is handed a repository. The CLI
-resolves its own database from ``ORIMERA_DATABASE_URL`` and opens its own connections, and that
+resolves its own database from ``EXULANICA_DATABASE_URL`` and opens its own connections, and that
 resolution is part of what is being tested, so the ``cli_database`` fixture points that variable
 at the throwaway schema instead of substituting a connection. The five model-wiring tests at the
 bottom touch no database at all and ask for nothing.
@@ -17,8 +17,8 @@ import re
 import uuid
 from pathlib import Path
 
-from orimera.db import Database
-from orimera.ingest.cli import main
+from exulanica.db import Database
+from exulanica.ingest.cli import main
 
 from conftest import write_photo
 
@@ -135,7 +135,7 @@ def test_replay_prints_the_ledger_for_a_run(tmp_path, photo_dir, cli_database):
 
 def _catalog_snapshot(*, drop: str | None = None) -> list[dict]:
     """A catalog in which every manifest identifier resolves and still fits its role."""
-    from orimera.models.manifest import load_manifest
+    from exulanica.models.manifest import load_manifest
 
     manifest = load_manifest()
     entries = []
@@ -162,10 +162,10 @@ def _catalog_snapshot(*, drop: str | None = None) -> list[dict]:
 def test_the_preflight_passes_when_every_manifest_id_resolves(monkeypatch):
     import io
 
-    from orimera.ingest.cli import _preflight
+    from exulanica.ingest.cli import _preflight
 
     monkeypatch.setattr(
-        "orimera.models.preflight.fetch_catalog", lambda url, **kw: _catalog_snapshot()
+        "exulanica.models.preflight.fetch_catalog", lambda url, **kw: _catalog_snapshot()
     )
     stream = io.StringIO()
     assert _preflight(stream) is True
@@ -176,12 +176,12 @@ def test_the_preflight_fails_when_a_manifest_id_has_been_withdrawn(monkeypatch):
     """The December failure the whole mechanism exists to catch, seen from the CLI."""
     import io
 
-    from orimera.ingest.cli import _preflight
-    from orimera.models.manifest import Role, load_manifest
+    from exulanica.ingest.cli import _preflight
+    from exulanica.models.manifest import Role, load_manifest
 
     withdrawn = load_manifest()[Role.VISION].primary.model_id
     monkeypatch.setattr(
-        "orimera.models.preflight.fetch_catalog",
+        "exulanica.models.preflight.fetch_catalog",
         lambda url, **kw: _catalog_snapshot(drop=withdrawn),
     )
     stream = io.StringIO()
@@ -193,13 +193,13 @@ def test_an_unreachable_catalog_is_not_a_passing_preflight(monkeypatch):
     """The check exists to be believed when it is green, so unreachable is not green."""
     import io
 
-    from orimera.ingest.cli import _preflight
-    from orimera.models.errors import TransportError
+    from exulanica.ingest.cli import _preflight
+    from exulanica.models.errors import TransportError
 
     def boom(url, **kwargs):
         raise TransportError("DNS is having a day")
 
-    monkeypatch.setattr("orimera.models.preflight.fetch_catalog", boom)
+    monkeypatch.setattr("exulanica.models.preflight.fetch_catalog", boom)
     stream = io.StringIO()
     assert _preflight(stream) is False
     assert "could not reach the catalog" in stream.getvalue()
@@ -210,8 +210,8 @@ def test_the_vision_stage_is_built_with_a_cache_under_the_data_dir(tmp_path, mon
     import argparse
     import io
 
-    from orimera.ingest.cli import _build_vision
-    from orimera.ingest.vision import NebiusVisionModel
+    from exulanica.ingest.cli import _build_vision
+    from exulanica.ingest.vision import NebiusVisionModel
 
     monkeypatch.setenv("NEBIUS_API_KEY", "test-key-not-real")
     data_dir = tmp_path / "state"
@@ -226,7 +226,7 @@ def test_offline_builds_no_model_client_at_all(tmp_path):
     import argparse
     import io
 
-    from orimera.ingest.cli import _build_vision
+    from exulanica.ingest.cli import _build_vision
 
     args = argparse.Namespace(offline=True, skip_preflight=False, data_dir=str(tmp_path))
     assert _build_vision(args, io.StringIO()) is None

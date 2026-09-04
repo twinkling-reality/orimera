@@ -26,10 +26,10 @@ Everything here exists because of something that was measured, not assumed:
     ``ChatResult.payload`` already checked, so a caller with a hand-written schema gets the same
     guarantee ``structured`` gives rather than inheriting raw text.
 *   **Reasoning text is separated from the answer, and an ambiguous answer is refused.** Both
-    observed shapes are handled; see ``orimera.models.reasoning``. Where the scratch work is
+    observed shapes are handled; see ``exulanica.models.reasoning``. Where the scratch work is
     untagged and contains a draft JSON object, there is nothing in the body identifying which
     object is the answer, and the call fails rather than guessing. See
-    ``orimera.models.schema.extract_json_object``.
+    ``exulanica.models.schema.extract_json_object``.
 
 The client holds a cache, a budget guard and a ledger. All three are optional collaborators with
 inert defaults, so a caller gets no caching and generous limits unless it asks, and a test gets
@@ -44,24 +44,24 @@ from typing import Any, Final, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from orimera.models.budget import BudgetGuard
-from orimera.models.cache import NullResponseCache, ResponseCache, cache_key
-from orimera.models.chain import ModelChain
-from orimera.models.credentials import api_key_from_env
-from orimera.models.errors import (
+from exulanica.models.budget import BudgetGuard
+from exulanica.models.cache import NullResponseCache, ResponseCache, cache_key
+from exulanica.models.chain import ModelChain
+from exulanica.models.credentials import api_key_from_env
+from exulanica.models.errors import (
     GuidedJsonForbiddenError,
     MaxTokensTooLowError,
     StructuredOutputError,
 )
-from orimera.models.manifest import Manifest, Role, load_manifest
-from orimera.models.messages import image_part, text_part
-from orimera.models.response import embedding_from_body, result_from_body
-from orimera.models.results import ChatResult, EmbeddingResult, StructuredResult
-from orimera.models.schema import (
+from exulanica.models.manifest import Manifest, Role, load_manifest
+from exulanica.models.messages import image_part, text_part
+from exulanica.models.response import embedding_from_body, result_from_body
+from exulanica.models.results import ChatResult, EmbeddingResult, StructuredResult
+from exulanica.models.schema import (
     response_format_for,
 )
-from orimera.models.transport import HttpxTransport, Transport
-from orimera.models.usage import CostLedger
+from exulanica.models.transport import HttpxTransport, Transport
+from exulanica.models.usage import CostLedger
 
 __all__ = [
     "ChatResult",
@@ -142,7 +142,7 @@ class ModelClient:
         Asked by anything that has to decide how long a caller may be silent before the silence
         means something. It is a question about this client rather than about the role, because
         the timeout and the retry count are constructor arguments: the API builds
-        ``ModelClient()`` with the defaults and ``orimera-ingest`` builds one with
+        ``ModelClient()`` with the defaults and ``exulanica-ingest`` builds one with
         ``max_attempts=3``, and a caller that typed a constant would be right for one of them.
         """
         return self._chain.worst_case_seconds(role)
@@ -210,7 +210,7 @@ class ModelClient:
                     "response_format carries no schema. The schema is not only sent, it is what "
                     "the reply is validated against locally, so a response_format without one "
                     "would buy an answer that nothing can check. Build it with "
-                    "orimera.models.schema.response_format_for or response_format_for_schema."
+                    "exulanica.models.schema.response_format_for or response_format_for_schema."
                 )
         payload: dict[str, Any] = {
             "messages": [dict(m) for m in messages],

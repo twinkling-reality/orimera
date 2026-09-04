@@ -13,8 +13,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from orimera.evidence.blob import BlobId
-from orimera.ingest.spine.scope import WorkspaceScope
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.spine.scope import WorkspaceScope
 
 __all__ = ["CaptureRow", "by_id", "insert", "live_for_blob", "with_context"]
 

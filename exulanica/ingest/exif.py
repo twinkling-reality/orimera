@@ -51,8 +51,8 @@ from typing import Any, Final
 
 from PIL import Image, ImageOps
 
-from orimera.canonical import round_half_down
-from orimera.errors import OrimeraError
+from exulanica.canonical import round_half_down
+from exulanica.errors import ExulanicaError
 
 __all__ = [
     "UNKNOWN_OFFSET_UNCERTAINTY_MS",
@@ -65,7 +65,7 @@ __all__ = [
 ]
 
 
-class UnreadableImageError(OrimeraError):
+class UnreadableImageError(ExulanicaError):
     """The file is not an image this pipeline can decode."""
 
 

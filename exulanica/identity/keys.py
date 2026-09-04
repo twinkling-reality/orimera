@@ -9,7 +9,7 @@ Rejection memory is keyed on the pair, and that is what makes "never re-propose 
 right thing. Keyed on the occurrence key alone, a genuinely better signal set could never
 re-ask. Keyed on the row id, every detector re-run resurrects every rejection.
 
-This module sits in ``orimera.identity`` rather than in ``orimera.ingest`` because the key is an
+This module sits in ``exulanica.identity`` rather than in ``exulanica.ingest`` because the key is an
 identity concept that ingest happens to need. Ingest creates occurrences and therefore computes
 their keys; nothing about the definition belongs to the pipeline.
 
@@ -35,9 +35,9 @@ import hashlib
 from collections.abc import Mapping, Sequence
 from typing import Final
 
-from orimera.canonical import sha256_of_canonical
-from orimera.evidence import EvidenceAddress
-from orimera.evidence.region import PPM, Rect
+from exulanica.canonical import sha256_of_canonical
+from exulanica.evidence import EvidenceAddress
+from exulanica.evidence.region import PPM, Rect
 
 __all__ = [
     "BASIS_VOCABULARY",

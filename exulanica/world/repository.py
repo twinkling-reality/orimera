@@ -17,9 +17,9 @@ from typing import Any, Final
 import psycopg
 from psycopg.types.json import Jsonb
 
-from orimera.evidence import BlobId
-from orimera.store.base import ContentAddressedStore
-from orimera.world.errors import (
+from exulanica.evidence import BlobId
+from exulanica.store.base import ContentAddressedStore
+from exulanica.world.errors import (
     InvalidPreviewState,
     InvalidStyleData,
     ProtectedTopologyConflict,
@@ -28,7 +28,7 @@ from orimera.world.errors import (
     UnknownWorldResource,
     WorldNotConfigured,
 )
-from orimera.world.models import (
+from exulanica.world.models import (
     DEFAULT_WORLD_ID,
     ProposalOrigin,
     ProposalProvenance,
@@ -42,7 +42,7 @@ from orimera.world.models import (
     TopologyContract,
     WorldSourceMedia,
 )
-from orimera.world.registry import STYLE_REGISTRY, StyleRegistry
+from exulanica.world.registry import STYLE_REGISTRY, StyleRegistry
 
 __all__ = ["WorldStyleRepository"]
 

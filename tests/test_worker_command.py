@@ -8,7 +8,7 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-from orimera.ingest import worker_command
+from exulanica.ingest import worker_command
 
 
 def test_workspace_configuration_is_explicit_deduplicated_and_validated():
@@ -36,7 +36,7 @@ def test_startup_failure_is_machine_readable_and_returns_failure():
 
 
 def test_depth_configuration_is_explicit_and_passes_the_pinned_model_binding(monkeypatch):
-    from orimera.reconstruction import moge
+    from exulanica.reconstruction import moge
 
     captured = {}
 

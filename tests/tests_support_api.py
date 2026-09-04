@@ -8,15 +8,16 @@ and for the same reason: there is no connection object to issue a statement on.
 
 from __future__ import annotations
 
-import os
 import urllib.parse
 
-from orimera.db.session import Database
+from exulanica.db.session import Database
+from exulanica.env import env_get
 
 __all__ = ["scratch_database"]
 
 
 def scratch_database(scratch: str) -> Database:
-    base = os.environ["ORIMERA_TEST_DATABASE_URL"]
+    base = env_get("TEST_DATABASE_URL")
+    assert base is not None
     options = urllib.parse.quote(f"-csearch_path={scratch},public", safe="")
     return Database(url=f"{base}{'&' if '?' in base else '?'}options={options}")

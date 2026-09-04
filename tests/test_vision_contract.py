@@ -22,7 +22,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from orimera.ingest.vision import (
+from exulanica.ingest.vision import (
     OBSERVATION_SCHEMA,
     OBSERVATION_SCHEMA_NAME,
     Box,
@@ -30,9 +30,9 @@ from orimera.ingest.vision import (
     ObservationError,
     validate_observation,
 )
-from orimera.models.budget import BudgetGuard
-from orimera.models.client import ModelClient
-from orimera.models.errors import (
+from exulanica.models.budget import BudgetGuard
+from exulanica.models.client import ModelClient
+from exulanica.models.errors import (
     AmbiguousStructuredOutputError,
     ManifestError,
     MaxTokensTooLowError,
@@ -41,9 +41,9 @@ from orimera.models.errors import (
     TransportError,
     TruncatedResponseError,
 )
-from orimera.models.manifest import Role, load_manifest
-from orimera.models.schema import extract_json_object
-from orimera.models.transport import HttpResponse, HttpxTransport
+from exulanica.models.manifest import Role, load_manifest
+from exulanica.models.schema import extract_json_object
+from exulanica.models.transport import HttpResponse, HttpxTransport
 
 from model_fakes import FakeTransport, chat_body, model_not_found
 
@@ -381,7 +381,7 @@ def test_the_vision_stage_does_not_write_a_response_cache_entry(transport):
     cache that looks like it is working. Idempotency for ingest is the pipeline's, keyed by
     source hash plus stage version.
     """
-    from orimera.models.cache import InMemoryResponseCache
+    from exulanica.models.cache import InMemoryResponseCache
 
     cache = InMemoryResponseCache()
     transport.default = _ok(json.dumps(VALID))

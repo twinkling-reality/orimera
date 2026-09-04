@@ -1,10 +1,10 @@
 """Which inference claims survived the write guards, for the code that votes on them.
 
-A read, and only ever a read. ``orimera.epistemics.assertions`` is the one place an assertion is
+A read, and only ever a read. ``exulanica.epistemics.assertions`` is the one place an assertion is
 written, because the support-span rule, the allows-kind check and the tombstone translation are
 invariants and two implementations of them are two places to drift. That argument is about
 writing. This is a scene-grouping question shaped by capture ids, asked by
-``orimera.ingest.scenes`` and by nothing else, so it stays in the package that asks it rather
+``exulanica.ingest.scenes`` and by nothing else, so it stays in the package that asks it rather
 than widening a module three layers of callers share.
 
 Reading back from ``assertion`` rather than from the vision artifact is the whole point: a claim
@@ -17,7 +17,7 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
-from orimera.ingest.spine.scope import WorkspaceScope
+from exulanica.ingest.spine.scope import WorkspaceScope
 
 __all__ = ["place_is_for_captures"]
 

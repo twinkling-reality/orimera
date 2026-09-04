@@ -1,8 +1,8 @@
 """Writing the ``.opm`` container, from Python, for the same decoder the fixtures feed.
 
-``.opm`` had one producer, ``@orimera/scene-synth``, which writes synthetic fixtures for the
+``.opm`` had one producer, ``@exulanica/scene-synth``, which writes synthetic fixtures for the
 renderer bake-off. This is the second, and it writes what a real photograph turned out to have
-been looking at. Both are read by the same decoder in ``@orimera/atlas-react``, which is the
+been looking at. Both are read by the same decoder in ``@exulanica/atlas-react``, which is the
 point: the renderer cannot tell a synthetic fixture from a reconstruction, so a measurement taken
 against the fixture is a measurement of the real path.
 
@@ -19,7 +19,7 @@ header's generic shape true and is the only part of the change that prevents the
 from being another version." Under OPM/1 exactly three sections were hardcoded in both
 validators and in the decoder, and the stride was the literal 18 in the renderer binding, so the
 header's own generic section list was a fiction. One table here, one in the decoder, and
-:mod:`orimera.reconstruction.validation` reads this one rather than restating it.
+:mod:`exulanica.reconstruction.validation` reads this one rather than restating it.
 
 **The layout is contiguous on purpose, and that is not a detail.** The decoder reports
 ``planarContiguous`` and the PlayCanvas binding takes a zero-copy path when it is true and a
@@ -47,7 +47,7 @@ from __future__ import annotations
 import json
 from typing import Any, Final, Literal
 
-from orimera.reconstruction.pointmap import PointMap
+from exulanica.reconstruction.pointmap import PointMap
 
 __all__ = [
     "OPM_MAGIC",
@@ -191,7 +191,7 @@ def encode_opm(
     def header_for(offsets: tuple[int, ...]) -> dict[str, Any]:
         low, high = points.bounds()
         return {
-            "format": "orimera-point-map",
+            "format": "exulanica-point-map",
             "version": OPM_VERSION,
             "generator": generator,
             "pointCount": count,

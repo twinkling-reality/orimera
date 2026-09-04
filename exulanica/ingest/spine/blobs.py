@@ -11,8 +11,8 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 
-from orimera.evidence.blob import BlobId
-from orimera.ingest.spine.scope import WorkspaceScope
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.spine.scope import WorkspaceScope
 
 __all__ = ["lock_stored_object", "locked_stored_objects", "upsert"]
 
@@ -20,7 +20,7 @@ __all__ = ["lock_stored_object", "locked_stored_objects", "upsert"]
 def lock_stored_object(scope: WorkspaceScope, blob_id: BlobId) -> None:
     """Take the transaction lock over one stored object, keyed on its content hash.
 
-    The same lock ``orimera.deletion`` takes before it asks whether an object may be destroyed
+    The same lock ``exulanica.deletion`` takes before it asks whether an object may be destroyed
     and then destroys it. Both sides have to take it or neither is serialised: with only the
     purger taking it, a purger and an ingest can interleave so that the ingest commits a live
     capture for bytes the purger is in the middle of removing, and under content addressing that

@@ -11,8 +11,8 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from orimera.evidence.blob import BlobId
-from orimera.ingest.spine.scope import WorkspaceScope
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.spine.scope import WorkspaceScope
 
 __all__ = ["ReconstructionSceneMemberRow", "insert_completed", "members"]
 

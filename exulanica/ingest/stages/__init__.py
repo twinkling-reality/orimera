@@ -19,7 +19,7 @@ the stages are, and how a derivative produced by one is identified. The four mod
 are the stages themselves, one per key, and they are imported by name rather than re-exported
 from here, so that importing the registry does not drag a database repository in behind it.
 ``scene_group`` is declared here and has no module beside it: it runs over the whole corpus
-once the photographs are in, from ``orimera.ingest.scenes``, rather than inside one file's run.
+once the photographs are in, from ``exulanica.ingest.scenes``, rather than inside one file's run.
 
 ``version`` is bumped when **output semantics** change: a new model, a changed prompt, a
 changed schema, a changed threshold. It is not bumped for a pure performance change. Every
@@ -35,9 +35,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final
 
-from orimera.canonical import canonical_json, sha256_of_canonical
-from orimera.evidence.blob import BlobId
-from orimera.ingest.vision import prompt_digest
+from exulanica.canonical import canonical_json, sha256_of_canonical
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.vision import prompt_digest
 
 __all__ = [
     "ARTIFACT_NAMESPACE",
@@ -68,7 +68,7 @@ KEY_FORMAT_VERSION: Final = 2
 
 #: Domain separation. This digest is not a hash of anything else in the system, and prefixing
 #: it means it can never be confused with one.
-_KEY_DOMAIN: Final = b"orimera/idempotency-key"
+_KEY_DOMAIN: Final = b"exulanica/idempotency-key"
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,7 +219,7 @@ STAGES: Final[dict[str, StageSpec]] = {
         deterministic=True,
         params={
             "controller": "colmap-sparse-checkpointed",
-            "receipt_profile": "orimera.colmap-pose-receipt/v2",
+            "receipt_profile": "exulanica.colmap-pose-receipt/v2",
             "min_registered_fraction": None,
             "max_mean_reprojection_error_px": None,
             "min_camera_translation_units": None,
@@ -231,7 +231,7 @@ STAGES: Final[dict[str, StageSpec]] = {
         output_kind="point_map_placement",
         deterministic=True,
         params={
-            "profile": "orimera.posed-point-map-placement/v1",
+            "profile": "exulanica.posed-point-map-placement/v1",
             "opm_container": "opm/2",
             "scale_status": "unvalidated-identity",
         },
@@ -242,7 +242,7 @@ STAGES: Final[dict[str, StageSpec]] = {
         output_kind="scene_gate_receipt",
         deterministic=True,
         params={
-            "profile": "orimera.reconstruction-scene-gate/v1",
+            "profile": "exulanica.reconstruction-scene-gate/v1",
             "policy": "highest-complete-accepted-receipt-chain",
         },
     ),

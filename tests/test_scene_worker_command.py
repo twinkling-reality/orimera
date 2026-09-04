@@ -7,7 +7,7 @@ import json
 import uuid
 from types import SimpleNamespace
 
-from orimera.ingest import scene_worker_command
+from exulanica.ingest import scene_worker_command
 
 
 def test_startup_refuses_to_guess_a_database_or_pose_provenance():

@@ -18,7 +18,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from orimera.models.errors import TransportError
+from exulanica.models.errors import TransportError
 
 __all__ = ["HttpResponse", "HttpxTransport", "Transport"]
 

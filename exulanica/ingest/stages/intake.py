@@ -10,14 +10,14 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from orimera.canonical import canonical_json
-from orimera.evidence import EvidenceAddress
-from orimera.evidence.blob import BlobId
-from orimera.ingest.exif import ExifFacts
-from orimera.ingest.ledger import Ledger
-from orimera.ingest.report import IngestOutcome
-from orimera.ingest.stages import idempotency_key, input_digest_of, stage
-from orimera.ingest.stages.writes import StageResult, StageWrites
+from exulanica.canonical import canonical_json
+from exulanica.evidence import EvidenceAddress
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.exif import ExifFacts
+from exulanica.ingest.ledger import Ledger
+from exulanica.ingest.report import IngestOutcome
+from exulanica.ingest.stages import idempotency_key, input_digest_of, stage
+from exulanica.ingest.stages.writes import StageResult, StageWrites
 
 __all__ = ["key_for", "run"]
 

@@ -33,7 +33,7 @@ from typing import Annotated, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from orimera.selection.packet import EvidencePacket
+from exulanica.selection.packet import EvidencePacket
 
 __all__ = [
     "MAX_CLAUSES",

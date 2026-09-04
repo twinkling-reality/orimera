@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from orimera.errors import InvalidAddressError
-from orimera.evidence import (
+from exulanica.errors import InvalidAddressError
+from exulanica.evidence import (
     IMAGE_TIME_BASE,
     NS_PER_SECOND,
     PHOTOGRAPH_INTERVAL,

@@ -26,10 +26,10 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Final
 
-from orimera.models.budget import BudgetGuard
-from orimera.models.errors import ModelUnavailableError, NoFallbackError, TransportError
-from orimera.models.manifest import Manifest, ModelSpec, Role
-from orimera.models.transport import HttpResponse, Transport
+from exulanica.models.budget import BudgetGuard
+from exulanica.models.errors import ModelUnavailableError, NoFallbackError, TransportError
+from exulanica.models.manifest import Manifest, ModelSpec, Role
+from exulanica.models.transport import HttpResponse, Transport
 
 __all__ = ["ChainResponse", "ModelChain"]
 
@@ -144,7 +144,7 @@ class ModelChain:
         A caller outside the models package cannot compute this and must not guess it: it is the
         product of the manifest's chain length, the transport timeout and the retry count, and
         two of those three are constructor arguments that differ between the API's client and
-        the ingest CLI's. :mod:`orimera.ingest.worker` needs it to decide how long a claimant may
+        the ingest CLI's. :mod:`exulanica.ingest.worker` needs it to decide how long a claimant may
         be silent before its silence means something.
 
         The arithmetic follows :meth:`walk` exactly. A ``ModelUnavailableError`` is not retried,
@@ -155,7 +155,7 @@ class ModelChain:
 
         **It bounds the arithmetic and not the wall clock**, which is stated here because the
         difference has already been measured on this transport:
-        :mod:`orimera.models.transport` passes one float to httpx, which sets connect, read,
+        :mod:`exulanica.models.transport` passes one float to httpx, which sets connect, read,
         write and pool each to it, and httpx has no total-request timeout. A response that
         dribbles one chunk every ``timeout`` seconds is never cut off. So this is the right
         number to size a lease from and the wrong number to call a guarantee.

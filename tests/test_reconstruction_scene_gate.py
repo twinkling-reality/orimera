@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from orimera.reconstruction.scene_gate import (
+from exulanica.reconstruction.scene_gate import (
     ReceiptMeasurement,
     SceneGateInputs,
     SceneReceipt,

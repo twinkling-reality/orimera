@@ -64,8 +64,8 @@ from typing import Final
 
 from PIL import Image
 
-from orimera.reconstruction.depth import DepthPrediction
-from orimera.reconstruction.pointmap import TAG_ONE_SIDED, PointMap, Segment
+from exulanica.reconstruction.depth import DepthPrediction
+from exulanica.reconstruction.pointmap import TAG_ONE_SIDED, PointMap, Segment
 
 __all__ = ["DEFAULT_MAX_DEPTH_STEP", "DEFAULT_SEGMENT", "build_point_map"]
 

@@ -28,11 +28,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
-from orimera.canonical import canonical_json
-from orimera.errors import OrimeraError
+from exulanica.canonical import canonical_json
+from exulanica.errors import ExulanicaError
 
-PROFILE_VERSION: Final = "orimera-wmp-1.0"
-PROFILE_ID: Final = "https://orimera.local/profiles/world-memory-package/1.0"
+PROFILE_VERSION: Final = "exulanica-wmp-1.0"
+PROFILE_ID: Final = "https://exulanica.local/profiles/world-memory-package/1.0"
 MANIFEST_PATH: Final = "wmp/manifest.json"
 SIGNATURE_PATH: Final = "wmp/signature.json"
 REQUIRED_PAYLOAD_PATHS: Final = frozenset(
@@ -57,8 +57,8 @@ REQUIRED_PAYLOAD_PATHS: Final = frozenset(
         "world/topology.json",
     }
 )
-_LEAF_PREFIX: Final = b"orimera-wmp-leaf-v1\0"
-_NODE_PREFIX: Final = b"orimera-wmp-node-v1\0"
+_LEAF_PREFIX: Final = b"exulanica-wmp-leaf-v1\0"
+_NODE_PREFIX: Final = b"exulanica-wmp-node-v1\0"
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 _FORBIDDEN_SUFFIXES: Final = frozenset(
@@ -129,7 +129,7 @@ _FORBIDDEN_KEYS: Final = frozenset(
 _PRIVATE_KEY_MARKER: Final = "-----BEGIN PRIVATE KEY-----"
 
 
-class PackageError(OrimeraError):
+class PackageError(ExulanicaError):
     """A World Memory Package is malformed, inconsistent, or fails verification."""
 
 
@@ -169,9 +169,9 @@ def normalize_value(value: Any) -> Any:
     if isinstance(value, float):
         if not math.isfinite(value):
             raise PackageError("non-finite floating-point data cannot enter a WMP")
-        return {"@type": "orimera:IEEE754Binary64", "hex": value.hex()}
+        return {"@type": "exulanica:IEEE754Binary64", "hex": value.hex()}
     if isinstance(value, Decimal):
-        return {"@type": "orimera:Decimal", "value": str(value)}
+        return {"@type": "exulanica:Decimal", "value": str(value)}
     if isinstance(value, uuid.UUID):
         return str(value)
     if isinstance(value, dt.datetime):
@@ -188,7 +188,7 @@ def normalize_value(value: Any) -> Any:
         return [normalize_value(sub) for sub in value]
     # psycopg range and multirange objects have a stable PostgreSQL textual representation.
     if value.__class__.__module__.startswith("psycopg.types.range"):
-        return {"@type": "orimera:PostgreSQLRange", "value": str(value)}
+        return {"@type": "exulanica:PostgreSQLRange", "value": str(value)}
     raise PackageError(f"unsupported package value type: {type(value).__name__}")
 
 
@@ -254,7 +254,7 @@ def sign_manifest(manifest_bytes: bytes, private_key: Ed25519PrivateKey) -> dict
         "profile_version": PROFILE_VERSION,
         "public_key_base64": base64.b64encode(public_raw).decode("ascii"),
         "signature_base64": base64.b64encode(private_key.sign(payload)).decode("ascii"),
-        "signed_payload_profile": "orimera-wmp-signature-payload-v1",
+        "signed_payload_profile": "exulanica-wmp-signature-payload-v1",
     }
 
 
@@ -570,6 +570,6 @@ def _validate_profile(files: Mapping[str, Any]) -> None:
 
 
 def profile_bytes() -> bytes:
-    path = Path(__file__).with_name("profile") / "orimera-wmp-1.0.json"
+    path = Path(__file__).with_name("profile") / "exulanica-wmp-1.0.json"
     value = json.loads(path.read_text(encoding="utf-8"))
     return canonical_json(value)

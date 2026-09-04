@@ -20,7 +20,7 @@ That claim is checkable, and it is worth stating exactly what makes it true here
 Execution runs in a **read-only transaction with a statement timeout**, per 5.2 stage 6. Both
 matter and they are not the same guarantee: read-only means a plan cannot write whatever
 happens upstream of it, and the timeout means a plan cannot hold a connection open. The
-deployment adds a third, which is that the executor connects as ``orimera_ro``, a role that
+deployment adds a third, which is that the executor connects as ``exulanica_ro``, a role that
 holds SELECT and nothing else.
 """
 
@@ -33,9 +33,9 @@ from typing import Final
 import psycopg
 from psycopg import sql
 
-from orimera.evidence.blob import BlobId
-from orimera.selection.plan import EntityMode, EpistemicScope, Intent, ProcessingState
-from orimera.selection.validation import STATEMENT_TIMEOUT_MS, ValidatedPlan
+from exulanica.evidence.blob import BlobId
+from exulanica.selection.plan import EntityMode, EpistemicScope, Intent, ProcessingState
+from exulanica.selection.validation import STATEMENT_TIMEOUT_MS, ValidatedPlan
 
 __all__ = [
     "SelectedCapture",
@@ -47,7 +47,7 @@ __all__ = [
 
 #: Which link states count, per the plan's epistemic dimension. An ``auto_provisional`` link may
 #: drive layout and filtering; it may never support a historical factual clause, which is why
-#: :mod:`orimera.selection.packet` refuses to build a citable packet from a proposal-inclusive
+#: :mod:`exulanica.selection.packet` refuses to build a citable packet from a proposal-inclusive
 #: result rather than trusting a caller to remember.
 _LINK_STATES: Final[dict[EpistemicScope, tuple[str, ...]]] = {
     EpistemicScope.CONFIRMED: ("confirmed",),

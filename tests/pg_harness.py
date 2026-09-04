@@ -27,13 +27,13 @@ database name must contain "test" before the harness will touch it at all.
 
 from __future__ import annotations
 
-import os
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 
 import pytest
-from orimera.migrations import migrations
+from exulanica.env import env_get, env_name
+from exulanica.migrations import migrations
 
 #: uuidv7() is a PostgreSQL 18 built-in. Nothing older can run this schema unfaked.
 REQUIRED_SERVER_VERSION: int = 180_000
@@ -75,7 +75,8 @@ def require_target(conn) -> None:
             missing.append(f"the {extension} extension is not available on this server")
     if missing:
         raise WrongServer(
-            "ORIMERA_TEST_DATABASE_URL points at a server that cannot run migration 0001:\n  "
+            f"{env_name('TEST_DATABASE_URL')} points at a server that "
+            "cannot run migration 0001:\n  "
             + "\n  ".join(missing)
             + "\n\nThe schema is not portable and it is not shimmed. On macOS:\n"
             "  brew install postgresql@18 pgvector && brew services start postgresql@18"
@@ -112,23 +113,23 @@ def migrated_schema() -> Iterator[tuple]:
     when the configured database is not obviously a scratch one. Fails, rather than skipping,
     when a database *is* configured but is the wrong server.
     """
-    url = os.environ.get("ORIMERA_TEST_DATABASE_URL")
+    url = env_get("TEST_DATABASE_URL")
     if not url:
         # These tests are the only executable proof of invariant 4: that a model cannot write a
         # name into canonical state. Skipping them silently makes a default run look green while
-        # the product's core epistemic guarantee is unverified. CI sets ORIMERA_REQUIRE_POSTGRES
+        # the product's core epistemic guarantee is unverified. CI sets EXULANICA_REQUIRE_POSTGRES
         # so the absence is a failure there, not a shrug.
-        if os.environ.get("ORIMERA_REQUIRE_POSTGRES"):
+        if env_get("REQUIRE_POSTGRES"):
             pytest.fail(
-                "ORIMERA_REQUIRE_POSTGRES is set but ORIMERA_TEST_DATABASE_URL is not. "
-                "The epistemic guard tests cannot run, and they are not optional here."
+                f"{env_name('REQUIRE_POSTGRES')} is set but {env_name('TEST_DATABASE_URL')} is "
+                "not. The epistemic guard tests cannot run, and they are not optional here."
             )
-        pytest.skip("set ORIMERA_TEST_DATABASE_URL to a scratch PostgreSQL database")
+        pytest.skip(f"set {env_name('TEST_DATABASE_URL')} to a scratch PostgreSQL database")
     psycopg = pytest.importorskip("psycopg")
     if "test" not in url.rsplit("/", 1)[-1]:
         pytest.skip("refusing a database whose name does not contain 'test'")
 
-    scratch = f"orimera_test_{uuid.uuid4().hex[:12]}"
+    scratch = f"exulanica_test_{uuid.uuid4().hex[:12]}"
     with psycopg.connect(url) as conn:
         require_target(conn)
         ensure_extensions(conn)
@@ -152,7 +153,8 @@ def open_scratch_connection(psycopg, scratch: str):
     pipeline's rule that object-store writes happen only after the database transaction commits
     would then be testing nothing at all.
     """
-    url = os.environ["ORIMERA_TEST_DATABASE_URL"]
+    url = env_get("TEST_DATABASE_URL")
+    assert url is not None
     connection = psycopg.connect(url, autocommit=True)
     connection.execute(f'set search_path to "{scratch}", public')
     connection.execute("set time zone \'UTC\'")

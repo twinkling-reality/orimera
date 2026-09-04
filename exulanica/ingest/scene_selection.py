@@ -6,9 +6,9 @@ import uuid
 from dataclasses import dataclass
 from typing import Protocol
 
-from orimera.ingest.repository import IngestRepository
-from orimera.ingest.scenes import SceneGroup
-from orimera.ingest.stages import stage
+from exulanica.ingest.repository import IngestRepository
+from exulanica.ingest.scenes import SceneGroup
+from exulanica.ingest.stages import stage
 
 __all__ = [
     "SceneGroupPosePolicy",
@@ -53,7 +53,7 @@ class SceneGroupPosePolicy:
             return None
         grouping = stage("scene_group")
         return {
-            "profile": "orimera.scene-group-pose-selection/v1",
+            "profile": "exulanica.scene-group-pose-selection/v1",
             "minimum_member_count": self.minimum_member_count,
             "ordering": "scene-group-presentation-order",
             "source": {
@@ -95,7 +95,7 @@ def enqueue_scene_reconstructions(
         if len(point_maps) != len(group.capture_ids):
             continue
         build_inputs = {
-            "profile": "orimera.reconstruction-scene-build-input/v1",
+            "profile": "exulanica.reconstruction-scene-build-input/v1",
             "point_maps": [
                 {
                     "capture_ref": str(capture_id),

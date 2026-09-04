@@ -9,16 +9,16 @@ from typing import Any, Final
 import psycopg
 from psycopg.types.json import Jsonb
 
-from orimera.canonical import sha256_of_canonical
-from orimera.world.errors import (
+from exulanica.canonical import sha256_of_canonical
+from exulanica.world.errors import (
     InvalidStructuralData,
     InvalidStructuralPreviewState,
     StaleStructuralBase,
     UnknownWorldResource,
 )
-from orimera.world.models import DEFAULT_WORLD_ID, TopologyContract, TopologySourceSlot
-from orimera.world.repository import WorldStyleRepository
-from orimera.world.structure import (
+from exulanica.world.models import DEFAULT_WORLD_ID, TopologyContract, TopologySourceSlot
+from exulanica.world.repository import WorldStyleRepository
+from exulanica.world.structure import (
     SpatialCandidate,
     SpatialDigests,
     SpatialPreview,
@@ -532,7 +532,7 @@ class WorldStructureRepository:
                 TopologySourceSlot(
                     source_id=uuid.uuid5(
                         uuid.NAMESPACE_URL,
-                        f"orimera:{self.workspace_id}:{self.world_id}:{element_id}:source",
+                        f"exulanica:{self.workspace_id}:{self.world_id}:{element_id}:source",
                     ),
                     slot_key=f"source.{sha256_of_canonical(element_id).hex()[:20]}",
                     region_id=owner["id"] if owner["kind"] == "region" else None,
@@ -591,7 +591,7 @@ class WorldStructureRepository:
         digests: SpatialDigests,
     ) -> dict[str, Any]:
         return {
-            "profile": "https://orimera.local/profiles/spatial-authority/1",
+            "profile": "https://exulanica.local/profiles/spatial-authority/1",
             "snapshot_id": str(snapshot_id),
             "revision": revision,
             "parent_snapshot_id": None if parent_id is None else str(parent_id),

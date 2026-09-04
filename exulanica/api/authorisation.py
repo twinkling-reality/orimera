@@ -1,7 +1,7 @@
 """Who is asking, and the two things a request is never allowed to say about itself.
 
 Every endpoint is authorised, and authorisation resolves to a
-:class:`~orimera.selection.validation.Session`, which is the same type the Selection validator
+:class:`~exulanica.selection.validation.Session`, which is the same type the Selection validator
 takes. That is deliberate: there is one notion of "who is asking" in this system, and the query
 path's rule that "authorization derived from the session only, never from anything in the plan"
 is the same rule as the API's.
@@ -38,8 +38,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Final
 
-from orimera.errors import OrimeraError
-from orimera.selection.validation import Session
+from exulanica.env import env_get, env_name
+from exulanica.errors import ExulanicaError
+from exulanica.selection.validation import Session
 
 __all__ = [
     "API_TOKENS_ENV",
@@ -51,10 +52,10 @@ __all__ = [
 #: A JSON object mapping token to ``{"workspace_id": ..., "actor": ..., "may_include_proposals":
 #: bool}``. Injected at run time and never committed, per the deployment rule that "secrets are
 #: not committed and are not baked into images".
-API_TOKENS_ENV: Final = "ORIMERA_API_TOKENS"
+API_TOKENS_ENV: Final = env_name("API_TOKENS")
 
 
-class TokenNotAccepted(OrimeraError):
+class TokenNotAccepted(ExulanicaError):
     """The presented credential does not name a workspace.
 
     One error for "no token", "unknown token" and "malformed token", because distinguishing them
@@ -77,8 +78,8 @@ class TokenDirectory:
         """Every workspace some configured token can reach.
 
         This is what a background worker is given, and giving it a value rather than a
-        dependency is what keeps the layering true: ``orimera.ingest`` sits under
-        ``orimera.api``, so a worker that imported this module to ask the question would invert
+        dependency is what keeps the layering true: ``exulanica.ingest`` sits under
+        ``exulanica.api``, so a worker that imported this module to ask the question would invert
         the contract and ``uv run lint-imports`` would say so.
         """
         return frozenset(session.workspace_id for session in self.sessions.values())
@@ -110,7 +111,7 @@ def load_token_directory(environ: Mapping[str, str] | None = None) -> TokenDirec
     deployment that forgot its own configuration.
     """
     environ = os.environ if environ is None else environ
-    raw = environ.get(API_TOKENS_ENV)
+    raw = env_get("API_TOKENS", environ)
     if not raw:
         raise TokenNotAccepted(
             f"{API_TOKENS_ENV} is not set. It is a JSON object mapping a bearer token to "

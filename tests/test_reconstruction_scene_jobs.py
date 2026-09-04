@@ -6,16 +6,16 @@ import uuid
 
 import psycopg
 import pytest
-from orimera.evidence.blob import BlobId
-from orimera.evidence.scene import scene_id_for, scene_member_digest
-from orimera.ingest.operations import (
+from exulanica.evidence.blob import BlobId
+from exulanica.evidence.scene import scene_id_for, scene_member_digest
+from exulanica.ingest.operations import (
     reconstruction_scene_job,
     reconstruction_scene_metrics,
     retry_reconstruction_scene_job,
 )
-from orimera.ingest.scene_selection import enqueue_scene_reconstructions
-from orimera.ingest.scenes import SceneGroup
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.ingest.scene_selection import enqueue_scene_reconstructions
+from exulanica.ingest.scenes import SceneGroup
+from exulanica.store.local import LocalContentAddressedStore
 
 from conftest import write_point_map
 
@@ -42,7 +42,7 @@ def _captures(repository, count: int = 3) -> list[uuid.UUID]:
 
 def _policy() -> dict[str, object]:
     return {
-        "profile": "orimera.scene-group-pose-selection/v1",
+        "profile": "exulanica.scene-group-pose-selection/v1",
         "minimum_member_count": 3,
         "ordering": "scene-group-presentation-order",
     }
@@ -110,7 +110,7 @@ def test_the_initial_policy_waits_for_every_point_map_and_binds_exact_inputs(rep
         "stage_params_sha256": row["selection_policy"]["source"]["stage_params_sha256"],
     }
     assert "not been validated" in row["selection_policy"]["limitations"][0]
-    assert row["build_inputs"]["profile"] == "orimera.reconstruction-scene-build-input/v1"
+    assert row["build_inputs"]["profile"] == "exulanica.reconstruction-scene-build-input/v1"
     assert [item["capture_ref"] for item in row["build_inputs"]["point_maps"]] == [
         str(capture_id) for capture_id in captures[2:]
     ]

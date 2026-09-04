@@ -1,7 +1,7 @@
-"""``orimera-db``: bring a database up to the schema and the roles this code expects.
+"""``exulanica-db``: bring a database up to the schema and the roles this code expects.
 
 One command, because there is only one correct order and offering a second way to ask is
-offering a way to get it wrong. Migrations first, then the three roles.
+offering a way to get it wrong. Migrations first, then the three runtime roles.
 
 **Run it as the SAME role that applies migrations.** ``provision_runtime_role`` ends with
 ``alter default privileges ... grant ... on tables``, and PostgreSQL applies default privileges
@@ -17,25 +17,30 @@ credential nobody asked for.
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from typing import Any, Final
 
-from orimera.db.migrate import apply_pending
-from orimera.db.roles import (
+from exulanica.db.migrate import apply_pending
+from exulanica.db.roles import (
     EXECUTOR_ROLE,
     PURGE_ROLE,
     RUNTIME_ROLE,
     provision_purge_role,
     provision_runtime_role,
 )
-from orimera.db.session import Database
+from exulanica.db.session import Database
+from exulanica.env import env_get, env_name
 
-__all__ = ["main"]
+__all__ = [
+    "APP_ROLE_PASSWORD_ENV",
+    "EXECUTOR_ROLE_PASSWORD_ENV",
+    "PURGE_ROLE_PASSWORD_ENV",
+    "main",
+]
 
-APP_ROLE_PASSWORD_ENV: Final = "ORIMERA_APP_ROLE_PASSWORD"
-EXECUTOR_ROLE_PASSWORD_ENV: Final = "ORIMERA_EXECUTOR_ROLE_PASSWORD"
-PURGE_ROLE_PASSWORD_ENV: Final = "ORIMERA_PURGE_ROLE_PASSWORD"
+APP_ROLE_PASSWORD_ENV: Final = env_name("APP_ROLE_PASSWORD")
+EXECUTOR_ROLE_PASSWORD_ENV: Final = env_name("EXECUTOR_ROLE_PASSWORD")
+PURGE_ROLE_PASSWORD_ENV: Final = env_name("PURGE_ROLE_PASSWORD")
 
 
 def provision(stream: Any) -> int:
@@ -46,22 +51,20 @@ def provision(stream: Any) -> int:
     if not report.changed:
         print("schema: up to date", file=stream)
 
+    app_password = env_get("APP_ROLE_PASSWORD")
+    executor_password = env_get("EXECUTOR_ROLE_PASSWORD")
+    purge_password = env_get("PURGE_ROLE_PASSWORD")
     with database.unscoped() as connection:
+        provision_runtime_role(connection, role=RUNTIME_ROLE, password=app_password)
         provision_runtime_role(
-            connection, role=RUNTIME_ROLE, password=os.environ.get(APP_ROLE_PASSWORD_ENV)
+            connection, role=EXECUTOR_ROLE, password=executor_password, read_only=True
         )
-        provision_runtime_role(
-            connection,
-            role=EXECUTOR_ROLE,
-            password=os.environ.get(EXECUTOR_ROLE_PASSWORD_ENV),
-            read_only=True,
-        )
-        provision_purge_role(connection, password=os.environ.get(PURGE_ROLE_PASSWORD_ENV))
+        provision_purge_role(connection, role=PURGE_ROLE, password=purge_password)
     print(
         f"roles: {RUNTIME_ROLE} may select, insert and update and may not delete; "
-        f"{EXECUTOR_ROLE} may select and nothing else; "
-        f"{PURGE_ROLE} may mark bytes purged and may read every workspace's content hashes, "
-        "which is the one question a shared blob makes unanswerable inside one workspace",
+        f"{EXECUTOR_ROLE} may select and nothing else; {PURGE_ROLE} may mark bytes purged "
+        "and may read every workspace's content hashes, which is the one question a shared "
+        "blob makes unanswerable inside one workspace",
         file=stream,
     )
     return 0
@@ -69,7 +72,7 @@ def provision(stream: Any) -> int:
 
 def main(argv: list[str] | None = None, stream: Any = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="orimera-db", description="Apply pending migrations, then grant runtime roles."
+        prog="exulanica-db", description="Apply pending migrations, then grant runtime roles."
     )
     parser.parse_args(argv)
     return provision(stream or sys.stdout)

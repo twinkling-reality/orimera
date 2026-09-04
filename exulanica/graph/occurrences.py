@@ -11,7 +11,7 @@ import uuid
 
 import psycopg
 
-from orimera.graph.payload import OccurrenceRow, ProposalRow
+from exulanica.graph.payload import OccurrenceRow, ProposalRow
 
 __all__ = ["occurrence_rows", "proposal_rows"]
 

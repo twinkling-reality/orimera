@@ -59,7 +59,7 @@ METRICS: Final[tuple[Component, ...]] = (
         "0 on the answerable set",
         "Zero unsupported claims across the N answerable questions in OGC-1, bounding the true "
         "rate at <= X% (95% Wilson upper)",
-        '"Orimera does not hallucinate." The bound is the claim',
+        '"Exulanica does not hallucinate." The bound is the claim',
         blocked_on="no question set exists. The gold question fixture is unwritten, so there is "
         "no answerable set to score against",
     ),

@@ -11,19 +11,19 @@ Four surfaces, and the shape of each says what it is for:
 *   ``/evidence`` is the product's promise as an HTTP response: given an address, the exact
     original media, with range support, and a 404 rather than a 403 for anything not yours.
 
-The application is built by :func:`orimera.api.app.create_app`, which takes its services rather
+The application is built by :func:`exulanica.api.app.create_app`, which takes its services rather
 than reading globals, so a test builds an instance against a throwaway schema and a second
 instance in one process is ordinary rather than surprising.
 """
 
-from orimera.api.app import create_app
-from orimera.api.authorisation import (
+from exulanica.api.app import create_app
+from exulanica.api.authorisation import (
     API_TOKENS_ENV,
     TokenDirectory,
     TokenNotAccepted,
     load_token_directory,
 )
-from orimera.api.services import Services, build_services
+from exulanica.api.services import Services, build_services
 
 __all__ = [
     "API_TOKENS_ENV",

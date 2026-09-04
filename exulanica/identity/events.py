@@ -5,7 +5,7 @@ approximate. A merge that recorded only "a and b became c" could be undone appro
 that records the exact link set at merge time can be undone to the state that existed.
 
 :meth:`Events.undo_of` is what makes undoing twice a refusal rather than a second no-op. The
-handlers in :mod:`orimera.identity.undo` read a payload and nothing else, so an event whose undo
+handlers in :mod:`exulanica.identity.undo` read a payload and nothing else, so an event whose undo
 already happened would otherwise be applied again against a state it does not describe.
 """
 
@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from psycopg.types.json import Jsonb
 
 if TYPE_CHECKING:
-    from orimera.identity.repository import IdentityRepository
+    from exulanica.identity.repository import IdentityRepository
 
 __all__ = ["Events"]
 

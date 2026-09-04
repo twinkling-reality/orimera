@@ -19,9 +19,9 @@ cube do not contain the same red cube. Label equality decides which pairs are wo
 what corroborates them is context, and a pair with no corroborating modality is not proposed at
 all rather than proposed weakly.
 
-Home. Not ``orimera.ingest``, whose own package docstring says "Nothing here can create an entity
+Home. Not ``exulanica.ingest``, whose own package docstring says "Nothing here can create an entity
 or a link", and whose derivatives are keyed per photograph while a proposal is a function of the
-whole corpus and of user decisions. Not ``orimera.api``, where routes decide nothing. Here, where
+whole corpus and of user decisions. Not ``exulanica.api``, where routes decide nothing. Here, where
 the occurrence key, the basis digest and rejection memory already live.
 """
 
@@ -32,10 +32,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
-from orimera.canonical import sha256_of_canonical
-from orimera.identity.keys import PRODUCIBLE_MODALITIES, basis_digest, normalise_modalities
-from orimera.identity.repository import IdentityRepository
-from orimera.identity.signals import CaptureContext, ContextSignals, corroborating_modalities
+from exulanica.canonical import sha256_of_canonical
+from exulanica.identity.keys import PRODUCIBLE_MODALITIES, basis_digest, normalise_modalities
+from exulanica.identity.repository import IdentityRepository
+from exulanica.identity.signals import CaptureContext, ContextSignals, corroborating_modalities
 
 __all__ = ["PROPOSER_PARAMS", "ProposalReport", "propose_matches"]
 
@@ -140,7 +140,7 @@ def propose_matches(
     """One whole-corpus pass. Safe to run repeatedly: a re-run asks no question twice.
 
     ``run_id`` is a parameter rather than something opened here. ``match_proposal.produced_by_run``
-    references ``pipeline_run``, and ``Ledger`` lives in ``orimera.ingest``, which this layer may
+    references ``pipeline_run``, and ``Ledger`` lives in ``exulanica.ingest``, which this layer may
     not import. The caller decides what a run is, which keeps the layer direction honest and lets
     the ingest command hand down the run it already has.
     """

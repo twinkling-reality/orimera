@@ -34,9 +34,9 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from orimera.db.guards import terminal_if_tombstoned
-from orimera.db.session import set_workspace
-from orimera.errors import EpistemicViolation, TombstonedError
+from exulanica.db.guards import terminal_if_tombstoned
+from exulanica.db.session import set_workspace
+from exulanica.errors import EpistemicViolation, TombstonedError
 
 __all__ = ["AssertionWriter"]
 

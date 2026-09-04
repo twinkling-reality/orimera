@@ -15,8 +15,8 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from orimera.evidence.blob import BlobId
-from orimera.ingest.spine.scope import WorkspaceScope
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.spine.scope import WorkspaceScope
 
 __all__ = ["insert_clock_anchor", "upsert_image"]
 

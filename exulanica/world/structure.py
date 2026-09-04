@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from math import isqrt
 from typing import Any, Final
 
-from orimera.canonical import canonical_json, sha256_of_canonical
-from orimera.world.errors import InvalidStructuralData
+from exulanica.canonical import canonical_json, sha256_of_canonical
+from exulanica.world.errors import InvalidStructuralData
 
 __all__ = [
     "PlacementMigration",

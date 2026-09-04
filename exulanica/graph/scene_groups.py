@@ -14,7 +14,7 @@ import uuid
 
 import psycopg
 
-from orimera.graph.payload import SceneGroupRow
+from exulanica.graph.payload import SceneGroupRow
 
 __all__ = ["rung_by_capture", "scene_group_rows"]
 

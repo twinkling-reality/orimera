@@ -22,8 +22,8 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any, Final, Literal
 
-from orimera.canonical import round_half_down
-from orimera.errors import InvalidAddressError
+from exulanica.canonical import round_half_down
+from exulanica.errors import InvalidAddressError
 
 __all__ = [
     "MIRRORED_EXIF_ORIENTATIONS",

@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from orimera.reconstruction.pose import (
+from exulanica.reconstruction.pose import (
     CommandResult,
     PoseBuildManifest,
     SourceFrame,
@@ -30,7 +30,7 @@ def _manifest(source: Path, *, metric: bool = False) -> PoseBuildManifest:
         scene_ref="room-1",
         code_revision="a" * 40,
         colmap_version="4.0",
-        execution_image="registry.example/orimera-colmap@sha256:" + "b" * 64,
+        execution_image="registry.example/exulanica-colmap@sha256:" + "b" * 64,
         frames=frames,
         min_registered_fraction=0.75,
         max_mean_reprojection_error_px=1.0,
@@ -106,7 +106,7 @@ def test_pose_job_checkpoints_and_reuses_the_exact_completed_manifest(tmp_path):
     ]
     assert first.quality.cameras[3].camera_centre_xyz == (4.0, 0.0, 0.0)
     receipt = json.loads((first.job_directory / "receipt.json").read_bytes())
-    assert receipt["profile"] == "orimera.colmap-pose-receipt/v2"
+    assert receipt["profile"] == "exulanica.colmap-pose-receipt/v2"
     assert receipt["manifest"] == manifest.as_payload()
 
 

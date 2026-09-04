@@ -11,9 +11,9 @@ import uuid
 
 from psycopg.types.json import Jsonb
 
-from orimera.db.guards import terminal_if_tombstoned
-from orimera.evidence import EvidenceAddress
-from orimera.ingest.spine.scope import WorkspaceScope
+from exulanica.db.guards import terminal_if_tombstoned
+from exulanica.evidence import EvidenceAddress
+from exulanica.ingest.spine.scope import WorkspaceScope
 
 __all__ = ["upsert"]
 

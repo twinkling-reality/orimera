@@ -18,8 +18,8 @@ Three checks, and each one catches a different real failure:
     failure, because a price change breaks the cost report rather than the service, but silent
     price drift is how a cost report becomes fiction.
 
-Run it as ``orimera-preflight``, the console script, or as
-``python -m orimera.models.preflight``. Exit status 0 clean, 1 on any failure, so CI and the
+Run it as ``exulanica-preflight``, the console script, or as
+``python -m exulanica.models.preflight``. Exit status 0 clean, 1 on any failure, so CI and the
 weekly uptime check on a running deployment can both call it without parsing output.
 Pass ``--catalog-file`` to check against a saved snapshot, which is how the offline test runs.
 """
@@ -35,9 +35,9 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Final
 
-from orimera.models.errors import PreflightError, TransportError
-from orimera.models.manifest import Manifest, load_manifest, load_manifest_from
-from orimera.models.transport import HttpxTransport, Transport
+from exulanica.models.errors import PreflightError, TransportError
+from exulanica.models.manifest import Manifest, load_manifest, load_manifest_from
+from exulanica.models.transport import HttpxTransport, Transport
 
 __all__ = [
     "PreflightIssue",
@@ -230,7 +230,7 @@ def run_preflight(
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="orimera-preflight",
+        prog="exulanica-preflight",
         description="Check every model identifier in the manifest against the live catalog.",
     )
     parser.add_argument("--manifest", type=Path, default=None, help="alternate manifest JSON")

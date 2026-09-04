@@ -32,7 +32,7 @@ properties of the server rather than of the adapter:
 
 from __future__ import annotations
 
-from orimera.graph.payload import (
+from exulanica.graph.payload import (
     AssertionRow,
     EntityRow,
     GraphPayload,
@@ -44,9 +44,9 @@ from orimera.graph.payload import (
     SceneGroupRow,
     ScenePointMapPlacementRow,
 )
-from orimera.graph.reconstruction_scenes import reconstruction_scene_rows
-from orimera.graph.scene_rungs import SceneRungRow, scene_rung_rows
-from orimera.graph.snapshot import read_snapshot
+from exulanica.graph.reconstruction_scenes import reconstruction_scene_rows
+from exulanica.graph.scene_rungs import SceneRungRow, scene_rung_rows
+from exulanica.graph.snapshot import read_snapshot
 
 __all__ = [
     "AssertionRow",

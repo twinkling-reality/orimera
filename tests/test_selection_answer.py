@@ -28,12 +28,12 @@ import json
 import uuid
 
 import pytest
-from orimera.epistemics.assertions import AssertionWriter
-from orimera.identity import IdentityRepository, name_occurrence
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.models.client import ModelClient
-from orimera.models.transport import HttpResponse
-from orimera.selection import (
+from exulanica.epistemics.assertions import AssertionWriter
+from exulanica.identity import IdentityRepository, name_occurrence
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.models.client import ModelClient
+from exulanica.models.transport import HttpResponse
+from exulanica.selection import (
     Abstention,
     Answer,
     AnswerClause,
@@ -50,10 +50,10 @@ from orimera.selection import (
     validate,
     validate_answer,
 )
-from orimera.selection.packet import MAX_PACKET_ITEMS
-from orimera.selection.question import answer_question, compose_answer
-from orimera.store.local import LocalContentAddressedStore
-from orimera.store.resolve import resolve_original_bytes
+from exulanica.selection.packet import MAX_PACKET_ITEMS
+from exulanica.selection.question import answer_question, compose_answer
+from exulanica.store.local import LocalContentAddressedStore
+from exulanica.store.resolve import resolve_original_bytes
 
 from conftest import (
     DEFAULT_PAYLOAD,
@@ -122,7 +122,7 @@ class Answered:
 
 
 def _budget():
-    from orimera.models.budget import BudgetGuard
+    from exulanica.models.budget import BudgetGuard
 
     return BudgetGuard(ceiling_usd=TEST_CEILING_USD, max_calls=TEST_MAX_CALLS)
 
@@ -175,7 +175,7 @@ def test_a_citation_resolves_to_the_original_bytes(answered):
     for item in packet.items:
         data = resolve_original_bytes(item.address, answered.store)
         assert data[:2] == b"\xff\xd8", "a JPEG, and the store verified its hash on the way out"
-        assert item.uri.startswith("orimera://blob/ni:///sha-256;")
+        assert item.uri.startswith("exulanica://blob/ni:///sha-256;")
 
 
 def test_tokens_are_unique_per_packet_and_do_not_repeat_across_requests(answered):
@@ -544,7 +544,7 @@ def test_the_planner_asks_the_extraction_role_and_the_measurement_says_why(answe
     an order of magnitude more latency to fill in a form is the unreliability the clause
     describes, so the clause applies and the reasoning core keeps the reasoning instead.
     """
-    from orimera.selection.question import propose_plan
+    from exulanica.selection.question import propose_plan
 
     plan = SelectionPlan(intent=Intent.CAPTURES, limit=5)
     client = answered.client(
@@ -578,7 +578,7 @@ def test_a_plan_that_breaks_a_rule_the_schema_cannot_express_is_repaired_once(an
     executor. The rule is invisible to the endpoint and invisible to the model, so the prompt
     states it and this repairs it, once.
     """
-    from orimera.selection.question import propose_plan
+    from exulanica.selection.question import propose_plan
 
     unsatisfiable = {
         "intent": "entities",
@@ -609,8 +609,8 @@ def test_a_plan_that_fails_twice_refuses_rather_than_answering_a_different_quest
     a question the user did not ask and present it as the answer to the one they did, which is
     worse than telling them it did not work.
     """
-    from orimera.models.errors import StructuredOutputError
-    from orimera.selection.question import propose_plan
+    from exulanica.models.errors import StructuredOutputError
+    from exulanica.selection.question import propose_plan
 
     unsatisfiable = json.dumps(
         {

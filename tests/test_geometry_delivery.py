@@ -27,16 +27,16 @@ import os
 import uuid
 
 import pytest
+from exulanica.api.app import create_app
+from exulanica.api.authorisation import load_token_directory
+from exulanica.api.routes.geometry import POINT_MAP_MEDIA_TYPE
+from exulanica.api.services import Services
+from exulanica.evidence.blob import BlobId
+from exulanica.graph.geometry import POINT_MAP_KIND
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.stages import stage
+from exulanica.store.local import LocalContentAddressedStore
 from fastapi.testclient import TestClient
-from orimera.api.app import create_app
-from orimera.api.authorisation import load_token_directory
-from orimera.api.routes.geometry import POINT_MAP_MEDIA_TYPE
-from orimera.api.services import Services
-from orimera.evidence.blob import BlobId
-from orimera.graph.geometry import POINT_MAP_KIND
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.stages import stage
-from orimera.store.local import LocalContentAddressedStore
 
 from conftest import CountingVisionModel, iso, write_photo, write_point_map
 
@@ -101,7 +101,7 @@ def delivered(tmp_path, photo_dir, repository, spine_schema, monkeypatch):
         written.append((artifact_id, blob, payload))
 
     monkeypatch.setenv(
-        "ORIMERA_API_TOKENS",
+        "EXULANICA_API_TOKENS",
         json.dumps(
             {
                 _TOKEN: {
@@ -138,9 +138,10 @@ def delivered(tmp_path, photo_dir, repository, spine_schema, monkeypatch):
 def test_the_kind_the_route_serves_is_the_kind_the_depth_stage_writes():
     """The one string that spans two packages the layering forbids from importing each other.
 
-    ``orimera.graph`` and ``orimera.ingest`` are siblings in the import contract, so the artifact
-    kind is spelled twice. A rename that reached only the stage would leave the route serving an
-    empty list for ever, with nothing failing anywhere, which is exactly the shape of defect this
+    ``exulanica.graph`` and ``exulanica.ingest`` are siblings in the import contract, so the
+    artifact kind is spelled twice. A rename that reached only the stage would
+    leave the route serving an empty list for ever, with nothing failing
+    anywhere, which is exactly the shape of defect this
     repository's register keeps recording: a test that passes without exercising its case.
     """
     assert stage("depth").output_kind == POINT_MAP_KIND
@@ -203,7 +204,7 @@ def test_a_range_request_gets_the_whole_file_rather_than_a_fragment(delivered):
 def test_the_list_is_keyed_by_capture_and_ships_no_island(delivered):
     """ADR-0005 leaves what an island is to the client, and this route does not settle it.
 
-    ``orimera.graph``'s own docstring: "A server that shipped an island id would be settling that
+    ``exulanica.graph``'s own docstring: "A server that shipped an island id would be settling that
     question by accident." The client maps captures to islands through the same function its
     occurrences went through, so geometry lands in the regions the anchors did.
     """
@@ -392,7 +393,7 @@ def test_a_person_scoped_withdrawal_reaches_no_derivative(delivered):
     """
     import inspect
 
-    from orimera.ingest.repository import IngestRepository
+    from exulanica.ingest.repository import IngestRepository
 
     signature = inspect.signature(IngestRepository.insert_tombstone)
     assert "entity_id" not in signature.parameters, (
@@ -435,7 +436,7 @@ def test_a_pose_job_directory_is_not_an_artifact_and_no_tombstone_reaches_it(tmp
     """
     import inspect
 
-    from orimera.reconstruction import pose
+    from exulanica.reconstruction import pose
 
     source = inspect.getsource(pose)
     assert 'job_dir / "database.db"' in source, (

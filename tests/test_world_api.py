@@ -7,12 +7,12 @@ import uuid
 from dataclasses import dataclass
 
 import pytest
+from exulanica.api.app import create_app
+from exulanica.api.authorisation import load_token_directory
+from exulanica.api.services import Services
+from exulanica.store.local import LocalContentAddressedStore
+from exulanica.world import TopologyContract, TopologySourceSlot, WorldStyleRepository
 from fastapi.testclient import TestClient
-from orimera.api.app import create_app
-from orimera.api.authorisation import load_token_directory
-from orimera.api.services import Services
-from orimera.store.local import LocalContentAddressedStore
-from orimera.world import TopologyContract, TopologySourceSlot, WorldStyleRepository
 
 pytestmark = pytest.mark.postgres
 
@@ -87,7 +87,7 @@ def world_api(repository, spine_schema, tmp_path, monkeypatch):
         )
     )
     monkeypatch.setenv(
-        "ORIMERA_API_TOKENS",
+        "EXULANICA_API_TOKENS",
         json.dumps(
             {
                 TOKEN: {"workspace_id": str(repository.workspace_id), "actor": str(actor)},

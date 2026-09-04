@@ -7,8 +7,8 @@ from typing import Any
 
 import psycopg
 
-from orimera.ingest.derivative_queue import DERIVATIVES
-from orimera.ingest.spine.reconstruction_jobs import MAX_SCENE_CLAIMS
+from exulanica.ingest.derivative_queue import DERIVATIVES
+from exulanica.ingest.spine.reconstruction_jobs import MAX_SCENE_CLAIMS
 
 __all__ = [
     "derivative_job_events",

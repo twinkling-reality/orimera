@@ -21,7 +21,7 @@ import math
 from pathlib import Path
 
 import pytest
-from orimera.reconstruction.pose import (
+from exulanica.reconstruction.pose import (
     PoseBuildManifest,
     SourceFrame,
     run_colmap_pose_job,
@@ -31,7 +31,7 @@ pytest.importorskip("pycolmap", reason="the pose extra is not installed")
 numpy = pytest.importorskip("numpy", reason="rendering the synthetic capture needs numpy")
 PIL_Image = pytest.importorskip("PIL.Image", reason="rendering the synthetic capture needs Pillow")
 
-from orimera.reconstruction.pycolmap_executor import (  # noqa: E402  (after the skip guards)
+from exulanica.reconstruction.pycolmap_executor import (  # noqa: E402  (after the skip guards)
     PYCOLMAP_EXECUTABLE,
     PycolmapExecutor,
     pycolmap_version,
@@ -120,7 +120,7 @@ def _manifest(source: Path) -> PoseBuildManifest:
         # The version the backend reports rather than a string somebody typed, which is the gap
         # `docs/colmap-pose-jobs.md` claims is closed and is not for the subprocess backend.
         colmap_version=pycolmap_version(),
-        execution_image="registry.example/orimera-colmap@sha256:" + "b" * 64,
+        execution_image="registry.example/exulanica-colmap@sha256:" + "b" * 64,
         frames=frames,
         min_registered_fraction=0.75,
         max_mean_reprojection_error_px=2.0,

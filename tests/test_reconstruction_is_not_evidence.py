@@ -28,12 +28,12 @@ import ast
 from pathlib import Path
 
 import pytest
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.store.local import LocalContentAddressedStore
 
 from conftest import iso, write_photo
 
-_PACKAGE = Path(__file__).resolve().parents[1] / "orimera" / "reconstruction"
+_PACKAGE = Path(__file__).resolve().parents[1] / "exulanica" / "reconstruction"
 
 #: Names that would mean this package had learned what a citation is. `BlobId` is included even
 #: though it is only a content hash: a producer that held one would be one refactor away from
@@ -59,7 +59,7 @@ def test_the_reconstruction_package_exists_and_has_something_to_check():
 def test_reconstruction_never_imports_the_evidence_layer():
     """The strongest form of invariant 2 available: it cannot say the word.
 
-    A module that does not import `orimera.evidence` cannot return an evidence address, cannot
+    A module that does not import `exulanica.evidence` cannot return an evidence address, cannot
     construct one, and cannot be persuaded to by a later change that nobody reviews. The
     equivalent rule for the whole backend is an import-linter contract; this is the test that
     fails first and says why.
@@ -68,13 +68,13 @@ def test_reconstruction_never_imports_the_evidence_layer():
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
-                ("orimera.evidence", "orimera.store", "orimera.db")
+                ("exulanica.evidence", "exulanica.store", "exulanica.db")
             ):
                 pytest.fail(f"{path.name} imports {node.module}: reconstruction is not evidence")
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     assert not alias.name.startswith(
-                        ("orimera.evidence", "orimera.store", "orimera.db")
+                        ("exulanica.evidence", "exulanica.store", "exulanica.db")
                     ), f"{path.name} imports {alias.name}"
 
 
@@ -108,7 +108,7 @@ def test_no_reconstruction_function_is_annotated_to_return_a_citation():
 @pytest.fixture
 def reconstructed(repository, photo_dir, tmp_path):
     """One photograph ingested with reconstruction on. Returns the artifact and its content hash."""
-    from orimera.reconstruction.testing import FlatDepthModel
+    from exulanica.reconstruction.testing import FlatDepthModel
 
     write_photo(photo_dir, "a.jpg", when=iso(10), gps=(64.3271, -20.1199))
     store = LocalContentAddressedStore(tmp_path / "blobs")
@@ -159,7 +159,7 @@ def test_the_point_map_is_stored_and_still_not_citable(repository, reconstructed
     """
     store = LocalContentAddressedStore(tmp_path / "blobs")
     digest = bytes(reconstructed["content_sha256"])
-    from orimera.evidence.blob import BlobId
+    from exulanica.evidence.blob import BlobId
 
     assert store.exists(BlobId(digest)), "the point map was not stored, so nothing can render it"
     cited = repository.connection.execute(

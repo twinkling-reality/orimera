@@ -31,8 +31,8 @@ __all__ = [
     "validate_placement_record",
 ]
 
-PLACEMENT_PROFILE: Final = "orimera.posed-point-map-placement/v1"
-_POSE_PROFILE: Final = "orimera.colmap-pose-receipt/v2"
+PLACEMENT_PROFILE: Final = "exulanica.posed-point-map-placement/v1"
+_POSE_PROFILE: Final = "exulanica.colmap-pose-receipt/v2"
 
 
 def _canonical(value: object) -> bytes:
@@ -144,7 +144,7 @@ class PlacementRecord:
 
     def as_payload(self) -> dict[str, object]:
         return {
-            "profile": "orimera.posed-point-map-placement-envelope/v1",
+            "profile": "exulanica.posed-point-map-placement-envelope/v1",
             "payload_sha256": self.payload_sha256,
             "placement": self.payload(),
         }
@@ -475,7 +475,7 @@ def validate_placement_record(
         raise ValueError("the placement record is not JSON") from error
     if (
         not isinstance(envelope, dict)
-        or envelope.get("profile") != "orimera.posed-point-map-placement-envelope/v1"
+        or envelope.get("profile") != "exulanica.posed-point-map-placement-envelope/v1"
     ):
         raise ValueError("the placement envelope version is unsupported")
     payload = envelope.get("placement")

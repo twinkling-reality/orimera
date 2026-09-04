@@ -1,7 +1,7 @@
 """Reconstruction: one photograph becomes a metric point map, and never becomes evidence.
 
-**Invariant 2 is structural here.** This package does not import ``orimera.evidence``,
-``orimera.store`` or ``orimera.db``, an import-linter contract enforces it, and
+**Invariant 2 is structural here.** This package does not import ``exulanica.evidence``,
+``exulanica.store`` or ``exulanica.db``, an import-linter contract enforces it, and
 ``tests/test_reconstruction_is_not_evidence.py`` fails if any module in here so much as names an
 evidence address in a return annotation. A producer that cannot construct a citation cannot
 return one, however it is later changed by somebody who never read this sentence.
@@ -21,7 +21,7 @@ recovery, ``splat`` for training and ``navigation`` for corridors.
 controllers exist and are contract tested. ``pose`` now also has a backend that runs, the
 in-process ``pycolmap_executor``, so camera recovery is executable on an ordinary machine.
 ``splat`` does not: it delegates to a reviewed container entrypoint that nobody has built, and
-gsplat is CUDA only, so no splat has ever been trained here. Nothing in ``orimera.ingest`` calls
+gsplat is CUDA only, so no splat has ever been trained here. Nothing in ``exulanica.ingest`` calls
 any of the three, so no rung above 3 is published to the Atlas by any pipeline today. ``gate.py``
 decides rung 3 or rung 4 for a single photograph and is not the gate for the rungs above it;
 those are the quality receipts the controllers return.
@@ -29,14 +29,14 @@ those are the quality receipts the controllers return.
 
 from __future__ import annotations
 
-from orimera.reconstruction.build import (
+from exulanica.reconstruction.build import (
     DEFAULT_MAX_DEPTH_STEP,
     DEFAULT_SEGMENT,
     build_point_map,
 )
-from orimera.reconstruction.depth import DepthModel, DepthPrediction
-from orimera.reconstruction.gate import MIN_VALID_FRACTION, RungDecision, decide_rung
-from orimera.reconstruction.navigation import (
+from exulanica.reconstruction.depth import DepthModel, DepthPrediction
+from exulanica.reconstruction.gate import MIN_VALID_FRACTION, RungDecision, decide_rung
+from exulanica.reconstruction.navigation import (
     CorridorArtifact,
     CorridorBuildManifest,
     Destination,
@@ -44,7 +44,7 @@ from orimera.reconstruction.navigation import (
     build_corridor_artifact,
     validate_corridor_artifact,
 )
-from orimera.reconstruction.opm import (
+from exulanica.reconstruction.opm import (
     OPM_MAGIC,
     OPM_SECTIONS,
     OPM_VERSION,
@@ -53,7 +53,7 @@ from orimera.reconstruction.opm import (
     Viewpoint,
     encode_opm,
 )
-from orimera.reconstruction.placement import (
+from exulanica.reconstruction.placement import (
     PLACEMENT_PROFILE,
     ExcludedPlacementMember,
     PlacedPointMap,
@@ -62,7 +62,7 @@ from orimera.reconstruction.placement import (
     build_placement_record,
     validate_placement_record,
 )
-from orimera.reconstruction.pointmap import (
+from exulanica.reconstruction.pointmap import (
     MAX_SEGMENT_ID,
     POINT_STRIDE_BYTES,
     RESERVED_TAG_FLAGS,
@@ -70,7 +70,7 @@ from orimera.reconstruction.pointmap import (
     PointMap,
     Segment,
 )
-from orimera.reconstruction.pose import (
+from exulanica.reconstruction.pose import (
     CommandResult,
     PoseBuildManifest,
     PoseJobResult,
@@ -79,7 +79,7 @@ from orimera.reconstruction.pose import (
     SourceFrame,
     run_colmap_pose_job,
 )
-from orimera.reconstruction.scene_gate import (
+from exulanica.reconstruction.scene_gate import (
     SCENE_GATE_PROFILE,
     ReceiptMeasurement,
     SceneGateDecision,
@@ -87,13 +87,13 @@ from orimera.reconstruction.scene_gate import (
     SceneReceipt,
     decide_scene_rung,
 )
-from orimera.reconstruction.splat import (
+from exulanica.reconstruction.splat import (
     SplatBuildManifest,
     SplatJobResult,
     SplatQuality,
     run_gsplat_job,
 )
-from orimera.reconstruction.validation import (
+from exulanica.reconstruction.validation import (
     OpmIntegrityError,
     OpmIntegrityReport,
     validate_opm,

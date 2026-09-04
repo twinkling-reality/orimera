@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from orimera.ingest.repository import IngestRepository
-from orimera.store import ContentAddressedStore
+from exulanica.ingest.repository import IngestRepository
+from exulanica.store import ContentAddressedStore
 
 __all__ = ["committed_writes"]
 

@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from orimera.identity.repository import IdentityRepository
+    from exulanica.identity.repository import IdentityRepository
 
 __all__ = ["Rejections"]
 

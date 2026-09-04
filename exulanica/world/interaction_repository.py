@@ -10,14 +10,14 @@ from typing import Any, Final
 import psycopg
 from psycopg.types.json import Jsonb
 
-from orimera.canonical import canonical_json
-from orimera.world.errors import (
+from exulanica.canonical import canonical_json
+from exulanica.world.errors import (
     InvalidInteractionData,
     InvalidInteractionPreviewState,
     StaleInteractionPolicy,
     UnknownWorldResource,
 )
-from orimera.world.interaction import (
+from exulanica.world.interaction import (
     INTERACTION_POLICY_REGISTRY,
     InteractionPolicyRegistry,
     InteractionPolicyState,
@@ -29,7 +29,7 @@ from orimera.world.interaction import (
     InteractionRecommendation,
     default_interaction_state,
 )
-from orimera.world.models import DEFAULT_WORLD_ID, ProposalOrigin, ProposalProvenance
+from exulanica.world.models import DEFAULT_WORLD_ID, ProposalOrigin, ProposalProvenance
 
 __all__ = ["WorldInteractionPolicyRepository"]
 

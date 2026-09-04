@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import datetime as dt
 import io
-import os
 import struct
 import urllib.parse
 import uuid
@@ -24,20 +23,20 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from orimera.corpus.photograph import TO_SENSOR_TRANSPOSE
-from orimera.db import DATABASE_URL_ENV
-from orimera.ingest.vision import VisionObservation, VisionResult
-from orimera.migrations import migrations
-from orimera.models.budget import BudgetGuard
-from orimera.models.client import ModelClient
-from orimera.models.manifest import load_manifest
+from exulanica.corpus.photograph import TO_SENSOR_TRANSPOSE
+from exulanica.db import DATABASE_URL_ENV
+from exulanica.ingest.vision import VisionObservation, VisionResult
+from exulanica.migrations import migrations
+from exulanica.models.budget import BudgetGuard
+from exulanica.models.client import ModelClient
+from exulanica.models.manifest import load_manifest
 from PIL import Image
 from PIL.TiffImagePlugin import IFDRational
 
 from model_fakes import FakeTransport
 from pg_harness import migrated_schema, open_scratch_connection
 
-#: Explicit rather than environment-derived, so a developer's exported ORIMERA_BUDGET_USD cannot
+#: Explicit rather than environment-derived, so a developer's exported EXULANICA_BUDGET_USD cannot
 #: change what a test asserts.
 TEST_CEILING_USD = Decimal("5.00")
 TEST_MAX_CALLS = 1000
@@ -164,11 +163,11 @@ def write_point_map(repository, store, blob_id, payload: bytes = b"not a real .o
     decoder's own contract is tested on the other side of the wire, in
     ``web/packages/atlas-react/test/opm.test.ts``.
 
-    The identity key is the real one from :mod:`orimera.ingest.stages`, so the row this writes is
+    The identity key is the real one from :mod:`exulanica.ingest.stages`, so the row this writes is
     the row the depth stage would write. Writing it by hand rather than running the stage is what
     lets the API tests run with no depth model, a 1.3 GB checkpoint and torch.
     """
-    from orimera.ingest.stages import artifact_id_for, idempotency_key, input_digest_of, stage
+    from exulanica.ingest.stages import artifact_id_for, idempotency_key, input_digest_of, stage
 
     spec = stage("depth")
     binding = {"model_id": "test/depth-model"}
@@ -323,7 +322,7 @@ def ingest_spine(spine_schema, _spine_tables, workspace_id):
     genuinely new connection, which is what "reopen the database" now means: a fresh
     repository object over the same connection would prove nothing about what was committed.
     """
-    from orimera.ingest.repository import IngestRepository
+    from exulanica.ingest.repository import IngestRepository
 
     psycopg, scratch = spine_schema
     opened = []
@@ -357,7 +356,7 @@ def cli_database(spine_schema, _spine_tables, monkeypatch):
     """Point the command line at the spine schema, through the environment it reads itself.
 
     The CLI is the one caller that opens its own connections: ``_repository`` calls
-    ``Database.from_env()``, which resolves ``ORIMERA_DATABASE_URL`` and connects several times
+    ``Database.from_env()``, which resolves ``EXULANICA_DATABASE_URL`` and connects several times
     over a single command. So the throwaway schema goes on the ``search_path`` inside the URL
     rather than being set with a statement afterwards, because there is no connection object to
     hand it a statement on.
@@ -367,7 +366,7 @@ def cli_database(spine_schema, _spine_tables, monkeypatch):
 
     *   **``schema_migrations`` is empty even though the schema is fully migrated.** The table
         is created by migration 0001, but the rows that say a version was applied are written
-        by :func:`orimera.db.apply_pending`, and the harness applies the files directly. The
+        by :func:`exulanica.db.apply_pending`, and the harness applies the files directly. The
         CLI would therefore find nothing applied, try 0001 again, and fail on ``type
         "assertion_kind" already exists``. Recording what the harness applied makes the
         bookkeeping agree with the schema that is actually there, which is also the only
@@ -383,7 +382,10 @@ def cli_database(spine_schema, _spine_tables, monkeypatch):
         rather than the isolation mechanism.
     """
     psycopg, scratch = spine_schema
-    base = os.environ["ORIMERA_TEST_DATABASE_URL"]
+    from exulanica.env import env_get
+
+    base = env_get("TEST_DATABASE_URL")
+    assert base is not None
     options = urllib.parse.quote(f"-csearch_path={scratch},public", safe="")
     monkeypatch.setenv(DATABASE_URL_ENV, f"{base}{'&' if '?' in base else '?'}options={options}")
 
@@ -479,9 +481,10 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     most of those file names contain neither "pg_harness" nor "postgres". An undercount here is
     the same class of problem as the silence it replaced.
     """
-    import os
 
-    if os.environ.get("ORIMERA_TEST_DATABASE_URL"):
+    from exulanica.env import env_get
+
+    if env_get("TEST_DATABASE_URL"):
         return
     skipped = [
         report
@@ -502,5 +505,5 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
         terminalreporter.write_line(f"  {name}")
     terminalreporter.write_line(
         "Run them with:  "
-        "ORIMERA_TEST_DATABASE_URL=postgresql://localhost:5433/orimera_spine_test uv run pytest"
+        "EXULANICA_TEST_DATABASE_URL=postgresql://localhost:5433/exulanica_spine_test uv run pytest"
     )

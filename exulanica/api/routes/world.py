@@ -1,6 +1,6 @@
 """The appearance-only world customization API.
 
-Routes validate transport shapes and delegate to :mod:`orimera.world`.  There is no topology
+Routes validate transport shapes and delegate to :mod:`exulanica.world`.  There is no topology
 mutation endpoint: topology registration belongs to the reviewed composition workflow, so a
 browser, Settings, or Companion request cannot move a region or rewrite an evidence binding.
 """
@@ -25,14 +25,14 @@ from pydantic import (
     model_validator,
 )
 
-from orimera.api.dependencies import (
+from exulanica.api.dependencies import (
     CurrentSession,
     ReadOnlyConnection,
     ScopedConnection,
     get_services,
 )
-from orimera.api.services import Services
-from orimera.world import (
+from exulanica.api.services import Services
+from exulanica.world import (
     STYLE_REGISTRY,
     ProposalOrigin,
     ProposalProvenance,

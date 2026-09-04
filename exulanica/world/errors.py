@@ -7,7 +7,7 @@ them into one conflict would make the recovery action guesswork.
 
 from __future__ import annotations
 
-from orimera.errors import OrimeraError
+from exulanica.errors import ExulanicaError
 
 __all__ = [
     "InvalidInteractionData",
@@ -27,7 +27,7 @@ __all__ = [
 ]
 
 
-class WorldStyleError(OrimeraError):
+class WorldStyleError(ExulanicaError):
     """Base class for errors owned by the world-style service."""
 
 

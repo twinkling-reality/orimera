@@ -1,10 +1,10 @@
 """The versioned, top-level frontier demonstration workflow."""
 
-from orimera.orchestration.demonstration import (
+from exulanica.orchestration.demonstration import (
     FrontierDemonstrationError,
     run_frontier_demonstration,
 )
-from orimera.orchestration.manifest import (
+from exulanica.orchestration.manifest import (
     BUILD_PROFILE,
     BuildManifest,
     BuildManifestError,

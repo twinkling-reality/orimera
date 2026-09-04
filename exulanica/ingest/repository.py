@@ -1,7 +1,7 @@
 """The vocabulary the ingest path speaks to the database.
 
 This class used to be the vocabulary *and* the SQL: 730 lines, every statement the photograph
-path sends to the spine. The statements now live in :mod:`orimera.ingest.spine`, one module per
+path sends to the spine. The statements now live in :mod:`exulanica.ingest.spine`, one module per
 table's worth of queries, and what is left here is the sentence each stage says. That division
 is the whole of the change, and it is worth saying which half is which:
 
@@ -9,7 +9,7 @@ is the whole of the change, and it is worth saying which half is which:
     ``refuse_ingest_if_tombstoned``, ``upsert_span``. The stages read as prose because these
     names are prose, and ``orimera/ingest/stages/writes.py`` declares this class as the complete
     surface a stage may reach for. A stage never sees a
-    :class:`~orimera.ingest.spine.scope.WorkspaceScope`, so that declaration stays exhaustive.
+    :class:`~exulanica.ingest.spine.scope.WorkspaceScope`, so that declaration stays exhaustive.
 *   **A function in the spine is a table.** Which columns, which conflict clause, which guard
     the write goes through. A question about ``artifact`` is answered by opening one file.
 
@@ -17,7 +17,7 @@ is the whole of the change, and it is worth saying which half is which:
 two names that went were counted first: ``span_address_columns`` and ``vision_payloads_by_blob``
 had no caller anywhere in ``orimera/`` or ``tests/``, and this repository does not keep a path
 for a caller that does not exist. ``count`` was renamed to ``rows_in_schema`` because it never
-counted a workspace; see :mod:`orimera.ingest.spine.counts`.
+counted a workspace; see :mod:`exulanica.ingest.spine.counts`.
 
 What the move did **not** change, because each of these is load bearing:
 
@@ -35,10 +35,10 @@ What the move did **not** change, because each of these is load bearing:
     about a deployment and a file rather than about one person's corpus. The docstring this
     replaced listed three of those four and quietly dropped ``stage_registry``. The connection
     must still have declared a workspace, and
-    :class:`~orimera.ingest.spine.scope.WorkspaceScope` is now the only way a spine module can be
+    :class:`~exulanica.ingest.spine.scope.WorkspaceScope` is now the only way a spine module can be
     handed one that has.
 *   **``predicate.allows_kind`` is enforced by the database.** Assertions are delegated to
-    :class:`~orimera.epistemics.assertions.AssertionWriter` rather than reimplemented, because
+    :class:`~exulanica.epistemics.assertions.AssertionWriter` rather than reimplemented, because
     the identity path writes the ``kind='user'`` naming assertion too and two implementations of
     "insert an assertion" would be two places for the rule to drift.
 """
@@ -52,10 +52,10 @@ from typing import Any
 
 import psycopg
 
-from orimera.epistemics.assertions import AssertionWriter
-from orimera.evidence import EvidenceAddress
-from orimera.evidence.blob import BlobId
-from orimera.ingest.spine import (
+from exulanica.epistemics.assertions import AssertionWriter
+from exulanica.evidence import EvidenceAddress
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.spine import (
     artifacts,
     blobs,
     captures,
@@ -70,9 +70,9 @@ from orimera.ingest.spine import (
     tombstones,
     tracks,
 )
-from orimera.ingest.spine.artifacts import ArtifactRow
-from orimera.ingest.spine.captures import CaptureRow
-from orimera.ingest.spine.scope import WorkspaceScope
+from exulanica.ingest.spine.artifacts import ArtifactRow
+from exulanica.ingest.spine.captures import CaptureRow
+from exulanica.ingest.spine.scope import WorkspaceScope
 
 __all__ = ["IngestRepository"]
 
@@ -134,8 +134,8 @@ class IngestRepository:
     def lock_stored_object(self, blob_id: BlobId) -> None:
         """Take the transaction lock over one stored object, keyed on its content hash.
 
-        The same lock ``orimera.deletion`` takes before it destroys an object, and both sides
-        have to take it or neither is serialised. See :mod:`orimera.ingest.spine.blobs` for the
+        The same lock ``exulanica.deletion`` takes before it destroys an object, and both sides
+        have to take it or neither is serialised. See :mod:`exulanica.ingest.spine.blobs` for the
         measured interleaving that made it necessary.
         """
         blobs.lock_stored_object(self._scope, blob_id)
@@ -165,7 +165,7 @@ class IngestRepository:
     def capture(self, capture_id: uuid.UUID) -> CaptureRow | None:
         """One capture by id, deleted or not, or None when this workspace has no such row.
 
-        Deliberately not filtered on ``deleted_at``; :func:`orimera.ingest.spine.captures.by_id`
+        Deliberately not filtered on ``deleted_at``; :func:`exulanica.ingest.spine.captures.by_id`
         carries the reason, which is that a lookup miss and a deletion lead to different run
         outcomes.
         """
@@ -602,7 +602,7 @@ class IngestRepository:
     def rows_in_schema(self, table: str) -> int:
         """Every row of ``table`` this connection can see. **Not workspace-scoped.**
 
-        The name carries the whole of the warning; :mod:`orimera.ingest.spine.counts` carries the
+        The name carries the whole of the warning; :mod:`exulanica.ingest.spine.counts` carries the
         measurement behind it.
         """
         return counts.rows_in_schema(self._scope, table)

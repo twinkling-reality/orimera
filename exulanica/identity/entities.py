@@ -3,8 +3,8 @@
 **This module cannot write a name, and the database is what stops it.**
 :meth:`Entities.set_name_cache` exists, and ``tg_entity_name_is_user_stated`` (migration 0002)
 refuses it unless an active ``kind='user'`` assertion under a naming predicate already says so.
-So the only route to a name is through :func:`orimera.identity.decisions.name_occurrence` or
-:func:`orimera.identity.naming.rename_entity`, both of which write the claim first, and a caller
+So the only route to a name is through :func:`exulanica.identity.decisions.name_occurrence` or
+:func:`exulanica.identity.naming.rename_entity`, both of which write the claim first, and a caller
 reaching for this method directly gets a refusal rather than a name. The method is spelled
 ``set_name_cache`` rather than ``set_display_name`` for that reason: ``entity.display_name`` is a
 cache of a claim, and a call site that writes only the cache should look wrong on sight.
@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from orimera.identity.repository import IdentityRepository
+    from exulanica.identity.repository import IdentityRepository
 
 __all__ = ["Entities", "EntityRow"]
 

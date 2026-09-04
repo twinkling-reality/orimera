@@ -22,23 +22,23 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from orimera.models.budget import BudgetGuard
-from orimera.models.errors import (
+from exulanica.models.budget import BudgetGuard
+from exulanica.models.errors import (
     ModelError,
     SchemaViolationError,
     StructuredOutputError,
     TransportError,
     TruncatedResponseError,
 )
-from orimera.models.manifest import ModelSpec, Role
-from orimera.models.reasoning import SplitContent, split_message
-from orimera.models.results import ChatResult, EmbeddingResult
-from orimera.models.schema import (
+from exulanica.models.manifest import ModelSpec, Role
+from exulanica.models.reasoning import SplitContent, split_message
+from exulanica.models.results import ChatResult, EmbeddingResult
+from exulanica.models.schema import (
     AmbiguousStructuredOutputError,
     extract_json_object,
     validate_against_schema,
 )
-from orimera.models.usage import CallUsage
+from exulanica.models.usage import CallUsage
 
 __all__ = ["checked_payload", "embedding_from_body", "result_from_body"]
 
@@ -158,13 +158,13 @@ def checked_payload(
             f"schema looks like. Answer was {answer[:300]!r}"
         ) from exc
     if not isinstance(schema, Mapping):
-        # response_format is only ever built by orimera.models.schema and only ever accepted
+        # response_format is only ever built by exulanica.models.schema and only ever accepted
         # by _build_payload after it has checked the type and the strict flag, so this is
         # unreachable from a supported call site. It is still raised rather than skipped:
         # silently returning unvalidated data is the defect this method exists to close.
         raise StructuredOutputError(
             f"{model_id} was sent a response_format carrying no schema, so its reply cannot "
-            "be validated locally. Build response_format with orimera.models.schema."
+            "be validated locally. Build response_format with exulanica.models.schema."
         )
     return validate_against_schema(parsed, schema, name=name)
 

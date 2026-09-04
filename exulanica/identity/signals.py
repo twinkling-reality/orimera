@@ -38,7 +38,7 @@ import psycopg
 __all__ = ["SCENE_GROUP_KIND", "CaptureContext", "ContextSignals", "corroborating_modalities"]
 
 #: The ``derived_artifact.kind`` ingest writes its clustering under. Duplicated from
-#: ``orimera.ingest.scenes``, which this layer may not import, and pinned by
+#: ``exulanica.ingest.scenes``, which this layer may not import, and pinned by
 #: ``tests/test_match_proposals.py::test_the_scene_group_kind_is_the_one_ingest_writes``.
 SCENE_GROUP_KIND: Final = "scene_group"
 

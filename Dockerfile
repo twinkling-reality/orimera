@@ -23,7 +23,7 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never \
     UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /src
-ARG ORIMERA_SYNC_EXTRAS="--extra server --extra pose"
+ARG EXULANICA_SYNC_EXTRAS="--extra server --extra pose"
 
 # Dependencies first and the project second, so editing a source file does not re-resolve the
 # closure. `--locked` rather than `--frozen`: a uv.lock that no longer matches pyproject.toml
@@ -32,15 +32,15 @@ ARG ORIMERA_SYNC_EXTRAS="--extra server --extra pose"
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --locked --no-dev --no-install-project ${ORIMERA_SYNC_EXTRAS}
+    uv sync --locked --no-dev --no-install-project ${EXULANICA_SYNC_EXTRAS}
 
 # The package directory is copied, and it is not optional: without it hatchling builds an empty
 # wheel, uv installs that over the working one, and the image's own entry points raise
 # ModuleNotFoundError at start. `tests/test_deployment.py` asserts this COPY exists.
 COPY pyproject.toml uv.lock LICENSE THIRD_PARTY_NOTICES.md ./
-COPY orimera ./orimera
+COPY exulanica ./exulanica
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable ${ORIMERA_SYNC_EXTRAS}
+    uv sync --locked --no-dev --no-editable ${EXULANICA_SYNC_EXTRAS}
 
 FROM python:3.11-slim-trixie AS runtime
 LABEL org.opencontainers.image.source="https://github.com/twinkling-reality/orimera"
@@ -50,20 +50,20 @@ LABEL org.opencontainers.image.licenses="Apache-2.0"
 # its own libpq and Pillow ships its own image libraries, so the runtime needs nothing from
 # Debian that python:3.11-slim does not already carry. Every package added here is a package
 # somebody has to patch.
-RUN groupadd --system --gid 10001 orimera \
- && useradd --system --uid 10001 --gid 10001 --home-dir /app --no-create-home orimera \
- && mkdir -p /app /var/lib/orimera \
- && chown orimera:orimera /app /var/lib/orimera
+RUN groupadd --system --gid 10001 exulanica \
+ && useradd --system --uid 10001 --gid 10001 --home-dir /app --no-create-home exulanica \
+ && mkdir -p /app /var/lib/exulanica \
+ && chown exulanica:exulanica /app /var/lib/exulanica
 
-COPY --from=builder --chown=orimera:orimera /app/.venv /app/.venv
+COPY --from=builder --chown=exulanica:exulanica /app/.venv /app/.venv
 
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    ORIMERA_DATA_DIR=/var/lib/orimera
+    EXULANICA_DATA_DIR=/var/lib/exulanica
 
 WORKDIR /app
-USER orimera
+USER exulanica
 EXPOSE 8000
 
 # LIVENESS, never readiness. `/healthz` touches no dependency; `/readyz` opens a connection and
@@ -73,4 +73,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status == 200 else 1)"]
 
-CMD ["uvicorn", "--factory", "orimera.api.app:create_app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "--factory", "exulanica.api.app:create_app", "--host", "0.0.0.0", "--port", "8000"]

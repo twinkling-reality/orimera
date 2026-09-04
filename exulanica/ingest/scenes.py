@@ -26,15 +26,15 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Final
 
-from orimera.ingest.ledger import Ledger
-from orimera.ingest.repository import IngestRepository
-from orimera.ingest.stages import ARTIFACT_NAMESPACE, stage
+from exulanica.ingest.ledger import Ledger
+from exulanica.ingest.repository import IngestRepository
+from exulanica.ingest.stages import ARTIFACT_NAMESPACE, stage
 
 __all__ = ["SceneGroup", "SceneReport", "group_captures", "run_scene_grouping"]
 
 
 #: The ``derived_artifact.kind`` this module writes its clustering under. Named rather than
-#: repeated, because ``orimera.identity.signals`` reads the same string from a layer that may not
+#: repeated, because ``exulanica.identity.signals`` reads the same string from a layer that may not
 #: import this one, and a literal duplicated across a boundary nothing checks is a literal that
 #: drifts. ``tests/test_match_proposals.py`` is the only place that can see both and it asserts
 #: they are equal.
@@ -230,7 +230,7 @@ def run_scene_grouping(
 
     # Import here because the policy names SceneGroup and this module owns that type. Keeping the
     # edge local avoids turning a type-level cycle into a package import cycle.
-    from orimera.ingest.scene_selection import enqueue_scene_reconstructions
+    from exulanica.ingest.scene_selection import enqueue_scene_reconstructions
 
     selections = enqueue_scene_reconstructions(repository, report.groups)
     report.reconstruction_jobs = [selection.job_id for selection in selections]

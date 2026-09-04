@@ -3,7 +3,7 @@
 ``routable_paths`` lives here rather than in the test that first needed it, because it is a
 property of this package: what its routes actually are, however the framework nests them. Two
 callers read it downward, the authorisation sweep in ``tests/test_api.py`` and M10 in
-``orimera.evaluation``, and M10's specification is the reason it must be generated rather than
+``exulanica.evaluation``, and M10's specification is the reason it must be generated rather than
 hand-enumerated: "table-driven, generated from the router, so a new route without a test fails
 CI." A second copy would be a second thing that can go blind.
 """

@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from orimera.models.errors import ModelError
+from exulanica.models.errors import ModelError
 
 __all__ = ["api_key_from_env"]
 

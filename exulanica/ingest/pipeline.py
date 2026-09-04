@@ -46,38 +46,38 @@ from typing import Final
 
 from PIL import Image
 
-from orimera.canonical import sha256_digest
-from orimera.errors import BlobNotFoundError, TombstonedError
-from orimera.evidence import EvidenceAddress
-from orimera.evidence.blob import BlobId
-from orimera.ingest.batch import IntakeBatch
-from orimera.ingest.committed_store import committed_writes as flush_committed_writes
-from orimera.ingest.decode import UNREADABLE, open_upright
-from orimera.ingest.exif import ExifFacts
-from orimera.ingest.ledger import Ledger, StageRecorder
-from orimera.ingest.report import IngestOutcome, IngestReport
-from orimera.ingest.repository import IngestRepository
-from orimera.ingest.stages import (
+from exulanica.canonical import sha256_digest
+from exulanica.errors import BlobNotFoundError, TombstonedError
+from exulanica.evidence import EvidenceAddress
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.batch import IntakeBatch
+from exulanica.ingest.committed_store import committed_writes as flush_committed_writes
+from exulanica.ingest.decode import UNREADABLE, open_upright
+from exulanica.ingest.exif import ExifFacts
+from exulanica.ingest.ledger import Ledger, StageRecorder
+from exulanica.ingest.report import IngestOutcome, IngestReport
+from exulanica.ingest.repository import IngestRepository
+from exulanica.ingest.stages import (
     STAGES,
     StageSpec,
     artifact_id_for,
     pipeline_digest,
 )
-from orimera.ingest.stages import depth as depth_stage
-from orimera.ingest.stages import intake as intake_stage
-from orimera.ingest.stages import rendition as rendition_stage
-from orimera.ingest.stages import vision as vision_stage
-from orimera.ingest.stages.writes import StageResult
-from orimera.ingest.vision import VisionModel
-from orimera.models.errors import (
+from exulanica.ingest.stages import depth as depth_stage
+from exulanica.ingest.stages import intake as intake_stage
+from exulanica.ingest.stages import rendition as rendition_stage
+from exulanica.ingest.stages import vision as vision_stage
+from exulanica.ingest.stages.writes import StageResult
+from exulanica.ingest.vision import VisionModel
+from exulanica.models.errors import (
     ModelUnavailableError,
     NoFallbackError,
     StructuredOutputError,
     TransportError,
     TruncatedResponseError,
 )
-from orimera.reconstruction import DepthModel
-from orimera.store.base import ContentAddressedStore
+from exulanica.reconstruction import DepthModel
+from exulanica.store.base import ContentAddressedStore
 
 __all__ = ["SUPPORTED_SUFFIXES", "PhotoIngestPipeline"]
 
@@ -527,7 +527,7 @@ class PhotoIngestPipeline:
 
 
 def _decode(data: bytes) -> tuple[Image.Image, ExifFacts]:
-    """The pipeline's own refusal wording over :func:`orimera.ingest.decode.open_upright`."""
+    """The pipeline's own refusal wording over :func:`exulanica.ingest.decode.open_upright`."""
     try:
         return open_upright(data)
     except UNREADABLE as exc:

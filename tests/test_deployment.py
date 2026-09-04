@@ -148,7 +148,7 @@ def test_continuous_integration_turns_a_missing_server_into_a_failure():
 
     The 19 postgres-marked tests are the only executable proof of invariant 4.
     """
-    assert "ORIMERA_REQUIRE_POSTGRES" in CHECK_WORKFLOW
+    assert "EXULANICA_REQUIRE_POSTGRES" in CHECK_WORKFLOW
 
 
 def test_continuous_integration_runs_the_whole_battery():
@@ -170,40 +170,42 @@ def test_the_database_volume_is_where_postgres_18_actually_writes():
 
 def test_the_composition_refuses_to_start_without_the_token_directory():
     """An API that started with an empty token directory would accept nobody and look healthy."""
-    assert "ORIMERA_API_TOKENS: ${ORIMERA_API_TOKENS:?" in COMPOSE
+    assert "EXULANICA_API_TOKENS: ${EXULANICA_API_TOKENS:?" in COMPOSE
 
 
 def test_runtime_containers_use_the_rls_role_and_only_migrations_use_the_owner():
     directives = _directives(COMPOSE)
     runtime_urls = [
-        line for line in directives.splitlines() if "ORIMERA_DATABASE_URL:" in line
+        line for line in directives.splitlines() if "EXULANICA_DATABASE_URL:" in line
     ]
     assert len(runtime_urls) == 4, runtime_urls
-    assert "postgresql://orimera:" in runtime_urls[0], runtime_urls
-    assert all("postgresql://orimera_app:" in line for line in runtime_urls[1:]), runtime_urls
-    assert "ORIMERA_APP_ROLE_PASSWORD:?" in COMPOSE
+    assert "postgresql://${POSTGRES_USER:-exulanica}:" in runtime_urls[0], runtime_urls
+    assert all("postgresql://exulanica_app:" in line for line in runtime_urls[1:]), runtime_urls
+    assert "EXULANICA_APP_ROLE_PASSWORD:?" in COMPOSE
 
 
 def test_the_derivative_worker_is_a_separate_restartable_command():
     assert "derivative-worker:" in COMPOSE
-    assert "orimera-derivative-worker" in COMPOSE
+    assert "exulanica-derivative-worker" in COMPOSE
     assert "restart: unless-stopped" in COMPOSE
-    assert "ORIMERA_DERIVATIVE_WORKER: \"off\"" in COMPOSE
-    assert 'ORIMERA_SYNC_EXTRAS: "--extra reconstruction"' in COMPOSE
-    assert "ORIMERA_DEPTH_MODEL: moge" in COMPOSE
-    assert "HF_HOME: /var/lib/orimera/model-cache" in COMPOSE
-    assert 'orimera-derivative-worker = "orimera.ingest.worker_command:main"' in PYPROJECT
+    assert "EXULANICA_DERIVATIVE_WORKER: \"off\"" in COMPOSE
+    assert 'EXULANICA_SYNC_EXTRAS: "--extra reconstruction"' in COMPOSE
+    assert "EXULANICA_DEPTH_MODEL: moge" in COMPOSE
+    assert "HF_HOME: /var/lib/exulanica/model-cache" in COMPOSE
+    assert 'exulanica-derivative-worker = "exulanica.ingest.worker_command:main"' in PYPROJECT
+    assert 'exulanica-derivative-worker = "exulanica.ingest.worker_command:main"' in PYPROJECT
 
 
 def test_the_pose_worker_is_separate_restartable_and_provenance_configured():
     assert "scene-worker:" in COMPOSE
-    assert "orimera-scene-worker" in COMPOSE
-    assert "ORIMERA_CODE_REVISION: ${ORIMERA_CODE_REVISION:?" in COMPOSE
-    assert "ORIMERA_POSE_RUNTIME_IMAGE: ${ORIMERA_POSE_RUNTIME_IMAGE:?" in COMPOSE
-    assert "ORIMERA_CODE_REVISION=" in ENV_EXAMPLE
-    assert "ORIMERA_POSE_RUNTIME_IMAGE=" in ENV_EXAMPLE
+    assert "exulanica-scene-worker" in COMPOSE
+    assert "EXULANICA_CODE_REVISION: ${EXULANICA_CODE_REVISION:?" in COMPOSE
+    assert "EXULANICA_POSE_RUNTIME_IMAGE: ${EXULANICA_POSE_RUNTIME_IMAGE:?" in COMPOSE
+    assert "EXULANICA_CODE_REVISION=" in ENV_EXAMPLE
+    assert "EXULANICA_POSE_RUNTIME_IMAGE=" in ENV_EXAMPLE
     assert '--extra server --extra pose' in DOCKERFILE
-    assert 'orimera-scene-worker = "orimera.ingest.scene_worker_command:main"' in PYPROJECT
+    assert 'exulanica-scene-worker = "exulanica.ingest.scene_worker_command:main"' in PYPROJECT
+    assert 'exulanica-scene-worker = "exulanica.ingest.scene_worker_command:main"' in PYPROJECT
 
 
 def test_non_http_workers_do_not_inherit_the_api_health_probe():

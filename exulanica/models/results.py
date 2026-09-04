@@ -15,8 +15,8 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
 
-from orimera.models.manifest import PROVIDER, Role
-from orimera.models.usage import CallUsage
+from exulanica.models.manifest import PROVIDER, Role
+from exulanica.models.usage import CallUsage
 
 __all__ = ["ChatResult", "EmbeddingResult", "StructuredResult"]
 

@@ -4,7 +4,7 @@ import hashlib
 import uuid
 from dataclasses import replace
 
-from orimera.world import PlacementMigration, SpatialCandidate
+from exulanica.world import PlacementMigration, SpatialCandidate
 
 
 def digest(label: str) -> str:

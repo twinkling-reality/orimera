@@ -17,7 +17,7 @@ again. What a caller gets instead is a message that says which version arrived a
 the new one.
 
 **Nothing here restates the container.** The section table lives once, in
-:mod:`orimera.reconstruction.opm`, and every stride, every element size and the order the
+:mod:`exulanica.reconstruction.opm`, and every stride, every element size and the order the
 sections are packed in is read from it. Under OPM/1 this module carried its own copy of the three
 sections and their strides, which is what made the header's generic section list a fiction:
 ADR-0010 D2 makes the list authoritative, and a validator with a private copy of it would be the
@@ -33,13 +33,13 @@ import struct
 from dataclasses import dataclass
 from typing import Any, Final
 
-from orimera.reconstruction.opm import (
+from exulanica.reconstruction.opm import (
     OPM_MAGIC,
     OPM_SECTIONS,
     OPM_VERSION,
     SUPERSEDED_OPM_VERSION,
 )
-from orimera.reconstruction.pointmap import MAX_SEGMENT_ID, RESERVED_TAG_FLAGS
+from exulanica.reconstruction.pointmap import MAX_SEGMENT_ID, RESERVED_TAG_FLAGS
 
 __all__ = ["OpmIntegrityError", "OpmIntegrityReport", "validate_opm"]
 
@@ -84,7 +84,7 @@ class OpmIntegrityReport:
 
     def as_payload(self) -> dict[str, object]:
         return {
-            "profile": "orimera.opm-integrity/v2",
+            "profile": "exulanica.opm-integrity/v2",
             "sha256": self.sha256,
             "byte_length": self.byte_length,
             "point_count": self.point_count,
@@ -193,7 +193,7 @@ def validate_opm(data: bytes) -> OpmIntegrityReport:
         raise OpmIntegrityError("the OPM header is not valid UTF-8 JSON") from exc
     header = _mapping(parsed, "header")
 
-    if header.get("format") != "orimera-point-map":
+    if header.get("format") != "exulanica-point-map":
         raise OpmIntegrityError("the OPM format is unsupported")
     if header.get("version") == SUPERSEDED_OPM_VERSION:
         # By name, per ADR-0010 D9, and naming the path rather than the problem. There is no

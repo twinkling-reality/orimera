@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from psycopg.types.json import Jsonb
 
 if TYPE_CHECKING:
-    from orimera.identity.repository import IdentityRepository
+    from exulanica.identity.repository import IdentityRepository
 
 __all__ = ["Proposals"]
 

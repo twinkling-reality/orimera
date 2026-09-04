@@ -5,9 +5,9 @@ from __future__ import annotations
 import io
 
 import pytest
-from orimera.canonical import canonical_json, round_half_down, sha256_of_canonical
-from orimera.errors import CanonicalisationError, InvalidAddressError
-from orimera.evidence import BlobId
+from exulanica.canonical import canonical_json, round_half_down, sha256_of_canonical
+from exulanica.errors import CanonicalisationError, InvalidAddressError
+from exulanica.evidence import BlobId
 
 
 def test_ni_uri_round_trips():

@@ -5,7 +5,7 @@
 # `docs/deployment.md` is the document this file implements. Read it before changing anything
 # here, in particular section 6 on the two health signals and the wording rules in invariant 10.
 
-name: orimera
+name: exulanica
 
 services:
   postgres:
@@ -14,8 +14,8 @@ services:
     # verifying a schema the deployment does not run.
     image: pgvector/pgvector:0.8.6-pg18
     environment:
-      POSTGRES_DB: orimera
-      POSTGRES_USER: orimera
+      POSTGRES_DB: ${POSTGRES_DB:-exulanica}
+      POSTGRES_USER: ${POSTGRES_USER:-exulanica}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD; there is no default}
     volumes:
       # PostgreSQL 18 moved PGDATA and the image's VOLUME with it. Mounting the old
@@ -23,20 +23,20 @@ services:
       # symptom is a database that is empty after every restart.
       - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U orimera -d orimera"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-exulanica} -d ${POSTGRES_DB:-exulanica}"]
       interval: 5s
       timeout: 3s
       retries: 20
 
   # Runs once, to completion, before the API starts. Migrations and role grants are one command
-  # because there is one correct order; see orimera/db/cli.py.
+  # because there is one correct order; see exulanica/db/cli.py.
   migrate:
     build: .
-    command: ["orimera-db"]
+    command: ["exulanica-db"]
     environment:
-      ORIMERA_DATABASE_URL: postgresql://orimera:${POSTGRES_PASSWORD}@postgres:5432/orimera
-      ORIMERA_APP_ROLE_PASSWORD: ${ORIMERA_APP_ROLE_PASSWORD:?set ORIMERA_APP_ROLE_PASSWORD; the runtime must not use the owner}
-      ORIMERA_EXECUTOR_ROLE_PASSWORD: ${ORIMERA_EXECUTOR_ROLE_PASSWORD:?set ORIMERA_EXECUTOR_ROLE_PASSWORD; the executor has its own read-only role}
+      EXULANICA_DATABASE_URL: postgresql://${POSTGRES_USER:-exulanica}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-exulanica}
+      EXULANICA_APP_ROLE_PASSWORD: ${EXULANICA_APP_ROLE_PASSWORD:?set EXULANICA_APP_ROLE_PASSWORD; the runtime must not use the owner}
+      EXULANICA_EXECUTOR_ROLE_PASSWORD: ${EXULANICA_EXECUTOR_ROLE_PASSWORD:?set EXULANICA_EXECUTOR_ROLE_PASSWORD; the executor has its own read-only role}
     depends_on:
       postgres:
         condition: service_healthy
@@ -46,20 +46,20 @@ services:
     environment:
       # Runtime processes never receive the bootstrap owner credential. PostgreSQL superusers
       # bypass row-level security even on FORCE tables, so this role choice is a data boundary.
-      ORIMERA_DATABASE_URL: postgresql://orimera_app:${ORIMERA_APP_ROLE_PASSWORD}@postgres:5432/orimera
-      ORIMERA_READONLY_DATABASE_URL: postgresql://orimera_ro:${ORIMERA_EXECUTOR_ROLE_PASSWORD}@postgres:5432/orimera
+      EXULANICA_DATABASE_URL: postgresql://exulanica_app:${EXULANICA_APP_ROLE_PASSWORD}@postgres:5432/${POSTGRES_DB:-exulanica}
+      EXULANICA_READONLY_DATABASE_URL: postgresql://exulanica_ro:${EXULANICA_EXECUTOR_ROLE_PASSWORD}@postgres:5432/${POSTGRES_DB:-exulanica}
       # No default. `load_token_directory` raises when it is unset, and an API that started with
       # an empty token directory would accept nobody while looking healthy.
-      ORIMERA_API_TOKENS: ${ORIMERA_API_TOKENS:?set ORIMERA_API_TOKENS; there is no default}
-      ORIMERA_DATA_DIR: /var/lib/orimera
+      EXULANICA_API_TOKENS: ${EXULANICA_API_TOKENS:?set EXULANICA_API_TOKENS; there is no default}
+      EXULANICA_DATA_DIR: /var/lib/exulanica
       # Production delivery belongs to the separate worker service below. The in-process worker
       # remains available for a one-process development run, but this composition does not use it.
-      ORIMERA_DERIVATIVE_WORKER: "off"
+      EXULANICA_DERIVATIVE_WORKER: "off"
       NEBIUS_API_KEY: ${NEBIUS_API_KEY:-}
     volumes:
-      - media:/var/lib/orimera
+      - media:/var/lib/exulanica
     ports:
-      - "${ORIMERA_PORT:-8000}:8000"
+      - "${EXULANICA_PORT:-8000}:8000"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -68,8 +68,8 @@ services:
     build:
       context: .
       args:
-        ORIMERA_SYNC_EXTRAS: "--extra reconstruction"
-    command: ["orimera-derivative-worker"]
+        EXULANICA_SYNC_EXTRAS: "--extra reconstruction"
+    command: ["exulanica-derivative-worker"]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
@@ -77,24 +77,24 @@ services:
       timeout: 3s
       retries: 3
     environment:
-      ORIMERA_DATABASE_URL: postgresql://orimera_app:${ORIMERA_APP_ROLE_PASSWORD}@postgres:5432/orimera
-      ORIMERA_WORKSPACE_IDS: ${ORIMERA_WORKSPACE_IDS:?set ORIMERA_WORKSPACE_IDS to the comma-separated workspaces this worker may drain}
-      ORIMERA_DATA_DIR: /var/lib/orimera
-      ORIMERA_DEPTH_MODEL: moge
-      ORIMERA_DEPTH_MODEL_ID: ${ORIMERA_DEPTH_MODEL_ID:-Ruicheng/moge-2-vitl}
-      ORIMERA_DEPTH_MODEL_REVISION: ${ORIMERA_DEPTH_MODEL_REVISION:-39c4d5e957afe587e04eec59dc2bcc3be5ecd968}
-      ORIMERA_DEPTH_DEVICE: ${ORIMERA_DEPTH_DEVICE:-}
-      HF_HOME: /var/lib/orimera/model-cache
+      EXULANICA_DATABASE_URL: postgresql://exulanica_app:${EXULANICA_APP_ROLE_PASSWORD}@postgres:5432/${POSTGRES_DB:-exulanica}
+      EXULANICA_WORKSPACE_IDS: ${EXULANICA_WORKSPACE_IDS:?set EXULANICA_WORKSPACE_IDS to the comma-separated workspaces this worker may drain}
+      EXULANICA_DATA_DIR: /var/lib/exulanica
+      EXULANICA_DEPTH_MODEL: moge
+      EXULANICA_DEPTH_MODEL_ID: ${EXULANICA_DEPTH_MODEL_ID:-Ruicheng/moge-2-vitl}
+      EXULANICA_DEPTH_MODEL_REVISION: ${EXULANICA_DEPTH_MODEL_REVISION:-39c4d5e957afe587e04eec59dc2bcc3be5ecd968}
+      EXULANICA_DEPTH_DEVICE: ${EXULANICA_DEPTH_DEVICE:-}
+      HF_HOME: /var/lib/exulanica/model-cache
       NEBIUS_API_KEY: ${NEBIUS_API_KEY:-}
     volumes:
-      - media:/var/lib/orimera
+      - media:/var/lib/exulanica
     depends_on:
       migrate:
         condition: service_completed_successfully
 
   scene-worker:
     build: .
-    command: ["orimera-scene-worker"]
+    command: ["exulanica-scene-worker"]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
@@ -102,15 +102,15 @@ services:
       timeout: 3s
       retries: 3
     environment:
-      ORIMERA_DATABASE_URL: postgresql://orimera_app:${ORIMERA_APP_ROLE_PASSWORD}@postgres:5432/orimera
-      ORIMERA_WORKSPACE_IDS: ${ORIMERA_WORKSPACE_IDS:?set ORIMERA_WORKSPACE_IDS to the comma-separated workspaces this worker may drain}
-      ORIMERA_DATA_DIR: /var/lib/orimera
+      EXULANICA_DATABASE_URL: postgresql://exulanica_app:${EXULANICA_APP_ROLE_PASSWORD}@postgres:5432/${POSTGRES_DB:-exulanica}
+      EXULANICA_WORKSPACE_IDS: ${EXULANICA_WORKSPACE_IDS:?set EXULANICA_WORKSPACE_IDS to the comma-separated workspaces this worker may drain}
+      EXULANICA_DATA_DIR: /var/lib/exulanica
       # Both values enter the signed-by-content pose manifest. No mutable image tag or guessed
       # checkout is accepted as provenance for geometry that reaches the renderer.
-      ORIMERA_CODE_REVISION: ${ORIMERA_CODE_REVISION:?set the exact 40-character Git revision}
-      ORIMERA_POSE_RUNTIME_IMAGE: ${ORIMERA_POSE_RUNTIME_IMAGE:?set an image reference pinned by sha256 digest}
+      EXULANICA_CODE_REVISION: ${EXULANICA_CODE_REVISION:?set the exact 40-character Git revision}
+      EXULANICA_POSE_RUNTIME_IMAGE: ${EXULANICA_POSE_RUNTIME_IMAGE:?set an image reference pinned by sha256 digest}
     volumes:
-      - media:/var/lib/orimera
+      - media:/var/lib/exulanica
     depends_on:
       migrate:
         condition: service_completed_successfully

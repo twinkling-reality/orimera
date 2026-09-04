@@ -124,7 +124,7 @@ class CorridorBuildManifest:
 
     def as_payload(self) -> dict[str, object]:
         return {
-            "profile": "orimera.corridor-build/v1",
+            "profile": "exulanica.corridor-build/v1",
             "scene_ref": self.scene_ref,
             "reconstruction_digest": self.reconstruction_digest,
             "topology_digest": self.topology_digest,
@@ -187,7 +187,7 @@ class CorridorArtifact:
 
     def unsigned_payload(self) -> dict[str, object]:
         return {
-            "profile": "orimera.corridor-artifact/v1",
+            "profile": "exulanica.corridor-artifact/v1",
             "manifest_digest": self.manifest_digest,
             "reconstruction_digest": self.reconstruction_digest,
             "topology_digest": self.topology_digest,
@@ -265,7 +265,7 @@ def build_corridor_artifact(manifest: CorridorBuildManifest) -> CorridorArtifact
 
     accepted = not reasons
     values = {
-        "profile": "orimera.corridor-artifact/v1",
+        "profile": "exulanica.corridor-artifact/v1",
         "manifest_digest": manifest.digest,
         "reconstruction_digest": manifest.reconstruction_digest,
         "topology_digest": manifest.topology_digest,

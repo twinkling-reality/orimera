@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from orimera.canonical import canonical_json
-from orimera.world_package.package import MANIFEST_PATH, verify_package
+from exulanica.canonical import canonical_json
+from exulanica.world_package.package import MANIFEST_PATH, verify_package
 
 #: How a list item is recognised as the same item across two packages, so a change reads as one
 #: entry added or removed rather than as the whole list replaced.

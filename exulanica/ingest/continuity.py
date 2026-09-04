@@ -5,15 +5,15 @@ belong together in time and place, and match proposals ask which unlinked detect
 somebody already named. Both are relations between captures, so both run after the photographs
 rather than inside any one of them.
 
-**They live here because two callers need them identically.** ``orimera-ingest`` runs them at
-the end of a directory and :mod:`orimera.ingest.worker` runs them at the end of a queued job,
+**They live here because two callers need them identically.** ``exulanica-ingest`` runs them at
+the end of a directory and :mod:`exulanica.ingest.worker` runs them at the end of a queued job,
 and a second copy of this is a second place for the batch id, the run bracketing and the order
 to drift.
 
 **Each pass gets its own run and this module closes it.** That sentence is the reason the module
 exists rather than being two lines in each caller. ``run_scene_grouping`` finishes the run only
 when it opened it, and ``propose_matches`` takes a run id and cannot finish anything, because
-``Ledger`` lives in ``orimera.ingest`` and the identity layer may not import it. So a caller that
+``Ledger`` lives in ``exulanica.ingest`` and the identity layer may not import it. So a caller that
 hands either of them a run it opened owns closing it, and both callers previously did not:
 measured on a real end-to-end upload, every batch left two ``pipeline_run`` rows in ``running``
 for ever. Nothing downstream read the column, which is exactly why it stayed wrong; the ledger
@@ -25,12 +25,12 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from orimera.identity.proposer import ProposalReport, propose_matches
-from orimera.identity.repository import IdentityRepository
-from orimera.identity.signals import ContextSignals
-from orimera.ingest.ledger import Ledger
-from orimera.ingest.repository import IngestRepository
-from orimera.ingest.scenes import SceneReport, run_scene_grouping
+from exulanica.identity.proposer import ProposalReport, propose_matches
+from exulanica.identity.repository import IdentityRepository
+from exulanica.identity.signals import ContextSignals
+from exulanica.ingest.ledger import Ledger
+from exulanica.ingest.repository import IngestRepository
+from exulanica.ingest.scenes import SceneReport, run_scene_grouping
 
 __all__ = ["ContinuityReport", "run_continuity"]
 

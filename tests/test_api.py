@@ -22,17 +22,17 @@ import json
 import uuid
 
 import pytest
+from exulanica.api.app import create_app
+from exulanica.api.authorisation import load_token_directory
+from exulanica.api.routes import routable_paths
+from exulanica.api.services import Services
+from exulanica.epistemics.assertions import AssertionWriter
+from exulanica.evidence.blob import BlobId
+from exulanica.identity import IdentityRepository, name_occurrence
+from exulanica.ingest.batch import IntakeBatch
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.store.local import LocalContentAddressedStore
 from fastapi.testclient import TestClient
-from orimera.api.app import create_app
-from orimera.api.authorisation import load_token_directory
-from orimera.api.routes import routable_paths
-from orimera.api.services import Services
-from orimera.epistemics.assertions import AssertionWriter
-from orimera.evidence.blob import BlobId
-from orimera.identity import IdentityRepository, name_occurrence
-from orimera.ingest.batch import IntakeBatch
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.store.local import LocalContentAddressedStore
 
 from conftest import DEFAULT_PAYLOAD, CountingVisionModel, write_photo, write_point_map
 
@@ -57,7 +57,7 @@ ROUTE_PROBES: dict[tuple[str, str], dict] = {
     ("POST", "/selection/packet"): {"json": {"intent": "captures"}},
     ("POST", "/selection/plan"): {"json": {"question": "where was I?"}},
     ("POST", "/selection/ask"): {"json": {"question": "where was I?"}},
-    ("GET", "/evidence"): {"params": {"uri": "orimera://blob/x/img#t=0,1"}},
+    ("GET", "/evidence"): {"params": {"uri": "exulanica://blob/x/img#t=0,1"}},
     ("GET", "/evidence/{span_id}"): {},
     ("GET", "/evidence/{span_id}/region"): {},
     ("GET", "/identity/events"): {},
@@ -264,7 +264,7 @@ def deployment(tmp_path, photo_dir, repository, spine_schema, monkeypatch):
 
     stranger = uuid.uuid4()
     monkeypatch.setenv(
-        "ORIMERA_API_TOKENS",
+        "EXULANICA_API_TOKENS",
         json.dumps(
             {
                 _OWNER_TOKEN: {"workspace_id": str(owner), "actor": str(actor)},
@@ -617,7 +617,7 @@ def _group_two_photographs(repository, photo_dir, store):
     Two photographs at one position an hour apart, which is inside the grouping window, so a
     correct clusterer returns one group of two and an incorrect one returns two groups of one.
     """
-    from orimera.ingest.scenes import run_scene_grouping
+    from exulanica.ingest.scenes import run_scene_grouping
 
     pipeline = PhotoIngestPipeline(repository, store, vision=None)
     outcome = pipeline.ingest_file(
@@ -700,8 +700,8 @@ def _reconstruct(repository, photo_dir, store, *, valid_fraction=1.0, when="2026
     idempotency key and the same artifact, which is the cost control working exactly as designed
     and not what a test of two regions wants.
     """
-    from orimera.ingest.scenes import run_scene_grouping
-    from orimera.reconstruction.testing import FlatDepthModel
+    from exulanica.ingest.scenes import run_scene_grouping
+    from exulanica.reconstruction.testing import FlatDepthModel
 
     pipeline = PhotoIngestPipeline(
         repository, store, vision=None, depth=FlatDepthModel(valid_fraction=valid_fraction)
@@ -755,7 +755,7 @@ def test_a_group_nothing_has_reconstructed_says_so_rather_than_claiming_rung_fou
     Rung 4 means reconstruction ran and there was nothing to place. Null means it never ran. An
     interface that showed them identically would be reporting a decision nobody made.
     """
-    from orimera.ingest.scenes import run_scene_grouping
+    from exulanica.ingest.scenes import run_scene_grouping
 
     pipeline = PhotoIngestPipeline(repository, deployment.store, vision=None, depth=None)
     outcome = pipeline.ingest_file(write_photo(photo_dir, "none.jpg", when="2026:08:27 14:00:00"))
@@ -796,7 +796,7 @@ def test_the_newest_rung_is_the_one_reported(deployment, repository, photo_dir):
     # photograph. `reconstruction_rung_is` is functional, so this supersedes rather than adding.
     # A real run row, because `assertion.produced_by_run` has a foreign key: an inference that
     # named a run nobody could look up would be an inference with no provenance.
-    from orimera.ingest.ledger import Ledger
+    from exulanica.ingest.ledger import Ledger
 
     rerun = Ledger.start_run(repository, trigger="reprocess")
     repository.insert_assertion(

@@ -29,17 +29,17 @@ from pathlib import Path
 
 import psycopg
 import pytest
-from orimera.api.authorisation import load_token_directory
-from orimera.api.services import Services
-from orimera.db.session import Database
-from orimera.ingest import derivative_queue
-from orimera.ingest.batch import IntakeBatch
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.worker import MINIMUM_LEASE_SECONDS, DerivativeWorker, lease_seconds_for
-from orimera.models.errors import TransportError
-from orimera.models.manifest import Role
-from orimera.reconstruction.testing import FlatDepthModel
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.api.authorisation import load_token_directory
+from exulanica.api.services import Services
+from exulanica.db.session import Database
+from exulanica.ingest import derivative_queue
+from exulanica.ingest.batch import IntakeBatch
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.worker import MINIMUM_LEASE_SECONDS, DerivativeWorker, lease_seconds_for
+from exulanica.models.errors import TransportError
+from exulanica.models.manifest import Role
+from exulanica.reconstruction.testing import FlatDepthModel
+from exulanica.store.local import LocalContentAddressedStore
 
 from conftest import CountingVisionModel, photo_bytes
 from tests_support_api import scratch_database
@@ -112,7 +112,7 @@ def _process_drain(
     counter: str,
     block_after: str | None,
 ) -> None:
-    import orimera.ingest.worker as worker_module
+    import exulanica.ingest.worker as worker_module
 
     if block_after == "intake":
         original = worker_module.PhotoIngestPipeline.ingest_derivatives
@@ -858,7 +858,7 @@ def test_process_death_at_each_real_stage_boundary_replays_to_one_canonical_resu
 
 def _services(tmp_path, monkeypatch, model_client):
     monkeypatch.setenv(
-        "ORIMERA_API_TOKENS",
+        "EXULANICA_API_TOKENS",
         json.dumps({"a-token-long-enough-to-be-accepted-here": {
             "workspace_id": str(uuid.uuid4()), "actor": str(uuid.uuid4())}}),
     )
@@ -877,7 +877,7 @@ def test_the_lease_the_api_gives_its_worker_covers_the_vision_budget(tmp_path, c
     """Computed from the client the worker was given, so raising its timeout raises the lease.
 
     A constant here would be right for the API's client, whose `max_attempts` is 1, and wrong for
-    `orimera-ingest`, whose is 3, on the day somebody changed either.
+    `exulanica-ingest`, whose is 3, on the day somebody changed either.
     """
     worker = _services(tmp_path, monkeypatch, client).build_derivative_worker()
     assert worker is not None

@@ -1,7 +1,7 @@
 """Errors raised by the model client, the manifest and the preflight.
 
-Kept separate from ``orimera.errors``, which is about the evidence spine and the object store.
-Every class here inherits ``OrimeraError`` so a caller can still catch the whole package with
+Kept separate from ``exulanica.errors``, which is about the evidence spine and the object store.
+Every class here inherits ``ExulanicaError`` so a caller can still catch the whole package with
 one except clause.
 
 Several of these are control-flow relevant rather than decorative:
@@ -14,7 +14,7 @@ Several of these are control-flow relevant rather than decorative:
 
 from __future__ import annotations
 
-from orimera.errors import OrimeraError
+from exulanica.errors import ExulanicaError
 
 __all__ = [
     "AmbiguousStructuredOutputError",
@@ -33,8 +33,8 @@ __all__ = [
 ]
 
 
-class ModelError(OrimeraError):
-    """Base class for everything raised by ``orimera.models``."""
+class ModelError(ExulanicaError):
+    """Base class for everything raised by ``exulanica.models``."""
 
 
 class ManifestError(ModelError, ValueError):

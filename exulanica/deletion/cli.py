@@ -1,12 +1,13 @@
-"""``orimera-purge``: destroy the bytes the tombstones asked for, and say what it did.
+"""``exulanica-purge``: destroy the bytes the tombstones asked for, and say what it did.
 
 **A command rather than something the API does by itself, by default.** Erasure is the one
 irreversible thing this system performs, and a demonstration instance that quietly destroyed
 files on a timer would be the wrong default to arrive at by saying nothing. The
-:class:`~orimera.deletion.worker.PurgeWorker` can run on a thread, and an operator turns it on
+:class:`~exulanica.deletion.worker.PurgeWorker` can run on a thread, and an operator turns it on
 with a credential; this is the way to run it once, watch what it did, and run it again.
 
-**It connects as its own role.** ``ORIMERA_PURGE_DATABASE_URL`` names ``orimera_purge``, and its
+**It connects as its own role.** ``EXULANICA_PURGE_DATABASE_URL`` names ``exulanica_purge``
+(or the ``exulanica_purge`` alias), and its
 absence is refused rather than defaulted to the writer. That is not ceremony: the purge role has
 a cross-workspace read the runtime role must never have, and the runtime role has writes the
 purger must never need. Running as the wrong one either destroys another tenant's photograph or
@@ -16,27 +17,24 @@ cannot tell that it would.
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import uuid
-from pathlib import Path
 from typing import Any, Final
 
-from orimera.db.session import Database
-from orimera.deletion.worker import PurgeWorker
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.db.session import Database
+from exulanica.deletion.worker import PurgeWorker
+from exulanica.env import env_get, env_name, resolve_data_dir
+from exulanica.store.local import LocalContentAddressedStore
 
 __all__ = ["PURGE_DATABASE_URL_ENV", "main"]
 
 #: The connection string for the purge role. No default and no fallback to the writer.
-PURGE_DATABASE_URL_ENV: Final = "ORIMERA_PURGE_DATABASE_URL"
-
-_DEFAULT_DATA_DIR = Path(".orimera/local")
+PURGE_DATABASE_URL_ENV: Final = env_name("PURGE_DATABASE_URL")
 
 
 def main(argv: list[str] | None = None, stream: Any = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="orimera-purge",
+        prog="exulanica-purge",
         description=(
             "Destroy the object-store bytes that committed tombstones asked to have destroyed. "
             "Idempotent, and safe to run repeatedly."
@@ -50,7 +48,7 @@ def main(argv: list[str] | None = None, stream: Any = None) -> int:
         help="A workspace to drain. Repeatable. Named rather than discovered, because "
         "discovering them would mean a query this role has no business running.",
     )
-    parser.add_argument("--data-dir", default=str(_DEFAULT_DATA_DIR))
+    parser.add_argument("--data-dir", default=None)
     parser.add_argument(
         "--limit",
         type=int,
@@ -62,12 +60,13 @@ def main(argv: list[str] | None = None, stream: Any = None) -> int:
     args = parser.parse_args(argv)
     out = stream or sys.stdout
 
-    url = os.environ.get(PURGE_DATABASE_URL_ENV)
+    url = env_get("PURGE_DATABASE_URL")
     if not url:
         print(
-            f"{PURGE_DATABASE_URL_ENV} is not set. It names the connection for the "
-            "`orimera_purge` role, which `orimera-db` provisions. There is no default and no "
-            "fallback to the write role: the purge role holds a cross-workspace read the "
+            f"{PURGE_DATABASE_URL_ENV} is not set (EXULANICA_PURGE_DATABASE_URL is accepted as "
+            "an alias). It names the connection for the `exulanica_purge` role (or the "
+            "`exulanica_purge` alias), which `exulanica-db` provisions. There is no default and "
+            "no fallback to the write role: the purge role holds a cross-workspace read the "
             "runtime role must never have, and running as the writer would destroy bytes "
             "another workspace still holds without being able to tell.",
             file=out,
@@ -75,9 +74,10 @@ def main(argv: list[str] | None = None, stream: Any = None) -> int:
         return 2
 
     workspaces = frozenset(uuid.UUID(value) for value in args.workspace)
+    data_dir = resolve_data_dir(explicit=args.data_dir)
     worker = PurgeWorker(
         Database(url=url),
-        LocalContentAddressedStore(Path(args.data_dir) / "blobs"),
+        LocalContentAddressedStore(data_dir / "blobs"),
         workspaces,
         limit_per_pass=args.limit,
     )

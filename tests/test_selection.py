@@ -19,10 +19,10 @@ import datetime as dt
 import uuid
 
 import pytest
-from orimera.epistemics.assertions import AssertionWriter
-from orimera.identity import IdentityRepository, confirm_link, name_occurrence
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.selection import (
+from exulanica.epistemics.assertions import AssertionWriter
+from exulanica.identity import IdentityRepository, confirm_link, name_occurrence
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.selection import (
     CaptureWindow,
     EntityMode,
     EntitySelector,
@@ -37,8 +37,8 @@ from orimera.selection import (
     parse,
     validate,
 )
-from orimera.selection.plan import CaptureSelector, ProcessingState
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.selection.plan import CaptureSelector, ProcessingState
+from exulanica.store.local import LocalContentAddressedStore
 
 from conftest import DEFAULT_PAYLOAD, CountingVisionModel, write_photo
 

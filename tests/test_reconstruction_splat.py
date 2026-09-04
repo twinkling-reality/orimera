@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 
 import pytest
-from orimera.reconstruction.pose import CommandResult
-from orimera.reconstruction.splat import SplatBuildManifest, run_gsplat_job
+from exulanica.reconstruction.pose import CommandResult
+from exulanica.reconstruction.splat import SplatBuildManifest, run_gsplat_job
 
 
 def _manifest(**changes) -> SplatBuildManifest:
@@ -52,7 +52,7 @@ class FakeRunner:
 
     def __call__(self, command: tuple[str, ...], cwd: Path) -> CommandResult:
         self.calls.append(command)
-        if command[0] == "orimera-gsplat-scene-v1":
+        if command[0] == "exulanica-gsplat-scene-v1":
             output = Path(command[command.index("--output") + 1])
             if self.preempt_once:
                 self.preempt_once = False
@@ -64,7 +64,7 @@ class FakeRunner:
             (output / "runtime.json").write_text(
                 json.dumps(
                     {
-                        "profile": "orimera.gsplat-scene-runner/v1",
+                        "profile": "exulanica.gsplat-scene-runner/v1",
                         "backend": "gsplat",
                         "gsplat_revision": self.manifest.gsplat_revision,
                         "loaded_packages": ["gsplat", "torch"],
@@ -81,7 +81,7 @@ class FakeRunner:
             (output / "metrics.json").write_text(
                 json.dumps(
                     {
-                        "profile": "orimera.gsplat-quality/v1",
+                        "profile": "exulanica.gsplat-quality/v1",
                         "heldout_views": 4,
                         "psnr": self.psnr,
                         "ssim": 0.86,
@@ -192,7 +192,9 @@ def test_preemption_is_distinct_from_failure_and_the_next_call_resumes(tmp_path)
     )
     assert interrupted.status == "checkpointed"
     assert resumed.status == "completed"
-    train_commands = [command for command in fake.calls if command[0] == "orimera-gsplat-scene-v1"]
+    train_commands = [
+        command for command in fake.calls if command[0] == "exulanica-gsplat-scene-v1"
+    ]
     assert len(train_commands) == 2
     assert all(command[-1] == "auto" for command in train_commands)
 
@@ -210,7 +212,7 @@ def test_runtime_package_inventory_is_checked_again_after_execution(tmp_path):
 
     def tainted(command: tuple[str, ...], cwd: Path) -> CommandResult:
         result = FakeRunner(manifest)(command, cwd)
-        if command[0] == "orimera-gsplat-scene-v1":
+        if command[0] == "exulanica-gsplat-scene-v1":
             output = Path(command[command.index("--output") + 1])
             runtime = json.loads((output / "runtime.json").read_text(encoding="utf-8"))
             runtime["loaded_packages"].append("diff-gaussian-rasterization")

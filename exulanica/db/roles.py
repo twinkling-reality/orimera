@@ -14,7 +14,7 @@ while RLS is what stops a READ of another workspace's rows, and nothing was test
 So this module creates the role and grants it exactly what it needs:
 
 *   **No DELETE anywhere.** Deletion in this system is a tombstone plus a purge job plus the
-    separately authorised purger in :mod:`orimera.store.base`. A runtime role that can DELETE
+    separately authorised purger in :mod:`exulanica.store.base`. A runtime role that can DELETE
     can erase the record of what it erased.
 *   **SELECT only on ``predicate``.** This is defect R3. ``allows_kind`` is what stops a model
     filing a name, and ``writes_a_name`` is what stops a new vocabulary row escaping the rule
@@ -40,7 +40,7 @@ from typing import Final
 import psycopg
 from psycopg import sql
 
-from orimera.errors import OrimeraError
+from exulanica.errors import ExulanicaError
 
 __all__ = [
     "EXECUTOR_ROLE",
@@ -56,17 +56,17 @@ __all__ = [
 ]
 
 #: The role the write path connects as: identity decisions, annotations, ingest. Owns nothing.
-RUNTIME_ROLE: Final = "orimera_app"
+RUNTIME_ROLE: Final = "exulanica_app"
 
 #: The role the deterministic Selection executor connects as. Named in
 #: architecture-overview.md section 5.2, which specifies a non-owner role without BYPASSRLS for
 #: exactly this step. It holds SELECT and nothing else, so the step of the pipeline that runs a
 #: plan derived from model output cannot write whatever happens above it.
-EXECUTOR_ROLE: Final = "orimera_ro"
+EXECUTOR_ROLE: Final = "exulanica_ro"
 
 #: The role the object-store purger connects as. It exists for one privilege nothing else may
 #: have, and the privilege is a READ: see :func:`provision_purge_role`.
-PURGE_ROLE: Final = "orimera_purge"
+PURGE_ROLE: Final = "exulanica_purge"
 
 #: Tables the runtime may read and may not write. See the module docstring for why each.
 READ_ONLY_TABLES: Final = (
@@ -107,7 +107,7 @@ _ADMIN_ONLY_SEQUENCES: Final = ("predicate_predicate_id_seq",)
 #: **This dict names columns, so it depends on the schema being current.** ``grant select
 #: (scene_id) on artifact`` fails outright against a database before migration 0024, rather than
 #: granting less than it says. That is the right direction and it is already the order
-#: ``orimera-db provision`` runs in: migrations, then roles, which is what its own description
+#: ``exulanica-db provision`` runs in: migrations, then roles, which is what its own description
 #: says it does.
 _PURGE_READS: Final = {
     "capture": ("capture_id", "workspace_id", "blob_sha256", "deleted_at"),
@@ -124,7 +124,7 @@ _PURGE_READS: Final = {
 }
 
 #: The tables :data:`_PURGE_READS` gives the cross-workspace policy to, in a public form, because
-#: :func:`orimera.deletion.queue.read_visibility` has to ask the database whether the connected
+#: :func:`exulanica.deletion.queue.read_visibility` has to ask the database whether the connected
 #: role actually holds that policy on all of them. Derived rather than repeated: a table added
 #: above and forgotten there would leave the visibility check reporting a full view over a
 #: relation the purger reads through a narrowed one, which is the silent half of correction 7.
@@ -166,7 +166,7 @@ _CROSS_WORKSPACE_POLICY: Final = "purge_sees_every_holder_of_these_bytes"
 _ROLE_LOCK_KEY: Final = 119_622_309
 
 
-class RuntimeRoleUnsafe(OrimeraError):
+class RuntimeRoleUnsafe(ExulanicaError):
     """The process connected as an owner, superuser, or BYPASSRLS role."""
 
 
@@ -303,7 +303,7 @@ def provision_purge_role(
         identifiers, the hashes and the deletion markers, and not ``device_id``, not
         ``started_at``, and not an artifact's ``idempotency_key``.
     *   **No DELETE anywhere, on any table.** Erasure of bytes runs through
-        ``orimera.store.privileged_purger``, which cannot be constructed without naming the
+        ``exulanica.store.privileged_purger``, which cannot be constructed without naming the
         tombstone that authorises it. Erasure of rows is not something this system does.
     *   **And its UPDATE on the queue and the tombstone is column by column too.** It was not,
         and a review measured what a full-table grant bought: this role could push a tombstone's

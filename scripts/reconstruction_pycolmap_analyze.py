@@ -9,7 +9,7 @@ points, mean reprojection error and stage times; alignment-free pairwise relativ
 baseline-direction errors; a rotation-informed similarity (rotation from the chordal mean of
 the per-image rotations, then scale and translation from the centres) with its centre
 residuals; and the Umeyama numbers carried over from the run. Then loads
-orimera/reconstruction/pose.py unmodified from this repository and checks its private parsers
+exulanica/reconstruction/pose.py unmodified from this repository and checks its private parsers
 and quality function against pycolmap's own text export of the A8 and B8 models. Writes
 <spike_dir>/analysis.json and prints one row per run followed by the two parser checks. This is
 the summary behind the table in docs/reconstruction-findings.md section 3 and the two facts
@@ -37,7 +37,7 @@ import numpy as np
 import pycolmap
 
 REPO = Path(__file__).resolve().parents[1]
-POSE_PY = REPO / 'orimera' / 'reconstruction' / 'pose.py'
+POSE_PY = REPO / 'exulanica' / 'reconstruction' / 'pose.py'
 
 
 def angle_deg(Ra, Rb):
@@ -55,7 +55,7 @@ def chordal_mean_rotation(Rs):
 
 
 def load_pose_module():
-    spec = importlib.util.spec_from_file_location('orimera_pose', POSE_PY)
+    spec = importlib.util.spec_from_file_location('exulanica_pose', POSE_PY)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)

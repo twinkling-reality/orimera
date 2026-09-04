@@ -1,15 +1,15 @@
 [project]
-name = "orimera"
+name = "exulanica"
 version = "0.1.0"
-description = "Orimera: a personal world memory model with an evidence-addressed spine."
+description = "Exulanica: a personal world memory model with an evidence-addressed spine."
 requires-python = ">=3.11,<3.12"
 license = { file = "LICENSE" }
 
 # Deliberately minimal. Each entry is justified:
 #   pydantic  - boundary schemas (HTTP request/response, model json_schema strict payloads).
-#               NOT used for the evidence spine types in orimera.evidence: those are frozen
+#               NOT used for the evidence spine types in exulanica.evidence: those are frozen
 #               dataclasses with explicit validation, because coercion is a hazard for values
-#               that feed a hash (see orimera/canonical.py).
+#               that feed a hash (see exulanica/canonical.py).
 #   pillow    - JPEG/PNG decode, EXIF, and the orientation transform at ingest. Orientation is
 #               eight values including four mirrored ones, and ImageOps.exif_transpose is the
 #               reference implementation of that table; a hand-rolled version would be a
@@ -96,45 +96,45 @@ pose = [
 ]
 
 [project.scripts]
-# `uv run orimera-ingest ingest ./photos`. Safe to run repeatedly: the second run reports what
+# `uv run exulanica-ingest ingest ./photos`. Safe to run repeatedly: the second run reports what
 # it skipped and issues no model calls.
-orimera-ingest = "orimera.ingest.cli:main"
-# `uv run orimera-preflight`. Checks every model identifier the manifest can reach against the
+exulanica-ingest = "exulanica.ingest.cli:main"
+# `uv run exulanica-preflight`. Checks every model identifier the manifest can reach against the
 # live catalog. Exit 0 clean, 1 on any failure, so CI and the weekly uptime check on a running
 # deployment can both call it without parsing output. `--catalog-file` checks a saved snapshot
 # instead of the network, which is how the offline test runs it.
-orimera-preflight = "orimera.models.preflight:main"
-# `uv run orimera-corpus`. Writes the synthetic corpus and the ground truth manifest that goes
+exulanica-preflight = "exulanica.models.preflight:main"
+# `uv run exulanica-corpus`. Writes the synthetic corpus and the ground truth manifest that goes
 # with it. Deterministic from its seed, so a rebuild followed by an ingest recomputes nothing.
-orimera-corpus = "orimera.corpus.__main__:main"
-# `uv run orimera-identity propose --workspace <uuid>`. Asks the corpus what it recognises, from
+exulanica-corpus = "exulanica.corpus.__main__:main"
+# `uv run exulanica-identity propose --workspace <uuid>`. Asks the corpus what it recognises, from
 # context and never from biometrics. Separate from the ingest command because the moment a
 # proposal becomes possible is when somebody is NAMED, and no ingest follows that.
-orimera-identity = "orimera.identity.cli:main"
-# `uv run orimera-db`. Brings a database up to the schema and the roles this code expects, in the
+exulanica-identity = "exulanica.identity.cli:main"
+# `uv run exulanica-db`. Brings a database up to the schema and the roles this code expects, in the
 # one correct order. A deployment runs it before the API starts.
-orimera-db = "orimera.db.cli:main"
-# `uv run orimera-eval run --corpus <dir> --workspace <uuid>`. Measures what can be measured and
+exulanica-db = "exulanica.db.cli:main"
+# `uv run exulanica-eval run --corpus <dir> --workspace <uuid>`. Measures what can be measured and
 # says what stopped the rest. Read docs/evaluation-methodology.md section 3 before quoting it.
-orimera-eval = "orimera.evaluation.cli:main"
-# `uv run orimera-purge --workspace <uuid>`. Destroys the object-store bytes that committed
-# tombstones asked for. Connects as `orimera_purge` through ORIMERA_PURGE_DATABASE_URL and
+exulanica-eval = "exulanica.evaluation.cli:main"
+# `uv run exulanica-purge --workspace <uuid>`. Destroys the object-store bytes that committed
+# tombstones asked for. Connects as `exulanica_purge` through EXULANICA_PURGE_DATABASE_URL and
 # refuses to run without it, because the runtime role cannot see whether another workspace still
 # holds the bytes and would destroy them anyway.
-orimera-purge = "orimera.deletion.cli:main"
-# `uv run orimera-derivative-worker`. The production queue consumer: a separate process with
+exulanica-purge = "exulanica.deletion.cli:main"
+# `uv run exulanica-derivative-worker`. The production queue consumer: a separate process with
 # renewable leases, signal-aware shutdown and a durable delivery ledger.
-orimera-derivative-worker = "orimera.ingest.worker_command:main"
-# `uv run --extra pose orimera-scene-worker`. Kept separate from the depth worker because the
+exulanica-derivative-worker = "exulanica.ingest.worker_command:main"
+# `uv run --extra pose exulanica-scene-worker`. Kept separate from the depth worker because the
 # pycolmap and torch wheels load incompatible OpenMP runtimes on macOS.
-orimera-scene-worker = "orimera.ingest.scene_worker_command:main"
-# `uv run orimera-wmp project ...` creates a signed, independently verifiable World Memory
+exulanica-scene-worker = "exulanica.ingest.scene_worker_command:main"
+# `uv run exulanica-wmp project ...` creates a signed, independently verifiable World Memory
 # Package; verify, inspect, and diff never open PostgreSQL.
-orimera-wmp = "orimera.world_package.cli:main"
-# `uv run orimera-frontier demonstrate ...` is the Phase 8 source-to-package acceptance path.
+exulanica-wmp = "exulanica.world_package.cli:main"
+# `uv run exulanica-frontier demonstrate ...` is the Phase 8 source-to-package acceptance path.
 # It composes the existing boundaries and requires explicit confirmation for its one durable
 # source tombstone.
-orimera-frontier = "orimera.orchestration.cli:main"
+exulanica-frontier = "exulanica.orchestration.cli:main"
 
 [dependency-groups]
 dev = [
@@ -152,7 +152,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["orimera"]
+packages = ["exulanica"]
 
 # The reconstruction extra names two packages by git url, because neither is on PyPI in the form
 # MoGe needs: MoGe itself is source-only, and `utils3d_moge` is a different package from the
@@ -229,7 +229,7 @@ requires-dist = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["orimera", "tests", "scripts"]
+src = ["exulanica", "tests", "scripts"]
 
 [tool.ruff.lint]
 select = [
@@ -261,7 +261,7 @@ minversion = "8.0"
 testpaths = ["tests"]
 addopts = "-q --strict-markers --strict-config"
 markers = [
-  "postgres: requires a live PostgreSQL 18 server with pgvector via ORIMERA_TEST_DATABASE_URL",
+  "postgres: requires a live PostgreSQL 18 server with pgvector via EXULANICA_TEST_DATABASE_URL",
 ]
 
 
@@ -275,7 +275,7 @@ markers = [
 # --------------------------------------------------------------------------------------------
 
 [tool.importlinter]
-root_package = "orimera"
+root_package = "exulanica"
 # Needed by the forbidden contract below: without it, psycopg is invisible to the graph and the
 # contract passes for the wrong reason.
 include_external_packages = true
@@ -285,12 +285,12 @@ name = "The backend is layered, and the core is at the bottom"
 type = "layers"
 # EXHAUSTIVE, and this is the half that makes the layering a rule rather than a habit. A layers
 # contract says nothing at all about a package absent from it: an unlisted one may import the
-# topmost layer and the contract stays green. That is not hypothetical. `orimera.graph` was added
+# topmost layer and the contract stays green. That is not hypothetical. `exulanica.graph` was added
 # to this list by hand after the package already existed, and until it was, nothing stopped it
-# from importing `orimera.api`. With this set, a new top-level package nobody remembered to place
+# from importing `exulanica.api`. With this set, a new top-level package nobody remembered to place
 # breaks the build and names itself.
 exhaustive = true
-containers = ["orimera"]
+containers = ["exulanica"]
 layers = [
   # Phase 8 is the one workflow that intentionally composes every lower product boundary.
   # Nothing imports it; it is an executable acceptance path rather than reusable domain logic.
@@ -311,15 +311,15 @@ layers = [
   # The three top-level workflows, and none of them may import another: ingesting a photograph,
   # answering a question about one, and reading the whole graph back are separate concerns that
   # happen to share a database, and a dependency in any direction would be the first step to the
-  # read path reaching for a writer. `orimera.graph` is named here rather than left out for the
-  # same reason `orimera.corpus` is named at the bottom: a module absent from every contract is a
+  # read path reaching for a writer. `exulanica.graph` is named here rather than left out for the
+  # same reason `exulanica.corpus` is named at the bottom: a module absent from every contract is a
   # module the layering says nothing about. It sits one step under the API, which is where an
   # upward import is easiest to write and hardest to notice.
   "graph | selection | ingest",
   "world | identity",
   "epistemics",
   # Erasure sits under everything that writes, because everything that writes may have to ask
-  # for it: `orimera.ingest` writes the tombstone that fills the queue, and there is one
+  # for it: `exulanica.ingest` writes the tombstone that fills the queue, and there is one
   # `insert_tombstone` rather than one per caller only because this is below it. It is a layer
   # of its own rather than a sibling of `epistemics` so the sentence stays true in both
   # directions: deletion knows nothing about how a claim is written, and a claim writer that
@@ -339,6 +339,7 @@ layers = [
   # layering says nothing about, and the point of the corpus is to be the input to the pipeline
   # rather than a participant in it.
   "corpus | errors",
+  "env",
 ]
 
 [[tool.importlinter.contracts]]
@@ -347,18 +348,18 @@ layers = [
 # is, the temptation to have it write one follows immediately, and invariant 4 is the rule that
 # a model never writes into canonical state.
 #
-# Note what is deliberately NOT claimed here. `orimera.store` DOES import `orimera.evidence`,
+# Note what is deliberately NOT claimed here. `exulanica.store` DOES import `exulanica.evidence`,
 # because a content-addressed store is keyed by a content address and BlobId is that address.
 # The layer list above permits exactly that direction and no other.
 name = "The model client knows nothing about evidence, storage or the database"
 type = "forbidden"
-source_modules = ["orimera.models"]
+source_modules = ["exulanica.models"]
 forbidden_modules = [
-  "orimera.evidence",
-  "orimera.store",
-  "orimera.db",
-  "orimera.ingest",
-  "orimera.migrations",
+  "exulanica.evidence",
+  "exulanica.store",
+  "exulanica.db",
+  "exulanica.ingest",
+  "exulanica.migrations",
 ]
 
 [[tool.importlinter.contracts]]
@@ -366,7 +367,7 @@ forbidden_modules = [
 #
 # "Reconstruction is never evidence. No function may return a rendition, a point map, or a
 # rendered view as a citation target." The strongest available form of that is a producer that
-# cannot construct a citation: `orimera.reconstruction` does not import the module that defines an
+# cannot construct a citation: `exulanica.reconstruction` does not import the module that defines an
 # evidence address, so no refactor inside it can produce one, and no reviewer has to notice.
 #
 # The store and the database are forbidden for the same reason one step further out. A module that
@@ -375,14 +376,14 @@ forbidden_modules = [
 # about what may be cited is already enforced by the schema.
 name = "Reconstruction cannot produce a citation, because it cannot name one"
 type = "forbidden"
-source_modules = ["orimera.reconstruction"]
+source_modules = ["exulanica.reconstruction"]
 forbidden_modules = [
-  "orimera.evidence",
-  "orimera.store",
-  "orimera.db",
-  "orimera.ingest",
-  "orimera.identity",
-  "orimera.selection",
+  "exulanica.evidence",
+  "exulanica.store",
+  "exulanica.db",
+  "exulanica.ingest",
+  "exulanica.identity",
+  "exulanica.selection",
 ]
 
 [[tool.importlinter.contracts]]
@@ -392,10 +393,10 @@ forbidden_modules = [
 name = "The pure core does not know a database exists"
 type = "forbidden"
 source_modules = [
-  "orimera.canonical",
-  "orimera.errors",
-  "orimera.evidence",
-  "orimera.models",
-  "orimera.store",
+  "exulanica.canonical",
+  "exulanica.errors",
+  "exulanica.evidence",
+  "exulanica.models",
+  "exulanica.store",
 ]
 forbidden_modules = ["psycopg"]

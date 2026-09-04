@@ -57,7 +57,7 @@ class GroundTruth:
     #: Subject key -> the phrases a detector might use for it. Empty for a manifest written
     #: before the mapping existed, which is a real state and not an error: the report then says
     #: that this corpus cannot describe what a detector recovered, rather than printing a zero.
-    #: Nothing is scored against it. See :mod:`orimera.evaluation.coverage`.
+    #: Nothing is scored against it. See :mod:`exulanica.evaluation.coverage`.
     subject_labels: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @property

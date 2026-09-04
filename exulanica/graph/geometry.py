@@ -17,7 +17,7 @@ the same bytes as an unrelated shell at the island origin. That exclusion also m
 terminal for presentation: a scene withdrawn by one member cannot reappear as one surviving
 member's unposed point map.
 
-**A descriptor is keyed by CAPTURE, never by island.** ``orimera.graph``'s own docstring says why:
+**A descriptor is keyed by CAPTURE, never by island.** ``exulanica.graph``'s own docstring says why:
 "Islands are not a server concept... A server that shipped an island id would be settling that
 question by accident." ADR-0005 leaves it open, the client already maps captures to islands
 through an injectable function, and geometry has to arrive on the same key the graph does or the
@@ -56,8 +56,8 @@ window in which the artifact row is unpurged and the capture is deleted. Serving
 would be serving something the user has already deleted. Both are therefore checked, and the
 tombstone is checked first because it is the one that is true earlier.
 
-**The store is passed in.** ``orimera.graph`` sits above ``orimera.store`` in the layering and
-below ``orimera.api``, and the API owns which store an instance is wired to. Handing the store to
+**The store is passed in.** ``exulanica.graph`` sits above ``exulanica.store`` in the layering and
+below ``exulanica.api``, and the API owns which store an instance is wired to. Handing the store to
 the function rather than letting the module reach for one is the same arrangement
 ``WorldStyleRepository.source_media`` uses, and for the same reason: a read module that could
 resolve its own bytes is a read module that could resolve somebody else's.
@@ -74,9 +74,9 @@ from typing import Any, Final
 
 import psycopg
 
-from orimera.errors import TombstonedError
-from orimera.evidence.blob import BlobId
-from orimera.store.base import ContentAddressedStore
+from exulanica.errors import TombstonedError
+from exulanica.evidence.blob import BlobId
+from exulanica.store.base import ContentAddressedStore
 
 __all__ = [
     "POINT_MAP_KIND",
@@ -88,8 +88,8 @@ __all__ = [
 ]
 
 #: The ``artifact.kind`` a rung 3 point map is written under. It is the ``output_kind`` of the
-#: depth stage in :mod:`orimera.ingest.stages`, spelled here rather than imported because
-#: ``orimera.graph`` and ``orimera.ingest`` are siblings in the layering contract and may not
+#: depth stage in :mod:`exulanica.ingest.stages`, spelled here rather than imported because
+#: ``exulanica.graph`` and ``exulanica.ingest`` are siblings in the layering contract and may not
 #: import each other. ``tests/test_geometry_delivery.py`` pins the two spellings together, so a
 #: rename that reached only one of them fails rather than serving an empty list for ever.
 POINT_MAP_KIND: Final = "point_map"
@@ -305,8 +305,8 @@ def read_point_map(
     what another workspace holds under that id is byte-identical content the caller already has.
     The scoping is what makes that true, not the id being hard to guess.
 
-    Raises :class:`~orimera.errors.TombstonedError` when the user deleted it, which the API
-    answers with 410 rather than 404, and :class:`~orimera.errors.BlobNotFoundError` when the
+    Raises :class:`~exulanica.errors.TombstonedError` when the user deleted it, which the API
+    answers with 410 rather than 404, and :class:`~exulanica.errors.BlobNotFoundError` when the
     row survived and the object did not.
 
     **There is a time-of-check window between the liveness question and the read, and it is not
@@ -365,7 +365,7 @@ def _require_workspace_context(connection: psycopg.Connection, workspace: uuid.U
 
     The same assertion migration 0001 puts in front of every tombstone guard, and for the reason
     written there: ``tombstone`` carries FORCE row-level security, so "a session that never set
-    orimera.workspace_id sees those tables as empty, so the guard would find no tombstone and
+    exulanica.workspace_id sees those tables as empty, so the guard would find no tombstone and
     fail OPEN, which is the worst possible direction for it to fail in". The API's own dependency
     always declares one, so this never fires today. It is here because a read whose whole job is
     to refuse deleted content must fail closed when it cannot see what was deleted, and being

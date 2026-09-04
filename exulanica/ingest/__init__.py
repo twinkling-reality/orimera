@@ -17,17 +17,17 @@ are structural rather than promised:
 
 from __future__ import annotations
 
-from orimera.errors import EpistemicViolation, TombstonedError
-from orimera.identity.keys import occurrence_identity_key
-from orimera.ingest.exif import ExifFacts, extract_exif_facts, normalise_orientation
-from orimera.ingest.ledger import Ledger
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.report import IngestOutcome, IngestReport
-from orimera.ingest.repository import IngestRepository
-from orimera.ingest.resolve import resolve_region_image
-from orimera.ingest.scenes import SceneGroup, group_captures, run_scene_grouping
-from orimera.ingest.stages import STAGES, StageSpec, pipeline_digest
-from orimera.ingest.vision import (
+from exulanica.errors import EpistemicViolation, TombstonedError
+from exulanica.identity.keys import occurrence_identity_key
+from exulanica.ingest.exif import ExifFacts, extract_exif_facts, normalise_orientation
+from exulanica.ingest.ledger import Ledger
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.report import IngestOutcome, IngestReport
+from exulanica.ingest.repository import IngestRepository
+from exulanica.ingest.resolve import resolve_region_image
+from exulanica.ingest.scenes import SceneGroup, group_captures, run_scene_grouping
+from exulanica.ingest.stages import STAGES, StageSpec, pipeline_digest
+from exulanica.ingest.vision import (
     OBSERVATION_SCHEMA,
     NebiusVisionModel,
     VisionModel,
@@ -35,7 +35,7 @@ from orimera.ingest.vision import (
     VisionResult,
     validate_observation,
 )
-from orimera.store.resolve import address_from_span_row, resolve_original_bytes
+from exulanica.store.resolve import address_from_span_row, resolve_original_bytes
 
 __all__ = [
     "OBSERVATION_SCHEMA",

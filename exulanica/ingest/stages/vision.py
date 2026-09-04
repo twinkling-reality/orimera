@@ -17,16 +17,16 @@ import uuid
 from decimal import Decimal
 from typing import Any, Final
 
-from orimera.evidence import PHOTOGRAPH_INTERVAL, EvidenceAddress
-from orimera.evidence.blob import BlobId
-from orimera.evidence.region import DisplayGeometry, Rect, Region
-from orimera.identity.keys import occurrence_identity_key
-from orimera.ingest.exif import ExifFacts
-from orimera.ingest.ledger import Ledger
-from orimera.ingest.report import IngestOutcome
-from orimera.ingest.stages import idempotency_key, input_digest_of, stage
-from orimera.ingest.stages.writes import StageResult, StageWrites
-from orimera.ingest.vision import (
+from exulanica.evidence import PHOTOGRAPH_INTERVAL, EvidenceAddress
+from exulanica.evidence.blob import BlobId
+from exulanica.evidence.region import DisplayGeometry, Rect, Region
+from exulanica.identity.keys import occurrence_identity_key
+from exulanica.ingest.exif import ExifFacts
+from exulanica.ingest.ledger import Ledger
+from exulanica.ingest.report import IngestOutcome
+from exulanica.ingest.stages import idempotency_key, input_digest_of, stage
+from exulanica.ingest.stages.writes import StageResult, StageWrites
+from exulanica.ingest.vision import (
     OBSERVATION_SCHEMA_NAME,
     PROMPT_VERSION,
     SCHEMA_VERSION,
@@ -316,7 +316,7 @@ def _region_span(
 def _verbatim_json(document: dict[str, Any]) -> bytes:
     """Serialise a vision artifact exactly as the model wrote it.
 
-    Deliberately not ``orimera.canonical.canonical_json``, which refuses floats. That refusal
+    Deliberately not ``exulanica.canonical.canonical_json``, which refuses floats. That refusal
     is right for a digest input, where two implementations must agree byte for byte, and wrong
     here: this artifact is the record of what the model actually said, and rewriting its
     numbers into another representation before storing it would make the audit record something
@@ -324,7 +324,7 @@ def _verbatim_json(document: dict[str, Any]) -> bytes:
     ``content_sha256`` is a hash of the stored bytes, which is a different claim.
 
     The coordinates that DO enter a digest are quantised to integers first, in
-    ``orimera.evidence.region``, before any span is built from them.
+    ``exulanica.evidence.region``, before any span is built from them.
     """
     return json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
         "utf-8"

@@ -29,7 +29,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Final
 
-from orimera.ingest.repository import IngestRepository
+from exulanica.ingest.repository import IngestRepository
 
 __all__ = ["BATCH_STATUSES", "IntakeBatch"]
 

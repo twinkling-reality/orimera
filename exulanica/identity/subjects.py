@@ -1,6 +1,6 @@
 """What every identity decision shares: what can go wrong, and what a subject must be.
 
-Split out of :mod:`orimera.identity.decisions` when that module passed 700 lines and was holding
+Split out of :mod:`exulanica.identity.decisions` when that module passed 700 lines and was holding
 three responsibilities: the vocabulary of a decision, the decisions themselves, and their
 inverses. This is the first of the three, and it is the one both of the others import.
 
@@ -18,10 +18,10 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from orimera.errors import OrimeraError
-from orimera.identity.entities import EntityRow
-from orimera.identity.occurrences import OccurrenceRow
-from orimera.identity.repository import IdentityRepository
+from exulanica.errors import ExulanicaError
+from exulanica.identity.entities import EntityRow
+from exulanica.identity.occurrences import OccurrenceRow
+from exulanica.identity.repository import IdentityRepository
 
 __all__ = [
     "ENTITY_ENTITY",
@@ -37,7 +37,7 @@ __all__ = [
 ]
 
 #: The scope every occurrence-to-entity rejection is filed under. Every
-#: :meth:`orimera.identity.rejections.Rejections.record` call in this package passes it.
+#: :meth:`exulanica.identity.rejections.Rejections.record` call in this package passes it.
 OCCURRENCE_ENTITY: str = "occurrence_entity"
 
 #: The other value ``identity_rejection.scope`` may hold, per the CHECK at 0001_spine.sql:602.
@@ -48,7 +48,7 @@ OCCURRENCE_ENTITY: str = "occurrence_entity"
 ENTITY_ENTITY: str = "entity_entity"
 
 
-class IdentityError(OrimeraError):
+class IdentityError(ExulanicaError):
     """A user decision cannot be applied as asked."""
 
 

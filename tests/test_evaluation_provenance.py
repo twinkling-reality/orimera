@@ -10,8 +10,8 @@ import uuid
 from pathlib import Path
 
 import pytest
-from orimera.evaluation.cli import main
-from orimera.evaluation.provenance import (
+from exulanica.evaluation.cli import main
+from exulanica.evaluation.provenance import (
     RUN_PROFILE,
     ArchiveError,
     create_archive,

@@ -9,10 +9,10 @@ from typing import Any, Final
 
 from psycopg.types.json import Jsonb
 
-from orimera.canonical import canonical_json
-from orimera.evidence.blob import BlobId
-from orimera.evidence.scene import scene_id_for, scene_member_digest
-from orimera.ingest.spine.scope import WorkspaceScope
+from exulanica.canonical import canonical_json
+from exulanica.evidence.blob import BlobId
+from exulanica.evidence.scene import scene_id_for, scene_member_digest
+from exulanica.ingest.spine.scope import WorkspaceScope
 
 __all__ = [
     "MAX_SCENE_CLAIMS",
@@ -77,7 +77,7 @@ def enqueue(
     policy_bytes = _policy_bytes(selection_policy)
     policy_digest = hashlib.sha256(policy_bytes).digest()
     inputs = build_inputs or {
-        "profile": "orimera.reconstruction-scene-build-input/manual-v0",
+        "profile": "exulanica.reconstruction-scene-build-input/manual-v0",
         "point_maps": [],
     }
     build_input_digest = hashlib.sha256(_build_input_bytes(inputs)).digest()

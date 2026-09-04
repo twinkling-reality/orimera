@@ -31,9 +31,9 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from orimera.api.dependencies import WorkspaceIdentity
-from orimera.epistemics.assertions import AssertionWriter
-from orimera.identity import (
+from exulanica.api.dependencies import WorkspaceIdentity
+from exulanica.epistemics.assertions import AssertionWriter
+from exulanica.identity import (
     ConcurrentRename,
     confirm_link,
     merge_entities,
@@ -138,7 +138,7 @@ def _rejection_basis(proposal: dict[str, Any] | None) -> dict[str, Any]:
     """What to record a rejection under: the proposal's basis, or the user's own statement.
 
     An unprompted no carries no modality list at all, which is not the same as an empty one. See
-    :meth:`orimera.identity.rejections.Rejections.record`.
+    :meth:`exulanica.identity.rejections.Rejections.record`.
     """
     if proposal is None:
         return {}

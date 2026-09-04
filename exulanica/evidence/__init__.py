@@ -7,7 +7,7 @@ this package holds the only thing a factual claim is allowed to resolve against.
 
 from __future__ import annotations
 
-from orimera.evidence.address import (
+from exulanica.evidence.address import (
     IMAGE_TRACK_KEY,
     SPAN_FORMAT_VERSION,
     URI_SCHEME,
@@ -16,15 +16,15 @@ from orimera.evidence.address import (
     TextAnchor,
     parse_uri,
 )
-from orimera.evidence.blob import DIGEST_BYTES, HASH_ALGORITHM, BlobId
-from orimera.evidence.region import PPM, DisplayGeometry, Rect, Region
-from orimera.evidence.scene import (
+from exulanica.evidence.blob import DIGEST_BYTES, HASH_ALGORITHM, BlobId
+from exulanica.evidence.region import PPM, DisplayGeometry, Rect, Region
+from exulanica.evidence.scene import (
     SCENE_DIGEST_VERSION,
     SCENE_NAMESPACE,
     scene_id_for,
     scene_member_digest,
 )
-from orimera.evidence.timebase import (
+from exulanica.evidence.timebase import (
     IMAGE_TIME_BASE,
     NS_PER_SECOND,
     PHOTOGRAPH_INTERVAL,

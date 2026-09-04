@@ -8,15 +8,15 @@ IntegrityError as a hard stop rather than a retry.
 from __future__ import annotations
 
 
-class OrimeraError(Exception):
+class ExulanicaError(Exception):
     """Base class for every error raised by this package."""
 
 
-class InvalidAddressError(OrimeraError, ValueError):
+class InvalidAddressError(ExulanicaError, ValueError):
     """An evidence address, or a component of one, is not well formed."""
 
 
-class LossyAddressError(OrimeraError):
+class LossyAddressError(ExulanicaError):
     """Rendering this address to a URI would drop an input to its span digest.
 
     Raised rather than silently emitting a citation string that cannot be verified against
@@ -24,19 +24,19 @@ class LossyAddressError(OrimeraError):
     """
 
 
-class CanonicalisationError(OrimeraError, TypeError):
+class CanonicalisationError(ExulanicaError, TypeError):
     """A value cannot be canonicalised deterministically, so it may not enter a digest."""
 
 
-class IntegrityError(OrimeraError):
+class IntegrityError(ExulanicaError):
     """Stored bytes do not hash to the key they are stored under."""
 
 
-class BlobNotFoundError(OrimeraError, KeyError):
+class BlobNotFoundError(ExulanicaError, KeyError):
     """No object exists in the store for this blob id."""
 
 
-class ImmutableKeyError(OrimeraError):
+class ImmutableKeyError(ExulanicaError):
     """A write would change the content already stored at a content-addressed key.
 
     Under content addressing this can only mean a hash collision or a corrupted store, so it
@@ -44,11 +44,11 @@ class ImmutableKeyError(OrimeraError):
     """
 
 
-class PurgeNotAuthorisedError(OrimeraError):
+class PurgeNotAuthorisedError(ExulanicaError):
     """A purge was attempted without a well formed authorisation."""
 
 
-class EpistemicViolation(OrimeraError):
+class EpistemicViolation(ExulanicaError):
     """A write would file a claim under a provenance class its predicate does not allow.
 
     The database refuses the same write with an SQLSTATE and no explanation. This carries the
@@ -56,7 +56,7 @@ class EpistemicViolation(OrimeraError):
     """
 
 
-class TombstonedError(OrimeraError):
+class TombstonedError(ExulanicaError):
     """A committed tombstone covers this address. Terminal, never retried.
 
     Control-flow relevant, and this is the one that costs something when it is wrong. A worker

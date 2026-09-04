@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from orimera.reconstruction.quality import PointMapQualityObservation, build_quality_report
+from exulanica.reconstruction.quality import PointMapQualityObservation, build_quality_report
 
 
 def _observation(**changes):

@@ -25,9 +25,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Final
 
-from orimera.errors import BlobNotFoundError, ImmutableKeyError, IntegrityError
-from orimera.evidence.blob import DIGEST_BYTES, BlobId
-from orimera.store.base import (
+from exulanica.errors import BlobNotFoundError, ImmutableKeyError, IntegrityError
+from exulanica.evidence.blob import DIGEST_BYTES, BlobId
+from exulanica.store.base import (
     ContentAddressedStore,
     PrivilegedPurger,
     PurgeAuthorization,

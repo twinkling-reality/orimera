@@ -4,7 +4,7 @@
 # ///
 """Verify the Tavily credential with one real runtime call, and archive it.
 
-Doubles as the first exercise of Orimera's past-to-present boundary: the query
+Doubles as the first exercise of Exulanica's past-to-present boundary: the query
 carries ONLY public-entity context. No private media, no person, no private
 location, no transcript. That constraint is the point of the test, not an
 incidental detail.
@@ -13,7 +13,7 @@ import json, pathlib, sys, time
 import httpx
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-OUT = ROOT / ".orimera" / "experiments" / "web-lookup"
+OUT = ROOT / ".exulanica" / "experiments" / "web-lookup"
 
 # A well-known public landmark, standing in for the class of public entity a
 # corpus photograph can contain. Nothing private is sent.

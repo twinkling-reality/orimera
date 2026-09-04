@@ -28,10 +28,10 @@ destroys objects and marks rows. Row deletion is not something this system does:
 to nothing at all.
 
 **The cross-workspace read is a privilege of the role, not of this code, and this asks.**
-``provision_purge_role`` grants ``orimera_purge`` a permissive SELECT policy on ``capture`` and
+``provision_purge_role`` grants ``exulanica_purge`` a permissive SELECT policy on ``capture`` and
 ``artifact``, because ``blob`` is shared between workspaces and a purger that could only see its
-own would destroy another tenant's photograph. ``ORIMERA_PURGE_DATABASE_URL`` is only a name, so
-:func:`orimera.deletion.queue.read_visibility` asks the database which role is connected and
+own would destroy another tenant's photograph. ``EXULANICA_PURGE_DATABASE_URL`` is only a name, so
+:func:`exulanica.deletion.queue.read_visibility` asks the database which role is connected and
 whether that policy applies to it, and this refuses to destroy anything when it does not.
 Measured with the writer's URL in that variable: one object destroyed, zero skipped, the
 tombstone recorded complete, and another workspace's live photograph gone, with nothing in the
@@ -54,10 +54,10 @@ from typing import Final
 
 import psycopg
 
-from orimera.db.session import Database
-from orimera.deletion import queue
-from orimera.evidence.blob import BlobId
-from orimera.store.base import ContentAddressedStore, PurgeAuthorization, privileged_purger
+from exulanica.db.session import Database
+from exulanica.deletion import queue
+from exulanica.evidence.blob import BlobId
+from exulanica.store.base import ContentAddressedStore, PurgeAuthorization, privileged_purger
 
 __all__ = ["PurgeOutcome", "PurgeWorker"]
 

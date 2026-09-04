@@ -27,18 +27,18 @@ import warnings
 from dataclasses import replace
 
 import pytest
+from exulanica.api.app import create_app
+from exulanica.api.authorisation import load_token_directory
+from exulanica.api.body_limit import MAX_BODY_BYTES
+from exulanica.api.services import Services
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest import derivative_queue
+from exulanica.ingest.decode import MAX_PIXELS
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.worker import DerivativeWorker
+from exulanica.store.base import PurgeAuthorization, privileged_purger
+from exulanica.store.local import LocalContentAddressedStore
 from fastapi.testclient import TestClient
-from orimera.api.app import create_app
-from orimera.api.authorisation import load_token_directory
-from orimera.api.body_limit import MAX_BODY_BYTES
-from orimera.api.services import Services
-from orimera.evidence.blob import BlobId
-from orimera.ingest import derivative_queue
-from orimera.ingest.decode import MAX_PIXELS
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.worker import DerivativeWorker
-from orimera.store.base import PurgeAuthorization, privileged_purger
-from orimera.store.local import LocalContentAddressedStore
 
 from conftest import CountingVisionModel, bomb_png, photo_bytes
 
@@ -87,7 +87,7 @@ def upload(tmp_path, repository, spine_schema, monkeypatch):
     store = LocalContentAddressedStore(tmp_path / "blobs")
     workspace_id = repository.workspace_id
     monkeypatch.setenv(
-        "ORIMERA_API_TOKENS",
+        "EXULANICA_API_TOKENS",
         json.dumps({_TOKEN: {"workspace_id": str(workspace_id), "actor": str(uuid.uuid4())}}),
     )
     from tests_support_api import scratch_database
@@ -206,7 +206,7 @@ def test_1_an_anonymous_upload_is_refused_before_the_route_runs(upload):
 
 
 def test_2_more_parts_than_one_upload_may_carry_are_refused_by_name(upload):
-    from orimera.api.routes.intake import MAX_PARTS
+    from exulanica.api.routes.intake import MAX_PARTS
 
     # One photograph's bytes, many parts. What is being asserted is where the route stops
     # counting, and encoding two hundred distinct JPEGs to assert that would be paying for a
@@ -227,7 +227,7 @@ def test_3_a_name_this_pipeline_does_not_read_is_refused_on_its_suffix(upload):
 
 
 def test_4_a_part_larger_than_one_photograph_may_be_is_refused(upload, monkeypatch):
-    monkeypatch.setattr("orimera.api.routes.intake.MAX_PART_BYTES", 32)
+    monkeypatch.setattr("exulanica.api.routes.intake.MAX_PART_BYTES", 32)
     body = upload.one().json()
     assert body["refused"][0]["reason"] == "too_large"
     assert upload.rows("select blob_sha256 from blob") == []
@@ -299,7 +299,7 @@ def test_7_the_pixel_budget_survives_a_process_that_reset_the_warning_filters(up
 #: then open bytes the way a caller outside the module does.
 _PROMOTION_PROBE = """
 import io, sys, warnings
-from orimera.ingest.decode import MAX_PIXELS, UNREADABLE, probe
+from exulanica.ingest.decode import MAX_PIXELS, UNREADABLE, probe
 from PIL import Image
 
 data = bytes.fromhex(sys.argv[1])
@@ -370,7 +370,7 @@ def test_the_pixel_budget_is_below_pillows_own_default(upload):
 def test_the_pipeline_calls_a_plugin_failure_what_it_is(upload):
     """The same magic-bytes case on the path that does not go through the route.
 
-    ``orimera-ingest`` and the derivative worker reach ``decode.open_upright`` without the
+    ``exulanica-ingest`` and the derivative worker reach ``decode.open_upright`` without the
     route's own refusal table in front of them, so ``UNREADABLE`` is what decides whether a
     plugin's own exception is "this is not a photograph" or an unclassified failure. The outcome
     is recorded either way; what changes is whether the person reading it is told their file is
@@ -466,7 +466,7 @@ def test_a_body_with_no_declared_length_is_bounded_by_counting_it(upload, monkey
     test pass with the counting removed.
     """
     limit = 256 * 1024
-    monkeypatch.setattr("orimera.api.body_limit.MAX_BODY_BYTES", limit)
+    monkeypatch.setattr("exulanica.api.body_limit.MAX_BODY_BYTES", limit)
     app = create_app(upload.client.app.state.services, verify=False)
 
     def endless():
@@ -709,7 +709,7 @@ def test_no_run_is_left_saying_it_is_still_running(upload):
     each gets a run of its own. ``run_scene_grouping`` closes a run only when it opened one and
     ``propose_matches`` cannot close anything, because ``Ledger`` lives in a layer the identity
     package may not import. So the caller owns closing them, and before
-    :mod:`orimera.ingest.continuity` neither caller did: measured on a real upload against a
+    :mod:`exulanica.ingest.continuity` neither caller did: measured on a real upload against a
     real server, every batch left two ``pipeline_run`` rows in ``running`` for ever. Nothing
     downstream read the column, which is exactly why it stayed wrong.
     """
@@ -827,7 +827,7 @@ def test_a_job_that_fails_outside_the_capture_loop_closes_its_batch_as_failed(up
     """
     body = upload.one().json()
     monkeypatch.setattr(
-        "orimera.ingest.worker.run_continuity",
+        "exulanica.ingest.worker.run_continuity",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("the corpus pass fell over")),
     )
     outcomes = upload.drain()

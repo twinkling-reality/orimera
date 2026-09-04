@@ -1,8 +1,8 @@
-"""``python -m orimera.ingest``."""
+"""``python -m exulanica.ingest``."""
 
 from __future__ import annotations
 
-from orimera.ingest.cli import main
+from exulanica.ingest.cli import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

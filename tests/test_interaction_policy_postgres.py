@@ -6,7 +6,7 @@ import uuid
 
 import psycopg
 import pytest
-from orimera.world import (
+from exulanica.world import (
     INTERACTION_POLICY_REGISTRY,
     InvalidInteractionData,
     ProposalOrigin,
@@ -15,7 +15,7 @@ from orimera.world import (
     WorldInteractionPolicyRepository,
     WorldStructureRepository,
 )
-from orimera.world.interaction import InteractionProposal
+from exulanica.world.interaction import InteractionProposal
 
 from world_structure_fixtures import structural_candidate
 

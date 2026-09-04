@@ -1,4 +1,4 @@
-"""The evidence address: the one type the rest of Orimera resolves against.
+"""The evidence address: the one type the rest of Exulanica resolves against.
 
 An address is ``(content hash of the original bytes, track key, exact half-open interval on the
 canonical nanosecond axis)``, optionally refined by a normalised region and a character range in
@@ -34,11 +34,11 @@ from enum import StrEnum
 from typing import Any, Final
 from urllib.parse import quote, unquote
 
-from orimera.canonical import sha256_of_canonical
-from orimera.errors import InvalidAddressError, LossyAddressError
-from orimera.evidence.blob import BlobId
-from orimera.evidence.region import DisplayGeometry, Rect, Region
-from orimera.evidence.timebase import (
+from exulanica.canonical import sha256_of_canonical
+from exulanica.errors import InvalidAddressError, LossyAddressError
+from exulanica.evidence.blob import BlobId
+from exulanica.evidence.region import DisplayGeometry, Rect, Region
+from exulanica.evidence.timebase import (
     PHOTOGRAPH_INTERVAL,
     TimeInterval,
     ns_to_seconds,
@@ -60,11 +60,11 @@ __all__ = [
 SPAN_FORMAT_VERSION: Final = 1
 
 IMAGE_TRACK_KEY: Final = "img"
-URI_SCHEME: Final = "orimera"
+URI_SCHEME: Final = "exulanica"
 
 _TRACK_RE: Final = re.compile(r"^(img|[va]:(?:0|[1-9][0-9]{0,3}))$")
 _URI_RE: Final = re.compile(
-    r"^orimera://blob/(?P<ni>ni:///sha-256;[A-Za-z0-9_-]{43})/(?P<track>[A-Za-z0-9_:.-]+)"
+    r"^exulanica://blob/(?P<ni>ni:///sha-256;[A-Za-z0-9_-]{43})/(?P<track>[A-Za-z0-9_:.-]+)"
     r"#(?P<fragment>.*)$"
 )
 #: A quote longer than this is not put in a URI. See ``to_uri``.
@@ -403,7 +403,7 @@ def parse_uri(uri: str) -> EvidenceAddress:
     """
     match = _URI_RE.match(uri.strip())
     if match is None:
-        raise InvalidAddressError(f"not an Orimera evidence URI: {uri!r}")
+        raise InvalidAddressError(f"not an Exulanica evidence URI: {uri!r}")
     blob_id = BlobId.from_ni_uri(match.group("ni"))
     track_key = validate_track_key(match.group("track"))
     fields = _parse_fragment(match.group("fragment"))

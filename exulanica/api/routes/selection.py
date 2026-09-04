@@ -2,7 +2,7 @@
 
 Both routes are thin to the point of being boring, and that is the design. A Selection arriving
 from the interface and a Selection arriving from the Companion are the same object by the time
-they reach :func:`orimera.selection.validation.validate`, and neither route knows which surface
+they reach :func:`exulanica.selection.validation.validate`, and neither route knows which surface
 produced the plan it was handed. ADR-0005: "nothing else in the system knows where a Selection
 came from."
 
@@ -25,9 +25,9 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from orimera.api.dependencies import CurrentSession, ReadOnlyConnection, get_services
-from orimera.models.client import ModelClient
-from orimera.selection import (
+from exulanica.api.dependencies import CurrentSession, ReadOnlyConnection, get_services
+from exulanica.models.client import ModelClient
+from exulanica.selection import (
     Abstention,
     Answer,
     SelectionPlan,
@@ -37,7 +37,7 @@ from orimera.selection import (
     execute,
     validate,
 )
-from orimera.selection.question import answer_question, propose_plan
+from exulanica.selection.question import answer_question, propose_plan
 
 router = APIRouter(prefix="/selection", tags=["selection"])
 

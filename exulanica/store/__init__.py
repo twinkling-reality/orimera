@@ -6,14 +6,14 @@ The normal interface cannot delete. Erasure exists, is real, and is reached only
 
 from __future__ import annotations
 
-from orimera.store.base import (
+from exulanica.store.base import (
     ContentAddressedStore,
     PrivilegedPurger,
     PurgeAuthorization,
     PutResult,
     privileged_purger,
 )
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.store.local import LocalContentAddressedStore
 
 __all__ = [
     "ContentAddressedStore",

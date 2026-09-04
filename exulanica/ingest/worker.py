@@ -1,8 +1,8 @@
 """The worker that finishes an upload: rendition, vision, depth, scenes, proposals.
 
-**It does not import the API and it must not start.** ``orimera.ingest`` sits under
-``orimera.api`` in the layers contract, so a worker reaching for
-``orimera.api.authorisation`` to find out which workspaces exist inverts the layering, and
+**It does not import the API and it must not start.** ``exulanica.ingest`` sits under
+``exulanica.api`` in the layers contract, so a worker reaching for
+``exulanica.api.authorisation`` to find out which workspaces exist inverts the layering, and
 ``uv run lint-imports`` says so. It takes the workspaces as a value instead. The application
 knows them because they came from its token directory, and passing them down is one argument
 rather than a dependency.
@@ -10,7 +10,7 @@ rather than a dependency.
 **What runs here and what does not.** The vision stage is a model call and belongs nowhere near
 a request thread. The intake stage is a hash, an EXIF read, an orientation transform and a few
 rows, and it has already happened by the time a job is claimed: see
-:mod:`orimera.ingest.derivative_queue` for why the split is where it is. So this drains capture
+:mod:`exulanica.ingest.derivative_queue` for why the split is where it is. So this drains capture
 ids, computes derivatives from bytes already in the content-addressed store, and closes the
 batch that was watching.
 
@@ -19,8 +19,9 @@ tells a client to stop listening and it has to come after all the work. A reques
 batch it opened would emit "finished" while the vision stage had not started.
 
 **Scene grouping and match proposals run at the end of a job**, through
-:func:`orimera.ingest.continuity.run_continuity`, which is the same call ``orimera-ingest`` makes
-at the end of a directory. Inside the batch, so continuity search appears in the formation stream
+:func:`exulanica.ingest.continuity.run_continuity`, which is the same call
+``exulanica-ingest`` makes at the end of a directory. Inside the batch, so
+continuity search appears in the formation stream
 as the stage it is: left out, a watched upload would stop after entity indexing and finish with
 no account of the gap.
 
@@ -52,16 +53,16 @@ from typing import Final
 
 import psycopg
 
-from orimera.db.session import Database
-from orimera.ingest import derivative_queue
-from orimera.ingest.batch import IntakeBatch
-from orimera.ingest.continuity import run_continuity
-from orimera.ingest.ledger import Ledger
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.repository import IngestRepository
-from orimera.ingest.vision import VisionModel
-from orimera.reconstruction import DepthModel
-from orimera.store.base import ContentAddressedStore
+from exulanica.db.session import Database
+from exulanica.ingest import derivative_queue
+from exulanica.ingest.batch import IntakeBatch
+from exulanica.ingest.continuity import run_continuity
+from exulanica.ingest.ledger import Ledger
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.repository import IngestRepository
+from exulanica.ingest.vision import VisionModel
+from exulanica.reconstruction import DepthModel
+from exulanica.store.base import ContentAddressedStore
 
 __all__ = ["MINIMUM_LEASE_SECONDS", "DerivativeWorker", "JobOutcome", "lease_seconds_for"]
 
@@ -236,11 +237,11 @@ class DerivativeWorker:
     ) -> None:
         """``lease_seconds`` is a value rather than something read off the vision model.
 
-        The protocol in :mod:`orimera.ingest.vision` is ``model_id`` and ``observe``, and it stays
+        The protocol in :mod:`exulanica.ingest.vision` is ``model_id`` and ``observe``, and it stays
         that way: widening it would break every fake in the suite at runtime rather than at lint
         time, since nothing here type-checks. The one place that can compute a lease is the one
-        that holds a :class:`~orimera.models.client.ModelClient` and knows whether there is one at
-        all, which is :mod:`orimera.api.services`. It calls :func:`lease_seconds_for`.
+        that holds a :class:`~exulanica.models.client.ModelClient` and knows whether there is one at
+        all, which is :mod:`exulanica.api.services`. It calls :func:`lease_seconds_for`.
 
         The default is the floor, which is exactly right for a worker with no vision model and
         too short for one with a slow model and a caller that decided nothing. Too short is
@@ -286,7 +287,7 @@ class DerivativeWorker:
         ``job_one_live_job_per_batch`` against its batch while it sits there, so nothing else can
         ever be queued for that batch and the client watching it never gets a terminal event.
         What this does NOT cover is an instance running no worker at all, which
-        ``ORIMERA_DERIVATIVE_WORKER=off`` makes a real deployment: there, nothing abandons
+        ``EXULANICA_DERIVATIVE_WORKER=off`` makes a real deployment: there, nothing abandons
         anything, and the note in ``Services.warnings`` about a queue drained elsewhere is the
         statement of it.
         """
@@ -658,7 +659,7 @@ class DerivativeWorker:
 
         # The whole corpus, once, rather than per photograph: continuity is a relation between
         # captures and cannot be computed from one. Inside the batch so it appears in the
-        # formation stream as the stage it is. The same call `orimera-ingest` makes at the end
+        # formation stream as the stage it is. The same call `exulanica-ingest` makes at the end
         # of a directory, and the same one, so the two cannot drift.
         #
         # The last beat, and the only one whose gap carries two passes over the whole corpus

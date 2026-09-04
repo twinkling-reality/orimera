@@ -27,7 +27,7 @@ because a demonstration instance is one process. Whether it runs at all is confi
 instance can serve the API with the queue drained somewhere else, and that instance says so
 through ``/readyz`` rather than looking identical to one whose worker is wedged.
 
-**The body limit.** :mod:`orimera.api.body_limit` refuses an over-large declared body before any
+**The body limit.** :mod:`exulanica.api.body_limit` refuses an over-large declared body before any
 route sees it, which is the only place it can be refused before a multipart parser has already
 written it to disk.
 """
@@ -41,9 +41,9 @@ from typing import Final
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from orimera.api.authorisation import TokenNotAccepted
-from orimera.api.body_limit import BodyLimit, BodyTooLarge
-from orimera.api.routes import (
+from exulanica.api.authorisation import TokenNotAccepted
+from exulanica.api.body_limit import BodyLimit, BodyTooLarge
+from exulanica.api.routes import (
     evidence,
     formation,
     geometry,
@@ -56,24 +56,24 @@ from orimera.api.routes import (
     selection,
     world,
 )
-from orimera.api.services import Services, build_services
-from orimera.db.migrate import verify_schema
-from orimera.db.roles import assert_runtime_role
-from orimera.errors import (
+from exulanica.api.services import Services, build_services
+from exulanica.db.migrate import verify_schema
+from exulanica.db.roles import assert_runtime_role
+from exulanica.errors import (
     BlobNotFoundError,
     EpistemicViolation,
     IntegrityError,
     TombstonedError,
 )
-from orimera.identity.subjects import (
+from exulanica.identity.subjects import (
     AlreadyIdentified,
     IdentityError,
     NeverSame,
     NotUndoable,
     UnknownSubject,
 )
-from orimera.selection.validation import RejectionCode, SelectionRejected
-from orimera.world import (
+from exulanica.selection.validation import RejectionCode, SelectionRejected
+from exulanica.world import (
     InvalidInteractionData,
     InvalidInteractionPreviewState,
     InvalidPreviewState,
@@ -137,7 +137,7 @@ def create_app(services: Services | None = None, *, verify: bool = True) -> Fast
     a property of the services, and it is off for a hand-constructed one.
     """
     app = FastAPI(
-        title="Orimera",
+        title="Exulanica",
         summary="A personal world memory model. Every historical claim resolves to its source.",
         version="0.1.0",
         lifespan=_lifespan,

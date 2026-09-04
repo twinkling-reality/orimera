@@ -1,4 +1,4 @@
-"""``orimera-frontier demonstrate``: the Phase 8 evidence-to-package gate."""
+"""``exulanica-frontier demonstrate``: the Phase 8 evidence-to-package gate."""
 
 from __future__ import annotations
 
@@ -11,26 +11,26 @@ from typing import Any
 
 import psycopg
 
-from orimera.canonical import canonical_json
-from orimera.db import Database, DatabaseNotConfigured, apply_pending, provision_workspace
-from orimera.ingest.stages import stage
-from orimera.ingest.vision import NebiusVisionModel, VisionModel
-from orimera.models.cache import FileResponseCache
-from orimera.models.client import ModelClient
-from orimera.models.preflight import run_preflight
-from orimera.orchestration.demonstration import (
+from exulanica.canonical import canonical_json
+from exulanica.db import Database, DatabaseNotConfigured, apply_pending, provision_workspace
+from exulanica.ingest.stages import stage
+from exulanica.ingest.vision import NebiusVisionModel, VisionModel
+from exulanica.models.cache import FileResponseCache
+from exulanica.models.client import ModelClient
+from exulanica.models.preflight import run_preflight
+from exulanica.orchestration.demonstration import (
     FrontierDemonstrationError,
     run_frontier_demonstration,
 )
-from orimera.orchestration.manifest import BuildManifestError, load_build_manifest
-from orimera.reconstruction import DepthModel
-from orimera.world_package.package import PackageError, load_private_key
+from exulanica.orchestration.manifest import BuildManifestError, load_build_manifest
+from exulanica.reconstruction import DepthModel
+from exulanica.world_package.package import PackageError, load_private_key
 
 __all__ = ["main"]
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="orimera-frontier")
+    parser = argparse.ArgumentParser(prog="exulanica-frontier")
     commands = parser.add_subparsers(dest="command", required=True)
     demonstrate = commands.add_parser(
         "demonstrate", help="run the versioned source-to-signed-package frontier gate"
@@ -126,7 +126,7 @@ def _depth_model(mode: str) -> DepthModel | None:
     if mode == "unavailable":
         return None
     try:
-        from orimera.reconstruction.moge import MoGeDepthModel
+        from exulanica.reconstruction.moge import MoGeDepthModel
 
         return MoGeDepthModel(max_edge_px=int(stage("depth").params["max_edge_px"]))
     except Exception as exc:
@@ -147,7 +147,7 @@ def _write_terminal(args: argparse.Namespace, error: Exception) -> None:
         path.write_bytes(
             canonical_json(
                 {
-                    "profile": "orimera-frontier-terminal-v1",
+                    "profile": "exulanica-frontier-terminal-v1",
                     "status": "stopped",
                     "gate": gate,
                     "detail": str(error),

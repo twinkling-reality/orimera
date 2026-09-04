@@ -2,7 +2,7 @@
 
 Neither setting is optional, and neither is a convenience.
 
-*   **``orimera.workspace_id``.** 53 tables are under FORCE row-level security keyed on
+*   **``exulanica.workspace_id``.** 53 tables are under FORCE row-level security keyed on
     ``current_workspace()``, whose policy is ``workspace_id = current_workspace()`` and which
     reads exactly this setting. One more, ``consent_record``, is forced too and keyed on the
     tenant instead, which is why the number here counts the workspace-keyed ones rather than the
@@ -74,16 +74,17 @@ from typing import Final
 import psycopg
 from psycopg.rows import dict_row
 
-from orimera.errors import OrimeraError
+from exulanica.env import env_get, env_name
+from exulanica.errors import ExulanicaError
 
 __all__ = ["DATABASE_URL_ENV", "Database", "DatabaseNotConfigured", "set_workspace"]
 
-#: Where the connection string comes from in every deployment. Tests point
-#: ``ORIMERA_TEST_DATABASE_URL`` at a scratch database instead; nothing reads both.
-DATABASE_URL_ENV: Final = "ORIMERA_DATABASE_URL"
+#: Canonical connection-string name. :func:`env_get` also accepts ``EXULANICA_DATABASE_URL``.
+#: Tests point ``EXULANICA_TEST_DATABASE_URL`` at a scratch database instead; nothing reads both.
+DATABASE_URL_ENV: Final = env_name("DATABASE_URL")
 
 
-class DatabaseNotConfigured(OrimeraError):
+class DatabaseNotConfigured(ExulanicaError):
     """No connection string. Raised rather than defaulted, because a default would connect."""
 
 
@@ -94,9 +95,8 @@ def set_workspace(connection: psycopg.Connection, workspace_id: uuid.UUID) -> No
     local setting would evaporate at the first commit and every subsequent statement would run
     with no workspace, which reads as "this workspace is empty" rather than as an error.
     """
-    connection.execute(
-        "select set_config('orimera.workspace_id', %s, false)", (str(workspace_id),)
-    )
+    workspace = str(workspace_id)
+    connection.execute("select set_config('exulanica.workspace_id', %s, false)", (workspace,))
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,11 +108,12 @@ class Database:
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> Database:
         environ = os.environ if environ is None else environ
-        url = environ.get(DATABASE_URL_ENV)
+        url = env_get("DATABASE_URL", environ)
         if not url:
             raise DatabaseNotConfigured(
-                f"{DATABASE_URL_ENV} is not set. Orimera has one data layer and it is "
-                "PostgreSQL 18 with pgvector; there is no local fallback to run without."
+                f"{DATABASE_URL_ENV} is not set (EXULANICA_DATABASE_URL is accepted as an alias). "
+                "Exulanica has one data layer and it is PostgreSQL 18 with pgvector; there is no "
+                "local fallback to run without."
             )
         return cls(url=url)
 
@@ -126,7 +127,7 @@ class Database:
         to read "every table under row-level security is invisible through this connection", and
         that is false for the role the composition actually uses.
 
-        *   **As a role row-level security reaches**, which ``orimera_app`` is, every one of the
+        *   **As a role row-level security reaches**, which ``exulanica_app`` is, every one of the
             fifty-three workspace-keyed forced tables reads empty. The policy is ``workspace_id =
             current_workspace()``, ``current_workspace()`` is NULL with nothing declared, and
             ``NULL = anything`` is not true. So a caller that wanted workspace data and reached
@@ -139,7 +140,7 @@ class Database:
 
         Both halves are asserted against a live schema in ``tests/test_row_level_security.py``,
         one per role, because a sentence that was false once should not be a sentence again.
-        ``compose.yaml`` gives the API and derivative worker ``orimera_app`` and reserves the
+        ``compose.yaml`` gives the API and derivative worker ``exulanica_app`` and reserves the
         owner URL for the one-shot migration container. Production startup also refuses a
         superuser, a BYPASSRLS role, or an owner of a row-level-security table, so deployment
         drift cannot silently select the second bullet.

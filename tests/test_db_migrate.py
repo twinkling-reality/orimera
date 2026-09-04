@@ -1,7 +1,7 @@
 """Applying migrations to a real server, which is what every process does at startup.
 
 ``tests/pg_harness.py`` applies the files directly, because what it needs is a schema. This
-covers the other path, :func:`orimera.db.apply_pending`, which is the one the command line and
+covers the other path, :func:`exulanica.db.apply_pending`, which is the one the command line and
 anything else with a ``Database`` actually calls, and which additionally has to decide what is
 already applied and record what it applied.
 
@@ -14,15 +14,15 @@ the harness applied rather than letting the two disagree.
 
 from __future__ import annotations
 
-import os
 import urllib.parse
 import uuid
 
 import psycopg
 import pytest
-from orimera.db import Database, applied_migrations, apply_pending, verify_schema
-from orimera.db.roles import provision_runtime_role
-from orimera.migrations import migrations
+from exulanica.db import Database, applied_migrations, apply_pending, verify_schema
+from exulanica.db.roles import provision_runtime_role
+from exulanica.env import env_get, env_name
+from exulanica.migrations import migrations
 
 pytestmark = pytest.mark.postgres
 
@@ -33,10 +33,10 @@ def empty_schema():
 
     Not the harness's migrated schema: the whole point here is to watch the migration run.
     """
-    url = os.environ.get("ORIMERA_TEST_DATABASE_URL")
+    url = env_get("TEST_DATABASE_URL")
     if not url:
-        pytest.skip("set ORIMERA_TEST_DATABASE_URL to a scratch PostgreSQL database")
-    name = f"orimera_migrate_{uuid.uuid4().hex[:12]}"
+        pytest.skip(f"set {env_name('TEST_DATABASE_URL')} to a scratch PostgreSQL database")
+    name = f"exulanica_migrate_{uuid.uuid4().hex[:12]}"
     with psycopg.connect(url, autocommit=True) as admin:
         admin.execute(f'create schema "{name}"')
         options = urllib.parse.quote(f"-csearch_path={name},public", safe="")
@@ -111,7 +111,7 @@ def test_provisioning_a_role_twice_is_a_no_op_and_strips_bypassrls(empty_schema,
     a defect in row-level security rather than in this test.
     """
     database, _name = empty_schema
-    role = f"orimera_probe_{uuid.uuid4().hex[:10]}"
+    role = f"exulanica_probe_{uuid.uuid4().hex[:10]}"
     apply_pending(database)
     with database.unscoped() as connection:
         provision_runtime_role(connection, role=role, read_only=read_only)

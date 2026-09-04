@@ -18,8 +18,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from psycopg.rows import dict_row
 
-from orimera.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
-from orimera.world_package.package import (
+from exulanica.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
+from exulanica.world_package.package import (
     MANIFEST_PATH,
     PROFILE_ID,
     PROFILE_VERSION,
@@ -44,7 +44,7 @@ _EXPORT_POLICY: Final = {
         "explicit evaluation state",
         "deletion tombstones",
     ],
-    "profile": "orimera-wmp-default-exclusion-v1",
+    "profile": "exulanica-wmp-default-exclusion-v1",
     "raw_payloads": "excluded",
 }
 
@@ -106,8 +106,9 @@ def project_world_package(
     try:
         with connection.transaction():
             connection.execute("set transaction isolation level repeatable read")
+            workspace = str(workspace_id)
             connection.execute(
-                "select set_config('orimera.workspace_id', %s, true)", (str(workspace_id),)
+                "select set_config('exulanica.workspace_id', %s, true)", (workspace,)
             )
             with connection.cursor(row_factory=dict_row) as cursor:
                 pointers = _current_pointers(cursor, world_id)
@@ -420,7 +421,7 @@ def _project_components(
             }
             for row in occurrences
         ],
-        "profile": "orimera-semantic-graph-projection-v1",
+        "profile": "exulanica-semantic-graph-projection-v1",
     }
     evidence = {
         "items": [
@@ -438,7 +439,7 @@ def _project_components(
             }
             for row in spans
         ],
-        "profile": "orimera-evidence-descriptors-v1",
+        "profile": "exulanica-evidence-descriptors-v1",
     }
     reconstruction = {
         "items": [
@@ -467,7 +468,7 @@ def _project_components(
             for row in artifacts
         ],
         "payload_bytes": "excluded",
-        "profile": "orimera-reconstruction-descriptors-v1",
+        "profile": "exulanica-reconstruction-descriptors-v1",
         "quality_measurements": {
             "reason": (
                 "quality payload bytes are excluded; recorded claims and artifact descriptors "
@@ -539,12 +540,12 @@ def _project_components(
             }
             for row in captures
         ],
-        "profile": "orimera-external-fetch-reference-v1",
+        "profile": "exulanica-external-fetch-reference-v1",
     }
     package_provenance = {
         "export_policy": _EXPORT_POLICY,
         "parent_merkle_root_sha256": parent_merkle_root_sha256,
-        "profile": "orimera-package-lineage-v1",
+        "profile": "exulanica-package-lineage-v1",
         "snapshot_consistency": "PostgreSQL REPEATABLE READ",
     }
     policy = {
@@ -564,7 +565,7 @@ def _project_components(
             "declaration": "pipeline provenance identifies model-backed events when recorded",
             "present": any(item["model_ref"] is not None for item in provenance["items"]),
         },
-        "profile": "orimera-export-policy-and-content-declaration-v1",
+        "profile": "exulanica-export-policy-and-content-declaration-v1",
     }
     return {
         "appearance/style.json": style,
@@ -588,7 +589,7 @@ def _structure(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if snapshot_id is None:
         unavailable = {
-            "profile": "orimera-spatial-authority-projection-v1",
+            "profile": "exulanica-spatial-authority-projection-v1",
             "reason": "no current durable spatial snapshot",
             "state": "unavailable",
         }
@@ -633,7 +634,7 @@ def _structure(
             "snapshot_id": _urn("structure", row["snapshot_id"]),
         },
         "package_projection": _redact_snapshot_ids(row["package_projection"]),
-        "profile": "orimera-spatial-authority-projection-v1",
+        "profile": "exulanica-spatial-authority-projection-v1",
         "state": "current-invalidated" if invalidated else "current",
     }
     return structure, {
@@ -647,7 +648,7 @@ def _structure(
 def _style(cursor: psycopg.Cursor, world_id: str, version_id: uuid.UUID | None) -> dict[str, Any]:
     if version_id is None:
         return {
-            "profile": "orimera-adaptive-style-projection-v1",
+            "profile": "exulanica-adaptive-style-projection-v1",
             "reason": "no current reviewed style version",
             "state": "unavailable",
         }
@@ -700,7 +701,7 @@ def _style(cursor: psycopg.Cursor, world_id: str, version_id: uuid.UUID | None) 
             "reference_ids": row["reference_ids"],
             "refines_proposal_id": _optional_urn("style-proposal", row["refines_proposal_id"]),
         },
-        "profile": "orimera-adaptive-style-projection-v1",
+        "profile": "exulanica-adaptive-style-projection-v1",
         "registry": [dict(value) for value in registry],
         "registry_modules": [dict(value) for value in modules],
         "recipe_binding": row["recipe_binding"],
@@ -716,7 +717,7 @@ def _interaction(
 ) -> dict[str, Any]:
     if version_id is None:
         return {
-            "profile": "orimera-interaction-policy-projection-v1",
+            "profile": "exulanica-interaction-policy-projection-v1",
             "reason": "no current reviewed interaction policy",
             "state": "unavailable",
         }
@@ -746,7 +747,7 @@ def _interaction(
         "origin_reference": row["origin_reference"],
         "parameters": row["parameters"],
         "policy_sha256": row["policy_sha256"],
-        "profile": "orimera-interaction-policy-projection-v1",
+        "profile": "exulanica-interaction-policy-projection-v1",
         "registry": [dict(value) for value in registry],
         "state": "current",
     }
@@ -758,7 +759,7 @@ def _provenance(
     artifact_ids: Mapping[uuid.UUID, str],
 ) -> dict[str, Any]:
     if not capture_ids:
-        return {"items": [], "profile": "orimera-pipeline-ledger-projection-v1"}
+        return {"items": [], "profile": "exulanica-pipeline-ledger-projection-v1"}
     rows = cursor.execute(
         "select e.event_id,e.run_id,e.seq,e.parent_event_id,e.type,e.stage_key,e.stage_version,"
         "e.model_ref,e.models_tried,e.params_digest,e.input_artifact_ids,e.output_artifact_ids,"
@@ -803,7 +804,7 @@ def _provenance(
             for row in rows
         ],
         "omitted": ["host", "error message", "artifact payloads"],
-        "profile": "orimera-pipeline-ledger-projection-v1",
+        "profile": "exulanica-pipeline-ledger-projection-v1",
     }
 
 
@@ -827,7 +828,7 @@ def _evaluation(paths: Sequence[Path]) -> dict[str, Any]:
         )
     return {
         "items": reports,
-        "profile": "orimera-evaluation-report-projection-v1",
+        "profile": "exulanica-evaluation-report-projection-v1",
         "state": "included" if reports else "unavailable",
         "unavailable_reason": None if reports else "no explicit evaluation report was supplied",
     }
@@ -859,7 +860,7 @@ def _deletion(cursor: psycopg.Cursor) -> dict[str, Any]:
             for row in rows
         ],
         "omitted": ["deletion rationale", "requesting actor"],
-        "profile": "orimera-deletion-tombstones-v1",
+        "profile": "exulanica-deletion-tombstones-v1",
     }
 
 
@@ -878,23 +879,23 @@ def _crate_files(components: Mapping[str, Any]) -> dict[str, bytes]:
             "@type": "Dataset",
             "conformsTo": {"@id": PROFILE_ID},
             "description": (
-                "A signed, privacy-bounded projection of compatible Orimera world memory state."
+                "A signed, privacy-bounded projection of compatible Exulanica world memory state."
             ),
             "hasPart": [{"@id": path} for path in sorted(files)],
-            "name": "Orimera World Memory Package",
+            "name": "Exulanica World Memory Package",
         },
         {
             "@id": PROFILE_ID,
             "@type": ["CreativeWork", "Profile"],
             "description": "Versioned requirements for World Memory Package 1.0.",
-            "name": "Orimera World Memory Package Profile 1.0",
+            "name": "Exulanica World Memory Package Profile 1.0",
             "version": PROFILE_VERSION,
         },
         {
             "@id": "#responsible-ai-boundary",
             "@type": "Dataset",
             "about": {"@id": "./"},
-            "citeAs": "Orimera World Memory Package",
+            "citeAs": "Exulanica World Memory Package",
             "http://mlcommons.org/croissant/isLiveDataset": False,
             "http://purl.org/dc/terms/conformsTo": [
                 "http://mlcommons.org/croissant/1.0",
@@ -913,7 +914,7 @@ def _crate_files(components: Mapping[str, Any]) -> dict[str, bytes]:
                 "Compatible world metadata may describe personal memories; authorization remains "
                 "external to this portable package."
             ),
-            "url": "https://orimera.local/profiles/world-memory-package/1.0",
+            "url": "https://exulanica.local/profiles/world-memory-package/1.0",
             "version": PROFILE_VERSION,
         },
         *[
@@ -943,7 +944,7 @@ def _write(root: Path, relative: str, data: bytes) -> None:
 
 def _urn(kind: str, value: Any) -> str:
     digest = hashlib.sha256(f"{kind}:{value}".encode()).hexdigest()
-    return f"urn:orimera:wmp:{kind}:{digest}"
+    return f"urn:exulanica:wmp:{kind}:{digest}"
 
 
 def _optional_urn(kind: str, value: Any) -> str | None:

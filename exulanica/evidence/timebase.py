@@ -39,8 +39,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from orimera.canonical import round_half_down
-from orimera.errors import InvalidAddressError
+from exulanica.canonical import round_half_down
+from exulanica.errors import InvalidAddressError
 
 __all__ = [
     "IMAGE_TIME_BASE",

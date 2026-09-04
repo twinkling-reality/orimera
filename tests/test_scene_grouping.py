@@ -16,9 +16,9 @@ import uuid
 
 import psycopg
 import pytest
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.scenes import group_captures, metres_between, run_scene_grouping
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.scenes import group_captures, metres_between, run_scene_grouping
+from exulanica.store.local import LocalContentAddressedStore
 
 from conftest import CountingVisionModel, write_photo
 

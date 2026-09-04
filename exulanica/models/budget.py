@@ -21,14 +21,14 @@ call cross the ceiling, which is the one thing the guard exists to prevent.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Final
 
-from orimera.models.errors import BudgetExceededError
-from orimera.models.manifest import ModelSpec, Role
-from orimera.models.usage import USD_QUANTUM, CallUsage, CostLedger
+from exulanica.env import env_get, env_name
+from exulanica.models.errors import BudgetExceededError
+from exulanica.models.manifest import ModelSpec, Role
+from exulanica.models.usage import USD_QUANTUM, CallUsage, CostLedger
 
 __all__ = ["DEFAULT_CEILING_USD", "DEFAULT_MAX_CALLS", "BudgetGuard"]
 
@@ -41,8 +41,8 @@ DEFAULT_CEILING_USD: Final = Decimal("5.00")
 #: one process is not a workload, it is a loop.
 DEFAULT_MAX_CALLS: Final = 2000
 
-_CEILING_ENV: Final = "ORIMERA_BUDGET_USD"
-_MAX_CALLS_ENV: Final = "ORIMERA_BUDGET_MAX_CALLS"
+_CEILING_ENV: Final = env_name("BUDGET_USD")
+_MAX_CALLS_ENV: Final = env_name("BUDGET_MAX_CALLS")
 
 #: Characters per token, used only to size a reservation. Deliberately low, which over-estimates
 #: the token count, which over-reserves. Never used for accounting: reported usage is.
@@ -50,7 +50,8 @@ _CHARS_PER_TOKEN: Final = Decimal(3)
 
 
 def _env_decimal(name: str, default: Decimal) -> Decimal:
-    raw = os.environ.get(name)
+    suffix = name.removeprefix("EXULANICA_")
+    raw = env_get(suffix)
     if raw is None or not raw.strip():
         return default
     try:
@@ -63,7 +64,8 @@ def _env_decimal(name: str, default: Decimal) -> Decimal:
 
 
 def _env_int(name: str, default: int) -> int:
-    raw = os.environ.get(name)
+    suffix = name.removeprefix("EXULANICA_")
+    raw = env_get(suffix)
     if raw is None or not raw.strip():
         return default
     value = int(raw.strip())

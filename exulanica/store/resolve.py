@@ -21,11 +21,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from orimera.errors import IntegrityError
-from orimera.evidence import EvidenceAddress, Modality, TimeInterval
-from orimera.evidence.blob import BlobId
-from orimera.evidence.region import DisplayGeometry, Rect, Region
-from orimera.store.base import ContentAddressedStore
+from exulanica.errors import IntegrityError
+from exulanica.evidence import EvidenceAddress, Modality, TimeInterval
+from exulanica.evidence.blob import BlobId
+from exulanica.evidence.region import DisplayGeometry, Rect, Region
+from exulanica.store.base import ContentAddressedStore
 
 __all__ = ["address_from_span_row", "resolve_original_bytes"]
 

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Final
 
-from orimera.ingest.spine.scope import WorkspaceScope
+from exulanica.ingest.spine.scope import WorkspaceScope
 
 __all__ = ["rows_in_schema"]
 

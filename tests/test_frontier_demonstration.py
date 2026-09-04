@@ -8,11 +8,11 @@ import uuid
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from orimera.models.manifest import MANIFEST_PATH as MODEL_MANIFEST_PATH
-from orimera.orchestration import load_build_manifest, run_frontier_demonstration
-from orimera.orchestration.cli import main as frontier_main
-from orimera.orchestration.demonstration import FrontierDemonstrationError
-from orimera.world_package import verify_package
+from exulanica.models.manifest import MANIFEST_PATH as MODEL_MANIFEST_PATH
+from exulanica.orchestration import load_build_manifest, run_frontier_demonstration
+from exulanica.orchestration.cli import main as frontier_main
+from exulanica.orchestration.demonstration import FrontierDemonstrationError
+from exulanica.world_package import verify_package
 
 from conftest import CountingVisionModel, write_photo
 
@@ -31,7 +31,7 @@ def _manifest(tmp_path, photo_dir, workspace_id, actor_id, *, vision="configured
             }
         )
     document = {
-        "profile": "orimera-frontier-build/v1",
+        "profile": "exulanica-frontier-build/v1",
         "workspace_id": str(workspace_id),
         "actor_id": str(actor_id),
         "world_id": "atlas:default",
@@ -66,8 +66,8 @@ def test_frontier_demonstration_runs_every_gate_without_fabricating_reconstructi
 ):
     photo_dir = tmp_path / "authorized-photos"
     photo_dir.mkdir()
-    write_photo(photo_dir, "a.jpg", when="2026:08:27 10:00:00", make="Orimera-A")
-    write_photo(photo_dir, "b.jpg", when="2026:08:27 10:05:00", make="Orimera-B")
+    write_photo(photo_dir, "a.jpg", when="2026:08:27 10:00:00", make="Exulanica-A")
+    write_photo(photo_dir, "b.jpg", when="2026:08:27 10:05:00", make="Exulanica-B")
     actor = uuid.uuid4()
     manifest = _manifest(tmp_path, photo_dir, repository.workspace_id, actor)
     vision = CountingVisionModel()
@@ -92,7 +92,7 @@ def test_frontier_demonstration_runs_every_gate_without_fabricating_reconstructi
     assert receipt["repeat"]["world"]["state"] == "reused"
     assert {"intake", "rendition", "vision"} <= set(receipt["repeat"]["ingest"]["stages_reused"])
     assert receipt["evidence"]["state"] == "opened-and-hash-verified"
-    assert receipt["evidence"]["uri"].startswith("orimera://blob/")
+    assert receipt["evidence"]["uri"].startswith("exulanica://blob/")
     assert receipt["semantic_graph_and_answer"]["packet"]["item_count"] == 2
     assert receipt["semantic_graph_and_answer"]["answer"]["clauses"]
     assert receipt["world"]["stale_preview"] == "rejected"
@@ -152,8 +152,8 @@ def test_frontier_demonstration_runs_every_gate_without_fabricating_reconstructi
 def test_frontier_demonstration_requires_explicit_source_deletion_authority(repository, tmp_path):
     photo_dir = tmp_path / "authorized-photos"
     photo_dir.mkdir()
-    write_photo(photo_dir, "a.jpg", make="Orimera-A")
-    write_photo(photo_dir, "b.jpg", make="Orimera-B")
+    write_photo(photo_dir, "a.jpg", make="Exulanica-A")
+    write_photo(photo_dir, "b.jpg", make="Exulanica-B")
     manifest = _manifest(tmp_path, photo_dir, repository.workspace_id, uuid.uuid4())
 
     with pytest.raises(FrontierDemonstrationError, match="source_deletion_confirmation_required"):
@@ -175,8 +175,8 @@ def test_frontier_demonstration_names_the_capture_only_and_source_first_fallback
 ):
     photo_dir = tmp_path / "authorized-photos"
     photo_dir.mkdir()
-    write_photo(photo_dir, "a.jpg", when="2026:08:27 10:00:00", make="Orimera-A")
-    write_photo(photo_dir, "b.jpg", when="2026:08:27 10:05:00", make="Orimera-B")
+    write_photo(photo_dir, "a.jpg", when="2026:08:27 10:00:00", make="Exulanica-A")
+    write_photo(photo_dir, "b.jpg", when="2026:08:27 10:05:00", make="Exulanica-B")
     workspace_id = uuid.uuid4()
     _manifest(
         tmp_path,

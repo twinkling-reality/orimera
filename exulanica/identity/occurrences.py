@@ -2,12 +2,12 @@
 
 An occurrence is scene-local and carries no name, because ``occurrence`` has no column that could
 hold one: ``display_name`` is on ``entity`` and nowhere else. That is why there is no ``set_name``
-here to match the one on :mod:`orimera.identity.entities`. A detection that could carry a name
+here to match the one on :mod:`exulanica.identity.entities`. A detection that could carry a name
 would make a detector's output indistinguishable from what the account holder said.
 
 :attr:`OccurrenceRow.identity_key` is derived from the evidence rather than from this row's own
 id, which is what makes rejection memory survive a detector re-run. See
-:func:`orimera.identity.keys.occurrence_identity_key` for the derivation.
+:func:`exulanica.identity.keys.occurrence_identity_key` for the derivation.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from orimera.identity.repository import IdentityRepository
+    from exulanica.identity.repository import IdentityRepository
 
 __all__ = ["OccurrenceRow", "Occurrences"]
 

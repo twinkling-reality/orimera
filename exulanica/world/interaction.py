@@ -10,9 +10,9 @@ from dataclasses import dataclass
 from importlib.resources import files
 from typing import Any, TypeAlias
 
-from orimera.canonical import canonical_json, sha256_of_canonical
-from orimera.world.errors import InvalidInteractionData
-from orimera.world.models import ProposalProvenance
+from exulanica.canonical import canonical_json, sha256_of_canonical
+from exulanica.world.errors import InvalidInteractionData
+from exulanica.world.models import ProposalProvenance
 
 __all__ = [
     "INTERACTION_POLICY_REGISTRY",
@@ -228,7 +228,7 @@ class InteractionPolicyRegistry:
 
 
 def _load_registry() -> InteractionPolicyRegistry:
-    path = files("orimera.world").joinpath("interaction-policy-registry.v1.json")
+    path = files("exulanica.world").joinpath("interaction-policy-registry.v1.json")
     return InteractionPolicyRegistry(json.loads(path.read_text(encoding="utf-8")))
 
 

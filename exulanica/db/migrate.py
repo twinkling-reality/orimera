@@ -1,8 +1,8 @@
 """Applying migration files to a server, and recording what was applied.
 
-``orimera.migrations`` knows what the files are and what they hash to. This module is the half
+``exulanica.migrations`` knows what the files are and what they hash to. This module is the half
 that talks to a database: it reads ``schema_migrations``, applies whatever is pending, and
-records the checksum of each file it applied so that :func:`orimera.migrations.verify_applied`
+records the checksum of each file it applied so that :func:`exulanica.migrations.verify_applied`
 has something to compare against later.
 
 Three properties, each of which is a decision rather than an accident:
@@ -29,9 +29,9 @@ from dataclasses import dataclass
 import psycopg
 from psycopg import sql
 
-from orimera.db.roles import grant_workspace_partition
-from orimera.db.session import Database
-from orimera.migrations import Migration, migrations, verify_applied
+from exulanica.db.roles import grant_workspace_partition
+from exulanica.db.session import Database
+from exulanica.migrations import Migration, migrations, verify_applied
 
 __all__ = [
     "MigrationReport",

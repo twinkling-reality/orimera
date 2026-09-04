@@ -78,7 +78,7 @@ class PointMapQualityReport:
 
     def as_payload(self) -> dict[str, object]:
         return {
-            "profile": "orimera.point-map-quality/v1",
+            "profile": "exulanica.point-map-quality/v1",
             "corpus_kind": self.corpus_kind,
             "observation_count": len(self.observations),
             "distributions": self.distributions,

@@ -141,7 +141,7 @@ class PoseBuildManifest:
 
     def as_payload(self) -> dict[str, object]:
         return {
-            "profile": "orimera.colmap-pose-build/v1",
+            "profile": "exulanica.colmap-pose-build/v1",
             "scene_ref": self.scene_ref,
             "code_revision": self.code_revision,
             "colmap_version": self.colmap_version,
@@ -551,7 +551,7 @@ def run_colmap_pose_job(
         receipt_path = job_dir / "receipt.json"
         if receipt_path.is_file():
             receipt = _load_json(receipt_path)
-            if receipt.get("profile") != "orimera.colmap-pose-receipt/v2":
+            if receipt.get("profile") != "exulanica.colmap-pose-receipt/v2":
                 raise ValueError("the completed pose receipt has an unsupported profile")
             if receipt.get("manifest_digest") != manifest.digest:
                 raise ValueError("the completed pose receipt names another manifest")
@@ -698,7 +698,7 @@ def run_colmap_pose_job(
 
         quality = _quality(manifest, sparse)
         receipt = {
-            "profile": "orimera.colmap-pose-receipt/v2",
+            "profile": "exulanica.colmap-pose-receipt/v2",
             "manifest_digest": manifest.digest,
             # The durable receipt has to remain explainable after sensitive job scratch is
             # removed. A digest alone proves equality and does not say which photographs,

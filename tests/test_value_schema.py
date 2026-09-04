@@ -18,8 +18,8 @@ import uuid
 
 import psycopg
 import pytest
-from orimera.evidence import EvidenceAddress
-from orimera.evidence.blob import BlobId
+from exulanica.evidence import EvidenceAddress
+from exulanica.evidence.blob import BlobId
 from psycopg.types.json import Jsonb
 
 #: Every keyword this validator implements. Duplicated from migration 0014 on purpose: the test

@@ -1,6 +1,6 @@
 """Reversing one identity decision, from what its event recorded rather than from a guess.
 
-Split out of :mod:`orimera.identity.decisions` for the reason that module names: an inverse is
+Split out of :mod:`exulanica.identity.decisions` for the reason that module names: an inverse is
 not the same responsibility as the thing it inverts, and holding both meant one file carrying a
 handler table, six handlers and the six decisions they undo.
 
@@ -15,11 +15,11 @@ and it would be most confidently wrong about the oldest events.
 
 **Every handler returns the SUBJECTS it touched, not the dependency strings for them.** Identity
 builds the ``'entity:<uuid>'`` form in exactly one function, ``_dep_index`` in
-:mod:`orimera.identity.recomputation`, and a handler that built the string itself would be a
+:mod:`exulanica.identity.recomputation`, and a handler that built the string itself would be a
 second place in this package where the format lives. The column is not identity's to own:
 ``derived_artifact.dep_index`` is WRITTEN by
-:meth:`orimera.ingest.repository.IngestRepository.upsert_derived_artifact`, out of strings
-:mod:`orimera.ingest.scenes` composes, and recomputation only reads it, in a
+:meth:`exulanica.ingest.repository.IngestRepository.upsert_derived_artifact`, out of strings
+:mod:`exulanica.ingest.scenes` composes, and recomputation only reads it, in a
 ``dep_index && %s::text[]`` predicate. So the format already lives on both sides of that
 boundary, which is the reason for holding identity's side of it to one function rather than six.
 """
@@ -29,10 +29,10 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from orimera.epistemics.assertions import AssertionWriter
-from orimera.identity.keys import USER_STATEMENT_BASIS
-from orimera.identity.repository import IdentityRepository
-from orimera.identity.subjects import (
+from exulanica.epistemics.assertions import AssertionWriter
+from exulanica.identity.keys import USER_STATEMENT_BASIS
+from exulanica.identity.repository import IdentityRepository
+from exulanica.identity.subjects import (
     OCCURRENCE_ENTITY,
     NotUndoable,
     UnknownSubject,
@@ -42,7 +42,7 @@ from orimera.identity.subjects import (
 __all__ = ["UNDO_HANDLERS", "Touched", "undo"]
 
 #: What a handler reports back: the subjects of the decision it reversed, in the keywords
-#: :meth:`orimera.identity.recomputation.Recomputation.mark_stale` takes.
+#: :meth:`exulanica.identity.recomputation.Recomputation.mark_stale` takes.
 Touched = dict[str, uuid.UUID | list[uuid.UUID]]
 
 
@@ -180,7 +180,7 @@ def _undo_rename(
     An entity whose rename superseded nothing had no active name before, so the undo retracts
     rather than restores: it puts the entity back to unnamed, which is where it was.
     """
-    from orimera.identity.naming import rename_entity
+    from exulanica.identity.naming import rename_entity
 
     entity_id = uuid.UUID(payload["entity_id"])
     writer = AssertionWriter(repository.connection, repository.workspace_id)

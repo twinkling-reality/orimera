@@ -7,8 +7,8 @@ every route function in this package is short enough to read in one screen, and 
 delegates to has its own tests that do not go through HTTP.
 
 The connection dependency is where the workspace binding actually happens. It opens a session
-through :meth:`orimera.db.session.Database.session`, which issues
-``set_config('orimera.workspace_id', ...)`` before handing the connection over, so every query a
+through :meth:`exulanica.db.session.Database.session`, which issues
+``set_config('exulanica.workspace_id', ...)`` before handing the connection over, so every query a
 route runs is already under row-level security scoped to the caller. A route cannot forget,
 because a route never opens a connection.
 """
@@ -21,11 +21,11 @@ from typing import Annotated
 import psycopg
 from fastapi import Depends, Header, Request
 
-from orimera.api.authorisation import TokenNotAccepted
-from orimera.api.services import Services
-from orimera.epistemics.assertions import AssertionWriter
-from orimera.identity import IdentityRepository
-from orimera.selection.validation import Session
+from exulanica.api.authorisation import TokenNotAccepted
+from exulanica.api.services import Services
+from exulanica.epistemics.assertions import AssertionWriter
+from exulanica.identity import IdentityRepository
+from exulanica.selection.validation import Session
 
 __all__ = [
     "CurrentSession",

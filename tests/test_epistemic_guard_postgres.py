@@ -11,7 +11,7 @@ So these tests write the offending rows and require the database to refuse them.
 
 Running them
 ------------
-Set ``ORIMERA_TEST_DATABASE_URL`` to a scratch database; without it every test here skips, which
+Set ``EXULANICA_TEST_DATABASE_URL`` to a scratch database; without it every test here skips, which
 is the normal state on a machine with no server. The server must be the documented target,
 PostgreSQL 18 with pgvector: nothing is substituted, and a server that cannot run the schema
 fails loudly rather than being faked. ``tests/pg_harness.py`` explains how the schema is applied
@@ -41,7 +41,7 @@ def spine():
     with migrated_schema() as (psycopg, conn):
         workspace = uuid.uuid4()
         cursor = conn.cursor()
-        cursor.execute("select set_config('orimera.workspace_id', %s, false)", (str(workspace),))
+        cursor.execute("select set_config('exulanica.workspace_id', %s, false)", (str(workspace),))
         digest = bytes(range(32))
         cursor.execute(
             "insert into blob (blob_sha256, byte_size, media_type) values (%s, 1, 'image/jpeg')",
@@ -147,7 +147,7 @@ def test_the_live_vocabulary_is_the_one_that_was_decided(spine):
     vocabulary that failed to insert surfaces as an empty table, which reads as "no predicate
     accepts anything" and refuses every write for a reason nobody would guess from the error.
 
-    Row for row against ``orimera.epistemics.vocabulary.DECISIONS``, which is defect R4's answer.
+    Row for row against ``exulanica.epistemics.vocabulary.DECISIONS``, which is defect R4's answer.
     There is deliberately no count to bump here: a predicate added without a decision fails
     ``tests/test_vocabulary_decisions.py``, and a decision that does not match the database fails
     this. The count assertion it replaces was ``len(rows) == 12``, whose repair when
@@ -156,7 +156,7 @@ def test_the_live_vocabulary_is_the_one_that_was_decided(spine):
     ``allows_kind`` is sorted on both sides. Array element order is a storage detail, and a
     vocabulary row reordered by a later migration is not a decision anybody made.
     """
-    from orimera.epistemics.vocabulary import DECISIONS
+    from exulanica.epistemics.vocabulary import DECISIONS
 
     live = {
         row[0]: (tuple(sorted(row[1])), row[2], row[3])
@@ -341,7 +341,7 @@ def test_a_write_with_no_workspace_context_is_refused(spine):
     context for the rest of the module.
     """
     with spine.undone():
-        spine.conn.execute("select set_config('orimera.workspace_id', '', true)")
+        spine.conn.execute("select set_config('exulanica.workspace_id', '', true)")
         with pytest.raises(spine.psycopg.Error, match="workspace context"), (
             spine.conn.transaction()
         ):

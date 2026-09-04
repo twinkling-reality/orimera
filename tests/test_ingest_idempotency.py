@@ -14,7 +14,7 @@ the deduplication the repository writes as ``insert ... on conflict do nothing``
 unique constraints the database enforces on every route into the table, so one test reaches
 those constraints with raw SQL instead of trusting the repository to have been careful.
 
-The whole file skips when ``ORIMERA_TEST_DATABASE_URL`` is unset; see ``tests/pg_harness.py``.
+The whole file skips when ``EXULANICA_TEST_DATABASE_URL`` is unset; see ``tests/pg_harness.py``.
 """
 
 from __future__ import annotations
@@ -23,10 +23,10 @@ import dataclasses
 
 import psycopg
 import pytest
-from orimera.evidence.blob import BlobId
-from orimera.ingest import vision as vision_module
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.stages import (
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest import vision as vision_module
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.stages import (
     STAGES,
     StageSpec,
     idempotency_key,
@@ -34,10 +34,10 @@ from orimera.ingest.stages import (
     pipeline_digest,
     vision_stage_params,
 )
-from orimera.ingest.stages import vision as vision_stage
-from orimera.ingest.vision import NebiusVisionModel, prompt_digest
-from orimera.models.manifest import Role
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.ingest.stages import vision as vision_stage
+from exulanica.ingest.vision import NebiusVisionModel, prompt_digest
+from exulanica.models.manifest import Role
+from exulanica.store.local import LocalContentAddressedStore
 
 from conftest import CountingVisionModel, write_photo
 

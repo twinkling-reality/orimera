@@ -1,7 +1,7 @@
 """``POST /intake``: upload photographs, and watch them arrive.
 
 **The queue between this route and the worker holds capture ids and never bytes.** That is the
-one decision this file exists to keep, and :mod:`orimera.ingest.derivative_queue` carries the
+one decision this file exists to keep, and :mod:`exulanica.ingest.derivative_queue` carries the
 argument for it: an evidence address is a content hash of the original bytes, and the deletion
 cascade reaches the rows under the tombstone guards and the objects in the content-addressed
 store, and nothing else. Bytes staged anywhere in between are outside both, a tombstone written
@@ -40,7 +40,7 @@ The eight checks, in the order a part meets them:
 **What is bounded here and what is not.** Checks 3 to 5 bound what reaches the store and the
 database, which is what they are for. They do not bound the temporary file a multipart parser
 has already written by the time this function runs: the body is received and parsed before any
-route sees it. :mod:`orimera.api.body_limit` refuses an over-large declared body ahead of that,
+route sees it. :mod:`exulanica.api.body_limit` refuses an over-large declared body ahead of that,
 and a request that declares no length at all is a reverse proxy's to bound.
 """
 
@@ -54,19 +54,19 @@ from fastapi import APIRouter, Depends, File, UploadFile
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict
 
-from orimera.api.dependencies import CurrentSession, ScopedConnection, get_services
-from orimera.api.services import Services
-from orimera.ingest import derivative_queue
-from orimera.ingest.batch import IntakeBatch
-from orimera.ingest.decode import probe
-from orimera.ingest.pipeline import SUPPORTED_SUFFIXES, PhotoIngestPipeline
-from orimera.ingest.report import IngestOutcome
-from orimera.ingest.repository import IngestRepository
+from exulanica.api.dependencies import CurrentSession, ScopedConnection, get_services
+from exulanica.api.services import Services
+from exulanica.ingest import derivative_queue
+from exulanica.ingest.batch import IntakeBatch
+from exulanica.ingest.decode import probe
+from exulanica.ingest.pipeline import SUPPORTED_SUFFIXES, PhotoIngestPipeline
+from exulanica.ingest.report import IngestOutcome
+from exulanica.ingest.repository import IngestRepository
 
 router = APIRouter(prefix="/intake", tags=["intake"])
 
 #: The most parts one upload may carry. A phone's selection, not a library import; a library
-#: import is `orimera-ingest` over a directory, which is a different thing with a different
+#: import is `exulanica-ingest` over a directory, which is a different thing with a different
 #: failure mode.
 MAX_PARTS: Final = 200
 

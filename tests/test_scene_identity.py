@@ -37,26 +37,27 @@ from pathlib import Path
 import psycopg
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from orimera.db.roles import (
+from exulanica.db.roles import (
     PURGE_CROSS_WORKSPACE_TABLES,
     PURGE_ROLE,
     RUNTIME_ROLE,
     provision_purge_role,
     provision_runtime_role,
 )
-from orimera.deletion import queue
-from orimera.deletion.worker import PurgeWorker
-from orimera.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
-from orimera.evidence import EvidenceAddress
-from orimera.evidence.blob import BlobId
-from orimera.evidence.scene import scene_id_for, scene_member_digest
-from orimera.graph import SceneRungRow, scene_rung_rows
-from orimera.graph.scene_groups import rung_by_capture
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.scene_rung import record_scene_rung
-from orimera.reconstruction.scene_gate import SceneGateDecision
-from orimera.store.local import LocalContentAddressedStore
-from orimera.world_package import diff_packages, project_world_package
+from exulanica.deletion import queue
+from exulanica.deletion.worker import PurgeWorker
+from exulanica.env import env_get
+from exulanica.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
+from exulanica.evidence import EvidenceAddress
+from exulanica.evidence.blob import BlobId
+from exulanica.evidence.scene import scene_id_for, scene_member_digest
+from exulanica.graph import SceneRungRow, scene_rung_rows
+from exulanica.graph.scene_groups import rung_by_capture
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.scene_rung import record_scene_rung
+from exulanica.reconstruction.scene_gate import SceneGateDecision
+from exulanica.store.local import LocalContentAddressedStore
+from exulanica.world_package import diff_packages, project_world_package
 
 from conftest import CountingVisionModel, iso, write_photo, write_point_map
 
@@ -125,12 +126,12 @@ class SceneWorkspace:
         )
 
     def database(self, *, role: str | None = None, password: str | None = None):
-        import os
         import urllib.parse
 
-        from orimera.db.session import Database
+        from exulanica.db.session import Database
 
-        base = os.environ["ORIMERA_TEST_DATABASE_URL"]
+        base = env_get("TEST_DATABASE_URL")
+        assert base is not None
         options = urllib.parse.quote(f"-csearch_path={self.scratch},public", safe="")
         url = f"{base}{'&' if '?' in base else '?'}options={options}"
         if role is not None:
@@ -278,12 +279,12 @@ def scene(tmp_path, photo_dir, repository, spine_schema):
             ).fetchone()["capture_id"]
         )
 
-    import os
     import urllib.parse
 
-    from orimera.db.session import Database
+    from exulanica.db.session import Database
 
-    base = os.environ["ORIMERA_TEST_DATABASE_URL"]
+    base = env_get("TEST_DATABASE_URL")
+    assert base is not None
     options = urllib.parse.quote(f"-csearch_path={scratch},public", safe="")
     owner = Database(url=f"{base}{'&' if '?' in base else '?'}options={options}")
     with owner.unscoped() as connection:
@@ -345,14 +346,14 @@ def test_the_scene_digest_is_frozen_to_these_exact_bytes():
         uuid.UUID("018f0000-0000-7000-8000-000000000003"),
     ]
     assert scene_member_digest(members).hex() == (
-        "9fe138a116dd57ebb034c3653c3b94fe4225ad7f7d39defde981c59f91742179"
+        "6c508e1469fae04523b9be123fe84cf361daec95872a6e0c7192a5154c119d9f"
     )
-    assert str(scene_id_for(members)) == "8bae8bc2-028c-5428-96ed-126f2ce62eab"
+    assert str(scene_id_for(members)) == "6c45661b-9120-5d4e-9921-e43b8be75391"
     # A second set, so a digest that ignored its members entirely would still fail.
     assert scene_member_digest(members[:1]).hex() == (
-        "495f52c3b4d3620ba450685e056e4812380d0f9c0781bbf6a39d8016fabd06a0"
+        "517b3ab4dfe7e85dde51e493f3871ebc55b5f3c6f2e1006eda0ecf8d8b304e22"
     )
-    assert str(scene_id_for(members[:1])) == "ae94f036-fe13-5ba8-b6d2-9925923c16ce"
+    assert str(scene_id_for(members[:1])) == "f5944f44-14eb-51c3-8bd9-3ade5f965171"
 
 
 def test_a_scene_of_no_photographs_has_no_identity():
@@ -421,7 +422,7 @@ def test_a_scene_with_no_members_blocks(scene):
     """Fail closed. An unbuilt scene and an invisible one are the same answer to this session.
 
     ``reconstruction_scene_member`` carries FORCE row-level security, so a session that never set
-    ``orimera.workspace_id`` reads it as empty, and answering "nothing blocks it" to a question
+    ``exulanica.workspace_id`` reads it as empty, and answering "nothing blocks it" to a question
     whose inputs could not be seen is the direction ``_require_workspace_context`` exists to
     prevent. The ordering discipline it forces is members first, then the artifact.
     """

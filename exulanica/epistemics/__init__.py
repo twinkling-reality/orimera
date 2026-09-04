@@ -5,6 +5,6 @@ the dispute and retraction paths belong beside the writer rather than inside it,
 seam in now costs nothing.
 """
 
-from orimera.epistemics.assertions import AssertionWriter
+from exulanica.epistemics.assertions import AssertionWriter
 
 __all__ = ["AssertionWriter"]

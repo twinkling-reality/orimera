@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-from orimera.reconstruction.navigation import (
+from exulanica.reconstruction.navigation import (
     CorridorBuildManifest,
     Destination,
     NavigationPoseSample,

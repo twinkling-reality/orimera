@@ -17,9 +17,9 @@ from typing import Final
 
 import psycopg
 
-from orimera.evaluation.counts import Count, NamedCase
-from orimera.evaluation.ground_truth import Frame, GroundTruth
-from orimera.selection import (
+from exulanica.evaluation.counts import Count, NamedCase
+from exulanica.evaluation.ground_truth import Frame, GroundTruth
+from exulanica.selection import (
     CaptureWindow,
     EpistemicScope,
     Intent,
@@ -148,7 +148,7 @@ def _placeable(truth: GroundTruth, ingested: set[str]) -> list[tuple[Frame, dt.d
         gold set that included it would be scoring the pipeline's guess at an offset under a
         name that says filters.
     *   **Carries an instant.** Belt and braces against a manifest that says recoverable and
-        records nothing; :func:`orimera.evaluation.ground_truth.instant_is_correct` treats that
+        records nothing; :func:`exulanica.evaluation.ground_truth.instant_is_correct` treats that
         combination as a failure and this must not silently read it as a window boundary.
     """
     return sorted(
@@ -218,9 +218,9 @@ def score_capture_time_windows(
     """M15. A capture-time window returns the frames the corpus placed inside it.
 
     **The whole path runs.** Each case builds a plan payload, hands it to
-    :func:`orimera.selection.validation.parse`, then to
-    :func:`orimera.selection.validation.validate`, then to
-    :func:`orimera.selection.executor.execute`. That ordering is not a style choice: ``execute``
+    :func:`exulanica.selection.validation.parse`, then to
+    :func:`exulanica.selection.validation.validate`, then to
+    :func:`exulanica.selection.executor.execute`. That ordering is not a style choice: ``execute``
     accepts only a ``ValidatedPlan`` and ``validate`` is the only thing that constructs one, so
     there is no way to reach the executor that skips a stage. A defect anywhere in parse,
     validation, compilation or the SQL makes a case here fail.
@@ -389,7 +389,7 @@ def score_authorisation(
 ) -> Count:
     """M10. No cross-tenant read succeeded on any route generated from the router.
 
-    ``routes`` comes from ``orimera.api.routes.routable_paths`` rather than from a list here,
+    ``routes`` comes from ``exulanica.api.routes.routable_paths`` rather than from a list here,
     which is what M10's own specification requires and what stopped this sweep going blind once
     already.
 

@@ -29,21 +29,21 @@ every workspace while the parent reported a correct zero.
 
 from __future__ import annotations
 
-import os
 import uuid
 
 import psycopg
 import pytest
-from orimera.db.migrate import provision_workspace
-from orimera.db.roles import (
+from exulanica.db.migrate import provision_workspace
+from exulanica.db.roles import (
     EXECUTOR_ROLE,
     RUNTIME_ROLE,
     RuntimeRoleUnsafe,
     assert_runtime_role,
     provision_runtime_role,
 )
-from orimera.db.session import Database
-from orimera.identity import IdentityRepository
+from exulanica.db.session import Database
+from exulanica.env import env_get
+from exulanica.identity import IdentityRepository
 from psycopg.rows import dict_row
 
 from pg_harness import migrated_schema
@@ -52,7 +52,7 @@ pytestmark = pytest.mark.postgres
 
 #: Suffixed, because **a role is a CLUSTER object** and the harness's "the database name must
 #: contain test" guard does not reach one. Under the deployment's own names, every run of this
-#: file rewrote the grants on the developer's live `orimera_app` and `orimera_ro` in the same
+#: file rewrote the grants on the developer's live `exulanica_app` and `exulanica_ro` in the same
 #: cluster the `orimera` database lives in. `tests/test_purge.py` moved for that reason and this
 #: file follows it. The privilege set under test does not change: `provision_runtime_role` takes
 #: the role name as an argument and composes every grant and revoke from it, so the suffix moves
@@ -69,7 +69,7 @@ def isolated():
 
     The roles are the deployment's, under suffixed names. A role is a CLUSTER object and the
     harness's "the database name must contain test" guard does not reach one, so provisioning
-    `orimera_app` and `orimera_ro` here rewrote the grants on the developer's live roles, in the
+    `exulanica_app` and `exulanica_ro` here rewrote the grants on the developer's live roles, in the
     same cluster the `orimera` database lives in. That is what the suffix is for, and
     `tests/test_purge.py` carries the same one.
 
@@ -93,12 +93,12 @@ def isolated():
         workspace_a, workspace_b = uuid.uuid4(), uuid.uuid4()
         for workspace in (workspace_a, workspace_b):
             admin.execute(
-                "select set_config('orimera.workspace_id', %s, false)", (str(workspace),)
+                "select set_config('exulanica.workspace_id', %s, false)", (str(workspace),)
             )
             provision_workspace(admin, workspace)
 
         admin.execute(
-            "select set_config('orimera.workspace_id', %s, false)", (str(workspace_a),)
+            "select set_config('exulanica.workspace_id', %s, false)", (str(workspace_a),)
         )
         digest = bytes(range(32))
         admin.execute(
@@ -132,7 +132,8 @@ class Isolated:
         self._open: list[psycopg.Connection] = []
 
     def _dsn(self, role: str) -> str:
-        base = os.environ["ORIMERA_TEST_DATABASE_URL"]
+        base = env_get("TEST_DATABASE_URL")
+        assert base is not None
         separator = "&" if "?" in base else "?"
         return f"{base}{separator}user={role}"
 
@@ -140,7 +141,7 @@ class Isolated:
         connection = psycopg.connect(self._dsn(role), autocommit=True, row_factory=dict_row)
         connection.execute(f'set search_path to "{self.scratch}", public')
         connection.execute(
-            "select set_config('orimera.workspace_id', %s, false)", (str(workspace),)
+            "select set_config('exulanica.workspace_id', %s, false)", (str(workspace),)
         )
         self._open.append(connection)
         return connection
@@ -183,7 +184,8 @@ def test_runtime_startup_accepts_the_non_owner_application_role(scoped):
 
 
 def test_runtime_startup_refuses_the_bootstrap_owner(scoped):
-    base = os.environ["ORIMERA_TEST_DATABASE_URL"]
+    base = env_get("TEST_DATABASE_URL")
+    assert base is not None
     connection = psycopg.connect(base, autocommit=True, row_factory=dict_row)
     scoped._open.append(connection)
     connection.execute(f'set search_path to "{scoped.scratch}", public')
@@ -358,7 +360,7 @@ def test_an_identity_repository_declares_the_workspace_on_a_connection_that_has_
 
 
 def test_unscoped_reads_nothing_even_straight_after_a_scoped_session(scoped):
-    """The first bullet of ``Database.unscoped``'s docstring, asserted as ``orimera_app``.
+    """The first bullet of ``Database.unscoped``'s docstring, asserted as ``exulanica_app``.
 
     It says that as a role row-level security reaches, a caller that wanted workspace data and
     reached for this gets an empty result rather than another workspace's rows. The role is half
@@ -404,7 +406,7 @@ def test_unscoped_hides_nothing_from_a_role_row_level_security_does_not_reach(sc
     PostgreSQL
     bypasses row security outright for a superuser or a role holding BYPASSRLS, and ``force row
     level security`` does not reach either, so the same method on the same schema hands the owner
-    the row it hands ``orimera_app`` nothing of. The docstring used to say "every table under
+    the row it hands ``exulanica_app`` nothing of. The docstring used to say "every table under
     row-level security is invisible through this connection" with no role attached, and that
     sentence was false for the owner.
 

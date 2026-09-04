@@ -15,19 +15,19 @@ from typing import Any, Literal
 
 import psycopg
 
-from orimera.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
-from orimera.errors import BlobNotFoundError, IntegrityError
-from orimera.evidence.blob import BlobId
-from orimera.graph.geometry import POINT_MAP_KIND
-from orimera.graph.payload import (
+from exulanica.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
+from exulanica.errors import BlobNotFoundError, IntegrityError
+from exulanica.evidence.blob import BlobId
+from exulanica.graph.geometry import POINT_MAP_KIND
+from exulanica.graph.payload import (
     ReconstructionSceneMemberRow,
     ReconstructionSceneRow,
     SceneGeometryReferenceRow,
     ScenePointMapPlacementRow,
 )
-from orimera.reconstruction.placement import PointMapInput, validate_placement_record
-from orimera.reconstruction.scene_gate import validate_scene_gate_decision
-from orimera.store.base import ContentAddressedStore
+from exulanica.reconstruction.placement import PointMapInput, validate_placement_record
+from exulanica.reconstruction.scene_gate import validate_scene_gate_decision
+from exulanica.store.base import ContentAddressedStore
 
 __all__ = ["reconstruction_scene_rows"]
 

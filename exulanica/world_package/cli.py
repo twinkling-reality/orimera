@@ -1,4 +1,4 @@
-"""``orimera-wmp``: project with PostgreSQL; verify, inspect, and diff without it."""
+"""``exulanica-wmp``: project with PostgreSQL; verify, inspect, and diff without it."""
 
 from __future__ import annotations
 
@@ -12,20 +12,20 @@ from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from orimera.db import Database
-from orimera.world_package.diff import diff_packages
-from orimera.world_package.package import (
+from exulanica.db import Database
+from exulanica.world_package.diff import diff_packages
+from exulanica.world_package.package import (
     PackageError,
     import_check_package,
     inspect_package,
     load_private_key,
     verify_package,
 )
-from orimera.world_package.projector import project_world_package
+from exulanica.world_package.projector import project_world_package
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="orimera-wmp")
+    parser = argparse.ArgumentParser(prog="exulanica-wmp")
     commands = parser.add_subparsers(dest="command", required=True)
 
     project = commands.add_parser(

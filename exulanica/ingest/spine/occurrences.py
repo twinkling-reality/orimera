@@ -3,7 +3,7 @@
 Invariant 3 and invariant 4 meet in this table, and the enforcement is the column list itself:
 there is no column for a name, and nothing writable from here can create an entity or a link. A
 scene-local occurrence is not a persistent entity, and promotion is a separate, user-driven
-event in ``orimera.identity``.
+event in ``exulanica.identity``.
 """
 
 from __future__ import annotations
@@ -14,9 +14,9 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from orimera.db.guards import terminal_if_tombstoned
-from orimera.ingest.spine.scope import WorkspaceScope
-from orimera.ingest.spine.tombstones import _multirange
+from exulanica.db.guards import terminal_if_tombstoned
+from exulanica.ingest.spine.scope import WorkspaceScope
+from exulanica.ingest.spine.tombstones import _multirange
 
 __all__ = ["insert"]
 
@@ -38,7 +38,7 @@ def insert(
     """Write a scene-local occurrence. Returns None when this ``emit_key`` was already emitted.
 
     ``presence`` is the union of the cited span intervals, written with the same half-open bound
-    the tombstone guard matches against; see :mod:`orimera.ingest.spine.tombstones`.
+    the tombstone guard matches against; see :mod:`exulanica.ingest.spine.tombstones`.
     """
     with terminal_if_tombstoned():
         row = scope.connection.execute(

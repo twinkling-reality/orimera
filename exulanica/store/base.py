@@ -30,8 +30,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import IO
 
-from orimera.errors import PurgeNotAuthorisedError
-from orimera.evidence.blob import BlobId
+from exulanica.errors import PurgeNotAuthorisedError
+from exulanica.evidence.blob import BlobId
 
 __all__ = [
     "ContentAddressedStore",

@@ -10,20 +10,20 @@ This package holds what every caller of the spine needs and no caller should rei
 opening a connection with a workspace attached, and applying the migration files.
 """
 
-from orimera.db.migrate import (
+from exulanica.db.migrate import (
     MigrationReport,
     applied_migrations,
     apply_pending,
     provision_workspace,
     verify_schema,
 )
-from orimera.db.roles import (
+from exulanica.db.roles import (
     EXECUTOR_ROLE,
     RUNTIME_ROLE,
     grant_workspace_partition,
     provision_runtime_role,
 )
-from orimera.db.session import (
+from exulanica.db.session import (
     DATABASE_URL_ENV,
     Database,
     DatabaseNotConfigured,

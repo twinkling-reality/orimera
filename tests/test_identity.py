@@ -30,12 +30,13 @@ import re
 import uuid
 from dataclasses import dataclass
 
-import orimera.identity.repository
+import exulanica.identity
+import exulanica.identity.repository
 import psycopg
 import pytest
-from orimera.db.session import set_workspace
-from orimera.epistemics.assertions import AssertionWriter
-from orimera.identity import (
+from exulanica.db.session import set_workspace
+from exulanica.epistemics.assertions import AssertionWriter
+from exulanica.identity import (
     AlreadyIdentified,
     IdentityError,
     IdentityRepository,
@@ -51,10 +52,10 @@ from orimera.identity import (
     split_entity,
     undo,
 )
-from orimera.identity.decisions import OCCURRENCE_ENTITY
-from orimera.identity.keys import USER_STATEMENT_BASIS
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.identity.decisions import OCCURRENCE_ENTITY
+from exulanica.identity.keys import USER_STATEMENT_BASIS
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.store.local import LocalContentAddressedStore
 
 from conftest import DEFAULT_PAYLOAD, CountingVisionModel, write_photo
 
@@ -952,7 +953,7 @@ def test_the_facade_holds_no_sql():
 
 
 def test_the_package_docstring_accounts_for_every_module_in_the_package():
-    """The three-way split at the top of ``orimera.identity`` is a partition, not a gesture.
+    """The three-way split at the top of ``exulanica.identity`` is a partition, not a gesture.
 
     A docstring that says six modules carry the argument, eight are the tables and four are the
     producer is a claim about all eighteen files, and the arithmetic is the point of writing it
@@ -960,12 +961,12 @@ def test_the_package_docstring_accounts_for_every_module_in_the_package():
     docstrings are read together. Add a module and name it in neither and this goes red, which
     is what stops a count nobody can reproduce from the code turning into decoration.
     """
-    package = pathlib.Path(orimera.identity.__file__).parent
+    package = pathlib.Path(exulanica.identity.__file__).parent
     on_disk = {path.stem for path in package.glob("*.py")} - {"__init__"}
-    prose = f"{orimera.identity.__doc__}\n{orimera.identity.repository.__doc__}"
-    named = set(re.findall(r"orimera\.identity\.(\w+)", prose))
+    prose = f"{exulanica.identity.__doc__}\n{exulanica.identity.repository.__doc__}"
+    named = set(re.findall(r"exulanica\.identity\.(\w+)", prose))
 
     assert on_disk - named == set(), "modules that neither docstring accounts for"
     assert named - on_disk == set(), "a docstring naming a module that is gone"
     assert len(on_disk) == 18
-    assert "Eighteen modules in three groups" in orimera.identity.__doc__
+    assert "Eighteen modules in three groups" in exulanica.identity.__doc__

@@ -1,7 +1,7 @@
 name: check
 
 # The verification battery, run the way a machine must run it. The one difference from a local
-# run is ORIMERA_REQUIRE_POSTGRES, which turns "skipped, no server" into a failure: locally a
+# run is EXULANICA_REQUIRE_POSTGRES, which turns "skipped, no server" into a failure: locally a
 # machine with no database is a normal state, and in CI it is a suite that proved nothing.
 on:
   push:
@@ -38,7 +38,7 @@ jobs:
       # installs extensions. tests/test_row_level_security.py provisions its own non-superuser
       # roles and asserts they are not superusers before it asserts anything else.
       - name: create the test database
-        run: psql "$ADMIN_URL" -c 'create database orimera_spine_test'
+        run: psql "$ADMIN_URL" -c 'create database exulanica_spine_test'
         env:
           ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
           PGPASSWORD: postgres
@@ -47,10 +47,10 @@ jobs:
       - name: pytest
         run: uv run pytest
         env:
-          ORIMERA_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orimera_spine_test
+          EXULANICA_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/exulanica_spine_test
           # The whole reason this job exists. Without it a broken server silently skips the 19
           # tests that are the only executable proof of invariant 4.
-          ORIMERA_REQUIRE_POSTGRES: "1"
+          EXULANICA_REQUIRE_POSTGRES: "1"
 
   web:
     runs-on: ubuntu-latest

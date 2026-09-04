@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import re
 
-from orimera.epistemics.vocabulary import DECISIONS
-from orimera.migrations import migrations
+from exulanica.epistemics.vocabulary import DECISIONS
+from exulanica.migrations import migrations
 
 #: A value tuple in an ``insert into predicate`` block opens with the key as its first literal.
 #: This is a text parse and text parses are the weaker half; the live check in

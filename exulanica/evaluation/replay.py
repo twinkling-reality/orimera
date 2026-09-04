@@ -16,11 +16,11 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from orimera.db import Database, apply_pending, provision_workspace
-from orimera.db.roles import RuntimeRoleUnsafe, assert_runtime_role
-from orimera.evaluation.bundle import AccessPurpose, CorpusBundle, CorpusContractError
-from orimera.evaluation.execution import execution_snapshot
-from orimera.evaluation.provenance import (
+from exulanica.db import Database, apply_pending, provision_workspace
+from exulanica.db.roles import RuntimeRoleUnsafe, assert_runtime_role
+from exulanica.evaluation.bundle import AccessPurpose, CorpusBundle, CorpusContractError
+from exulanica.evaluation.execution import execution_snapshot
+from exulanica.evaluation.provenance import (
     RUN_PROFILE,
     ArchiveReceipt,
     create_archive,
@@ -28,11 +28,11 @@ from orimera.evaluation.provenance import (
     model_snapshot,
     pipeline_snapshot,
 )
-from orimera.ingest.continuity import run_continuity
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.repository import IngestRepository
-from orimera.ingest.vision import VisionModel
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.ingest.continuity import run_continuity
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.repository import IngestRepository
+from exulanica.ingest.vision import VisionModel
+from exulanica.store.local import LocalContentAddressedStore
 
 __all__ = [
     "CleanDatabaseError",
@@ -148,7 +148,7 @@ def _outcomes(sources: tuple[Any, ...], outcomes: list[Any]) -> list[dict[str, o
 def _report(record: dict[str, Any]) -> str:
     gate = record["phase_2_exit_gate"]
     lines = [
-        "Orimera clean evaluation replay",
+        "Exulanica clean evaluation replay",
         "",
         f"run id              {record['run_id']}",
         f"corpus              {record['corpus']['id']}",

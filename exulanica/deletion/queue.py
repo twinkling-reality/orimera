@@ -28,7 +28,7 @@ enough signal. A derivative job's expensive step is a paid model call with a per
 and no caching, so a reclaim of a LIVE claimant there costs money and can produce two terminal
 events for one batch; that queue therefore carries a lease the claimant renews and a token every
 write of its own is conditional on. Same defect, two costs, two shapes, and
-:mod:`orimera.ingest.derivative_queue` is where the other one is explained.
+:mod:`exulanica.ingest.derivative_queue` is where the other one is explained.
 
 What a stranded row leaves without this is worse than "work not done": measured, a crash between
 the store unlink and the COMMIT leaves the bytes gone, the ``blob`` row saying they are live, and
@@ -45,7 +45,7 @@ from typing import Final
 
 import psycopg
 
-from orimera.db.roles import PURGE_CROSS_WORKSPACE_TABLES
+from exulanica.db.roles import PURGE_CROSS_WORKSPACE_TABLES
 
 __all__ = [
     "CROSS_WORKSPACE_POLICY",
@@ -80,8 +80,8 @@ RETRY_AFTER: Final = dt.timedelta(minutes=15)
 #: every fifteen minutes for ever, which is the spin this bound exists to stop. Charging it means
 #: a long-held blob can use its eight looks and stop being examined while its tombstone is still
 #: incomplete, and the reason that is acceptable is that it is VISIBLE:
-#: :func:`orimera.deletion.worker._exhausted` counts every non-``done`` job at the bound,
-#: deferrals included, and `orimera-purge` prints "job(s) have used every attempt and will not be
+#: :func:`exulanica.deletion.worker._exhausted` counts every non-``done`` job at the bound,
+#: deferrals included, and `exulanica-purge` prints "job(s) have used every attempt and will not be
 #: retried". A bound that is reported is a decision; the same bound, unreported, would be the
 #: silent incompletion corrections 3 and 13 were both about.
 MAX_ATTEMPTS: Final = 8
@@ -122,15 +122,15 @@ class Visibility:
             f"connected as {self.role!r}, which has no cross-workspace read of {named}. `blob` "
             "is shared between workspaces, so this connection would answer \"does anything still "
             "hold these bytes\" about its own workspace only and destroy objects another one is "
-            "using. Point ORIMERA_PURGE_DATABASE_URL at the `orimera_purge` role that "
-            "`orimera-db` provisions"
+            "using. Point EXULANICA_PURGE_DATABASE_URL at the `exulanica_purge` role that "
+            "`exulanica-db` provisions"
         )
 
 
 def read_visibility(connection: psycopg.Connection) -> Visibility:
     """Ask the database who is connected and what it can see, rather than trusting a variable.
 
-    ``ORIMERA_PURGE_DATABASE_URL`` is a name. Nothing about it says which role is behind it, and
+    ``EXULANICA_PURGE_DATABASE_URL`` is a name. Nothing about it says which role is behind it, and
     a deployment that pointed it at the writer used to get a silent, narrowed purge: measured,
     one destroyed object, zero skipped, a tombstone recorded complete, and another workspace's
     live photograph gone. The docstring said this was reported and nothing reported it.

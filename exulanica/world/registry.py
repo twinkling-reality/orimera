@@ -17,8 +17,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
 
-from orimera.world.errors import InvalidStyleData
-from orimera.world.models import StyleParameterValue, StyleReference
+from exulanica.world.errors import InvalidStyleData
+from exulanica.world.models import StyleParameterValue, StyleReference
 
 __all__ = [
     "STYLE_REGISTRY",

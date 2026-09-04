@@ -12,7 +12,7 @@ sentence about what code found.
 Four rules this module exists to hold, none of which is enforced by asking the model nicely:
 
 *   **The Companion has no privileged path.** It emits a
-    :class:`~orimera.selection.plan.SelectionPlan` and hands it to the same
+    :class:`~exulanica.selection.plan.SelectionPlan` and hands it to the same
     :func:`~orimera.selection.validation.validate` the World Index uses. There is no query it
     can express that the interface cannot, and :func:`propose_plan` returns the plan rather than
     applying it, because ADR-0005 requires that a conversational Selection is "shown to the user
@@ -41,10 +41,10 @@ from typing import Any, Final
 
 import psycopg
 
-from orimera.models.client import ModelClient
-from orimera.models.errors import StructuredOutputError, TruncatedResponseError
-from orimera.models.manifest import Role
-from orimera.selection.answer import (
+from exulanica.models.client import ModelClient
+from exulanica.models.errors import StructuredOutputError, TruncatedResponseError
+from exulanica.models.manifest import Role
+from exulanica.selection.answer import (
     Abstention,
     Answer,
     AnswerRejected,
@@ -52,10 +52,10 @@ from orimera.selection.answer import (
     render_deterministic_answer,
     validate_answer,
 )
-from orimera.selection.executor import SelectionResult, execute
-from orimera.selection.packet import EvidencePacket, build_packet
-from orimera.selection.plan import SelectionPlan
-from orimera.selection.validation import Session, validate
+from exulanica.selection.executor import SelectionResult, execute
+from exulanica.selection.packet import EvidencePacket, build_packet
+from exulanica.selection.plan import SelectionPlan
+from exulanica.selection.validation import Session, validate
 
 __all__ = [
     "AnsweredQuestion",

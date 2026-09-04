@@ -2,16 +2,16 @@
   "@context": {
     "cr": "http://mlcommons.org/croissant/",
     "dct": "http://purl.org/dc/terms/",
-    "orimera": "https://orimera.local/ns/world-memory-package/1/",
+    "exulanica": "https://exulanica.local/ns/world-memory-package/1/",
     "rai": "http://mlcommons.org/croissant/RAI/",
     "schema": "https://schema.org/"
   },
-  "@id": "https://orimera.local/profiles/world-memory-package/1.0",
+  "@id": "https://exulanica.local/profiles/world-memory-package/1.0",
   "@type": "schema:CreativeWork",
   "canonicalization": {
     "base": "RFC 8785",
     "floats": "prohibited; source binary floating-point values use exact tagged hexadecimal strings",
-    "profile": "orimera-canonical-json/no-float-v1"
+    "profile": "exulanica-canonical-json/no-float-v1"
   },
   "compatibilityReferences": [
     "http://mlcommons.org/croissant/1.0",
@@ -37,12 +37,12 @@
     "externalMediaReference": "content digest and authorization-dependent resolver requirement only"
   },
   "merkle": {
-    "leaf": "sha256('orimera-wmp-leaf-v1\\0' || utf8(path) || '\\0' || sha256(file))",
-    "node": "sha256('orimera-wmp-node-v1\\0' || left || right)",
+    "leaf": "sha256('exulanica-wmp-leaf-v1\\0' || utf8(path) || '\\0' || sha256(file))",
+    "node": "sha256('exulanica-wmp-node-v1\\0' || left || right)",
     "oddNode": "duplicate final child",
     "pathOrder": "Unicode code point order"
   },
-  "name": "Orimera World Memory Package Profile",
+  "name": "Exulanica World Memory Package Profile",
   "signature": {
     "algorithm": "Ed25519",
     "payload": [
@@ -51,5 +51,5 @@
       "merkle_root_sha256"
     ]
   },
-  "version": "orimera-wmp-1.0"
+  "version": "exulanica-wmp-1.0"
 }

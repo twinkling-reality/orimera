@@ -3,7 +3,7 @@
 Four things, and the interesting one is the second.
 
 *   **A write database and a read database.** The Selection executor is specified to connect as
-    ``orimera_ro``, "a non-owner role that owns nothing and lacks BYPASSRLS", so that the step of
+    ``exulanica_ro``, "a non-owner role that owns nothing and lacks BYPASSRLS", so that the step of
     the pipeline running a plan derived from model output cannot write whatever happened
     upstream of it. That is a second connection string, and when it is absent this says so at
     startup instead of quietly running queries as the writer. A defence that is off and silent
@@ -27,17 +27,17 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Final
 
-from orimera.api.authorisation import TokenDirectory, load_token_directory
-from orimera.db.session import DATABASE_URL_ENV, Database
-from orimera.ingest.vision import NebiusVisionModel
-from orimera.ingest.worker import DerivativeWorker, lease_seconds_for
-from orimera.models.client import ModelClient
-from orimera.models.manifest import Role
-from orimera.store.base import ContentAddressedStore
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.api.authorisation import API_TOKENS_ENV, TokenDirectory, load_token_directory
+from exulanica.db.session import DATABASE_URL_ENV, Database
+from exulanica.env import env_get, env_name, resolve_data_dir
+from exulanica.ingest.vision import NebiusVisionModel
+from exulanica.ingest.worker import DerivativeWorker, lease_seconds_for
+from exulanica.models.client import ModelClient
+from exulanica.models.manifest import Role
+from exulanica.store.base import ContentAddressedStore
+from exulanica.store.local import LocalContentAddressedStore
 
 __all__ = [
     "DATA_DIR_ENV",
@@ -48,18 +48,16 @@ __all__ = [
 ]
 
 #: The connection string the Selection executor uses. Optional, and its absence is reported.
-READONLY_DATABASE_URL_ENV: Final = "ORIMERA_READONLY_DATABASE_URL"
+READONLY_DATABASE_URL_ENV: Final = env_name("READONLY_DATABASE_URL")
 
 #: Where the content-addressed store lives. The same directory the ingest CLI writes.
-DATA_DIR_ENV: Final = "ORIMERA_DATA_DIR"
+DATA_DIR_ENV: Final = env_name("DATA_DIR")
 
 #: Set to ``0``, ``false`` or ``off`` to serve the API without draining the derivative queue in
 #: this process. Anything else, including absence, runs it: an instance serving ``POST /intake``
 #: with nothing draining the queue is an upload that never finishes, and that is the wrong
 #: default to arrive at by saying nothing.
-DERIVATIVE_WORKER_ENV: Final = "ORIMERA_DERIVATIVE_WORKER"
-
-_DEFAULT_DATA_DIR: Final = ".orimera/local"
+DERIVATIVE_WORKER_ENV: Final = env_name("DERIVATIVE_WORKER")
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +109,7 @@ class Services:
         if self.runs_derivative_worker:
             notes.append(
                 "the derivative worker runs no depth model, so an uploaded photograph is a rung "
-                "4 region until `orimera-ingest --reconstruct` runs over the same corpus. That "
+                "4 region until `exulanica-ingest --reconstruct` runs over the same corpus. That "
                 "is a real rung with a real experience, and reconstruction quality never "
                 "participates in the truth guarantee."
             )
@@ -120,8 +118,8 @@ class Services:
     def build_derivative_worker(self) -> DerivativeWorker | None:
         """The thread that finishes what ``POST /intake`` starts, or None when it is off.
 
-        **The worker is handed the workspaces as a value.** ``orimera.ingest`` sits under
-        ``orimera.api`` in the layers contract, so a worker that imported the token directory to
+        **The worker is handed the workspaces as a value.** ``exulanica.ingest`` sits under
+        ``exulanica.api`` in the layers contract, so a worker that imported the token directory to
         find out which workspaces exist would invert the layering, and ``uv run lint-imports``
         says so rather than a reviewer.
 
@@ -133,7 +131,7 @@ class Services:
         **The lease is computed here because this is the only place that can compute it.** How
         long a claimant may be silent depends on the longest model call it can be inside, and
         that is a property of the client rather than of the role: this builds ``ModelClient()``
-        with a 180 second timeout and one attempt while ``orimera-ingest`` builds one with three,
+        with a 180 second timeout and one attempt while ``exulanica-ingest`` builds one with three,
         so a lease typed as a constant would be right for one of them. The same expression
         decides whether there is a vision model at all, so the two cannot disagree: no client
         means no vision model and the floor, and that is a stated deployment rather than an
@@ -165,8 +163,8 @@ def build_services(
     """
     environ = os.environ if environ is None else environ
     database = Database.from_env(environ)
-    readonly_url = environ.get(READONLY_DATABASE_URL_ENV)
-    data_dir = Path(environ.get(DATA_DIR_ENV, _DEFAULT_DATA_DIR))
+    readonly_url = env_get("READONLY_DATABASE_URL", environ)
+    data_dir = resolve_data_dir(environ)
 
     client = model_client
     if client is None and environ.get("NEBIUS_API_KEY"):
@@ -179,7 +177,7 @@ def build_services(
         tokens=load_token_directory(environ),
         executor_shares_the_write_role=readonly_url is None,
         model_client=client,
-        runs_derivative_worker=_enabled(environ.get(DERIVATIVE_WORKER_ENV)),
+        runs_derivative_worker=_enabled(env_get("DERIVATIVE_WORKER", environ)),
     )
 
 
@@ -191,14 +189,23 @@ def _enabled(value: str | None) -> bool:
 def describe_configuration(environ: Mapping[str, str] | None = None) -> dict[str, str]:
     """What an operator needs to set, and whether it is set. Never the values themselves."""
     environ = os.environ if environ is None else environ
+    names = (
+        DATABASE_URL_ENV,
+        READONLY_DATABASE_URL_ENV,
+        DATA_DIR_ENV,
+        DERIVATIVE_WORKER_ENV,
+        API_TOKENS_ENV,
+        "NEBIUS_API_KEY",
+    )
     return {
-        name: "set" if environ.get(name) else "missing"
-        for name in (
-            DATABASE_URL_ENV,
-            READONLY_DATABASE_URL_ENV,
-            DATA_DIR_ENV,
-            DERIVATIVE_WORKER_ENV,
-            "ORIMERA_API_TOKENS",
-            "NEBIUS_API_KEY",
+        name: (
+            "set"
+            if (
+                env_get(name.removeprefix("EXULANICA_"), environ)
+                if name.startswith("EXULANICA_")
+                else environ.get(name)
+            )
+            else "missing"
         )
+        for name in names
     }

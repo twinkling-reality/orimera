@@ -1,7 +1,7 @@
 """Preemptible per-scene gsplat job controller and rung-1 quality gate.
 
 The controller is intentionally narrower than a trainer.  It invokes a digest-pinned execution
-image's reviewed ``orimera-gsplat-scene-v1`` entrypoint, validates the actual runtime and quality
+image's reviewed ``exulanica-gsplat-scene-v1`` entrypoint, validates the actual runtime and quality
 receipts that entrypoint writes, resumes only through its declared checkpoint protocol, and runs
 the selected PlayCanvas compressor.  This repository does not silently substitute upstream
 ``simple_trainer.py``: its ``--ckpt`` mode skips training and evaluates only, so calling that
@@ -28,7 +28,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
-from orimera.reconstruction.pose import CommandResult
+from exulanica.reconstruction.pose import CommandResult
 
 __all__ = [
     "SplatBuildManifest",
@@ -37,8 +37,8 @@ __all__ = [
     "run_gsplat_job",
 ]
 
-_RUNNER_PROFILE = "orimera.gsplat-scene-runner/v1"
-_QUALITY_PROFILE = "orimera.gsplat-quality/v1"
+_RUNNER_PROFILE = "exulanica.gsplat-scene-runner/v1"
+_QUALITY_PROFILE = "exulanica.gsplat-quality/v1"
 _BLOCKED_DEPENDENCIES = frozenset(
     {
         "diff-gaussian-rasterization",
@@ -137,7 +137,7 @@ class SplatBuildManifest:
 
     def as_payload(self) -> dict[str, object]:
         return {
-            "profile": "orimera.gsplat-build/v1",
+            "profile": "exulanica.gsplat-build/v1",
             "scene_ref": self.scene_ref,
             "code_revision": self.code_revision,
             "pose_manifest_digest": self.pose_manifest_digest,
@@ -419,7 +419,7 @@ def run_gsplat_job(
     dataset_dir: Path,
     pose_receipt: Path,
     jobs_root: Path,
-    runner_executable: str = "orimera-gsplat-scene-v1",
+    runner_executable: str = "exulanica-gsplat-scene-v1",
     compressor_executable: str = "splat-transform",
     executor: CommandExecutor = _execute,
 ) -> SplatJobResult:

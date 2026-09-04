@@ -127,7 +127,7 @@ class EpistemicScope(StrEnum):
     human decided it. ``include_proposals`` also counts ``auto_provisional``, which may drive
     layout and filtering and may never support a historical factual clause. The answer path
     therefore refuses to cite anything reached under ``include_proposals``; see
-    :mod:`orimera.selection.packet`.
+    :mod:`exulanica.selection.packet`.
     """
 
     CONFIRMED = "confirmed"

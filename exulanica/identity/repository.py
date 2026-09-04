@@ -1,6 +1,6 @@
 """Which workspace is this, on which connection, and which vocabulary answers the question?
 
-The transactional operations live in :mod:`orimera.identity.decisions`. This is rows: it knows how
+The transactional operations live in :mod:`exulanica.identity.decisions`. This is rows: it knows how
 an entity, a link, a rejection and an event are stored, and it knows nothing about what sequence
 of them constitutes a merge.
 
@@ -9,27 +9,27 @@ write lives in the module named for the question its table answers, and the repo
 each as an attribute, so a call site says which table group it is touching before it says what it
 is doing:
 
-*   :mod:`orimera.identity.occurrences` as ``occurrences``: which detection is this, and which
+*   :mod:`exulanica.identity.occurrences` as ``occurrences``: which detection is this, and which
     detections is this person confirmed to be?
-*   :mod:`orimera.identity.entities` as ``entities``: what is one person record, and which record
+*   :mod:`exulanica.identity.entities` as ``entities``: what is one person record, and which record
     represents it now?
-*   :mod:`orimera.identity.links` as ``links``: what has been decided about this detection, in
+*   :mod:`exulanica.identity.links` as ``links``: what has been decided about this detection, in
     what state, and by whom?
-*   :mod:`orimera.identity.rejections` as ``rejections``: has this pair, on this basis, already
+*   :mod:`exulanica.identity.rejections` as ``rejections``: has this pair, on this basis, already
     been refused, and what is new about the one being asked now?
-*   :mod:`orimera.identity.never_same` as ``never_same``: were these two records pulled apart by a
+*   :mod:`exulanica.identity.never_same` as ``never_same``: were these two records pulled apart by a
     person, so that a merge of them must be refused?
-*   :mod:`orimera.identity.proposals` as ``proposals``: what did the producer ask, and which of
+*   :mod:`exulanica.identity.proposals` as ``proposals``: what did the producer ask, and which of
     those questions is still waiting for an answer?
-*   :mod:`orimera.identity.events` as ``events``: what was decided, in what order, and does the
+*   :mod:`exulanica.identity.events` as ``events``: what was decided, in what order, and does the
     record say enough to undo it?
-*   :mod:`orimera.identity.recomputation` as ``recomputation``: what must be recomputed because of
+*   :mod:`exulanica.identity.recomputation` as ``recomputation``: what must be recomputed because of
     this decision?
 
 **The collaborators take the repository rather than a connection and a workspace id.** That is
 what keeps the scoping structural rather than remembered. ``Entities(connection, workspace)`` is
 not a constructible thing; ``Entities(repository)`` is, and the repository is the only object in
-this package that calls :func:`orimera.db.session.set_workspace`.
+this package that calls :func:`exulanica.db.session.set_workspace`.
 """
 
 from __future__ import annotations
@@ -41,15 +41,15 @@ from contextlib import contextmanager
 import psycopg
 from psycopg.rows import dict_row
 
-from orimera.db.session import set_workspace
-from orimera.identity.entities import Entities
-from orimera.identity.events import Events
-from orimera.identity.links import Links
-from orimera.identity.never_same import NeverSamePairs
-from orimera.identity.occurrences import Occurrences
-from orimera.identity.proposals import Proposals
-from orimera.identity.recomputation import Recomputation
-from orimera.identity.rejections import Rejections
+from exulanica.db.session import set_workspace
+from exulanica.identity.entities import Entities
+from exulanica.identity.events import Events
+from exulanica.identity.links import Links
+from exulanica.identity.never_same import NeverSamePairs
+from exulanica.identity.occurrences import Occurrences
+from exulanica.identity.proposals import Proposals
+from exulanica.identity.recomputation import Recomputation
+from exulanica.identity.rejections import Rejections
 
 __all__ = ["IdentityRepository"]
 

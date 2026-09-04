@@ -7,15 +7,15 @@ from pathlib import Path
 import psycopg
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from orimera.evidence import BlobId
-from orimera.world import (
+from exulanica.evidence import BlobId
+from exulanica.world import (
     ProposalOrigin,
     ProposalProvenance,
     WorldInteractionPolicyRepository,
     WorldStructureRepository,
 )
-from orimera.world.interaction import InteractionProposal
-from orimera.world_package import diff_packages, project_world_package, verify_package
+from exulanica.world.interaction import InteractionProposal
+from exulanica.world_package import diff_packages, project_world_package, verify_package
 
 from world_structure_fixtures import structural_candidate, with_topology
 
@@ -86,7 +86,7 @@ def test_projector_archives_current_structure_and_append_only_receipt(repository
     crate = json.loads((result.output / "ro-crate-metadata.json").read_text())
     assert appearance["state"] == "current"
     assert appearance["registry"][0]["maximum_value"] == {
-        "@type": "orimera:IEEE754Binary64",
+        "@type": "exulanica:IEEE754Binary64",
         "hex": "0x1.0000000000000p+0",
     }
     assert appearance["recipe_binding"]["modules"] == [

@@ -1,5 +1,6 @@
 # Internal working area: raw agent reports, scratch research, experiments, private media
 .orimera/
+.exulanica/
 
 # Secrets and environment
 .env
@@ -35,10 +36,10 @@ embeddings/
 
 # Model caches and weights
 models/
-# ...but orimera/models is source code, not a weight cache. Without this negation the whole
+# ...but exulanica/models is source code, not a weight cache. Without this negation the whole
 # model package is invisible to git and, because hatchling honours these rules, absent from the
-# built wheel. `uv run orimera-preflight` on an installed copy is what noticed.
-!orimera/models/
+# built wheel. `uv run exulanica-preflight` on an installed copy is what noticed.
+!exulanica/models/
 checkpoints/
 *.ckpt
 *.safetensors

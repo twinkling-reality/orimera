@@ -18,7 +18,7 @@ rather than as a comment:
     being up. There is no model call anywhere in this module.
 *   **It must not claim more than it checks.** A 200 from ``/healthz`` says the process is
     alive. It does not say the reasoning model still exists in the catalog; that is the
-    scheduled ``orimera-preflight`` run, and readiness reports the manifest parsing rather than
+    scheduled ``exulanica-preflight`` run, and readiness reports the manifest parsing rather than
     the catalog agreeing.
 *   **It must not be expensive enough to matter**, because a readiness check that is costly gets
     turned off or becomes the thing that falls over.
@@ -34,10 +34,10 @@ from typing import Any
 
 from fastapi import APIRouter, Request, Response
 
-from orimera.api.services import Services, describe_configuration
-from orimera.db.migrate import applied_migrations
-from orimera.migrations import migrations
-from orimera.models.manifest import Role, load_manifest
+from exulanica.api.services import Services, describe_configuration
+from exulanica.db.migrate import applied_migrations
+from exulanica.migrations import migrations
+from exulanica.models.manifest import Role, load_manifest
 
 router = APIRouter(tags=["health"])
 
@@ -174,7 +174,7 @@ def _store_check(services: Services) -> dict[str, Any]:
     Deliberately a single existence probe against a key that cannot exist rather than a listing.
     A listing is proportional to the corpus and this runs every five minutes.
     """
-    from orimera.evidence.blob import BlobId
+    from exulanica.evidence.blob import BlobId
 
     try:
         services.store.exists(BlobId(b"\x00" * 32))
@@ -186,7 +186,7 @@ def _store_check(services: Services) -> dict[str, Any]:
 def _manifest_check() -> dict[str, Any]:
     """Proves the application can name a model. Proves NOTHING about that model still existing.
 
-    That gap is the whole reason ``orimera-preflight`` is a separate scheduled signal, and
+    That gap is the whole reason ``exulanica-preflight`` is a separate scheduled signal, and
     section 6.3 names it: "a green health check sitting in front of a withdrawn model".
     """
     try:
@@ -198,5 +198,5 @@ def _manifest_check() -> dict[str, Any]:
         "ok": True,
         "roles": resolved,
         "does_not_prove": "that any of these identifiers still exists in the live catalog. Run "
-        "orimera-preflight on a schedule for that.",
+        "exulanica-preflight on a schedule for that.",
     }

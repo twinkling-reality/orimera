@@ -8,14 +8,14 @@ from io import StringIO
 from pathlib import Path
 
 import pytest
-from orimera.evaluation.bundle import (
+from exulanica.evaluation.bundle import (
     BUNDLE_PROFILE,
     SPLIT_PROFILE,
     AccessPurpose,
     CorpusBundle,
     CorpusContractError,
 )
-from orimera.evaluation.cli import main
+from exulanica.evaluation.cli import main
 
 
 def _sha(path: Path) -> str:

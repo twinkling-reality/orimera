@@ -26,7 +26,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from orimera.corpus.render import Face, Vec3
+from exulanica.corpus.render import Face, Vec3
 
 __all__ = [
     "PLACES",
@@ -178,7 +178,7 @@ SUBJECTS: dict[str, str] = {
 #: scored against the corpus, and M6 turned out not to be a corpus metric at all: it filters on
 #: confirmed entity ids and an entity exists only where a person confirmed one. The mapping is
 #: what measures why a manifest-derived filter metric would not have been worth having anyway.
-#: :func:`orimera.evaluation.coverage.what_the_corpus_cannot_support` runs it on every evaluation
+#: :func:`exulanica.evaluation.coverage.what_the_corpus_cannot_support` runs it on every evaluation
 #: and reports, per subject, how much of the generator's own placement a detector recovered. That
 #: is a disclosure and never a score: a low number is a fact about a vocabulary, and reporting it
 #: as a filter defect is the "blocked" and "scored zero" conflation the whole report refuses.

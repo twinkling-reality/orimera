@@ -17,7 +17,7 @@ choices, each of which had a plausible alternative:
     copies of the expression are two places for that to drift.
 
 It stays private because the rule this package holds is about its public surface: every public
-function takes a :class:`~orimera.ingest.spine.scope.WorkspaceScope` first, and a pure value
+function takes a :class:`~exulanica.ingest.spine.scope.WorkspaceScope` first, and a pure value
 adapter that never sees a connection would be the sole exception to a rule better kept without
 any.
 """
@@ -30,10 +30,10 @@ from collections.abc import Sequence
 from psycopg.types.multirange import Multirange
 from psycopg.types.range import Range
 
-from orimera.errors import TombstonedError
-from orimera.evidence import EvidenceAddress
-from orimera.evidence.blob import BlobId
-from orimera.ingest.spine.scope import WorkspaceScope
+from exulanica.errors import TombstonedError
+from exulanica.evidence import EvidenceAddress
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.spine.scope import WorkspaceScope
 
 __all__ = ["blocks", "insert", "refuse_ingest_if_tombstoned"]
 

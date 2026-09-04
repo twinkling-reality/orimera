@@ -7,9 +7,9 @@ import uuid
 from pathlib import Path
 
 import pytest
-from orimera.models.manifest import MANIFEST_PATH as MODEL_MANIFEST_PATH
-from orimera.orchestration.cli import main as frontier_main
-from orimera.orchestration.manifest import BuildManifestError, load_build_manifest
+from exulanica.models.manifest import MANIFEST_PATH as MODEL_MANIFEST_PATH
+from exulanica.orchestration.cli import main as frontier_main
+from exulanica.orchestration.manifest import BuildManifestError, load_build_manifest
 
 
 def _source(path: Path, root: Path) -> dict[str, object]:
@@ -24,7 +24,7 @@ def _source(path: Path, root: Path) -> dict[str, object]:
 def _document(photo_dir: Path) -> dict[str, object]:
     sources = [_source(path, photo_dir) for path in sorted(photo_dir.rglob("*.jpg"))]
     return {
-        "profile": "orimera-frontier-build/v1",
+        "profile": "exulanica-frontier-build/v1",
         "workspace_id": str(uuid.uuid4()),
         "actor_id": str(uuid.uuid4()),
         "world_id": "atlas:default",

@@ -10,7 +10,7 @@ Six stages, "each of which can only reject":
 5. Compilation to parameterized SQL.
 6. Execution in a read-only transaction with a ``statement_timeout``.
 
-Stages 1 to 4 live here. Stages 5 and 6 live in :mod:`orimera.selection.executor`, and the seam
+Stages 1 to 4 live here. Stages 5 and 6 live in :mod:`exulanica.selection.executor`, and the seam
 between them is the whole point of this module: :class:`ValidatedPlan` is the only thing the
 executor accepts, and this module is the only thing that constructs one. A caller who wants to
 run an unvalidated plan has no type they can pass.
@@ -38,8 +38,8 @@ from typing import Any, Final
 import psycopg
 from pydantic import ValidationError
 
-from orimera.errors import OrimeraError
-from orimera.selection.plan import (
+from exulanica.errors import ExulanicaError
+from exulanica.selection.plan import (
     MAX_ENTITY_IDS,
     MAX_LIMIT,
     MAX_SEMANTIC_QUERY_CHARS,
@@ -70,7 +70,7 @@ class RejectionCode(StrEnum):
     NOT_AUTHORISED = "not_authorised"
 
 
-class SelectionRejected(OrimeraError):
+class SelectionRejected(ExulanicaError):
     """A plan was refused, with the code the caller is allowed to see.
 
     ``detail`` is for the operator's log and for a developer's screen. It may name an id the
@@ -89,7 +89,7 @@ class SelectionRejected(OrimeraError):
 class Session:
     """Who is asking. The only source of authority in the whole path.
 
-    Nothing in a :class:`~orimera.selection.plan.SelectionPlan` can name a workspace or an
+    Nothing in a :class:`~exulanica.selection.plan.SelectionPlan` can name a workspace or an
     actor, so this is where both come from and there is no route by which a plan could widen
     them.
     """
@@ -106,7 +106,7 @@ class ValidatedPlan:
     """A plan that has passed every stage, plus what resolution established.
 
     Constructed only by :func:`validate`. The executor takes this type and not
-    :class:`~orimera.selection.plan.SelectionPlan`, so "was this validated" is answered by the
+    :class:`~exulanica.selection.plan.SelectionPlan`, so "was this validated" is answered by the
     type system rather than by a flag somebody has to remember to check.
     """
 

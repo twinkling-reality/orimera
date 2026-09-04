@@ -27,7 +27,7 @@ from typing import Final
 
 from PIL import Image
 
-from orimera.ingest.stages import StageSpec
+from exulanica.ingest.stages import StageSpec
 
 __all__ = ["Rendition", "render"]
 

@@ -9,45 +9,45 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from orimera.canonical import canonical_json
-from orimera.errors import TombstonedError
-from orimera.evidence.blob import BlobId
-from orimera.ingest.committed_store import committed_writes
-from orimera.ingest.ledger import Ledger, StageRecorder
-from orimera.ingest.reconstruction_scratch import (
+from exulanica.canonical import canonical_json
+from exulanica.errors import TombstonedError
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.committed_store import committed_writes
+from exulanica.ingest.ledger import Ledger, StageRecorder
+from exulanica.ingest.reconstruction_scratch import (
     ScratchBusy,
     ScratchSource,
     active_scene_scratch,
     cleanup_scene_scratch,
     stage_scene_sources,
 )
-from orimera.ingest.repository import IngestRepository
-from orimera.ingest.scene_rung import record_scene_rung
-from orimera.ingest.spine.reconstruction_jobs import ClaimedSceneJob
-from orimera.ingest.stages import STAGES, artifact_id_for, input_digest_of, stage
-from orimera.reconstruction.placement import (
+from exulanica.ingest.repository import IngestRepository
+from exulanica.ingest.scene_rung import record_scene_rung
+from exulanica.ingest.spine.reconstruction_jobs import ClaimedSceneJob
+from exulanica.ingest.stages import STAGES, artifact_id_for, input_digest_of, stage
+from exulanica.reconstruction.placement import (
     PointMapInput,
     build_placement_record,
     validate_placement_record,
 )
-from orimera.reconstruction.pose import (
+from exulanica.reconstruction.pose import (
     CommandExecutor,
     PoseBuildManifest,
     SourceFrame,
     run_colmap_pose_job,
 )
-from orimera.reconstruction.pycolmap_executor import (
+from exulanica.reconstruction.pycolmap_executor import (
     PYCOLMAP_EXECUTABLE,
     PycolmapExecutor,
     pycolmap_version,
 )
-from orimera.reconstruction.scene_gate import (
+from exulanica.reconstruction.scene_gate import (
     SceneGateDecision,
     SceneGateInputs,
     SceneReceipt,
     decide_scene_rung,
 )
-from orimera.store import ContentAddressedStore
+from exulanica.store import ContentAddressedStore
 
 __all__ = [
     "SceneBuildOutcome",
@@ -92,7 +92,7 @@ def _scene_key(scene_id: uuid.UUID, stage_key: str, input_digest: bytes) -> str:
     spec = stage(stage_key)
     hasher = hashlib.sha256()
     for part in (
-        b"orimera/scene-artifact-key",
+        b"exulanica/scene-artifact-key",
         b"1",
         scene_id.bytes,
         stage_key.encode("utf-8"),
@@ -370,7 +370,7 @@ class SceneReconstructionProcessor:
             claimed.build_input_digest
         ):
             raise ValueError("the scene job build-input digest does not reproduce")
-        if claimed.build_inputs.get("profile") != "orimera.reconstruction-scene-build-input/v1":
+        if claimed.build_inputs.get("profile") != "exulanica.reconstruction-scene-build-input/v1":
             raise ValueError("the scene job does not declare supported exact build inputs")
         raw_point_maps = claimed.build_inputs.get("point_maps")
         raw_stages = claimed.build_inputs.get("stages")

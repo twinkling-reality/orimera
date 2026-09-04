@@ -1,4 +1,4 @@
-"""``python -m orimera.ingest`` : ingest a directory, safely, as many times as you like.
+"""``python -m exulanica.ingest`` : ingest a directory, safely, as many times as you like.
 
 Running it twice is the normal case, not the exception. The second run reports what it skipped
 and why, and issues **zero** model calls, because every derivative is keyed by source hash plus
@@ -21,20 +21,23 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from orimera.db import Database, apply_pending, provision_workspace
-from orimera.ingest.batch import IntakeBatch
-from orimera.ingest.continuity import run_continuity
-from orimera.ingest.ledger import Ledger
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.report import IngestReport
-from orimera.ingest.repository import IngestRepository
-from orimera.ingest.stages import stage
-from orimera.ingest.vision import NebiusVisionModel, VisionModel
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.db import Database, apply_pending, provision_workspace
+from exulanica.env import resolve_data_dir
+from exulanica.ingest.batch import IntakeBatch
+from exulanica.ingest.continuity import run_continuity
+from exulanica.ingest.ledger import Ledger
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.report import IngestReport
+from exulanica.ingest.repository import IngestRepository
+from exulanica.ingest.stages import stage
+from exulanica.ingest.vision import NebiusVisionModel, VisionModel
+from exulanica.store.local import LocalContentAddressedStore
 
 __all__ = ["main"]
 
-_DEFAULT_DATA_DIR = Path(".orimera/local")
+
+def _data_dir(args: argparse.Namespace) -> Path:
+    return resolve_data_dir(explicit=args.data_dir)
 
 
 @contextmanager
@@ -51,7 +54,7 @@ def _repository(args: argparse.Namespace, stream: Any) -> Iterator[IngestReposit
     report = apply_pending(database)
     if report.applied:
         print(f"schema: applied migration {', '.join(report.applied)}", file=stream)
-    workspace_id = _workspace_id(Path(args.data_dir), args.workspace)
+    workspace_id = _workspace_id(_data_dir(args), args.workspace)
     with database.session(workspace_id) as connection:
         provision_workspace(connection, workspace_id)
         yield IngestRepository(connection, workspace_id)
@@ -77,13 +80,13 @@ def _workspace_id(data_dir: Path, explicit: str | None) -> uuid.UUID:
 def _preflight(stream: Any) -> bool:
     """Check every manifest id against the live catalog. Returns True when all resolve.
 
-    The same check the ``orimera-preflight`` console script runs, called here so an ingest that
+    The same check the ``exulanica-preflight`` console script runs, called here so an ingest that
     is about to spend money finds out first. A price drift is a warning and is printed; an
     identifier that has been withdrawn, or that no longer declares the ``use_cases`` its role
     needs, is a failure and stops the run.
     """
-    from orimera.models.errors import TransportError
-    from orimera.models.preflight import run_preflight
+    from exulanica.models.errors import TransportError
+    from exulanica.models.preflight import run_preflight
 
     try:
         report = run_preflight()
@@ -110,8 +113,8 @@ def _build_vision(args: argparse.Namespace, stream: Any) -> VisionModel | None:
     if args.offline:
         print("vision: disabled (--offline). Capture-supported facts only.", file=stream)
         return None
-    from orimera.models.cache import FileResponseCache
-    from orimera.models.client import ModelClient
+    from exulanica.models.cache import FileResponseCache
+    from exulanica.models.client import ModelClient
 
     if not args.skip_preflight and not _preflight(stream):
         raise SystemExit(
@@ -124,7 +127,7 @@ def _build_vision(args: argparse.Namespace, stream: Any) -> VisionModel | None:
     # because a corpus pass is one call per photograph and the platform states plainly that it
     # provides no automatic retry of its own.
     client = ModelClient(
-        cache=FileResponseCache(Path(args.data_dir) / "model-cache"),
+        cache=FileResponseCache(_data_dir(args) / "model-cache"),
         max_attempts=3,
     )
     return NebiusVisionModel(client)
@@ -140,7 +143,7 @@ def _build_depth(args: argparse.Namespace, stream: Any) -> Any:
     """
     if not args.reconstruct:
         return None
-    from orimera.reconstruction.moge import DepthModelUnavailable, MoGeDepthModel
+    from exulanica.reconstruction.moge import DepthModelUnavailable, MoGeDepthModel
 
     try:
         model = MoGeDepthModel(max_edge_px=int(stage("depth").params["max_edge_px"]))
@@ -179,7 +182,7 @@ def _print_report(report: IngestReport, stream: Any) -> None:
 
 
 def _cmd_ingest(args: argparse.Namespace, stream: Any) -> int:
-    data_dir = Path(args.data_dir)
+    data_dir = _data_dir(args)
     store = LocalContentAddressedStore(data_dir / "blobs")
     vision = _build_vision(args, stream)
     depth = _build_depth(args, stream)
@@ -232,7 +235,7 @@ def _cmd_ingest(args: argparse.Namespace, stream: Any) -> int:
             )
         # New photographs against people who are already named, run by `run_continuity` above.
         # The other direction, a newly named person against photographs that are already here,
-        # is `orimera-identity propose`: naming somebody is not an ingest and nothing would run
+        # is `exulanica-identity propose`: naming somebody is not an ingest and nothing would run
         # this afterwards.
         proposals = continuity.proposals
 
@@ -290,8 +293,8 @@ def _cmd_replay(args: argparse.Namespace, stream: Any) -> int:
 
 def main(argv: list[str] | None = None, stream: Any = None) -> int:
     stream = stream or sys.stdout
-    parser = argparse.ArgumentParser(prog="orimera-ingest", description=__doc__)
-    parser.add_argument("--data-dir", default=str(_DEFAULT_DATA_DIR))
+    parser = argparse.ArgumentParser(prog="exulanica-ingest", description=__doc__)
+    parser.add_argument("--data-dir", default=None)
     parser.add_argument("--workspace", default=None, help="workspace uuid; remembered on disk")
     sub = parser.add_subparsers(dest="command", required=True)
 

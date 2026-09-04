@@ -15,12 +15,12 @@ import uuid
 
 import psycopg
 
-from orimera.graph.entities import entity_rows
-from orimera.graph.occurrences import occurrence_rows, proposal_rows
-from orimera.graph.payload import GraphPayload
-from orimera.graph.reconstruction_scenes import reconstruction_scene_rows
-from orimera.graph.scene_groups import scene_group_rows
-from orimera.store.base import ContentAddressedStore
+from exulanica.graph.entities import entity_rows
+from exulanica.graph.occurrences import occurrence_rows, proposal_rows
+from exulanica.graph.payload import GraphPayload
+from exulanica.graph.reconstruction_scenes import reconstruction_scene_rows
+from exulanica.graph.scene_groups import scene_group_rows
+from exulanica.store.base import ContentAddressedStore
 
 __all__ = ["read_snapshot"]
 

@@ -90,7 +90,7 @@ from typing import Final
 
 from PIL import Image, UnidentifiedImageError
 
-from orimera.ingest.exif import ExifFacts, extract_exif_facts
+from exulanica.ingest.exif import ExifFacts, extract_exif_facts
 
 __all__ = ["MAX_PIXELS", "UNREADABLE", "open_upright", "probe"]
 

@@ -14,7 +14,7 @@ from typing import Any
 
 import psycopg
 
-from orimera.graph.payload import AssertionRow, EntityRow, HistoryRow
+from exulanica.graph.payload import AssertionRow, EntityRow, HistoryRow
 
 __all__ = ["entity_rows"]
 

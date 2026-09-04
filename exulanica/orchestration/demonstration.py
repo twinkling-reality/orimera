@@ -23,18 +23,18 @@ from typing import Any
 import psycopg
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from orimera.canonical import canonical_json, sha256_of_canonical
-from orimera.graph import read_snapshot
-from orimera.ingest.batch import IntakeBatch
-from orimera.ingest.continuity import run_continuity
-from orimera.ingest.formation import project_formation
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.report import IngestOutcome, IngestReport
-from orimera.ingest.repository import IngestRepository
-from orimera.ingest.vision import VisionModel
-from orimera.orchestration.manifest import BuildManifest
-from orimera.reconstruction import DepthModel
-from orimera.selection import (
+from exulanica.canonical import canonical_json, sha256_of_canonical
+from exulanica.graph import read_snapshot
+from exulanica.ingest.batch import IntakeBatch
+from exulanica.ingest.continuity import run_continuity
+from exulanica.ingest.formation import project_formation
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.report import IngestOutcome, IngestReport
+from exulanica.ingest.repository import IngestRepository
+from exulanica.ingest.vision import VisionModel
+from exulanica.orchestration.manifest import BuildManifest
+from exulanica.reconstruction import DepthModel
+from exulanica.selection import (
     Intent,
     SelectionPlan,
     Session,
@@ -44,9 +44,9 @@ from orimera.selection import (
     validate,
     validate_answer,
 )
-from orimera.store.local import LocalContentAddressedStore
-from orimera.store.resolve import address_from_span_row, resolve_original_bytes
-from orimera.world import (
+from exulanica.store.local import LocalContentAddressedStore
+from exulanica.store.resolve import address_from_span_row, resolve_original_bytes
+from exulanica.world import (
     ProposalOrigin,
     ProposalProvenance,
     SpatialCandidate,
@@ -58,8 +58,8 @@ from orimera.world import (
     WorldStructureRepository,
     WorldStyleRepository,
 )
-from orimera.world.structure import validate_candidate
-from orimera.world_package import diff_packages, project_world_package
+from exulanica.world.structure import validate_candidate
+from exulanica.world_package import diff_packages, project_world_package
 
 __all__ = ["FrontierDemonstrationError", "run_frontier_demonstration"]
 
@@ -262,7 +262,7 @@ def run_frontier_demonstration(
 
     terminal_fallbacks = _terminal_fallbacks(manifest, initial_sources)
     receipt: dict[str, Any] = {
-        "profile": "orimera-frontier-demonstration-receipt-v1",
+        "profile": "exulanica-frontier-demonstration-receipt-v1",
         "status": "passed-with-declared-fallbacks" if terminal_fallbacks else "passed",
         "build_manifest": {
             "profile": manifest.profile,
@@ -895,7 +895,7 @@ def _evaluation_document(
     adaptation: dict[str, Any],
 ) -> dict[str, Any]:
     return {
-        "profile": "orimera-frontier-demonstration-evaluation-v1",
+        "profile": "exulanica-frontier-demonstration-evaluation-v1",
         "stage": stage,
         "build_manifest_sha256": manifest.canonical_sha256,
         "operational_gates": {
@@ -930,7 +930,7 @@ def _verify_clean_process(package: Path) -> dict[str, Any]:
         if "DATABASE_URL" not in key and key not in {"PGPASSWORD", "PGSERVICE"}
     }
     result = subprocess.run(
-        [sys.executable, "-m", "orimera.world_package.cli", "verify", str(package)],
+        [sys.executable, "-m", "exulanica.world_package.cli", "verify", str(package)],
         cwd=package.parent,
         env=environment,
         check=False,

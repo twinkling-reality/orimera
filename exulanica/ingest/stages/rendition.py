@@ -11,12 +11,12 @@ from __future__ import annotations
 
 from PIL import Image
 
-from orimera.evidence.blob import BlobId
-from orimera.ingest.derivatives import render
-from orimera.ingest.ledger import Ledger
-from orimera.ingest.report import IngestOutcome
-from orimera.ingest.stages import idempotency_key, input_digest_of, stage
-from orimera.ingest.stages.writes import StageResult, StageWrites
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.derivatives import render
+from exulanica.ingest.ledger import Ledger
+from exulanica.ingest.report import IngestOutcome
+from exulanica.ingest.stages import idempotency_key, input_digest_of, stage
+from exulanica.ingest.stages.writes import StageResult, StageWrites
 
 __all__ = ["run"]
 

@@ -6,9 +6,9 @@ import uuid
 
 import psycopg
 import pytest
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.store.local import LocalContentAddressedStore
-from orimera.world import (
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.store.local import LocalContentAddressedStore
+from exulanica.world import (
     STYLE_REGISTRY,
     InvalidPreviewState,
     InvalidStyleData,

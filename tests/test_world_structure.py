@@ -3,8 +3,8 @@ from __future__ import annotations
 import copy
 
 import pytest
-from orimera.world import InvalidStructuralData
-from orimera.world.structure import (
+from exulanica.world import InvalidStructuralData
+from exulanica.world.structure import (
     candidate_from_document,
     canonical_candidate_document,
     validate_candidate,

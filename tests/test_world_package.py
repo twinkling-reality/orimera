@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from orimera.world_package.diff import diff_packages
-from orimera.world_package.package import (
+from exulanica.world_package.diff import diff_packages
+from exulanica.world_package.package import (
     MANIFEST_PATH,
     SIGNATURE_PATH,
     PackageError,
@@ -63,13 +63,13 @@ def _package(
                     "@id": "./",
                     "@type": "Dataset",
                     "conformsTo": {
-                        "@id": "https://orimera.local/profiles/world-memory-package/1.0"
+                        "@id": "https://exulanica.local/profiles/world-memory-package/1.0"
                     },
                     "description": "A test package.",
                     "name": "Test WMP",
                 },
                 {
-                    "@id": "https://orimera.local/profiles/world-memory-package/1.0",
+                    "@id": "https://exulanica.local/profiles/world-memory-package/1.0",
                     "@type": ["CreativeWork", "Profile"],
                 },
                 {
@@ -103,7 +103,7 @@ def _package(
 def test_manifest_merkle_and_ed25519_verify_without_database(tmp_path: Path):
     package = _package(tmp_path / "package")
     report = verify_package(package)
-    assert report.profile_version == "orimera-wmp-1.0"
+    assert report.profile_version == "exulanica-wmp-1.0"
     assert report.file_count == 18
     assert len(report.merkle_root_sha256) == 64
 
@@ -154,7 +154,7 @@ def test_prohibited_content_scanner_rejects_each_default_exclusion_class():
 
 def test_binary_float_is_preserved_exactly_as_a_tagged_value():
     assert normalize_value(0.1) == {
-        "@type": "orimera:IEEE754Binary64",
+        "@type": "exulanica:IEEE754Binary64",
         "hex": "0x1.999999999999ap-4",
     }
 
@@ -179,10 +179,12 @@ def test_semantic_diff_names_removed_capture_without_disclosing_values(tmp_path:
 def test_clean_process_verification_does_not_need_database_configuration(tmp_path: Path):
     package = _package(tmp_path / "package")
     environment = dict(os.environ)
-    environment.pop("ORIMERA_DATABASE_URL", None)
-    environment.pop("ORIMERA_TEST_DATABASE_URL", None)
+    environment.pop("EXULANICA_DATABASE_URL", None)
+    environment.pop("EXULANICA_TEST_DATABASE_URL", None)
+    environment.pop("EXULANICA_DATABASE_URL", None)
+    environment.pop("EXULANICA_TEST_DATABASE_URL", None)
     completed = subprocess.run(
-        [sys.executable, "-m", "orimera.world_package.cli", "verify", str(package)],
+        [sys.executable, "-m", "exulanica.world_package.cli", "verify", str(package)],
         capture_output=True,
         check=False,
         env=environment,

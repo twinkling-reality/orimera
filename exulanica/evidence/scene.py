@@ -8,13 +8,13 @@ many-to-many source relation, in migration 0024.
 
 This module is the identity half and nothing else. It computes a digest and a uuid from a set of
 capture ids, and it is deliberately in the pure core, below every layer that would want it: the
-writer is in ``orimera.ingest``, which is what drives a reconstruction and holds the repository
-that persists one, and the read is in ``orimera.graph``. Those two are siblings in the layering
+writer is in ``exulanica.ingest``, which is what drives a reconstruction and holds the repository
+that persists one, and the read is in ``exulanica.graph``. Those two are siblings in the layering
 contract and may not import each other, so a derivation living in either would be copied into the
 other, and two copies of an identity rule is two identities.
 
-**Not ``orimera.reconstruction``, and the reason is a contract rather than a preference.**
-``orimera.reconstruction`` is forbidden from importing ``orimera.evidence`` at all, by the
+**Not ``exulanica.reconstruction``, and the reason is a contract rather than a preference.**
+``exulanica.reconstruction`` is forbidden from importing ``exulanica.evidence`` at all, by the
 import-linter contract named "Reconstruction cannot produce a citation, because it cannot name
 one": invariant 2 is enforced by making the producer unable to construct an evidence address, so
 no refactor inside it can produce one. A scene identity is not an evidence address, but the
@@ -71,7 +71,7 @@ SCENE_DIGEST_VERSION: Final = 1
 
 #: Domain separation. This digest is not a hash of anything else in the system, and prefixing it
 #: means it can never be confused with one.
-_SCENE_DOMAIN: Final = b"orimera/reconstruction-scene"
+_SCENE_DOMAIN: Final = b"exulanica/reconstruction-scene"
 
 
 def scene_member_digest(capture_ids: Iterable[uuid.UUID]) -> bytes:

@@ -13,7 +13,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from orimera.ingest.spine.scope import WorkspaceScope
+from exulanica.ingest.spine.scope import WorkspaceScope
 
 __all__ = ["upsert"]
 

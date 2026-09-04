@@ -24,12 +24,12 @@ these tests.
 from __future__ import annotations
 
 import pytest
-from orimera.models.errors import (
+from exulanica.models.errors import (
     AmbiguousStructuredOutputError,
     SchemaViolationError,
     StructuredOutputError,
 )
-from orimera.models.schema import (
+from exulanica.models.schema import (
     extract_json_object,
     json_object_candidates,
     response_format_for,
@@ -97,11 +97,11 @@ def test_a_refusal_is_a_structured_output_failure_so_existing_callers_still_catc
 def test_delimited_scratch_work_is_stripped_upstream_so_a_decoy_inside_it_is_harmless():
     """The refusal must not be over-broad.
 
-    When the reasoning carries a tag there is a reliable boundary, ``orimera.models.reasoning``
+    When the reasoning carries a tag there is a reliable boundary, ``exulanica.models.reasoning``
     removes everything inside it, and only the answer reaches the extractor. A draft object in
     a delimited segment is therefore not ambiguity and must not be refused.
     """
-    from orimera.models.reasoning import split_reasoning
+    from exulanica.models.reasoning import split_reasoning
 
     body = (
         "<think>An example would be "
@@ -312,7 +312,7 @@ def test_the_schema_the_product_actually_sends_is_still_accepted():
     ``type == "object"`` rather than ``"object" in type`` would refuse the vision path outright,
     so this is here to make that mistake fail loudly rather than at the next corpus pass.
     """
-    from orimera.ingest.vision import OBSERVATION_SCHEMA, OBSERVATION_SCHEMA_NAME
+    from exulanica.ingest.vision import OBSERVATION_SCHEMA, OBSERVATION_SCHEMA_NAME
 
     fmt = response_format_for_schema(OBSERVATION_SCHEMA, OBSERVATION_SCHEMA_NAME)
     assert fmt["json_schema"]["schema"] is OBSERVATION_SCHEMA

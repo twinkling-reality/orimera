@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 
 import pytest
-from orimera.models.client import ModelClient
-from orimera.models.errors import (
+from exulanica.models.client import ModelClient
+from exulanica.models.errors import (
     AmbiguousStructuredOutputError,
     GuidedJsonForbiddenError,
     MaxTokensTooLowError,
@@ -20,10 +20,10 @@ from orimera.models.errors import (
     TransportError,
     TruncatedResponseError,
 )
-from orimera.models.manifest import Role
-from orimera.models.messages import image_part
-from orimera.models.reasoning import split_reasoning
-from orimera.models.transport import HttpResponse
+from exulanica.models.manifest import Role
+from exulanica.models.messages import image_part
+from exulanica.models.reasoning import split_reasoning
+from exulanica.models.transport import HttpResponse
 from pydantic import BaseModel
 
 from model_fakes import chat_body, model_not_found
@@ -445,7 +445,7 @@ def test_the_key_is_sent_as_a_bearer_header_and_never_appears_in_repr(client, tr
 
 
 def test_the_key_never_reaches_the_cache(manifest, transport):
-    from orimera.models.cache import InMemoryResponseCache
+    from exulanica.models.cache import InMemoryResponseCache
 
     cache = InMemoryResponseCache()
     transport.default = ok(chat_body("x"))
@@ -552,7 +552,7 @@ HAND_WRITTEN_SCHEMA = {
 
 
 def hand_written_format():
-    from orimera.models.schema import response_format_for_schema
+    from exulanica.models.schema import response_format_for_schema
 
     return response_format_for_schema(HAND_WRITTEN_SCHEMA, "hand_written_v1")
 
@@ -620,7 +620,7 @@ def test_a_cached_reply_is_revalidated_on_the_way_out(manifest, transport):
     the same way a fresh one would, rather than being the one route by which an unchecked object
     reaches a caller.
     """
-    from orimera.models.cache import InMemoryResponseCache
+    from exulanica.models.cache import InMemoryResponseCache
 
     cache = InMemoryResponseCache()
     transport.default = ok(chat_body('{"required_field": "present"}'))

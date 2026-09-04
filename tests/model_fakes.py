@@ -11,8 +11,8 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from orimera.models.manifest import Role
-from orimera.models.transport import HttpResponse
+from exulanica.models.manifest import Role
+from exulanica.models.transport import HttpResponse
 
 CHEAP_FLOOR = 640
 

@@ -5,14 +5,14 @@ from __future__ import annotations
 import io
 
 import pytest
-from orimera.errors import (
+from exulanica.errors import (
     BlobNotFoundError,
     ImmutableKeyError,
     IntegrityError,
     PurgeNotAuthorisedError,
 )
-from orimera.evidence import BlobId
-from orimera.store import (
+from exulanica.evidence import BlobId
+from exulanica.store import (
     ContentAddressedStore,
     LocalContentAddressedStore,
     PurgeAuthorization,

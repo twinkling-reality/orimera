@@ -44,7 +44,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Final
 
-from orimera.models.errors import ManifestError
+from exulanica.models.errors import ManifestError
 
 __all__ = [
     "MANIFEST_PATH",

@@ -114,7 +114,7 @@ def main():
     out_path = args.out or spike / ("moge_scale_vs_colmap_knownfov.json" if args.known_fov else "moge_scale_vs_colmap.json")
 
     sys.path.insert(0, str(REPO))
-    from orimera.reconstruction.moge import MoGeDepthModel
+    from exulanica.reconstruction.moge import MoGeDepthModel
 
     t0 = time.monotonic()
     model = MoGeDepthModel(max_edge_px=args.max_edge)
@@ -258,8 +258,8 @@ def predict_with_fov(model, image, fov_x_deg):
     Same downscale, same frame conversion, same mask; the one difference is `fov_x`, which the
     production wrapper does not pass because a single photograph has no independent focal.
     """
-    from orimera.reconstruction.depth import DepthPrediction
-    from orimera.reconstruction.moge import _fit, _fov_y_degrees, _RESOLUTION_LEVEL, to_opm_frame
+    from exulanica.reconstruction.depth import DepthPrediction
+    from exulanica.reconstruction.moge import _fit, _fov_y_degrees, _RESOLUTION_LEVEL, to_opm_frame
     torch = model._torch
     rgb = image.convert("RGB")
     width, height = _fit(rgb.size, model._max_edge_px)

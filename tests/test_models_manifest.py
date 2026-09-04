@@ -12,11 +12,11 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from orimera.models.errors import ManifestError, PreflightError, TransportError
-from orimera.models.manifest import MANIFEST_PATH, Role, parse_manifest
-from orimera.models.preflight import catalog_flavors, main, run_preflight
+from exulanica.models.errors import ManifestError, PreflightError, TransportError
+from exulanica.models.manifest import MANIFEST_PATH, Role, parse_manifest
+from exulanica.models.preflight import catalog_flavors, main, run_preflight
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "orimera" / "models"
+PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "exulanica" / "models"
 
 
 def _catalog_entry(model_id: str, *, use_cases, price_in="0.06", price_out="0.24"):
@@ -236,7 +236,7 @@ def test_cli_reports_an_unreachable_catalog_as_failure(monkeypatch):
     def boom(url, **kwargs):
         raise TransportError("DNS is having a day")
 
-    monkeypatch.setattr("orimera.models.preflight.fetch_catalog", boom)
+    monkeypatch.setattr("exulanica.models.preflight.fetch_catalog", boom)
     assert main([]) == 1
 
 

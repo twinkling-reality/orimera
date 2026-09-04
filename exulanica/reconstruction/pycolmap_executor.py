@@ -45,7 +45,7 @@ by a caller: a silently wrong pose is worse than a refused one.
 The consequence is architectural rather than cosmetic. **Depth and pose cannot share a process on
 macOS.** They do not need to: they are separate stages over separate inputs, the pose job already
 owns a manifest and a job directory, and the barrel does not import the depth model, so
-``from orimera.reconstruction import run_colmap_pose_job`` pulls no torch. A caller that wants
+``from exulanica.reconstruction import run_colmap_pose_job`` pulls no torch. A caller that wants
 both on one machine runs them as two processes. On Linux the two wheels have not been tested
 together here, and nothing should assume they coexist until they have been.
 """
@@ -58,7 +58,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
-from orimera.reconstruction.pose import CommandResult
+from exulanica.reconstruction.pose import CommandResult
 
 __all__ = ["PYCOLMAP_EXECUTABLE", "PycolmapExecutor", "pycolmap_version"]
 

@@ -12,29 +12,29 @@ from pathlib import Path
 import psycopg
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from orimera.evidence.blob import BlobId
-from orimera.graph import read_snapshot
-from orimera.graph.geometry import point_map_descriptors, read_point_map
-from orimera.ingest.operations import reconstruction_scene_metrics
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.reconstruction_scratch import (
+from exulanica.evidence.blob import BlobId
+from exulanica.graph import read_snapshot
+from exulanica.graph.geometry import point_map_descriptors, read_point_map
+from exulanica.ingest.operations import reconstruction_scene_metrics
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.reconstruction_scratch import (
     ScratchSource,
     active_scene_scratch,
     cleanup_abandoned_scene_scratch,
     stage_scene_sources,
 )
-from orimera.ingest.scene_reconstruction import SceneReconstructionProcessor
-from orimera.ingest.scenes import run_scene_grouping
-from orimera.ingest.spine.reconstruction_jobs import MAX_SCENE_CLAIMS
-from orimera.ingest.stages import artifact_id_for, idempotency_key, input_digest_of, stage
-from orimera.reconstruction.pose import CommandResult
-from orimera.store.local import LocalContentAddressedStore
-from orimera.world_package import project_world_package
+from exulanica.ingest.scene_reconstruction import SceneReconstructionProcessor
+from exulanica.ingest.scenes import run_scene_grouping
+from exulanica.ingest.spine.reconstruction_jobs import MAX_SCENE_CLAIMS
+from exulanica.ingest.stages import artifact_id_for, idempotency_key, input_digest_of, stage
+from exulanica.reconstruction.pose import CommandResult
+from exulanica.store.local import LocalContentAddressedStore
+from exulanica.world_package import project_world_package
 
 from conftest import CountingVisionModel, write_photo, write_point_map
 
 _CODE_REVISION = "a" * 40
-_EXECUTION_IMAGE = "registry.example/orimera-pose@sha256:" + "b" * 64
+_EXECUTION_IMAGE = "registry.example/exulanica-pose@sha256:" + "b" * 64
 
 
 class FakeColmap:

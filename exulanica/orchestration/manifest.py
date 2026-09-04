@@ -21,9 +21,9 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
-from orimera.canonical import canonical_json
-from orimera.ingest.pipeline import SUPPORTED_SUFFIXES
-from orimera.models.manifest import MANIFEST_PATH as MODEL_MANIFEST_PATH
+from exulanica.canonical import canonical_json
+from exulanica.ingest.pipeline import SUPPORTED_SUFFIXES
+from exulanica.models.manifest import MANIFEST_PATH as MODEL_MANIFEST_PATH
 
 __all__ = [
     "BUILD_PROFILE",
@@ -35,7 +35,7 @@ __all__ = [
     "load_build_manifest",
 ]
 
-BUILD_PROFILE: Final = "orimera-frontier-build/v1"
+BUILD_PROFILE: Final = "exulanica-frontier-build/v1"
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$")
 
 

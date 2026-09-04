@@ -1,6 +1,6 @@
 """Protected topology, reviewed styles, immutable versions, and source availability."""
 
-from orimera.world.errors import (
+from exulanica.world.errors import (
     InvalidInteractionData,
     InvalidInteractionPreviewState,
     InvalidPreviewState,
@@ -15,7 +15,7 @@ from orimera.world.errors import (
     UnknownWorldResource,
     WorldNotConfigured,
 )
-from orimera.world.interaction import (
+from exulanica.world.interaction import (
     INTERACTION_POLICY_REGISTRY,
     InteractionPolicyRegistry,
     InteractionPolicyState,
@@ -25,8 +25,8 @@ from orimera.world.interaction import (
     InteractionProposalRecord,
     InteractionRecommendation,
 )
-from orimera.world.interaction_repository import WorldInteractionPolicyRepository
-from orimera.world.models import (
+from exulanica.world.interaction_repository import WorldInteractionPolicyRepository
+from exulanica.world.models import (
     DEFAULT_WORLD_ID,
     ProposalOrigin,
     ProposalProvenance,
@@ -41,16 +41,16 @@ from orimera.world.models import (
     TopologySourceSlot,
     WorldSourceMedia,
 )
-from orimera.world.registry import STYLE_REGISTRY, StyleRegistry
-from orimera.world.repository import WorldStyleRepository
-from orimera.world.structure import (
+from exulanica.world.registry import STYLE_REGISTRY, StyleRegistry
+from exulanica.world.repository import WorldStyleRepository
+from exulanica.world.structure import (
     PlacementMigration,
     SpatialCandidate,
     SpatialDigests,
     SpatialPreview,
     SpatialSnapshot,
 )
-from orimera.world.structure_repository import WorldStructureRepository
+from exulanica.world.structure_repository import WorldStructureRepository
 
 __all__ = [
     "DEFAULT_WORLD_ID",

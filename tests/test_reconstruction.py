@@ -18,7 +18,7 @@ import struct
 from array import array
 
 import pytest
-from orimera.reconstruction import (
+from exulanica.reconstruction import (
     MAX_SEGMENT_ID,
     POINT_STRIDE_BYTES,
     TAG_ONE_SIDED,
@@ -31,8 +31,8 @@ from orimera.reconstruction import (
     encode_opm,
     validate_opm,
 )
-from orimera.reconstruction.moge import to_opm_frame
-from orimera.reconstruction.testing import FlatDepthModel
+from exulanica.reconstruction.moge import to_opm_frame
+from exulanica.reconstruction.testing import FlatDepthModel
 from PIL import Image
 
 
@@ -216,7 +216,7 @@ def test_the_container_is_what_the_renderer_reads():
     points = build_point_map(prediction, _image())
     data = _encode(points, aspect=4 / 3, source_size=(40, 30))
     header = _decode(data)
-    assert header["format"] == "orimera-point-map"
+    assert header["format"] == "exulanica-point-map"
     assert header["version"] == 2
     assert header["pointCount"] == points.count
     # Fixed at 3 by the container. A point map is not a splat, and a 1 here would describe a file

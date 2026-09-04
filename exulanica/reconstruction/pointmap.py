@@ -1,8 +1,9 @@
 """A point map: what one photograph turns out to have been looking at.
 
 **This module knows nothing about evidence and must not learn.** It does not import
-``orimera.evidence``, ``orimera.store`` or ``orimera.db``, and an import-linter contract enforces
-that. Invariant 2 says reconstruction is never evidence, and the strongest available form of that
+``exulanica.evidence``, ``exulanica.store`` or ``exulanica.db``, and an
+import-linter contract enforces that. Invariant 2 says reconstruction is never
+evidence, and the strongest available form of that
 rule is a producer that cannot name a citation: a module with no way to construct an address
 cannot return one, however it is later refactored by somebody who never read this comment.
 
@@ -14,7 +15,7 @@ these arrays may well use numpy; that is its business and it is behind an interf
 
 **What the alpha channel means is declared, not inferred.** The container carries
 ``colorAlpha`` as an enum, ``support`` or ``confidence``, and this producer writes ``support``:
-what :mod:`orimera.reconstruction.build` puts there is a spacing ratio, which is coverage rather
+what :mod:`exulanica.reconstruction.build` puts there is a spacing ratio, which is coverage rather
 than belief. ADR-0010 D5 made the field an enum for exactly this reason. Both writers used to
 declare ``confidence`` and one of them had stopped meaning it, and the renderer told them apart
 by the presence of a statistics key, "which is a format flag that nobody declared as one".
@@ -57,7 +58,7 @@ POINT_STRIDE_BYTES: Final = 20
 TAG_ONE_SIDED: Final = 0x0001
 
 #: Every bit of the flags channel that is not yet defined. Reserved and validated zero by
-#: :func:`orimera.reconstruction.validation.validate_opm`, so the next flag is a widening of a
+#: :func:`exulanica.reconstruction.validation.validate_opm`, so the next flag is a widening of a
 #: declared word rather than a reinterpretation of bytes some writer already filled with
 #: something else.
 RESERVED_TAG_FLAGS: Final = 0xFFFE
@@ -162,7 +163,7 @@ class PointMap:
         reports rather than hides.
 
         The ORDER is the container's, and it is asserted in the header rather than assumed here:
-        :func:`orimera.reconstruction.opm.encode_opm` reads the same section table this follows,
+        :func:`exulanica.reconstruction.opm.encode_opm` reads the same section table this follows,
         so a reordering that reached one of the two would fail its own validator.
         """
         return self.position.tobytes() + bytes(self.color) + self.tags.tobytes()

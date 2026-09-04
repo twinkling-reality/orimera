@@ -23,9 +23,9 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from orimera.evidence.blob import BlobId
-from orimera.ingest.repository import IngestRepository
-from orimera.ingest.stages import StageSpec
+from exulanica.evidence.blob import BlobId
+from exulanica.ingest.repository import IngestRepository
+from exulanica.ingest.stages import StageSpec
 
 __all__ = ["Ledger", "StageRecorder"]
 

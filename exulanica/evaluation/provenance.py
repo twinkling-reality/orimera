@@ -2,7 +2,7 @@
 
 The archive refuses a dirty repository because a commit id would not identify the code that ran.
 It retains the exact model-manifest bytes, reviewed stage definitions, and migration digests beside
-the report and machine record.  ``verify_archive`` re-hashes every file without importing Orimera
+the report and machine record.  ``verify_archive`` re-hashes every file without importing Exulanica
 state.
 
 This is not WORM storage.  Exclusive creation and read-only file modes prevent accidental rewrite;
@@ -24,10 +24,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Final
 
-from orimera.canonical import canonical_json
-from orimera.ingest.stages import KEY_FORMAT_VERSION, STAGES, pipeline_digest
-from orimera.migrations import migrations
-from orimera.models.manifest import MANIFEST_PATH, Role, load_manifest_from
+from exulanica.canonical import canonical_json
+from exulanica.ingest.stages import KEY_FORMAT_VERSION, STAGES, pipeline_digest
+from exulanica.migrations import migrations
+from exulanica.models.manifest import MANIFEST_PATH, Role, load_manifest_from
 
 __all__ = [
     "ARCHIVE_PROFILE",
@@ -42,8 +42,8 @@ __all__ = [
     "verify_archive",
 ]
 
-ARCHIVE_PROFILE: Final = "orimera.evaluation-archive/v1"
-RUN_PROFILE: Final = "orimera.evaluation-run/v1"
+ARCHIVE_PROFILE: Final = "exulanica.evaluation-archive/v1"
+RUN_PROFILE: Final = "exulanica.evaluation-run/v1"
 _HEX_64 = re.compile(r"^[0-9a-f]{64}$")
 
 

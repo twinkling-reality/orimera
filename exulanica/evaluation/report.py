@@ -28,8 +28,8 @@ from __future__ import annotations
 import re
 from typing import Final
 
-from orimera.evaluation.counts import Count, Sample, render
-from orimera.evaluation.metrics import METRICS, Component
+from exulanica.evaluation.counts import Count, Sample, render
+from exulanica.evaluation.metrics import METRICS, Component
 
 __all__ = ["BANNED", "banned_words_in", "quoted_from_the_methodology", "render_report"]
 
@@ -141,7 +141,7 @@ def render_report(
     is missing rather than inferring it from a gap.
 
     ``coverage`` is the measured half of "what is not covered", from
-    :func:`orimera.evaluation.coverage.what_the_corpus_cannot_support`. The sentences below it in
+    :func:`exulanica.evaluation.coverage.what_the_corpus_cannot_support`. The sentences below it in
     this function are true of any corpus this harness can read; the ones passed in are true of
     the workspace that was actually measured, and they are separated from the fixed text rather
     than blended into it so a reader can tell which is which. It defaults to empty so a caller
@@ -155,7 +155,7 @@ def render_report(
     other = [(c, r) for c, r in paired if c.kind == "unclassified"]
 
     measured = sum(1 for _c, r in paired if r is not None)
-    head = f"""Orimera evaluation report
+    head = f"""Exulanica evaluation report
 
 corpus            {corpus_tag}, {corpus_version}
 manifest sha256   {manifest_sha256}

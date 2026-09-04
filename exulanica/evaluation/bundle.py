@@ -5,7 +5,7 @@ an already authorised bundle, verifies that every declared file and source has t
 and exposes source paths only through a purpose-scoped reader.  A blind source additionally needs
 the external key whose hash was frozen into ``SPLITS.json``.
 
-The access log is a hash-chained JSONL file.  It proves what Orimera's corpus reader opened; it is
+The access log is a hash-chained JSONL file.  It proves what Exulanica's corpus reader opened; it is
 not a claim that an operating-system administrator could not read the files by another route.
 That boundary is stated explicitly because an audit implemented in application code must not be
 described as stronger than it is.
@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final
 
-from orimera.canonical import canonical_json
+from exulanica.canonical import canonical_json
 
 __all__ = [
     "BUNDLE_PROFILE",
@@ -37,8 +37,8 @@ __all__ = [
     "CorpusItem",
 ]
 
-BUNDLE_PROFILE: Final = "orimera.evaluation-corpus/v1"
-SPLIT_PROFILE: Final = "orimera.evaluation-splits/v1"
+BUNDLE_PROFILE: Final = "exulanica.evaluation-corpus/v1"
+SPLIT_PROFILE: Final = "exulanica.evaluation-splits/v1"
 _REQUIRED_LAYERS: Final = frozenset(
     {"L0", "L1", "L2", "L4", "L5", "L6", "L7", "L8", "L9", "L10", "L11"}
 )

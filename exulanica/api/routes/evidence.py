@@ -42,12 +42,12 @@ from typing import Annotated, Any, Final
 import psycopg
 from fastapi import APIRouter, Header, HTTPException, Path, Request, Response
 
-from orimera.api.dependencies import CurrentSession, ReadOnlyConnection, get_services
-from orimera.errors import BlobNotFoundError
-from orimera.evidence import EvidenceAddress, parse_uri
-from orimera.ingest.resolve import resolve_region_image
-from orimera.selection.validation import Session
-from orimera.store.resolve import address_from_span_row, resolve_original_bytes
+from exulanica.api.dependencies import CurrentSession, ReadOnlyConnection, get_services
+from exulanica.errors import BlobNotFoundError
+from exulanica.evidence import EvidenceAddress, parse_uri
+from exulanica.ingest.resolve import resolve_region_image
+from exulanica.selection.validation import Session
+from exulanica.store.resolve import address_from_span_row, resolve_original_bytes
 
 router = APIRouter(prefix="/evidence", tags=["evidence"])
 
@@ -103,7 +103,7 @@ def by_uri(
     session: CurrentSession,
     range_header: Annotated[str | None, Header(alias="range")] = None,
 ) -> Response:
-    """Resolve an ``orimera://`` permalink.
+    """Resolve an ``exulanica://`` permalink.
 
     The permalink is designed to stay valid forever and to parse back to an address with the
     same digest, which is what lets an archived answer's citation still open. It names a blob
@@ -129,7 +129,7 @@ def by_uri(
         raise HTTPException(status_code=404, detail="no such evidence")
     data = resolve_original_bytes(address, get_services(request).store)
     return _ranged(
-        data, row["media_type"], range_header, {"X-Orimera-Modality": str(address.modality)}
+        data, row["media_type"], range_header, _evidence_headers(str(address.modality))
     )
 
 
@@ -161,6 +161,10 @@ def _address(
     return address, row["media_type"] or _MEDIA_TYPE_FALLBACK, _clock_headers(row)
 
 
+def _evidence_headers(modality: str) -> dict[str, str]:
+    return {"X-Exulanica-Modality": modality}
+
+
 def _clock_headers(row: Mapping[str, Any]) -> dict[str, str]:
     """The wall clock this evidence carries, with how well it is known.
 
@@ -168,12 +172,12 @@ def _clock_headers(row: Mapping[str, Any]) -> dict[str, str]:
     minute that is only known to the hour, and the clock source is what explains why: an EXIF
     time with no offset is a different kind of fact from one with a GPS fix behind it.
     """
-    headers = {"X-Orimera-Modality": row["modality"]}
+    headers = _evidence_headers(row["modality"])
     if row["utc_instant"] is None:
         return headers
-    headers["X-Orimera-Captured-At"] = row["utc_instant"].isoformat()
-    headers["X-Orimera-Captured-At-Uncertainty-Ms"] = str(row["uncertainty_ms"])
-    headers["X-Orimera-Clock-Source"] = row["source"]
+    headers["X-Exulanica-Captured-At"] = row["utc_instant"].isoformat()
+    headers["X-Exulanica-Captured-At-Uncertainty-Ms"] = str(row["uncertainty_ms"])
+    headers["X-Exulanica-Clock-Source"] = row["source"]
     return headers
 
 

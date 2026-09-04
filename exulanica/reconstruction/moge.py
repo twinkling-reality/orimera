@@ -36,7 +36,7 @@ from typing import Any, Final
 
 from PIL import Image
 
-from orimera.reconstruction.depth import DepthPrediction
+from exulanica.reconstruction.depth import DepthPrediction
 
 __all__ = [
     "DEFAULT_MOGE_MODEL",

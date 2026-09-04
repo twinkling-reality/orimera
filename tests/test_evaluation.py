@@ -12,7 +12,7 @@ import io
 import pathlib
 
 import pytest
-from orimera.evaluation import (
+from exulanica.evaluation import (
     METRICS,
     Count,
     GroundTruth,
@@ -23,9 +23,10 @@ from orimera.evaluation import (
     render_report,
     wilson,
 )
-from orimera.evaluation.report import quoted_from_the_methodology
+from exulanica.evaluation.report import quoted_from_the_methodology
 
-CORPUS = pathlib.Path(__file__).resolve().parents[1] / ".orimera" / "media" / "intake" / "synthetic"
+_ROOT = pathlib.Path(__file__).resolve().parents[1]
+CORPUS = _ROOT / ".exulanica" / "media" / "intake" / "synthetic"
 
 
 # -- the rules that are refusals ------------------------------------------------------------
@@ -158,7 +159,7 @@ def test_a_row_that_did_not_run_licenses_nothing():
     The withheld column is untouched, because "this does not license X" stays true of a row that
     produced no result at all.
     """
-    from orimera.evaluation.cli import SCORED
+    from exulanica.evaluation.cli import SCORED
 
     report = _report(dict.fromkeys(SCORED, Count(1, 1, (NamedCase("a case", True),))))
     unmeasured = [
@@ -188,7 +189,7 @@ def _report(results: dict) -> str:
     return render_report(
         results,
         corpus_tag="SYNTH-1",
-        corpus_version="orimera-corpus 1",
+        corpus_version="exulanica-corpus 1",
         manifest_sha256="0" * 64,
         synthetic=True,
         disclosure="a synthetic frame",
@@ -280,7 +281,7 @@ def test_the_manifest_records_which_frames_can_be_placed_on_a_timeline():
     second has a wall clock reading in the file and no way to place it, and a pipeline that
     produced an instant for it would be inventing one.
     """
-    from orimera.evaluation.ground_truth import instant_is_correct
+    from exulanica.evaluation.ground_truth import instant_is_correct
 
     truth = GroundTruth.read(CORPUS)
     recoverable = [f for f in truth.frames if f.instant_is_recoverable_from_the_file]
@@ -305,7 +306,7 @@ def test_a_correct_instant_compares_equal_however_either_side_spells_it():
     The offset is asserted too, because "same instant" is the claim and an instant written at a
     different offset is the same instant. A value carrying no offset is not one and is refused.
     """
-    from orimera.evaluation.ground_truth import Frame, instant_is_correct
+    from exulanica.evaluation.ground_truth import Frame, instant_is_correct
 
     frame = Frame(
         filename="courtyard-spring-000.jpg",
@@ -344,8 +345,8 @@ def test_a_detector_label_resolves_to_the_subject_the_corpus_placed():
     platform" is describing the corpus's satchel correctly, and refusing to join that would be
     scoring the model down for being right about pixels.
     """
-    from orimera.corpus.world import SUBJECT_LABELS
-    from orimera.evaluation.coverage import subject_of
+    from exulanica.corpus.world import SUBJECT_LABELS
+    from exulanica.evaluation.coverage import subject_of
 
     assert subject_of("a small red cube", SUBJECT_LABELS) == "satchel"
     assert subject_of("the teal cylinder on the shelf", SUBJECT_LABELS) == "thermos"
@@ -360,8 +361,8 @@ def test_a_label_that_could_mean_two_subjects_means_neither():
     whichever is iterated first would make a gold comparison depend on dictionary order, which is
     a number that changes for a reason nobody could explain.
     """
-    from orimera.corpus.world import SUBJECT_LABELS
-    from orimera.evaluation.coverage import subject_of
+    from exulanica.corpus.world import SUBJECT_LABELS
+    from exulanica.evaluation.coverage import subject_of
 
     assert subject_of("cube", SUBJECT_LABELS) is None
     assert subject_of("red cube beside a gold cube", SUBJECT_LABELS) is None
@@ -374,9 +375,9 @@ def test_the_generated_manifest_carries_the_mapping_the_harness_reads():
     import tempfile
     from pathlib import Path
 
-    from orimera.corpus.__main__ import main as corpus_main
-    from orimera.corpus.world import SUBJECT_LABELS
-    from orimera.evaluation.ground_truth import GroundTruth
+    from exulanica.corpus.__main__ import main as corpus_main
+    from exulanica.corpus.world import SUBJECT_LABELS
+    from exulanica.evaluation.ground_truth import GroundTruth
 
     with tempfile.TemporaryDirectory() as directory:
         corpus_main(["--out", directory, "--frames-per-trip", "3"], stream=io.StringIO())
@@ -398,7 +399,7 @@ def test_a_manifest_written_before_the_mapping_existed_still_reads():
     import tempfile
     from pathlib import Path
 
-    from orimera.evaluation.ground_truth import GroundTruth
+    from exulanica.evaluation.ground_truth import GroundTruth
 
     with tempfile.TemporaryDirectory() as directory:
         (Path(directory) / "MANIFEST.json").write_text(
@@ -431,7 +432,7 @@ def test_a_row_that_carries_no_sentence_is_a_row_something_scores():
     So the table and the harness must agree, and then the report is clean: given a result for
     every component the harness scores, no unmeasured line falls back to an empty reason.
     """
-    from orimera.evaluation.cli import SCORED
+    from exulanica.evaluation.cli import SCORED
 
     runnable = {f"{c.metric}.{c.key}" for c in METRICS if c.blocked_on is None}
     assert runnable == set(SCORED), sorted(runnable ^ set(SCORED))
@@ -456,7 +457,7 @@ def test_the_scoring_package_contains_no_direct_product_write_sql():
     import ast
     import re
 
-    package = pathlib.Path(__file__).resolve().parents[1] / "orimera" / "evaluation"
+    package = pathlib.Path(__file__).resolve().parents[1] / "exulanica" / "evaluation"
     writes = re.compile(r"\b(insert\s+into|delete\s+from|update\s+\w+\s+set|truncate)\b")
     modules = sorted(package.glob("*.py"))
     assert len(modules) > 5, "the scan found almost nothing, so it is scanning the wrong place"
@@ -502,9 +503,9 @@ def timed_corpus(tmp_path, photo_dir, repository):
     import datetime as dt
     import hashlib
 
-    from orimera.evaluation.ground_truth import Frame, GroundTruth
-    from orimera.ingest.pipeline import PhotoIngestPipeline
-    from orimera.store.local import LocalContentAddressedStore
+    from exulanica.evaluation.ground_truth import Frame, GroundTruth
+    from exulanica.ingest.pipeline import PhotoIngestPipeline
+    from exulanica.store.local import LocalContentAddressedStore
 
     from conftest import CountingVisionModel, write_photo
 
@@ -557,7 +558,7 @@ def timed_corpus(tmp_path, photo_dir, repository):
 
 
 def _score_windows(timed_corpus, truth=None):
-    from orimera.evaluation.scorers import score_capture_time_windows
+    from exulanica.evaluation.scorers import score_capture_time_windows
 
     repository, built = timed_corpus
     return score_capture_time_windows(
@@ -654,7 +655,7 @@ def test_the_corpus_coverage_is_measured_against_the_workspace_not_asserted(time
     it was never placed in, and the disclosure has to report both halves. Reporting only the
     first would read as a detector that is right about everything it finds.
     """
-    from orimera.evaluation.coverage import what_the_corpus_cannot_support
+    from exulanica.evaluation.coverage import what_the_corpus_cannot_support
 
     repository, built = timed_corpus
     lines = what_the_corpus_cannot_support(
@@ -678,8 +679,8 @@ def test_a_bounded_page_is_reported_rather_than_scored(tmp_path, photo_dir, time
     drop out of the score, and the captures the manifest says nothing about must be reported
     rather than counted for or against anything.
     """
-    from orimera.ingest.pipeline import PhotoIngestPipeline
-    from orimera.store.local import LocalContentAddressedStore
+    from exulanica.ingest.pipeline import PhotoIngestPipeline
+    from exulanica.store.local import LocalContentAddressedStore
 
     from conftest import CountingVisionModel, write_photo
 
@@ -720,8 +721,8 @@ def test_captures_outside_the_corpus_are_counted_once_each_not_once_per_window(
     Three captures are ingested inside the morning trip and left out of the manifest. Four of the
     nine windows return all three, so a sum says twelve and the truth is three.
     """
-    from orimera.ingest.pipeline import PhotoIngestPipeline
-    from orimera.store.local import LocalContentAddressedStore
+    from exulanica.ingest.pipeline import PhotoIngestPipeline
+    from exulanica.store.local import LocalContentAddressedStore
 
     from conftest import CountingVisionModel, write_photo
 

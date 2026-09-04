@@ -18,17 +18,17 @@ import uuid
 from pathlib import Path
 
 import pytest
-from orimera.ingest.batch import IntakeBatch
-from orimera.ingest.formation import (
+from exulanica.ingest.batch import IntakeBatch
+from exulanica.ingest.formation import (
     FORMATION_OUTCOMES,
     FORMATION_STAGES,
     RECEIVED_TOKEN,
     project_formation,
 )
-from orimera.ingest.ledger import Ledger
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.scenes import run_scene_grouping
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.ingest.ledger import Ledger
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.scenes import run_scene_grouping
+from exulanica.store.local import LocalContentAddressedStore
 
 from conftest import DEFAULT_PAYLOAD, CountingVisionModel, iso, write_photo
 

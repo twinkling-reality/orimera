@@ -7,26 +7,26 @@ re-proposed identically.
 
 Eighteen modules in three groups. Six carry the argument, and the split between the last three of
 those is the one worth knowing. Eight more are the tables themselves, one module per table, and
-:mod:`orimera.identity.repository` is the index of them. The remaining four are the producer and
-its command line: :mod:`orimera.identity.proposer` writes ``match_proposal`` and never a link,
-:mod:`orimera.identity.signals` is the three context signals it scores a pair on, and
-:mod:`orimera.identity.cli` with :mod:`orimera.identity.__main__` are how it is run by hand.
+:mod:`exulanica.identity.repository` is the index of them. The remaining four are the producer and
+its command line: :mod:`exulanica.identity.proposer` writes ``match_proposal`` and never a link,
+:mod:`exulanica.identity.signals` is the three context signals it scores a pair on, and
+:mod:`exulanica.identity.cli` with :mod:`exulanica.identity.__main__` are how it is run by hand.
 
 The six:
 
-*   :mod:`orimera.identity.keys` derives the two evidence-shaped keys a decision is recorded
+*   :mod:`exulanica.identity.keys` derives the two evidence-shaped keys a decision is recorded
     under, so that rejection memory survives a detector re-run.
-*   :mod:`orimera.identity.repository` is one workspace, one connection, and the eight
+*   :mod:`exulanica.identity.repository` is one workspace, one connection, and the eight
     vocabularies over the identity tables. Its docstring says which module answers which
     question; a call site names the vocabulary before it names the method.
-*   :mod:`orimera.identity.subjects` is what every decision shares: what can go wrong, and what a
+*   :mod:`exulanica.identity.subjects` is what every decision shares: what can go wrong, and what a
     subject has to be for a decision to be about it.
-*   :mod:`orimera.identity.decisions` applies one user decision as one transaction, and records
+*   :mod:`exulanica.identity.decisions` applies one user decision as one transaction, and records
     what it did in ``identity_event`` so that undo is exact rather than approximate.
-*   :mod:`orimera.identity.undo` is the inverse of each of those, in a handler table rather than
+*   :mod:`exulanica.identity.undo` is the inverse of each of those, in a handler table rather than
     a branch, so an event type nobody wrote an inverse for is refused by name instead of quietly
     doing nothing.
-*   :mod:`orimera.identity.naming` renames an entity, which takes two writes and not one. Read
+*   :mod:`exulanica.identity.naming` renames an entity, which takes two writes and not one. Read
     its docstring before changing either of them.
 
 **No embedding of any kind is derived here.** Open item P-1, "when may a biometric embedding
@@ -36,7 +36,7 @@ package identifies people from what the account holder says, which needs no temp
 nothing about P-1.
 """
 
-from orimera.identity.decisions import (
+from exulanica.identity.decisions import (
     confirm_link,
     merge_entities,
     name_occurrence,
@@ -44,8 +44,8 @@ from orimera.identity.decisions import (
     revoke_link,
     split_entity,
 )
-from orimera.identity.entities import EntityRow
-from orimera.identity.keys import (
+from exulanica.identity.entities import EntityRow
+from exulanica.identity.keys import (
     REGION_GRID,
     TIME_BUCKET_NS,
     USER_STATEMENT_BASIS,
@@ -53,11 +53,11 @@ from orimera.identity.keys import (
     occurrence_identity_key,
     region_bucket,
 )
-from orimera.identity.links import LinkRow
-from orimera.identity.naming import ConcurrentRename, RenamedEntity, rename_entity
-from orimera.identity.occurrences import OccurrenceRow
-from orimera.identity.repository import IdentityRepository
-from orimera.identity.subjects import (
+from exulanica.identity.links import LinkRow
+from exulanica.identity.naming import ConcurrentRename, RenamedEntity, rename_entity
+from exulanica.identity.occurrences import OccurrenceRow
+from exulanica.identity.repository import IdentityRepository
+from exulanica.identity.subjects import (
     AlreadyIdentified,
     IdentityError,
     NamedPerson,
@@ -65,7 +65,7 @@ from orimera.identity.subjects import (
     NotUndoable,
     UnknownSubject,
 )
-from orimera.identity.undo import undo
+from exulanica.identity.undo import undo
 
 __all__ = [
     "REGION_GRID",

@@ -8,10 +8,10 @@ import pathlib
 import re
 
 import pytest
-from orimera.world import STYLE_REGISTRY, InvalidStyleData, StyleReference, StyleRegistry
+from exulanica.world import STYLE_REGISTRY, InvalidStyleData, StyleReference, StyleRegistry
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-REGISTRY_PATH = ROOT / "orimera" / "world" / "style-registry.v1.json"
+REGISTRY_PATH = ROOT / "exulanica" / "world" / "style-registry.v1.json"
 RECIPES_TS = ROOT / "web" / "packages" / "presentation" / "src" / "world-style-recipes.ts"
 FRONTEND_RECIPE_COMMIT = "55b123627314d328fba3850eb607d8a7682a8cad"
 FRONTEND_CAPABILITIES = {

@@ -10,7 +10,7 @@ top-level ``guided_json``                              **silently ignored**, ret
 
 The third is the reason this module exists as a chokepoint rather than a helper. A parameter
 that is accepted and ignored produces an HTTP 200 with a plausible prose answer, so a pipeline
-using it looks like it works while enforcing nothing at all. ``orimera.models.client`` refuses to
+using it looks like it works while enforcing nothing at all. ``exulanica.models.client`` refuses to
 send it, and refuses any ``response_format`` this module did not build.
 
 Strict mode has requirements Pydantic's own schema does not meet, so ``strict_json_schema``
@@ -30,7 +30,7 @@ not ``json_schema`` with ``strict: true``.
 ``extract_json_object`` is the reader half. It exists because of `runtime-verification.md` section
 5:
 the reasoning models write scratch work **inline in ``message.content``** and it cannot be
-switched off. Tagged scratch work is removed upstream by ``orimera.models.reasoning``; untagged
+switched off. Tagged scratch work is removed upstream by ``exulanica.models.reasoning``; untagged
 prose in front of the object is not, and ``json.loads`` on the whole body fails on exactly the
 models this project runs.
 
@@ -46,7 +46,7 @@ free to write their scratch work after their conclusion.
 So the rule here is:
 
 1.  Reasoning that carries a delimiter is stripped before extraction ever runs. That is
-    ``orimera.models.reasoning``, and it is the only reliable separation available.
+    ``exulanica.models.reasoning``, and it is the only reliable separation available.
 2.  What survives is scanned for **every** top-level balanced object that parses. Candidates
     that are equal carry no ambiguity and collapse to one.
 3.  Exactly one distinct candidate is the answer. Zero is a failed call. **Two or more is
@@ -79,7 +79,7 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 from pydantic import BaseModel
 
-from orimera.models.errors import (
+from exulanica.models.errors import (
     AmbiguousStructuredOutputError,
     SchemaViolationError,
     StructuredOutputError,

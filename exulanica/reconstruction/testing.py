@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from PIL import Image
 
-from orimera.reconstruction.depth import DepthPrediction
+from exulanica.reconstruction.depth import DepthPrediction
 
 __all__ = ["FlatDepthModel"]
 

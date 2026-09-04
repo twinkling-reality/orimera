@@ -7,14 +7,14 @@ import io
 import uuid
 from pathlib import Path
 
-from orimera.corpus.__main__ import main as corpus_main
-from orimera.db.session import Database
-from orimera.evaluation.cli import main as evaluation_main
-from orimera.evaluation.execution import execution_snapshot
-from orimera.evaluation.provenance import verify_archive
-from orimera.ingest.pipeline import PhotoIngestPipeline
-from orimera.ingest.repository import IngestRepository
-from orimera.store.local import LocalContentAddressedStore
+from exulanica.corpus.__main__ import main as corpus_main
+from exulanica.db.session import Database
+from exulanica.evaluation.cli import main as evaluation_main
+from exulanica.evaluation.execution import execution_snapshot
+from exulanica.evaluation.provenance import verify_archive
+from exulanica.ingest.pipeline import PhotoIngestPipeline
+from exulanica.ingest.repository import IngestRepository
+from exulanica.store.local import LocalContentAddressedStore
 
 from conftest import CountingVisionModel, write_photo
 
@@ -99,7 +99,7 @@ def test_cli_creates_and_reverifies_a_complete_legacy_archive(
     # repository_snapshot itself has a real-Git test. This integration test supplies a frozen
     # state because the source tree is necessarily dirty while the new implementation is tested.
     monkeypatch.setattr(
-        "orimera.evaluation.cli.repository_snapshot",
+        "exulanica.evaluation.cli.repository_snapshot",
         lambda _path: {"commit": "1" * 40, "tree": "2" * 40, "dirty": False},
     )
     archives = tmp_path / "archives"
