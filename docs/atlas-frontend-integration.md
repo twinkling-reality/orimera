@@ -101,7 +101,8 @@ The authoritative disclosure names `recordedSceneRung`, `displayedRung` and
 `renderingSubstrate` separately. The recorded value comes only from the scene-rung assertion.
 Decoded OPM bytes cannot promote it. The disclosure also shows registered member count and every
 gate or fallback reason, including the missing scale, coverage, corridor and splat receipts that
-currently hold a production posed scene at rung 3.
+currently hold a production posed scene at rung 3. Its displayed-rung sentence comes from the one
+shared `RUNG_COPY` table in `@orimera/formation`; the app no longer carries a divergent copy.
 
 The load runs on **every** mount, not once at start-up. The graph is re-read and unchanged decoded
 maps are carried forward by artifact id. That is what carries deletion to the renderer: deleting

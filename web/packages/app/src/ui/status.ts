@@ -5,6 +5,7 @@ import type {
   ReconstructionRungRef,
   RenderingSubstrate,
 } from '@orimera/graph-client';
+import { rungSentence } from '@orimera/formation';
 import { el } from './dom.js';
 
 /** Fixed by interaction-model.md 6.2 and shown with Atlas Map, where layout can be misread. */
@@ -81,6 +82,11 @@ export function buildStatus(input: StatusInput): HTMLElement {
         text: `Recorded rung ${recorded}; showing rung ${scene.displayedRung} from ${substrate}.`,
       }),
       el('p', {
+        class: 'reconstruction-rung-copy',
+        text: rungSentence(scene.displayedRung),
+      }),
+      el('p', {
+        class: 'reconstruction-rung-registration',
         text: `${scene.registeredMemberCount} of ${scene.memberCount} photographs registered.`,
       }),
     );

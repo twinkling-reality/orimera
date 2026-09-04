@@ -76,12 +76,6 @@ const COPY: Readonly<Record<string, string>> = Object.freeze({
   'unavailable.nothingToSplit': 'There is only one occurrence, so there is nothing to split off.',
   'unavailable.outOfMvpCut': 'This instance does not do that yet.',
 
-  // The reconstruction ladder. Rung 1 is the only one permitted to imply free movement.
-  'rung.1': 'Photoreal region. You can move freely inside it.',
-  'rung.2': 'Recovered along the path the camera travelled. Movement follows that path.',
-  'rung.3': 'Photographic panels with a little depth. Movement is between them.',
-  'rung.4': 'No geometry was reconstructed. Evidence is laid out by time and by what it shares.',
-
   // -- what the Companion says -------------------------------------------------------------
   //
   // Every one of these is a QUESTION or an offer, never a statement of something the system

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BAND_ORDER } from '@orimera/companion-runtime';
 import { rungProperties } from '@orimera/atlas-core';
+import { rungSentence } from '@orimera/formation';
 
 import { FORBIDDEN_WORDS, everyPhrase, say } from '../src/ui/copy.js';
 
@@ -28,7 +29,7 @@ describe('the copy this product is allowed to use', () => {
     // exactly this assertion, so the test reads the flag rather than a list written twice.
     for (const rung of [1, 2, 3, 4] as const) {
       const properties = rungProperties(rung);
-      const sentence = say(properties.labelKey).toLowerCase();
+      const sentence = rungSentence(rung).toLowerCase();
       if (properties.impliesFreeMovement) continue;
       expect(sentence.includes('freely'), `${properties.labelKey} implies free movement`).toBe(
         false,
@@ -39,10 +40,9 @@ describe('the copy this product is allowed to use', () => {
     }
   });
 
-  it('has a sentence for every rung on the ladder', () => {
+  it('uses the shared sentence for every rung on the ladder', () => {
     for (const rung of [1, 2, 3, 4] as const) {
-      const key = rungProperties(rung).labelKey;
-      expect(say(key), `${key} has no sentence`).not.toBe(key);
+      expect(rungSentence(rung).length, `rung ${rung} has no sentence`).toBeGreaterThan(0);
     }
   });
 

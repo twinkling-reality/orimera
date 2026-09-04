@@ -133,8 +133,10 @@ source photographs while retaining the recorded rung and reasons in the disclosu
 assertion records rung 1 or 2 before this client supports that substrate, the displayed rung stays
 3 and the disclosure says why.
 
-The status disclosure is the authoritative render site for rung copy. It names the recorded scene
-rung, displayed rung, substrate, registered count, and all gate or fallback reasons.
+The status disclosure is the authoritative render site for rung copy. Its sentence comes from the
+single `RUNG_COPY` table in `web/packages/formation/src/labels.ts`; the app carries no second table.
+It names the recorded scene rung, displayed rung, substrate, registered count, and all gate or
+fallback reasons.
 
 ## 6. Deletion and scratch lifecycle
 

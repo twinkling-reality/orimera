@@ -24,7 +24,12 @@ describe('reconstruction rung disclosure', () => {
     expect(status.querySelector('summary')?.textContent).toBe(
       'Recorded rung 3; showing rung 4 from source photographs.',
     );
-    expect(status.querySelector('p')?.textContent).toBe('2 of 3 photographs registered.');
+    expect(status.querySelector('.reconstruction-rung-copy')?.textContent).toBe(
+      'Source first. The photographs are arranged by time and by what they share. No geometry was recovered.',
+    );
+    expect(status.querySelector('.reconstruction-rung-registration')?.textContent).toBe(
+      '2 of 3 photographs registered.',
+    );
     expect([...status.querySelectorAll('li')].map((item) => item.textContent)).toEqual([
       'Rung 2 withheld: no measured corridor receipt is available.',
       'This browser could not load a verified posed map.',
