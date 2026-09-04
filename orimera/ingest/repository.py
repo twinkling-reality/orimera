@@ -63,6 +63,7 @@ from orimera.ingest.spine import (
     derived,
     inferences,
     occurrences,
+    reconstruction_jobs,
     reconstruction_scenes,
     spans,
     stage_registry,
@@ -221,6 +222,98 @@ class IngestRepository:
         """The photographs a reconstruction scene was run over, in its recorded order."""
         return reconstruction_scenes.members(self._scope, scene_id)
 
+    def insert_completed_reconstruction_scene(
+        self,
+        *,
+        scene_id: uuid.UUID,
+        member_digest: bytes,
+        scene_members: list[tuple[uuid.UUID, bool]],
+    ) -> bool:
+        """Record a completed scene and every registration outcome in one transaction."""
+        return reconstruction_scenes.insert_completed(
+            self._scope,
+            scene_id=scene_id,
+            member_digest=member_digest,
+            scene_members=scene_members,
+        )
+
+    def enqueue_reconstruction_scene(
+        self, *, capture_ids: list[uuid.UUID], selection_policy: dict[str, Any]
+    ) -> tuple[uuid.UUID, bool]:
+        """Queue one exact, policy-described capture set for pose recovery."""
+        return reconstruction_jobs.enqueue(
+            self._scope, capture_ids=capture_ids, selection_policy=selection_policy
+        )
+
+    def claim_reconstruction_scene(
+        self, *, worker: str, lease_seconds: float
+    ) -> reconstruction_jobs.ClaimedSceneJob | None:
+        """Claim the next pending scene build for this workspace."""
+        return reconstruction_jobs.claim(
+            self._scope, worker=worker, lease_seconds=lease_seconds
+        )
+
+    def heartbeat_reconstruction_scene(
+        self, *, job_id: uuid.UUID, claim_token: uuid.UUID, lease_seconds: float
+    ) -> bool:
+        """Renew a scene-build lease still owned by this claimant."""
+        return reconstruction_jobs.heartbeat(
+            self._scope,
+            job_id=job_id,
+            claim_token=claim_token,
+            lease_seconds=lease_seconds,
+        )
+
+    def reconstruction_scene_cancelled_or_lost(
+        self, *, job_id: uuid.UUID, claim_token: uuid.UUID
+    ) -> bool:
+        """Whether deletion or a reclaim means this worker must stop."""
+        return reconstruction_jobs.cancelled_or_lost(
+            self._scope, job_id=job_id, claim_token=claim_token
+        )
+
+    def complete_reconstruction_scene_job(
+        self,
+        *,
+        job_id: uuid.UUID,
+        claim_token: uuid.UUID,
+        scratch_key: str,
+        pose_manifest_digest: bytes,
+        pose_receipt_artifact_id: uuid.UUID,
+        placement_artifact_id: uuid.UUID,
+        gate_artifact_id: uuid.UUID,
+    ) -> bool:
+        """Close a scene job after its scene, receipts and assertion are durable."""
+        return reconstruction_jobs.complete(
+            self._scope,
+            job_id=job_id,
+            claim_token=claim_token,
+            scratch_key=scratch_key,
+            pose_manifest_digest=pose_manifest_digest,
+            pose_receipt_artifact_id=pose_receipt_artifact_id,
+            placement_artifact_id=placement_artifact_id,
+            gate_artifact_id=gate_artifact_id,
+        )
+
+    def fail_reconstruction_scene_job(
+        self,
+        *,
+        job_id: uuid.UUID,
+        claim_token: uuid.UUID,
+        failure_class: str,
+        failure_message: str,
+        retry_delay_seconds: float,
+    ) -> bool:
+        """Release a failed scene build for bounded retry."""
+        return reconstruction_jobs.fail(
+            self._scope,
+            job_id=job_id,
+            claim_token=claim_token,
+            failure_class=failure_class,
+            failure_message=failure_message,
+            retry_delay_seconds=retry_delay_seconds,
+        )
+
     # -- tombstones ---------------------------------------------------------------------
 
     def insert_tombstone(
@@ -301,6 +394,39 @@ class IngestRepository:
             artifact_id=artifact_id,
             kind=kind,
             source_blob=source_blob,
+            stage_key=stage_key,
+            stage_version=stage_version,
+            params_digest=params_digest,
+            input_digest=input_digest,
+            idempotency_key=idempotency_key,
+            content_sha256=content_sha256,
+            storage_key=storage_key,
+            byte_size=byte_size,
+            produced_by_event=produced_by_event,
+        )
+
+    def insert_scene_artifact(
+        self,
+        *,
+        artifact_id: uuid.UUID,
+        kind: str,
+        scene_id: uuid.UUID,
+        stage_key: str,
+        stage_version: int,
+        params_digest: bytes,
+        input_digest: bytes,
+        idempotency_key: str,
+        content_sha256: bytes,
+        storage_key: str,
+        byte_size: int,
+        produced_by_event: uuid.UUID | None,
+    ) -> bool:
+        """Insert an artifact whose subject is a reconstruction scene."""
+        return artifacts.insert_scene(
+            self._scope,
+            artifact_id=artifact_id,
+            kind=kind,
+            scene_id=scene_id,
             stage_key=stage_key,
             stage_version=stage_version,
             params_digest=params_digest,

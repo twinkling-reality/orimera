@@ -14,7 +14,7 @@ from orimera.db.guards import terminal_if_tombstoned
 from orimera.evidence.blob import BlobId
 from orimera.ingest.spine.scope import WorkspaceScope
 
-__all__ = ["ArtifactRow", "find", "insert", "mark_needs_repair"]
+__all__ = ["ArtifactRow", "find", "insert", "insert_scene", "mark_needs_repair"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +88,55 @@ def insert(
                 scope.workspace_id,
                 kind,
                 source_blob.digest,
+                stage_key,
+                stage_version,
+                params_digest,
+                input_digest,
+                idempotency_key,
+                content_sha256,
+                storage_key,
+                byte_size,
+                produced_by_event,
+            ),
+        )
+    return cursor.rowcount > 0
+
+
+def insert_scene(
+    scope: WorkspaceScope,
+    *,
+    artifact_id: uuid.UUID,
+    kind: str,
+    scene_id: uuid.UUID,
+    stage_key: str,
+    stage_version: int,
+    params_digest: bytes,
+    input_digest: bytes,
+    idempotency_key: str,
+    content_sha256: bytes,
+    storage_key: str,
+    byte_size: int,
+    produced_by_event: uuid.UUID | None,
+) -> bool:
+    """Insert a derivative whose subject is a complete reconstruction scene.
+
+    Scene artifacts use the same immutable identity and content fields as single-photograph
+    artifacts. Their subject is ``scene_id`` and ``source_blob_sha256`` remains NULL. The
+    database constraint in migration 0024 makes the two subject forms exclusive, and its
+    tombstone trigger refuses this insert when deletion reaches any scene member.
+    """
+    with terminal_if_tombstoned():
+        cursor = scope.connection.execute(
+            "insert into artifact (artifact_id, workspace_id, kind, scene_id, stage_key, "
+            "stage_version, params_digest, input_digest, idempotency_key, content_sha256, "
+            "storage_key, byte_size, produced_by_event) "
+            "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "on conflict (workspace_id, idempotency_key) do nothing",
+            (
+                artifact_id,
+                scope.workspace_id,
+                kind,
+                scene_id,
                 stage_key,
                 stage_version,
                 params_digest,

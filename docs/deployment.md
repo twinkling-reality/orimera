@@ -438,7 +438,7 @@ drain when the current role is a superuser, has BYPASSRLS, or owns any row-level
 role starts and cannot see another workspace, while the bootstrap owner is rejected. The same
 check runs in the API lifespan and the dedicated worker command before either accepts work.
 
-There are now fifty workspace-keyed FORCE RLS tables. The package-export receipt is append-only
+There are now fifty-two workspace-keyed FORCE RLS tables. The package-export receipt is append-only
 and scoped by the same session workspace as the protected world state whose Merkle root it
 records; migration 0024's `reconstruction_scene` and `reconstruction_scene_member` are the two
 most recent, and are append-only for a different reason, given in that file.

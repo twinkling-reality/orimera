@@ -1,0 +1,212 @@
+"""Durable reconstruction selection, leases, completion and deletion cancellation."""
+
+from __future__ import annotations
+
+import uuid
+
+import psycopg
+import pytest
+from orimera.evidence.blob import BlobId
+from orimera.evidence.scene import scene_id_for, scene_member_digest
+from orimera.ingest.scene_selection import enqueue_scene_reconstructions
+from orimera.ingest.scenes import SceneGroup
+
+
+def _captures(repository, count: int = 3) -> list[uuid.UUID]:
+    capture_ids: list[uuid.UUID] = []
+    for index in range(count):
+        blob = BlobId.of_bytes(f"scene input {index}".encode())
+        repository.upsert_blob(
+            blob,
+            byte_size=len(f"scene input {index}"),
+            media_type="image/jpeg",
+            storage_key=f"sha256/{blob.hex}",
+        )
+        capture_ids.append(
+            repository.insert_capture(
+                blob,
+                device_id=None,
+                started_at=f"2026-09-04T12:0{index}:00+00:00",
+            ).capture_id
+        )
+    return capture_ids
+
+
+def _policy() -> dict[str, object]:
+    return {
+        "profile": "orimera.scene-group-pose-selection/v1",
+        "minimum_member_count": 3,
+        "ordering": "scene-group-presentation-order",
+    }
+
+
+def test_enqueue_is_deterministic_and_a_restart_claims_the_exact_order(ingest_spine):
+    repository, reopen = ingest_spine
+    captures = _captures(repository)
+
+    job_id, inserted = repository.enqueue_reconstruction_scene(
+        capture_ids=captures, selection_policy=_policy()
+    )
+    same_id, inserted_again = repository.enqueue_reconstruction_scene(
+        capture_ids=captures, selection_policy=_policy()
+    )
+
+    assert inserted is True
+    assert inserted_again is False
+    assert same_id == job_id
+    claimed = reopen().claim_reconstruction_scene(worker="after-restart", lease_seconds=60)
+    assert claimed is not None
+    assert claimed.job_id == job_id
+    assert claimed.scene_id == scene_id_for(captures)
+    assert claimed.member_digest == scene_member_digest(captures)
+    assert [member.capture_id for member in claimed.members] == captures
+    assert claimed.attempts == 1
+    assert claimed.reclaimed is False
+
+
+def test_the_initial_policy_selects_three_member_groups_and_records_its_source(repository):
+    captures = _captures(repository, 5)
+    groups = [
+        SceneGroup(ordinal=0, capture_ids=captures[:2]),
+        SceneGroup(ordinal=1, capture_ids=captures[2:]),
+    ]
+
+    selections = enqueue_scene_reconstructions(repository, groups)
+
+    selected_groups = [
+        (selection.scene_group_ordinal, selection.member_count) for selection in selections
+    ]
+    assert selected_groups == [(1, 3)]
+    row = repository.connection.execute(
+        "select selection_policy from reconstruction_scene_job where workspace_id=%s",
+        (repository.workspace_id,),
+    ).fetchone()
+    assert row is not None
+    assert row["selection_policy"]["source"] == {
+        "kind": "scene_group",
+        "group_key": groups[1].key,
+        "group_ordinal": 1,
+        "stage_version": 1,
+        "stage_params_sha256": row["selection_policy"]["source"]["stage_params_sha256"],
+    }
+    assert "not been validated" in row["selection_policy"]["limitations"][0]
+
+
+def test_two_claimants_do_not_receive_the_same_scene(ingest_spine):
+    repository, reopen = ingest_spine
+    repository.enqueue_reconstruction_scene(
+        capture_ids=_captures(repository), selection_policy=_policy()
+    )
+
+    first = reopen().claim_reconstruction_scene(worker="first", lease_seconds=60)
+    second = reopen().claim_reconstruction_scene(worker="second", lease_seconds=60)
+
+    assert first is not None
+    assert second is None
+
+
+def test_expired_claim_rotates_the_token_and_stale_completion_is_refused(ingest_spine):
+    repository, reopen = ingest_spine
+    job_id, _ = repository.enqueue_reconstruction_scene(
+        capture_ids=_captures(repository), selection_policy=_policy()
+    )
+    first_repository = reopen()
+    first = first_repository.claim_reconstruction_scene(worker="first", lease_seconds=60)
+    assert first is not None
+    repository.connection.execute(
+        "update reconstruction_scene_job set lease_expires_at=now()-interval '1 second' "
+        "where workspace_id=%s and job_id=%s",
+        (repository.workspace_id, job_id),
+    )
+
+    second = reopen().claim_reconstruction_scene(worker="second", lease_seconds=60)
+
+    assert second is not None
+    assert second.reclaimed is True
+    assert second.attempts == 2
+    assert second.claim_token != first.claim_token
+    assert first_repository.complete_reconstruction_scene_job(
+        job_id=job_id,
+        claim_token=first.claim_token,
+        scratch_key="old",
+        pose_manifest_digest=b"\x01" * 32,
+        pose_receipt_artifact_id=uuid.uuid4(),
+        placement_artifact_id=uuid.uuid4(),
+        gate_artifact_id=uuid.uuid4(),
+    ) is False
+
+
+def test_completion_records_partial_registration_once(ingest_spine):
+    repository, _reopen = ingest_spine
+    captures = _captures(repository)
+    scene_id = scene_id_for(captures)
+    digest = scene_member_digest(captures)
+    registrations = [(captures[0], True), (captures[1], False), (captures[2], True)]
+
+    with repository.transaction():
+        assert repository.insert_completed_reconstruction_scene(
+            scene_id=scene_id, member_digest=digest, scene_members=registrations
+        )
+    with repository.transaction():
+        assert not repository.insert_completed_reconstruction_scene(
+            scene_id=scene_id, member_digest=digest, scene_members=registrations
+        )
+
+    members = repository.reconstruction_scene_members(scene_id)
+    assert [(member.capture_id, member.registered) for member in members] == registrations
+    with (
+        pytest.raises(ValueError, match="disagrees"),
+        repository.transaction(),
+    ):
+        repository.insert_completed_reconstruction_scene(
+            scene_id=scene_id,
+            member_digest=digest,
+            scene_members=[(capture_id, True) for capture_id in captures],
+        )
+
+
+def test_deleting_any_pending_member_cancels_the_job(ingest_spine):
+    repository, _reopen = ingest_spine
+    captures = _captures(repository)
+    job_id, _ = repository.enqueue_reconstruction_scene(
+        capture_ids=captures, selection_policy=_policy()
+    )
+    claimed = repository.claim_reconstruction_scene(worker="pose", lease_seconds=60)
+    assert claimed is not None
+
+    repository.insert_tombstone(
+        scope="capture",
+        capture_id=captures[1],
+        requested_by=uuid.uuid4(),
+        reason="delete one of the pending inputs",
+    )
+
+    row = repository.connection.execute(
+        "select status,claim_token,completed_at from reconstruction_scene_job "
+        "where workspace_id=%s and job_id=%s",
+        (repository.workspace_id, job_id),
+    ).fetchone()
+    assert row is not None
+    assert row["status"] == "cancelled"
+    assert row["claim_token"] is None
+    assert row["completed_at"] is not None
+    assert repository.reconstruction_scene_cancelled_or_lost(
+        job_id=job_id, claim_token=claimed.claim_token
+    )
+
+
+def test_job_membership_cannot_be_changed_after_enqueue(repository):
+    captures = _captures(repository)
+    job_id, _ = repository.enqueue_reconstruction_scene(
+        capture_ids=captures, selection_policy=_policy()
+    )
+
+    with (
+        pytest.raises(psycopg.errors.IntegrityConstraintViolation),
+        repository.connection.transaction(),
+    ):
+        repository.connection.execute(
+            "update reconstruction_scene_job_member set ordinal=7 "
+            "where workspace_id=%s and job_id=%s and capture_id=%s",
+            (repository.workspace_id, job_id, captures[0]),
+        )

@@ -1,0 +1,281 @@
+"""The durable lease around one exact multi-photograph reconstruction input set."""
+
+from __future__ import annotations
+
+import hashlib
+import uuid
+from dataclasses import dataclass
+from typing import Any, Final
+
+from psycopg.types.json import Jsonb
+
+from orimera.canonical import canonical_json
+from orimera.evidence.blob import BlobId
+from orimera.evidence.scene import scene_id_for, scene_member_digest
+from orimera.ingest.spine.scope import WorkspaceScope
+
+__all__ = [
+    "MAX_SCENE_CLAIMS",
+    "ClaimedSceneJob",
+    "SceneJobMember",
+    "cancelled_or_lost",
+    "claim",
+    "complete",
+    "enqueue",
+    "fail",
+    "heartbeat",
+]
+
+MAX_SCENE_CLAIMS: Final = 3
+_JOB_NAMESPACE: Final = uuid.UUID("d7af4526-f141-50d4-bc58-aa3786f35833")
+
+
+def _policy_bytes(policy: dict[str, Any]) -> bytes:
+    return canonical_json(policy)
+
+
+@dataclass(frozen=True, slots=True)
+class SceneJobMember:
+    capture_id: uuid.UUID
+    ordinal: int
+    blob_id: BlobId
+    media_type: str
+
+
+@dataclass(frozen=True, slots=True)
+class ClaimedSceneJob:
+    job_id: uuid.UUID
+    scene_id: uuid.UUID
+    member_digest: bytes
+    selection_policy: dict[str, Any]
+    selection_policy_digest: bytes
+    members: tuple[SceneJobMember, ...]
+    attempts: int
+    claim_token: uuid.UUID
+    scratch_key: str | None
+    reclaimed: bool
+
+
+def enqueue(
+    scope: WorkspaceScope,
+    *,
+    capture_ids: list[uuid.UUID],
+    selection_policy: dict[str, Any],
+) -> tuple[uuid.UUID, bool]:
+    """Queue one exact ordered set, or verify and reuse the identical queued question."""
+    if not capture_ids or len(set(capture_ids)) != len(capture_ids):
+        raise ValueError("a scene job needs a non-empty, duplicate-free capture list")
+    policy_bytes = _policy_bytes(selection_policy)
+    policy_digest = hashlib.sha256(policy_bytes).digest()
+    scene_id = scene_id_for(capture_ids)
+    member_digest = scene_member_digest(capture_ids)
+    job_id = uuid.uuid5(_JOB_NAMESPACE, f"{scene_id}:{policy_digest.hex()}")
+    with scope.connection.transaction():
+        cursor = scope.connection.execute(
+            "insert into reconstruction_scene_job "
+            "(job_id, workspace_id, scene_id, member_digest, selection_policy, "
+            "selection_policy_digest) values (%s, %s, %s, %s, %s, %s) "
+            "on conflict (workspace_id, scene_id, selection_policy_digest) do nothing",
+            (
+                job_id,
+                scope.workspace_id,
+                scene_id,
+                member_digest,
+                Jsonb(selection_policy),
+                policy_digest,
+            ),
+        )
+        inserted = cursor.rowcount > 0
+        if inserted:
+            with scope.connection.cursor() as member_cursor:
+                member_cursor.executemany(
+                    "insert into reconstruction_scene_job_member "
+                    "(workspace_id, job_id, capture_id, ordinal) values (%s, %s, %s, %s)",
+                    [
+                        (scope.workspace_id, job_id, capture_id, ordinal)
+                        for ordinal, capture_id in enumerate(capture_ids)
+                    ],
+                )
+
+        row = scope.connection.execute(
+            "select job_id, member_digest, selection_policy from reconstruction_scene_job "
+            "where workspace_id = %s and scene_id = %s and selection_policy_digest = %s",
+            (scope.workspace_id, scene_id, policy_digest),
+        ).fetchone()
+        members = scope.connection.execute(
+            "select capture_id from reconstruction_scene_job_member "
+            "where workspace_id = %s and job_id = %s order by ordinal, capture_id",
+            (scope.workspace_id, job_id),
+        ).fetchall()
+        if (
+            row is None
+            or row["job_id"] != job_id
+            or bytes(row["member_digest"]) != member_digest
+            or dict(row["selection_policy"]) != selection_policy
+            or [member["capture_id"] for member in members] != capture_ids
+        ):
+            raise ValueError(
+                "an existing reconstruction job disagrees with the requested input set"
+            )
+    return job_id, inserted
+
+
+def _claimed(scope: WorkspaceScope, row: dict[str, Any], *, reclaimed: bool) -> ClaimedSceneJob:
+    members = scope.connection.execute(
+        "select m.capture_id, m.ordinal, c.blob_sha256, b.media_type "
+        "from reconstruction_scene_job_member m "
+        "join capture c on c.workspace_id=m.workspace_id and c.capture_id=m.capture_id "
+        "join blob b on b.blob_sha256=c.blob_sha256 "
+        "where m.workspace_id=%s and m.job_id=%s order by m.ordinal,m.capture_id",
+        (scope.workspace_id, row["job_id"]),
+    ).fetchall()
+    return ClaimedSceneJob(
+        job_id=row["job_id"],
+        scene_id=row["scene_id"],
+        member_digest=bytes(row["member_digest"]),
+        selection_policy=dict(row["selection_policy"]),
+        selection_policy_digest=bytes(row["selection_policy_digest"]),
+        members=tuple(
+            SceneJobMember(
+                capture_id=member["capture_id"],
+                ordinal=int(member["ordinal"]),
+                blob_id=BlobId(bytes(member["blob_sha256"])),
+                media_type=member["media_type"],
+            )
+            for member in members
+        ),
+        attempts=int(row["attempts"]),
+        claim_token=row["claim_token"],
+        scratch_key=row["scratch_key"],
+        reclaimed=reclaimed,
+    )
+
+
+def claim(
+    scope: WorkspaceScope, *, worker: str, lease_seconds: float
+) -> ClaimedSceneJob | None:
+    """Claim expired work first, then queued or retryable work, with a rotated token."""
+    reclaimed = True
+    row = scope.connection.execute(
+        "update reconstruction_scene_job set status='running', attempts=attempts+1, "
+        "claim_token=gen_random_uuid(), claimed_by=%s, "
+        "lease_expires_at=now()+make_interval(secs => %s), updated_at=now(), "
+        "failure_class=null, failure_message=null "
+        "where job_id=(select job_id from reconstruction_scene_job "
+        "where workspace_id=%s and status='running' and lease_expires_at < now() "
+        "and attempts < %s order by available_at,created_at,job_id "
+        "for update skip locked limit 1) "
+        "returning job_id,scene_id,member_digest,selection_policy,selection_policy_digest,"
+        "attempts,claim_token,scratch_key",
+        (worker, lease_seconds, scope.workspace_id, MAX_SCENE_CLAIMS),
+    ).fetchone()
+    if row is None:
+        reclaimed = False
+        row = scope.connection.execute(
+            "update reconstruction_scene_job set status='running', attempts=attempts+1, "
+            "claim_token=gen_random_uuid(), claimed_by=%s, "
+            "lease_expires_at=now()+make_interval(secs => %s), updated_at=now(), "
+            "failure_class=null, failure_message=null "
+            "where job_id=(select job_id from reconstruction_scene_job "
+            "where workspace_id=%s and status in ('queued','failed') and available_at <= now() "
+            "and attempts < %s and not tombstone_blocks_reconstruction_job(workspace_id,job_id) "
+            "order by available_at,created_at,job_id for update skip locked limit 1) "
+            "returning job_id,scene_id,member_digest,selection_policy,selection_policy_digest,"
+            "attempts,claim_token,scratch_key",
+            (worker, lease_seconds, scope.workspace_id, MAX_SCENE_CLAIMS),
+        ).fetchone()
+    return None if row is None else _claimed(scope, row, reclaimed=reclaimed)
+
+
+def heartbeat(
+    scope: WorkspaceScope,
+    *,
+    job_id: uuid.UUID,
+    claim_token: uuid.UUID,
+    lease_seconds: float,
+) -> bool:
+    cursor = scope.connection.execute(
+        "update reconstruction_scene_job set "
+        "lease_expires_at=now()+make_interval(secs => %s),updated_at=now() "
+        "where workspace_id=%s and job_id=%s and status='running' and claim_token=%s",
+        (lease_seconds, scope.workspace_id, job_id, claim_token),
+    )
+    return cursor.rowcount > 0
+
+
+def cancelled_or_lost(
+    scope: WorkspaceScope, *, job_id: uuid.UUID, claim_token: uuid.UUID
+) -> bool:
+    row = scope.connection.execute(
+        "select status,claim_token,tombstone_blocks_reconstruction_job(workspace_id,job_id) "
+        "as blocked from reconstruction_scene_job where workspace_id=%s and job_id=%s",
+        (scope.workspace_id, job_id),
+    ).fetchone()
+    return bool(
+        row is None
+        or row["status"] != "running"
+        or row["claim_token"] != claim_token
+        or row["blocked"]
+    )
+
+
+def complete(
+    scope: WorkspaceScope,
+    *,
+    job_id: uuid.UUID,
+    claim_token: uuid.UUID,
+    scratch_key: str,
+    pose_manifest_digest: bytes,
+    pose_receipt_artifact_id: uuid.UUID,
+    placement_artifact_id: uuid.UUID,
+    gate_artifact_id: uuid.UUID,
+) -> bool:
+    """Close a held job only after every durable output was accepted in this transaction."""
+    cursor = scope.connection.execute(
+        "update reconstruction_scene_job set status='succeeded',scratch_key=%s,"
+        "pose_manifest_digest=%s,pose_receipt_artifact_id=%s,placement_artifact_id=%s,"
+        "gate_artifact_id=%s,claim_token=null,claimed_by=null,lease_expires_at=null,"
+        "completed_at=now(),updated_at=now(),failure_class=null,failure_message=null "
+        "where workspace_id=%s and job_id=%s and status='running' and claim_token=%s "
+        "and not tombstone_blocks_reconstruction_job(workspace_id,job_id)",
+        (
+            scratch_key,
+            pose_manifest_digest,
+            pose_receipt_artifact_id,
+            placement_artifact_id,
+            gate_artifact_id,
+            scope.workspace_id,
+            job_id,
+            claim_token,
+        ),
+    )
+    return cursor.rowcount > 0
+
+
+def fail(
+    scope: WorkspaceScope,
+    *,
+    job_id: uuid.UUID,
+    claim_token: uuid.UUID,
+    failure_class: str,
+    failure_message: str,
+    retry_delay_seconds: float,
+) -> bool:
+    """Record a retryable failure, becoming terminal after the bounded claim count."""
+    cursor = scope.connection.execute(
+        "update reconstruction_scene_job set status='failed',available_at=now()+"
+        "make_interval(secs => %s),claim_token=null,claimed_by=null,lease_expires_at=null,"
+        "completed_at=case when attempts >= %s then now() else null end,updated_at=now(),"
+        "failure_class=%s,failure_message=%s "
+        "where workspace_id=%s and job_id=%s and status='running' and claim_token=%s",
+        (
+            retry_delay_seconds,
+            MAX_SCENE_CLAIMS,
+            failure_class,
+            failure_message[:2000],
+            scope.workspace_id,
+            job_id,
+            claim_token,
+        ),
+    )
+    return cursor.rowcount > 0

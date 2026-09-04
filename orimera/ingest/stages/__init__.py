@@ -212,6 +212,40 @@ STAGES: Final[dict[str, StageSpec]] = {
             "algorithm": "sequential_time_then_distance",
         },
     ),
+    "scene_pose": StageSpec(
+        key="scene_pose",
+        version=1,
+        output_kind="pose_receipt",
+        deterministic=True,
+        params={
+            "controller": "colmap-sparse-checkpointed",
+            "receipt_profile": "orimera.colmap-pose-receipt/v2",
+            "min_registered_fraction": None,
+            "max_mean_reprojection_error_px": None,
+            "min_camera_translation_units": None,
+        },
+    ),
+    "scene_placement": StageSpec(
+        key="scene_placement",
+        version=1,
+        output_kind="point_map_placement",
+        deterministic=True,
+        params={
+            "profile": "orimera.posed-point-map-placement/v1",
+            "opm_container": "opm/2",
+            "scale_status": "unvalidated-identity",
+        },
+    ),
+    "scene_gate": StageSpec(
+        key="scene_gate",
+        version=1,
+        output_kind="scene_gate_receipt",
+        deterministic=True,
+        params={
+            "profile": "orimera.reconstruction-scene-gate/v1",
+            "policy": "highest-complete-accepted-receipt-chain",
+        },
+    ),
 }
 
 

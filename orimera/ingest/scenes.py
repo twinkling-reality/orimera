@@ -102,6 +102,7 @@ class SceneGroup:
 class SceneReport:
     groups: list[SceneGroup] = field(default_factory=list)
     proposals: list[dict[str, Any]] = field(default_factory=list)
+    reconstruction_jobs: list[uuid.UUID] = field(default_factory=list)
     ungrouped: int = 0
 
 
@@ -226,6 +227,13 @@ def run_scene_grouping(
                     if repository.upsert_derived_artifact(**proposal["row"]):
                         emitted.append(proposal["row"]["derived_id"])
         recorder.ledger.emitted("proposal", emitted, spec)
+
+    # Import here because the policy names SceneGroup and this module owns that type. Keeping the
+    # edge local avoids turning a type-level cycle into a package import cycle.
+    from orimera.ingest.scene_selection import enqueue_scene_reconstructions
+
+    selections = enqueue_scene_reconstructions(repository, report.groups)
+    report.reconstruction_jobs = [selection.job_id for selection in selections]
 
     if owns_ledger:
         ledger.finish("succeeded")
