@@ -88,13 +88,13 @@ def rung_by_capture(
     the predicate with ``allows_kind = {inference}`` alone, so the database refuses a rung filed
     as a capture-supported fact whatever the pipeline later tries.
 
-    Active rows only, NEWEST FIRST, and the ordering is load bearing rather than tidy.
-    ``predicate.functional`` is documented in migration 0001 as "at most one active object per
-    subject" and is enforced by nothing: no constraint, no index and no trigger reads the column.
-    That is defect R16. So a capture reconstructed twice can carry two active rungs, and an
-    unordered read would report whichever row the planner happened to return. Taking the newest
-    per capture means the rung on screen is the most recent one whatever the vocabulary does or
-    does not enforce, and the day it is enforced this query is unchanged.
+    Active rows only, NEWEST FIRST, and the ordering is a backstop rather than decoration.
+    **CORRECTED:** R16 was closed by migration 0006 and repaired by migration 0009.
+    ``assertion_one_active_claim_per_functional_subject`` constrains the active row, and
+    ``tg_assertion_supersedes_the_previous_functional_claim`` reads ``predicate.functional``.
+    The ``distinct on`` remains useful for routes a BEFORE trigger cannot see and because the
+    index is partial on active rows. Taking the newest per capture keeps that fallback
+    deterministic without claiming the functional rule is unenforced.
 
     A superseded rung is what a previous run believed and stays readable in the history;
     presenting it as current would be presenting a stale reconstruction as the one on screen.

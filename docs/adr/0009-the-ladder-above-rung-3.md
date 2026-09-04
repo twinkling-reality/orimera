@@ -1,15 +1,15 @@
 # ADR-0009: How the ladder earns rungs 1 and 2, and what a posed rung 3 is
 
-- Status: **ACCEPTED as a design; partially implemented.** Three pieces exist and run: the pose
+- Status: **ACCEPTED as a design; partially implemented.** Four pieces exist and run: the pose
   backend (`orimera/reconstruction/pycolmap_executor.py`), **D10, the delivery route**
   (`orimera/graph/geometry.py`, `orimera/api/routes/geometry.py`,
   `web/packages/app/src/geometry-api.ts`), which D10 itself required to come first, and **D9's
   scene identity and its deletion path** (migration 0024, `orimera/evidence/scene.py`, the scene
   clauses in `orimera/world_package/projector.py`), whose no-ship test is the one thing D9 said
-  had to exist before anything above rung 3 ships. D9's scene-level rung assertion is still
-  outstanding, and no producer writes a scene, so nothing ships one yet. Everything else here is
-  decided and not built. Each decision names what it would touch, so that building it is
-  execution rather than reopening.
+  had to exist before anything above rung 3 ships, and **D9's scene-level rung assertion**
+  (migration 0025, `orimera/ingest/scene_rung.py`, `orimera/graph/scene_rungs.py`). No production
+  path writes a scene, so nothing ships one yet. Everything else here is decided and not built.
+  Each decision names what it would touch, so that building it is execution rather than reopening.
 - Date: 2026-09-03
 - Deciders: Orimera build. Four independent proposals were scored by judges on honesty, on the
   metric frame and query path, and on what could be implemented now on this machine.
@@ -165,6 +165,16 @@ which is the remaining clause of this decision, and no producer writes a scene, 
 yet.* The reduction over a group changes with it: worst-first stays
 right for panels, because a hole is a hole, and is wrong for a scene, because four unregistered
 photographs are not holes in a corridor, they are photographs that open as photographs.
+
+*BUILT 2026-09-04. The preceding "not built" state is now closed. Migration 0025 seeds
+`reconstruction_scene_rung_is` without the per-frame `valid_fraction` carried by
+`reconstruction_rung_is`. `record_scene_rung` publishes rung 3 as an inference supported by the
+whole-image spans of the registered members, records the complete member count and both reasons
+the receipt gate cannot yet award rungs 1 or 2, and relies on the existing support rule to refuse
+a scene nobody registered. The assertion guard and the read both ask `tombstone_blocks_scene`, so
+deleting an unregistered member withdraws the claim even though that member supplied no support
+span. The world-package projector filters scene assertions from both copies at the same source,
+and its `rung_claims` subject resolves to the same pseudonym as the exported scene.*
 
 **D10. Nothing above rung 3 reaches a viewer until something serves geometry at all. BUILT
 2026-09-03.** The paragraph is left in the tense it was written in, and what was built follows

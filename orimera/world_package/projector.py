@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from psycopg.rows import dict_row
 
+from orimera.epistemics.vocabulary import RECONSTRUCTION_SCENE_RUNG_PREDICATE
 from orimera.world_package.package import (
     MANIFEST_PATH,
     PROFILE_ID,
@@ -240,13 +241,6 @@ def _project_components(
         "join capture c on c.capture_id=o.capture_id "
         "where e.deleted_at is null and c.deleted_at is null order by l.link_id"
     ).fetchall()
-    assertions = cursor.execute(
-        "select a.assertion_id,a.kind,p.key as predicate,a.subject_ref,a.object_ref,a.object_value,"
-        "a.valid_time,a.asserted_at,a.support_span_ids,a.external_source,a.status,a.supersedes "
-        "from assertion a join predicate p using(predicate_id) where a.status='active' "
-        "and not exists (select 1 from tombstone t where t.scope='assertion' "
-        "and t.assertion_id=a.assertion_id and t.effective_at<=now()) order by a.assertion_id"
-    ).fetchall()
     # **The scene predicate is asked ONCE, here, and every other query is filtered by its
     # answer.** ADR-0009 D9 gives a fact about N photographs a subject, and the reduction over
     # that subject INVERTS: a derivative of one photograph survives while any live capture holds
@@ -275,6 +269,16 @@ def _project_components(
             (workspace_id,),
         ).fetchall()
     ]
+    assertions = cursor.execute(
+        "select a.assertion_id,a.kind,p.key as predicate,a.subject_ref,a.object_ref,a.object_value,"
+        "a.valid_time,a.asserted_at,a.support_span_ids,a.external_source,a.status,a.supersedes "
+        "from assertion a join predicate p using(predicate_id) where a.status='active' "
+        "and not exists (select 1 from tombstone t where t.scope='assertion' "
+        "and t.assertion_id=a.assertion_id and t.effective_at<=now()) "
+        "and (a.subject_ref->>'type' <> 'scene' "
+        "or a.subject_ref->>'id' = any(%s::text[])) order by a.assertion_id",
+        ([str(scene_id) for scene_id in live_scenes],),
+    ).fetchall()
     scenes = cursor.execute(
         "select s.scene_id from reconstruction_scene s "
         "where s.workspace_id=%s and s.scene_id = any(%s) order by s.scene_id",
@@ -457,10 +461,12 @@ def _project_components(
             {
                 "assertion_id": assertion["assertion_id"],
                 "evidence_support": assertion["support_span_ids"],
+                "subject": assertion["subject_ref"]["id"],
                 "value": assertion["object_value"],
             }
             for assertion in graph["assertions"]
-            if assertion["predicate"] == "reconstruction_rung_is"
+            if assertion["predicate"]
+            in ("reconstruction_rung_is", RECONSTRUCTION_SCENE_RUNG_PREDICATE)
         ],
         # The subject of every scene-level claim, so a reader can resolve "a fact about these
         # eight photographs" to the eight. The member ids are the SAME pseudonyms

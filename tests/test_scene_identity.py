@@ -51,6 +51,7 @@ from orimera.errors import EpistemicViolation
 from orimera.evidence import EvidenceAddress
 from orimera.evidence.blob import BlobId
 from orimera.evidence.scene import scene_id_for, scene_member_digest
+from orimera.graph import SceneRungRow, scene_rung_rows
 from orimera.graph.scene_groups import rung_by_capture
 from orimera.ingest.pipeline import PhotoIngestPipeline
 from orimera.ingest.scene_rung import record_scene_rung
@@ -830,6 +831,38 @@ def test_a_scene_rung_is_not_a_capture_rung(scene):
     )
 
 
+def test_the_scene_rung_read_withdraws_the_claim_after_any_member_is_deleted(scene):
+    run = scene.one(
+        "select run_id from pipeline_run where workspace_id = %s order by started_at limit 1",
+        scene.workspace_id,
+    )
+    assert run is not None
+    record_scene_rung(scene.repository, scene_id=scene.scene_id, run_id=run["run_id"])
+
+    assert scene_rung_rows(scene.repository.connection, scene.workspace_id) == [
+        SceneRungRow(
+            scene_id=scene.scene_id,
+            member_capture_ids=scene.captures,
+            registered_capture_ids=[scene.captures[0], scene.captures[2]],
+            rung=3,
+            reasons=[
+                (
+                    "Rungs 1 and 2 are awarded only by ADR-0009 D1's receipt gate, and that "
+                    "gate is not built."
+                ),
+                (
+                    "Every pose, scale, coverage, corridor and splat threshold that gate would "
+                    "read is unmeasured."
+                ),
+            ],
+            member_count=3,
+        )
+    ]
+
+    scene.delete(scene.captures[1])
+    assert scene_rung_rows(scene.repository.connection, scene.workspace_id) == []
+
+
 # -- the bytes ---------------------------------------------------------------------------------
 
 
@@ -913,6 +946,46 @@ def test_deleting_one_member_of_three_releases_the_receipts_bytes(scene):
 
 
 # -- the export -------------------------------------------------------------------------------
+
+
+@pytest.mark.postgres
+def test_a_deleted_scene_rung_leaves_both_export_copies(scene, tmp_path):
+    run = scene.one(
+        "select run_id from pipeline_run where workspace_id = %s order by started_at limit 1",
+        scene.workspace_id,
+    )
+    assert run is not None
+    record_scene_rung(scene.repository, scene_id=scene.scene_id, run_id=run["run_id"])
+
+    before = scene.export(tmp_path / "before-rung.wmp")
+    reconstruction = scene.reconstruction(before)
+    graph = json.loads((before.output / "memory/graph.json").read_text())
+    scene_subject = reconstruction["scenes"][0]["scene_id"]
+    claims = [
+        claim for claim in reconstruction["rung_claims"] if claim["subject"] == scene_subject
+    ]
+    assert len(claims) == 1, reconstruction["rung_claims"]
+    assert claims[0]["value"]["member_count"] == 3
+    scene_assertions = [
+        assertion
+        for assertion in graph["assertions"]
+        if assertion["predicate"] == RECONSTRUCTION_SCENE_RUNG_PREDICATE
+    ]
+    assert len(scene_assertions) == 1, graph["assertions"]
+    assert scene_assertions[0]["subject_ref"]["id"] == scene_subject
+
+    scene.delete(scene.captures[1])
+    after = scene.export(tmp_path / "after-rung.wmp")
+    reconstruction = scene.reconstruction(after)
+    graph = json.loads((after.output / "memory/graph.json").read_text())
+    assert not [
+        claim for claim in reconstruction["rung_claims"] if claim["subject"] == scene_subject
+    ], "the deleted scene's rung remained in reconstruction/artifacts.json"
+    assert not [
+        assertion
+        for assertion in graph["assertions"]
+        if assertion["predicate"] == RECONSTRUCTION_SCENE_RUNG_PREDICATE
+    ], "the deleted scene's rung remained in memory/graph.json"
 
 
 @pytest.mark.postgres
